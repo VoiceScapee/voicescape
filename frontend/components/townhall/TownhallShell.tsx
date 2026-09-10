@@ -17,6 +17,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/events", label: "Events" },
   { href: "/polls", label: "Polls" },
   { href: "/marketplace", label: "Marketplace" },
+  { href: "/leaderboard", label: "Leaderboard" },
 ];
 
 function IdentityBar() {
