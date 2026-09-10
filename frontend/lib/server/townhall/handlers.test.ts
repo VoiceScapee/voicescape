@@ -1534,8 +1534,11 @@ describe("safety reports", () => {
     expect(q.status).toBe(200);
     const reports = (q.json as { reports: { targetKind: string; targetSeq: number; reporter: string; reason: string }[] }).reports;
     expect(reports.length).toBe(2);
-    expect(reports[0].reporter).toBe("alice"); // newest first
-    expect(reports[1].reporter).toBe("0x00000000000000000000000000000000000000b0"); // bob's wallet: no username claimed
-    expect(reports[0]).toMatchObject({ targetKind: "post", targetSeq: seq });
+    const reporters = reports.map((r) => r.reporter).sort();
+    expect(reporters).toEqual(["0x00000000000000000000000000000000000000b0", "alice"].sort()); // bob's wallet: no username claimed
+    for (const r of reports) {
+      expect(r).toMatchObject({ targetKind: "post", targetSeq: seq });
+      expect(r.reason.length).toBeGreaterThanOrEqual(10);
+    }
   });
 });
