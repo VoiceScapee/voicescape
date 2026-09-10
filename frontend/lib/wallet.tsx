@@ -94,8 +94,11 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
  * HIP-820 wallet (HashPack mobile, Blade, Kabila…).
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
+  // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
+  // webpackChunkName pins a stable filename so a cached 404 from a previous
+  // deployment can never poison this URL.
   const [{ HashConnect }, { LedgerId }] = await Promise.all([
-    import("hashconnect"),
+    import(/* webpackChunkName: "hashconnect-lib" */ "hashconnect"),
     import("@hashgraph/sdk"),
   ]);
   await disconnectHedera();

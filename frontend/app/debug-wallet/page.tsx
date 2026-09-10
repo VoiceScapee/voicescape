@@ -27,7 +27,9 @@ export default function DebugWalletPage() {
     setLines([]);
     try {
       log("step 1: importing hashconnect…");
-      const { HashConnect } = (await import("hashconnect")) as typeof import("hashconnect");
+      const { HashConnect } = (await import(
+        /* webpackChunkName: "hashconnect-lib" */ "hashconnect"
+      )) as typeof import("hashconnect");
       log("step 1 OK: HashConnect loaded");
 
       log("step 2: importing @hashgraph/sdk…");
