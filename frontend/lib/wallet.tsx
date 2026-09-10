@@ -328,10 +328,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return result.account;
     } catch (e) {
       senderGetter.current = null;
-      setError(e instanceof Error ? e.message : "Failed to connect wallet");
+      const msg = e instanceof Error ? e.message : "Failed to connect wallet";
+      setError(msg);
       // Clean up a half-opened Hedera session on failure.
       await disconnectHedera();
-      return null;
+      // Re-throw so callers get the actual error immediately (React state
+      // updates are async, so reading wallet.error right after connect()
+      // would see the stale null value).
+      throw new Error(msg);
     } finally {
       setIsConnecting(false);
     }

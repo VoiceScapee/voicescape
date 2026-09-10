@@ -213,15 +213,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         let activeAdapter = adapterId;
         let activeAccount = account;
         if ((!activeAdapter || !activeAccount) && targetAdapter) {
-          // connect() resolves with the account, so no re-render wait needed.
-          // If it fails, propagate the actual wallet error instead of a generic message.
+          // connect() throws with the specific failure reason on error,
+          // so the catch block below will show the actual message.
           activeAccount = await wallet.connect(targetAdapter);
           activeAdapter = targetAdapter;
-          if (!activeAccount) {
-            // wallet.connect() sets wallet.error with the specific failure reason.
-            // Throw that instead of the generic "Connect a wallet first."
-            throw new Error(wallet.error || "Wallet connection failed. Please try again.");
-          }
         }
         if (!activeAdapter || !activeAccount) {
           throw new Error("Connect a wallet first.");
