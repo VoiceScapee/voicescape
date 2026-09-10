@@ -24,9 +24,12 @@ import { defaultSalesPort } from "./sales";
 import { canonicalAddress } from "../../session-message";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
 import { getTopicId, type TopicDomain } from "./topics";
+import { checkContent } from "./content-filter";
 import type {
   ChatEvent,
   ChatMessage,
+  ChatRoom,
+  ChatRoomMessage,
   EventMessage,
   EventView,
   ListingMessage,
@@ -37,6 +40,8 @@ import type {
   ProposalMessage,
   ProposalView,
   ProposalVoteMessage,
+  ReportMessage,
+  ReportView,
   RepVoteMessage,
   ReputationView,
   StoredMessage,
@@ -92,6 +97,22 @@ function topicOr503(domain: TopicDomain): HandlerResult | string {
   const id = getTopicId(domain);
   if (!id) return err(503, `Town Hall topic for "${domain}" is not configured`);
   return id;
+}
+
+/**
+ * Pre-publish safety gate. Runs checkContent() on user-supplied text BEFORE
+ * any HCS submit — HCS is append-only and immutable, so blocked content must
+ * never reach the chain. Returns an err() result when blocked, null when
+ * clean. Blocked attempts are logged with the category only (no offending
+ * text, no author identity).
+ */
+function safetyGate(label: string, text: string, writeKind: string): HandlerResult | null {
+  const check = checkContent(text, label);
+  if (!check.allowed) {
+    console.warn(`[townhall] safety: blocked ${writeKind} — ${check.reason}`);
+    return err(400, check.reason ?? "content blocked by safety filter");
+  }
+  return null;
 }
 
 /**
@@ -424,8 +445,7 @@ export async function createPost(deps: TownhallDeps, body: CreatePostBody): Prom
   if (!isNonEmptyString(body.body)) return err(400, "body is required");
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
   const board = typeof body.board === "string" && body.board.trim() ? body.board.trim() : "general";
-  if (!DEFAULT_BOARDS.some((b) => b.id === board)) return err(400, `unknown board "${board}"`);
-  const boardDef = DEFAULT_BOARDS.find((b) => b.id === board)!;
+  if (!DEFAULT_BOARDS.some((b) => b.id === board)) return err(400, `unknown board "${board}"`);  const boardDef = DEFAULT_BOARDS.find((b) => b.id === board)!;
   if (boardDef.postOnly && !isGlobalMod(author, actor.session.address)) {
     return err(403, `board "${board}" is post-only for moderators`);
   }
@@ -441,6 +461,8 @@ export async function createPost(deps: TownhallDeps, body: CreatePostBody): Prom
     }
     replyTo = body.replyTo;
   }
+  const gate = safetyGate("post body", body.body, "forum post");
+  if (gate) return gate;
   const fee = await requireDustFee(deps, actor.session, body.dustFeeTxId);
   if (fee) return fee;
   const topic = topicOr503("forum");
@@ -457,6 +479,103 @@ export async function createPost(deps: TownhallDeps, body: CreatePostBody): Prom
   };
   const seq = await deps.hcs.submit(topic, msg);
   return ok({ seq }, 201);
+}
+
+/* ------------------------------------------------------------------ */
+/* Chat rooms                                                         */
+/* ------------------------------------------------------------------ */
+
+/** The built-in room, always listed first. */
+export const LOBBY_ROOM: ChatRoom = {
+  id: "lobby",
+  title: "🏠 Lobby",
+  description: "The always-open town square. Say hi.",
+  creator: "voicescape",
+  createdAt: "",
+};
+
+/** URL-safe room slug: 3–32 chars, lowercase letters, numbers, hyphens. */
+export const CHATROOM_ID_RE = /^[a-z0-9-]{3,32}$/;
+
+/** Read custom rooms from the chat topic (kind="chatroom-create"). */
+async function collectChatRooms(deps: TownhallDeps): Promise<ChatRoom[]> {
+  const topic = getTopicId("chat");
+  if (!topic) return [];
+  const messages = await deps.hcs.queryAll(topic);
+  const rooms: ChatRoom[] = [];
+  for (const m of messages) {
+    if (m.contents.kind !== "chatroom-create") continue;
+    const c = m.contents as ChatRoomMessage;
+    rooms.push({
+      id: c.id,
+      title: c.title,
+      description: c.description,
+      creator: c.author,
+      createdAt: c.ts,
+    });
+  }
+  rooms.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return rooms;
+}
+
+/**
+ * List chatrooms: the built-in lobby first, then user/agent-created rooms
+ * from the chat topic. Session-less read.
+ */
+export async function queryChatRooms(deps: TownhallDeps): Promise<HandlerResult> {
+  const topic = topicOr503("chat");
+  if (typeof topic !== "string") return topic;
+  const rooms = await collectChatRooms(deps);
+  return ok({ rooms: [LOBBY_ROOM, ...rooms] });
+}
+
+export interface CreateChatRoomBody extends AuthBody {
+  author?: unknown;
+  /** URL slug, 3–32 chars, [a-z0-9-]. The client derives it from the title. */
+  id?: unknown;
+  title?: unknown;
+  description?: unknown;
+  dustFeeTxId?: unknown;
+}
+
+export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBody): Promise<HandlerResult> {
+  const own = await requirePageOwner(deps, body, body.author);
+  if (!own.ok) return own.result;
+  const author = own.username;
+  if (!isNonEmptyString(body.id) || !CHATROOM_ID_RE.test(body.id)) {
+    return err(400, "id must be a slug: 3–32 chars, lowercase letters, numbers, and hyphens");
+  }
+  const id = body.id;
+  if (id === "lobby") return err(400, 'id "lobby" is reserved');
+  if (!isNonEmptyString(body.title)) return err(400, "title is required");
+  const title = body.title.trim();
+  if (title.length < 3 || title.length > 60) return err(400, "title must be 3–60 chars");
+  const description = typeof body.description === "string" ? body.description.trim() : "";
+  if (description.length > 200) return err(400, "description too long (max 200 chars)");
+  const gateTitle = safetyGate("room title", title, "chatroom");
+  if (gateTitle) return gateTitle;
+  if (description) {
+    const gateDesc = safetyGate("room description", description, "chatroom");
+    if (gateDesc) return gateDesc;
+  }
+  const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
+  if (fee) return fee;
+  const topic = topicOr503("chat");
+  if (typeof topic !== "string") return topic;
+  // First create wins — an id that already exists is a conflict.
+  const existing = await collectChatRooms(deps);
+  if (existing.some((r) => r.id === id)) return err(409, `room "${id}" already exists`);
+  const msg: ChatRoomMessage = {
+    v: 1,
+    kind: "chatroom-create",
+    ts: new Date().toISOString(),
+    author,
+    id,
+    title,
+    description,
+  };
+  await deps.hcs.submit(topic, msg);
+  return ok({ roomId: id }, 201);
 }
 
 /* ------------------------------------------------------------------ */
@@ -684,6 +803,8 @@ export async function postChat(deps: TownhallDeps, room: string, body: PostChatB
   const author = own.username;
   if (!isNonEmptyString(body.body)) return err(400, "body is required");
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
+  const gate = safetyGate("chat message", body.body, "chat message");
+  if (gate) return gate;
   const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
   if (fee) return fee;
   const topic = topicOr503("chat");
@@ -778,6 +899,153 @@ export async function submitModAction(
   if (quota) return quota;
   const seq = await deps.hcs.submit(topic, msg);
   return ok({ seq }, 201);
+}
+
+/* ------------------------------------------------------------------ */
+/* User safety reports                                                */
+/* ------------------------------------------------------------------ */
+
+export interface SubmitReportBody extends AuthBody {
+  reporter?: unknown;
+  /** "post" (forum) | "chat" (chat message) | "listing" (marketplace). */
+  targetKind?: unknown;
+  /** HCS sequence number of the target (post/chat targets). */
+  targetSeq?: unknown;
+  /** Listing id (listing targets). */
+  targetId?: unknown;
+  /** Reporter's explanation, 10–500 chars. */
+  reason?: unknown;
+}
+
+type ReportTargetKind = "post" | "chat" | "listing";
+
+function reportTopicDomain(kind: ReportTargetKind): TopicDomain {
+  return kind === "chat" ? "chat" : kind === "listing" ? "market" : "forum";
+}
+
+/**
+ * File a safety report against a post, chat message, or listing.
+ *
+ * Auth: signed wallet session only — no page ownership required and no
+ * dust fee, so reporting stays free and frictionless. The report is
+ * appended as kind "report" to the SAME HCS topic as its target, so
+ * moderators can correlate reports with targets in a single read.
+ *
+ * The reason is deliberately NOT run through the content filter: a
+ * reporter describing violating content must not be blocked for quoting
+ * it. Reports are only visible to moderators via queryReports.
+ *
+ * 201 → {seq} of the report message. Errors: 400 bad input, 401 no
+ * session, 404 target not found, 429 daily report quota exceeded.
+ */
+export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): Promise<HandlerResult> {
+  const s = await requireSession(deps, body);
+  if (!s.ok) return s.result;
+  const targetKind = body.targetKind;
+  if (targetKind !== "post" && targetKind !== "chat" && targetKind !== "listing") {
+    return err(400, 'targetKind must be "post", "chat", or "listing"');
+  }
+  // Reporter identity: the registered username when it resolves to the
+  // signing wallet, otherwise the canonical wallet address.
+  let reporter = s.session.address;
+  if (typeof body.reporter === "string" && body.reporter.trim()) {
+    const name = body.reporter.trim();
+    try {
+      const owner = await deps.registry.resolveOwner(name);
+      if (owner && canonicalAddress(owner) === s.session.address) reporter = name;
+    } catch {
+      // Registry hiccup — fall back to the wallet address.
+    }
+  }
+  if (typeof body.reason !== "string" || body.reason.trim().length < 10) {
+    return err(400, "reason must be at least 10 characters");
+  }
+  const reason = body.reason.trim();
+  if (reason.length > 500) return err(400, "reason too long (max 500 chars)");
+
+  const domain = reportTopicDomain(targetKind);
+  const topic = topicOr503(domain);
+  if (typeof topic !== "string") return topic;
+
+  // The target must exist.
+  const messages = await deps.hcs.queryAll(topic);
+  let targetSeq: number | null = null;
+  let targetId: string | null = null;
+  if (targetKind === "listing") {
+    if (typeof body.targetId !== "string" || !body.targetId.trim()) {
+      return err(400, "targetId is required for listing reports");
+    }
+    targetId = body.targetId.trim();
+    if (!aggregateListings(messages).has(targetId)) {
+      return err(404, `listing "${targetId}" not found`);
+    }
+  } else {
+    if (typeof body.targetSeq !== "number" || !Number.isInteger(body.targetSeq) || body.targetSeq <= 0) {
+      return err(400, "targetSeq must be a positive integer: the HCS sequence number of the reported message");
+    }
+    targetSeq = body.targetSeq;
+    const wantKind = targetKind === "chat" ? "chat" : "post";
+    const found = messages.some((m) => m.seq === targetSeq && m.contents.kind === wantKind);
+    if (!found) {
+      return err(404, `${targetKind === "chat" ? "chat message" : "post"} #${targetSeq} not found`);
+    }
+  }
+
+  const msg: ReportMessage = {
+    v: 1,
+    kind: "report",
+    ts: new Date().toISOString(),
+    author: reporter,
+    targetKind,
+    targetSeq,
+    targetId,
+    reason,
+    reporter,
+  };
+  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  const quota = await requireTownhallWriteQuota(s.session);
+  if (quota) return quota;
+  const seq = await deps.hcs.submit(topic, msg);
+  return ok({ seq }, 201);
+}
+
+export interface QueryReportsBody extends AuthBody {
+  username?: unknown;
+}
+
+/**
+ * Moderator report queue: all kind "report" messages across the forum,
+ * chat, and market topics, newest first. Mod-only — requires a global
+ * moderator (TOWNHALL_MODS username or TOWNHALL_MOD_WALLETS wallet).
+ */
+export async function queryReports(deps: TownhallDeps, body: QueryReportsBody): Promise<HandlerResult> {
+  const s = await requireSession(deps, body);
+  if (!s.ok) return s.result;
+  const username = typeof body.username === "string" ? body.username.trim() : "";
+  if (!isGlobalMod(username, s.session.address)) {
+    return err(403, "moderator access required");
+  }
+  const out: ReportView[] = [];
+  for (const domain of ["forum", "chat", "market"] as TopicDomain[]) {
+    const topic = getTopicId(domain);
+    if (!topic) continue;
+    const messages = await deps.hcs.queryAll(topic);
+    for (const m of messages) {
+      if (m.contents.kind !== "report") continue;
+      const r = m.contents as ReportMessage;
+      out.push({
+        seq: m.seq,
+        targetKind: r.targetKind,
+        targetSeq: r.targetSeq,
+        targetId: r.targetId,
+        reason: r.reason,
+        reporter: r.reporter,
+        ts: r.ts,
+      });
+    }
+  }
+  out.sort((a, b) => b.ts.localeCompare(a.ts));
+  return ok({ reports: out });
 }
 
 export interface ModStatusBody extends AuthBody {
@@ -931,6 +1199,10 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
     return err(400, 'goodsType must be "physical" or "digital"');
   }
   const ipfsHash = typeof body.ipfsHash === "string" && body.ipfsHash.trim() ? body.ipfsHash.trim() : null;
+  const gateTitle = safetyGate("listing title", body.title.trim(), "marketplace listing");
+  if (gateTitle) return gateTitle;
+  const gateDesc = safetyGate("listing description", body.description, "marketplace listing");
+  if (gateDesc) return gateDesc;
   const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
   if (fee) return fee;
   const topic = topicOr503("market");

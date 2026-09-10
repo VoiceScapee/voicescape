@@ -1,37 +1,118 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { getJson, type TownhallEvent } from "@/lib/townhall";
+import { getJson, postJson, type TownhallEvent } from "@/lib/townhall";
+import DustFeeGate from "@/components/townhall/DustFeeGate";
+import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
 
 interface Room {
   id: string;
   title: string;
   description: string;
+  creator: string;
+  createdAt: string;
+}
+
+/** Derive a URL-safe room slug from a title (matches the server's CHATROOM_ID_RE). */
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
 }
 
 export default function ChatRoomsClient() {
-  const [rooms, setRooms] = useState<Room[]>([
-    { id: "lobby", title: "🏠 Lobby", description: "The always-open town square. Say hi." },
-  ]);
-  const [loadingEvents, setLoadingEvents] = useState(true);
+  const { username: me, canWrite, isAuthenticated } = useWriteGate();
+  const dust = useDustFee();
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [created, setCreated] = useState<string | null>(null);
+
+  const loadRooms = useCallback(async () => {
+    setLoading(true);
+    try {
+      // Custom + lobby rooms from the chat topic.
+      const d = await getJson<{ rooms?: Room[] }>("/api/townhall/chat");
+      const apiRooms = Array.isArray(d.rooms) ? d.rooms : [];
+      // Event-derived rooms (separate feature, kept).
+      let eventRooms: Room[] = [];
+      try {
+        const e = await getJson<{ events?: TownhallEvent[] }>("/api/townhall/events");
+        const events = Array.isArray(e.events) ? e.events : [];
+        eventRooms = events.map((ev) => ({
+          id: `event-${ev.id}`,
+          title: `🎤 ${ev.title}`,
+          description: ev.description || `Live room for “${ev.title}”.`,
+          creator: "voicescape",
+          createdAt: "",
+        }));
+      } catch {
+        // Events API unavailable — custom rooms still work.
+      }
+      const seen = new Set(apiRooms.map((r) => r.id));
+      setRooms([...apiRooms, ...eventRooms.filter((r) => !seen.has(r.id))]);
+    } catch {
+      // Chat API unavailable — nothing to show.
+      setRooms([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    getJson<{ events?: TownhallEvent[] }>("/api/townhall/events")
-      .then((d) => {
-        const events = Array.isArray(d.events) ? d.events : [];
-        const eventRooms: Room[] = events.map((e) => ({
-          id: `event-${e.id}`,
-          title: `🎤 ${e.title}`,
-          description: e.description || `Live room for “${e.title}”.`,
-        }));
-        setRooms((prev) => [...prev, ...eventRooms]);
-      })
-      .catch(() => {
-        // Events API unavailable — lobby still works.
-      })
-      .finally(() => setLoadingEvents(false));
-  }, []);
+    loadRooms();
+  }, [loadRooms]);
+
+  const createRoom = async () => {
+    setFormError(null);
+    setCreated(null);
+    const t = title.trim();
+    const d = description.trim();
+    if (t.length < 3 || t.length > 60) {
+      setFormError("Title must be 3–60 characters.");
+      return;
+    }
+    if (d.length > 200) {
+      setFormError("Description must be 200 characters or fewer.");
+      return;
+    }
+    const id = slugify(t);
+    if (id.length < 3) {
+      setFormError("That title can't make a room id — use letters or numbers.");
+      return;
+    }
+    if (!me) {
+      setFormError("Sign in and set your page username first.");
+      return;
+    }
+    let newRoomId: string | null = null;
+    const ok = await dust.execute(async (dustFeeTxId) => {
+      const r = await postJson<{ roomId: string }>("/api/townhall/chat", {
+        author: me,
+        id,
+        title: t,
+        description: d,
+        dustFeeTxId,
+      });
+      newRoomId = r.roomId;
+    });
+    if (ok && newRoomId) {
+      setCreated(newRoomId);
+      setTitle("");
+      setDescription("");
+      setShowForm(false);
+      await loadRooms();
+    }
+    // Failures (validation 400/409, fee 402) surface through DustFeeGate.
+  };
+
+  const busy = dust.phase.kind === "working" || dust.phase.kind === "paying";
 
   return (
     <>
@@ -39,14 +120,102 @@ export default function ChatRoomsClient() {
         <h1>💬 Live <span className="vs-gradient-text">Chat</span></h1>
         <p>Real-time rooms over server-sent events. Messages cost the dust fee, same as forum posts.</p>
       </div>
+
+      {canWrite && !showForm && (
+        <button
+          type="button"
+          className="vs-btn vs-btn-primary"
+          style={{ marginBottom: 16 }}
+          onClick={() => setShowForm(true)}
+        >
+          ＋ Create a room
+        </button>
+      )}
+
+      {showForm && (
+        <div className="th-card" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>Create a chatroom</h3>
+          <p className="th-muted" style={{ marginTop: 0 }}>
+            Rooms are permanent and public. Your page name will show as the creator.
+            {title.trim() && (
+              <> Room id: <code className="vs-mono">#{slugify(title.trim()) || "…"}</code></>
+            )}
+          </p>
+          <label className="vb-field">
+            <span className="vs-label">Title (3–60 chars)</span>
+            <input
+              className="vs-input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Agent coffee chat"
+              maxLength={60}
+              aria-label="Room title"
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Description (optional, max 200 chars)</span>
+            <input
+              className="vs-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What is this room for?"
+              maxLength={200}
+              aria-label="Room description"
+            />
+          </label>
+          {formError && <p style={{ color: "#f87171", fontSize: 13 }}>{formError}</p>}
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button
+              type="button"
+              className="vs-btn vs-btn-primary"
+              onClick={createRoom}
+              disabled={busy || title.trim().length < 3}
+            >
+              {busy ? "…" : "Create room"}
+            </button>
+            <button
+              type="button"
+              className="vs-btn vs-btn-ghost"
+              onClick={() => {
+                setShowForm(false);
+                setFormError(null);
+              }}
+              disabled={busy}
+            >
+              Cancel
+            </button>
+          </div>
+          <DustFeeGate flow={dust} actionLabel="room" />
+        </div>
+      )}
+
+      {created && (
+        <p style={{ color: "var(--vs-cyan)", fontSize: 14 }}>
+          Room <Link href={`/chat/${encodeURIComponent(created)}`} className="th-identity-link">#{created}</Link> created — jump in!
+        </p>
+      )}
+
       {rooms.map((r) => (
         <Link key={r.id} href={`/chat/${encodeURIComponent(r.id)}`} className="th-card th-card-link">
           <h3>{r.title}</h3>
           <p>{r.description}</p>
+          <p className="th-muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
+            by @{r.creator}
+          </p>
           <span className="th-identity-link">Join room →</span>
         </Link>
       ))}
-      {loadingEvents && <p className="th-muted">Checking for event rooms…</p>}
+      {loading && <p className="th-muted">Loading rooms…</p>}
+      {!loading && rooms.length === 0 && (
+        <p className="th-muted">No rooms yet — be the first to create one.</p>
+      )}
+      {!canWrite && (
+        <p className="th-muted" style={{ marginTop: 12 }}>
+          {isAuthenticated
+            ? "Set your page username (top of the page) to create rooms."
+            : "Sign in with your wallet to create rooms."}
+        </p>
+      )}
     </>
   );
 }

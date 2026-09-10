@@ -20,11 +20,13 @@ export interface TownhallEnvelope {
 export type TownhallKind =
   | "post"
   | "chat"
+  | "chatroom-create"
   | "rep-vote"
   | "proposal"
   | "proposal-vote"
   | "event"
   | "listing"
+  | "report"
   | "mod-action";
 
 /** Forum post. Lives on the forum topic; boards/walls are fields. */
@@ -43,6 +45,17 @@ export interface ChatMessage extends TownhallEnvelope {
   kind: "chat";
   room: string;
   body: string;
+}
+
+/**
+ * Chatroom creation. Lives on the chat topic. The author is the creator.
+ * Room ids are URL-safe slugs; first create wins (duplicates are 409).
+ */
+export interface ChatRoomMessage extends TownhallEnvelope {
+  kind: "chatroom-create";
+  id: string;
+  title: string;
+  description: string;
 }
 
 /** Reputation vote. Latest per (voter, target) wins. */
@@ -98,9 +111,28 @@ export interface ListingMessage extends TownhallEnvelope {
   status: "active" | "sold" | "cancelled";
 }
 
+/**
+ * User safety report. Lives on the SAME HCS topic as its target
+ * (forum → forum topic, chat → chat topic, listing → market topic),
+ * so moderators can correlate reports with targets in one read.
+ * No dust fee — reporting must be free and frictionless.
+ */
+export interface ReportMessage extends TownhallEnvelope {
+  kind: "report";
+  targetKind: "post" | "chat" | "listing";
+  /** HCS sequence number of the target (post/chat). Null for listings. */
+  targetSeq: number | null;
+  /** Listing id for listing targets. Null for post/chat. */
+  targetId: string | null;
+  /** Reporter's explanation, 10–500 chars. */
+  reason: string;
+  /** Resolved reporter identity: registered username when it maps to the
+   *  signing wallet, otherwise the canonical wallet address. */
+  reporter: string;
+}
+
 /** Moderation action. Server-side filtering; HCS stays append-only. */
-export interface ModActionMessage extends TownhallEnvelope {
-  kind: "mod-action";
+export interface ModActionMessage extends TownhallEnvelope {  kind: "mod-action";
   /**
    * What the hide targets: a forum post or a chat message. Optional for
    * back-compat — pre-existing mod-actions have no targetKind and are
@@ -125,11 +157,13 @@ export interface ModActionMessage extends TownhallEnvelope {
 export type TownhallMessage =
   | PostMessage
   | ChatMessage
+  | ChatRoomMessage
   | RepVoteMessage
   | ProposalMessage
   | ProposalVoteMessage
   | EventMessage
   | ListingMessage
+  | ReportMessage
   | ModActionMessage;
 
 /** Stored HCS message: decoded payload + consensus metadata. */
@@ -191,6 +225,17 @@ export interface ChatEvent {
   ts: string;
 }
 
+/** Chatroom view: the built-in lobby plus rooms created via chatroom-create. */
+export interface ChatRoom {
+  id: string;
+  title: string;
+  description: string;
+  /** Registered username of the room creator ("voicescape" for the lobby). */
+  creator: string;
+  /** ISO-8601; "" for the built-in lobby. */
+  createdAt: string;
+}
+
 export interface EventView {
   id: string;
   title: string;
@@ -209,5 +254,16 @@ export interface ListingView {
   goodsType: "physical" | "digital";
   ipfsHash: string | null;
   status: "active" | "sold" | "cancelled";
+  ts: string;
+}
+
+/** A user safety report, as returned by the mod report queue. */
+export interface ReportView {
+  seq: number;
+  targetKind: "post" | "chat" | "listing";
+  targetSeq: number | null;
+  targetId: string | null;
+  reason: string;
+  reporter: string;
   ts: string;
 }

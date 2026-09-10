@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   castRepVote,
+  createChatRoom,
   createEvent,
   createListing,
   createPost,
@@ -17,8 +18,11 @@ import {
   getReputation,
   postChat,
   queryChatMessages,
+  queryChatRooms,
+  queryReports,
   setListingStatus,
   submitModAction,
+  submitReport,
   getModStatus,
   voteProposal,
   type TownhallDeps,
@@ -433,6 +437,124 @@ describe("chat", () => {
     expect(events.map((e) => e.seq)).toEqual([1, 2]); // ordered by seq
     const after = await queryChatMessages(deps, "lobby", 1);
     expect(after.map((e) => e.seq)).toEqual([2]);
+  });
+});
+
+describe("chat rooms", () => {
+  it("creates a room and lists it after the lobby", async () => {
+    const deps = makeDeps();
+    const r = await createChatRoom(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      id: "agent-coffee",
+      title: "Agent Coffee Chat",
+      description: "Agents and humans talk shop.",
+      ...fee(),
+    });
+    expect(r.status).toBe(201);
+    expect((r.json as { roomId: string }).roomId).toBe("agent-coffee");
+
+    const q = await queryChatRooms(deps);
+    expect(q.status).toBe(200);
+    const rooms = (q.json as { rooms: { id: string; creator: string }[] }).rooms;
+    expect(rooms[0].id).toBe("lobby");
+    const created = rooms.find((x) => x.id === "agent-coffee");
+    expect(created).toMatchObject({ title: "Agent Coffee Chat", creator: "alice" });
+  });
+
+  it("queryChatRooms always includes the lobby, even with no rooms", async () => {
+    const q = await queryChatRooms(makeDeps());
+    expect(q.status).toBe(200);
+    const rooms = (q.json as { rooms: { id: string }[] }).rooms;
+    expect(rooms.length).toBe(1);
+    expect(rooms[0].id).toBe("lobby");
+  });
+
+  it("rejects invalid ids", async () => {
+    const deps = makeDeps();
+    const base = { author: "alice", auth: testCred("alice"), title: "Valid Title", ...fee() };
+    for (const id of ["ab", "UPPER", "has space", "a".repeat(33), "lobby", "semi;colon"]) {
+      const r = await createChatRoom(deps, { ...base, id, ...fee() });
+      expect(r.status).toBe(400);
+    }
+  });
+
+  it("rejects bad titles and long descriptions", async () => {
+    const deps = makeDeps();
+    const base = { author: "alice", auth: testCred("alice"), id: "ok-room", ...fee() };
+    const short = await createChatRoom(deps, { ...base, title: "AB", ...fee() });
+    expect(short.status).toBe(400);
+    const longDesc = await createChatRoom(deps, { ...base, title: "Valid Title", description: "x".repeat(201), ...fee() });
+    expect(longDesc.status).toBe(400);
+    const missing = await createChatRoom(deps, { ...base, ...fee() });
+    expect(missing.status).toBe(400);
+  });
+
+  it("returns 409 on duplicate room id", async () => {
+    const deps = makeDeps();
+    const body = { author: "alice", auth: testCred("alice"), id: "dupe-room", title: "Dupe Room" };
+    const first = await createChatRoom(deps, { ...body, ...fee() });
+    expect(first.status).toBe(201);
+    const second = await createChatRoom(deps, { ...body, ...fee() });
+    expect(second.status).toBe(409);
+  });
+
+  it("returns 402 without a dust fee", async () => {
+    const r = await createChatRoom(makeDeps(), {
+      author: "alice",
+      auth: testCred("alice"),
+      id: "no-fee-room",
+      title: "No Fee Room",
+    });
+    expect(r.status).toBe(402);
+    expect((r.json as Record<string, unknown>).dustFeeTinybars).toBe(1000);
+  });
+
+  it("rejects bad sessions and non-owners", async () => {
+    const deps = makeDeps();
+    const noSession = await createChatRoom(deps, {
+      author: "alice",
+      id: "r1",
+      title: "Room One",
+      ...fee(),
+    });
+    expect(noSession.status).toBe(401);
+    const wrongWallet = await createChatRoom(deps, {
+      author: "alice",
+      auth: testCred("bob"),
+      id: "r2",
+      title: "Room Two",
+      ...fee(),
+    });
+    expect(wrongWallet.status).toBe(403);
+    const unregistered = await createChatRoom(deps, {
+      author: "mallory",
+      auth: testCred("alice"),
+      id: "r3",
+      title: "Room Three",
+      ...fee(),
+    });
+    expect(unregistered.status).toBe(403);
+  });
+
+  it("room ids survive a chat message round-trip", async () => {
+    const deps = makeDeps();
+    await createChatRoom(deps, {
+      author: "bob",
+      auth: testCred("bob"),
+      id: "dev-talk",
+      title: "Dev Talk",
+      ...fee(),
+    });
+    const m = await postChat(deps, "dev-talk", {
+      author: "alice",
+      auth: testCred("alice"),
+      body: "hello in dev-talk",
+      ...fee(),
+    });
+    expect(m.status).toBe(201);
+    const events = await queryChatMessages(deps, "dev-talk");
+    expect(events.map((e) => e.body)).toEqual(["hello in dev-talk"]);
   });
 });
 
@@ -1202,5 +1324,218 @@ describe("free-write quota (429)", () => {
     expect(r2.status).toBe(429);
     const r3 = await voteProposal(deps, "p1", { voter: "alice", auth: testCred("alice"), choice: "yes" });
     expect(r3.status).toBe(200);
+  });
+});
+
+describe("safety filter (pre-publish)", () => {
+  it("blocks a chat message with a violent threat before the dust fee", async () => {
+    const deps = makeDeps();
+    const r = await postChat(deps, "lobby", {
+      author: "alice",
+      auth: testCred("alice"),
+      body: "i will kill you tomorrow",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+    expect(String((r.json as Record<string, unknown>).error)).toContain("threats of violence");
+    // Nothing reached HCS.
+    const events = await queryChatMessages(deps, "lobby");
+    expect(events).toEqual([]);
+  });
+
+  it("blocks a forum post containing an SSN", async () => {
+    const deps = makeDeps();
+    const r = await createPost(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      body: "leaked ssn 123-45-6789, enjoy",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+    expect(String((r.json as Record<string, unknown>).error)).toContain("SSN");
+  });
+
+  it("blocks a listing with a payment card number in the description", async () => {
+    const deps = makeDeps();
+    const r = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Totally legit sale",
+      description: "pay with card 4242 4242 4242 4242",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+    expect(String((r.json as Record<string, unknown>).error)).toContain("payment card");
+  });
+
+  it("blocks a chatroom with terrorist content in the title", async () => {
+    const deps = makeDeps();
+    const r = await createChatRoom(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      id: "bad-room",
+      title: "join isis fan club",
+      description: "a room",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+    expect(String((r.json as Record<string, unknown>).error)).toContain("terrorist");
+  });
+
+  it("lets clean content through all four write paths", async () => {
+    const deps = makeDeps();
+    const c1 = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hello all", ...fee() });
+    const c2 = await createPost(deps, { author: "bob", auth: testCred("bob"), body: "a thoughtful post", ...fee() });
+    const c3 = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Sticker pack",
+      description: "Cool stickers",
+      priceUsdCents: 500,
+      goodsType: "physical",
+      ...fee(),
+    });
+    const c4 = await createChatRoom(deps, {
+      author: "bob",
+      auth: testCred("bob"),
+      id: "clean-room",
+      title: "Book club",
+      description: "We read books",
+      ...fee(),
+    });
+    expect([c1.status, c2.status, c3.status, c4.status]).toEqual([201, 201, 201, 201]);
+  });
+});
+
+describe("safety reports", () => {
+  async function seedPost(deps: TownhallDeps) {
+    const r = await createPost(deps, { author: "alice", auth: testCred("alice"), body: "a post", ...fee() });
+    expect(r.status).toBe(201);
+    return (r.json as { seq: number }).seq;
+  }
+
+  it("requires a session", async () => {
+    const r = await submitReport(makeDeps(), {
+      targetKind: "post",
+      targetSeq: 1,
+      reason: "this is a sufficiently long reason",
+    });
+    expect(r.status).toBe(401);
+  });
+
+  it("validates targetKind and reason length", async () => {
+    const deps = makeDeps();
+    const bad1 = await submitReport(deps, { auth: testCred("bob"), targetKind: "nope", targetSeq: 1, reason: "long enough reason here" });
+    expect(bad1.status).toBe(400);
+    const bad2 = await submitReport(deps, { auth: testCred("bob"), targetKind: "post", targetSeq: 1, reason: "short" });
+    expect(bad2.status).toBe(400);
+  });
+
+  it("404s when the target does not exist", async () => {
+    const r = await submitReport(makeDeps(), {
+      auth: testCred("bob"),
+      targetKind: "post",
+      targetSeq: 999,
+      reason: "this post does not exist but the reason is long",
+    });
+    expect(r.status).toBe(404);
+  });
+
+  it("files a report on a post and a chat message (free, no dust fee)", async () => {
+    const deps = makeDeps();
+    const seq = await seedPost(deps);
+    const chat = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hi", ...fee() });
+    const chatSeq = (chat.json as { seq: number }).seq;
+    // No dustFeeTxId supplied — reports are free.
+    const r1 = await submitReport(deps, {
+      auth: testCred("bob"),
+      reporter: "bob",
+      targetKind: "post",
+      targetSeq: seq,
+      reason: "this post contains harassment targeting another user",
+    });
+    const r2 = await submitReport(deps, {
+      auth: testCred("alice"),
+      targetKind: "chat",
+      targetSeq: chatSeq,
+      reason: "spam links in the lobby, please review this message",
+    });
+    expect(r1.status).toBe(201);
+    expect(r2.status).toBe(201);
+  });
+
+  it("files a report on a listing by targetId", async () => {
+    const deps = makeDeps();
+    const l = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Gadget",
+      description: "A gadget",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ...fee(),
+    });
+    const id = (l.json as { id: string }).id;
+    const r = await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "listing",
+      targetId: id,
+      reason: "this listing looks like a scam, seller never delivers",
+    });
+    expect(r.status).toBe(201);
+    const missing = await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "listing",
+      targetId: "nope-123",
+      reason: "this listing does not exist but reason is long enough",
+    });
+    expect(missing.status).toBe(404);
+  });
+
+  it("report reasons are not run through the content filter (quoting is allowed)", async () => {
+    const deps = makeDeps();
+    const seq = await seedPost(deps);
+    const r = await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "post",
+      targetSeq: seq,
+      reason: "the post says 'i will kill you' which is a violent threat",
+    });
+    expect(r.status).toBe(201);
+  });
+
+  it("queryReports is mod-only and lists reports newest-first", async () => {
+    const deps = makeDeps();
+    const seq = await seedPost(deps);
+    await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "post",
+      targetSeq: seq,
+      reason: "first report filed against this post for review",
+    });
+    await submitReport(deps, {
+      auth: testCred("alice"),
+      reporter: "alice",
+      targetKind: "post",
+      targetSeq: seq,
+      reason: "second report filed against this post for review",
+    });
+
+    // Non-mod is rejected.
+    const denied = await queryReports(deps, { auth: testCred("bob"), username: "bob" });
+    expect(denied.status).toBe(403);
+    // TOWNHALL_MODS=brandon in the test env.
+    const q = await queryReports(deps, { auth: testCred("brandon"), username: "brandon" });
+    expect(q.status).toBe(200);
+    const reports = (q.json as { reports: { targetKind: string; targetSeq: number; reporter: string; reason: string }[] }).reports;
+    expect(reports.length).toBe(2);
+    expect(reports[0].reporter).toBe("alice"); // newest first
+    expect(reports[1].reporter).toBe("0x00000000000000000000000000000000000000b0"); // bob's wallet: no username claimed
+    expect(reports[0]).toMatchObject({ targetKind: "post", targetSeq: seq });
   });
 });
