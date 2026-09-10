@@ -25,11 +25,35 @@ import { canonicalAddress } from "../../session-message";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
 import { getTopicId, type TopicDomain } from "./topics";
 import { checkContent } from "./content-filter";
+import {
+  collectAppealEvents,
+  collectEnforcementEvents,
+  formatRemaining,
+  getActiveBans,
+  getActiveTimeouts,
+  getBanFor,
+  getEnforcementState,
+  getPendingAppeals,
+  getStateFor,
+  hasPendingAppeal,
+  MAX_TIMEOUT_MINUTES,
+  pendingAppeals,
+  requireNotRestricted,
+  suggestEnforcement,
+  type ViolationSeverity,
+} from "./bans";
 import type {
+  AppealMessage,
+  AppealResolveMessage,
+  AppealView,
+  BanMessage,
+  BanView,
   ChatEvent,
   ChatMessage,
   ChatRoom,
   ChatRoomMessage,
+  EnforcementStateSummary,
+  EnforcementSuggestion,
   EventMessage,
   EventView,
   ListingMessage,
@@ -45,6 +69,10 @@ import type {
   RepVoteMessage,
   ReputationView,
   StoredMessage,
+  TimeoutMessage,
+  TimeoutView,
+  UnbanMessage,
+  WarnMessage,
 } from "./types";
 import {
   aggregateListings,
@@ -441,6 +469,9 @@ export interface CreatePostBody extends AuthBody {
 export async function createPost(deps: TownhallDeps, body: CreatePostBody): Promise<HandlerResult> {
   const actor = await requireModActor(deps, body, body.author);
   if (!actor.ok) return actor.result;
+  // Restricted wallets (timed out / banned) are stopped BEFORE the dust fee — they are never charged.
+  const restricted = await requireNotRestricted(deps, actor.session.address);
+  if (restricted) return restricted;
   const author = actor.name;
   if (!isNonEmptyString(body.body)) return err(400, "body is required");
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
@@ -542,6 +573,8 @@ export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBod
   const own = await requirePageOwner(deps, body, body.author);
   if (!own.ok) return own.result;
   const author = own.username;
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
   if (!isNonEmptyString(body.id) || !CHATROOM_ID_RE.test(body.id)) {
     return err(400, "id must be a slug: 3–32 chars, lowercase letters, numbers, and hyphens");
   }
@@ -801,6 +834,8 @@ export async function postChat(deps: TownhallDeps, room: string, body: PostChatB
   const own = await requirePageOwner(deps, body, body.author);
   if (!own.ok) return own.result;
   const author = own.username;
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
   if (!isNonEmptyString(body.body)) return err(400, "body is required");
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
   const gate = safetyGate("chat message", body.body, "chat message");
@@ -941,6 +976,8 @@ function reportTopicDomain(kind: ReportTargetKind): TopicDomain {
 export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): Promise<HandlerResult> {
   const s = await requireSession(deps, body);
   if (!s.ok) return s.result;
+  const restricted = await requireNotRestricted(deps, s.session.address);
+  if (restricted) return restricted;
   const targetKind = body.targetKind;
   if (targetKind !== "post" && targetKind !== "chat" && targetKind !== "listing") {
     return err(400, 'targetKind must be "post", "chat", or "listing"');
@@ -1046,6 +1083,460 @@ export async function queryReports(deps: TownhallDeps, body: QueryReportsBody): 
   }
   out.sort((a, b) => b.ts.localeCompare(a.ts));
   return ok({ reports: out });
+}
+
+/* ------------------------------------------------------------------ */
+/* Wallet bans                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Require a global moderator for ban management: a TOWNHALL_MODS username
+ * or a TOWNHALL_MOD_WALLETS wallet. 401 without a valid session, 403
+ * otherwise. Returns the acting identity for authorship.
+ */
+async function requireBanMod(
+  deps: TownhallDeps,
+  body: AuthBody & { username?: unknown },
+): Promise<{ ok: true; name: string; session: VerifiedSession } | { ok: false; result: HandlerResult }> {
+  const s = await requireSession(deps, body);
+  if (!s.ok) return s;
+  const username = typeof body.username === "string" ? body.username.trim() : "";
+  if (!isGlobalMod(username, s.session.address)) {
+    return { ok: false, result: err(403, "moderator access required") };
+  }
+  return { ok: true, name: username || s.session.address, session: s.session };
+}
+
+export interface BanUserBody extends AuthBody {
+  username?: unknown;
+  /** Wallet to ban: Hedera account id (0.0.x) or EVM 0x address. */
+  wallet?: unknown;
+  /** Informational username of the target, never used for enforcement. */
+  targetUsername?: unknown;
+  /** Reason shown to the banned user, 10–200 chars. */
+  reason?: unknown;
+  /** Optional unix ms when the ban lifts; omit for permanent. */
+  expiresAt?: unknown;
+}
+
+/**
+ * Validate the shared fields of warn/timeout/ban bodies: a canonical
+ * wallet, a 10–200 char reason, and an optional informational username.
+ */
+function parseEnforcementTarget(body: {
+  wallet?: unknown;
+  targetUsername?: unknown;
+  reason?: unknown;
+}): { ok: true; wallet: string; username: string | null; reason: string } | { ok: false; result: HandlerResult } {
+  const rawWallet = typeof body.wallet === "string" ? body.wallet.trim() : "";
+  const wallet = canonicalAddress(rawWallet);
+  if (!wallet) {
+    return { ok: false, result: err(400, "wallet must be a valid Hedera account id (0.0.x) or EVM address (0x…)") };
+  }
+  if (typeof body.reason !== "string" || body.reason.trim().length < 10) {
+    return { ok: false, result: err(400, "reason must be at least 10 characters") };
+  }
+  const reason = body.reason.trim();
+  if (reason.length > 200) return { ok: false, result: err(400, "reason too long (max 200 chars)") };
+  const username =
+    typeof body.targetUsername === "string" && body.targetUsername.trim() ? body.targetUsername.trim() : null;
+  return { ok: true, wallet, username, reason };
+}
+
+/**
+ * Publish an enforcement record to the forum topic with the mod free-write
+ * quota applied (no dust fee for moderators).
+ */
+async function submitEnforcement(
+  deps: TownhallDeps,
+  topic: string,
+  session: VerifiedSession,
+  msg: WarnMessage | TimeoutMessage | BanMessage | UnbanMessage | AppealResolveMessage,
+): Promise<HandlerResult> {
+  const quota = await requireTownhallWriteQuota(session);
+  if (quota) return quota;
+  const seq = await deps.hcs.submit(topic, msg);
+  return ok({ seq, wallet: msg.wallet }, 201);
+}
+
+/**
+ * Ban a wallet from all town-hall writes. Mod-only. The ban is published
+ * as kind "ban" on the forum topic (auditable, permanent record) and takes
+ * effect on the next write — the forum topic cache is invalidated by the
+ * submit, and the 30s query cache means at most seconds of staleness.
+ *
+ * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * moderator, 409 wallet already banned.
+ */
+export async function banUser(deps: TownhallDeps, body: BanUserBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const target = parseEnforcementTarget(body);
+  if (!target.ok) return target.result;
+  const { wallet, username, reason } = target;
+  let expiresAt: number | null = null;
+  if (body.expiresAt !== undefined && body.expiresAt !== null) {
+    if (typeof body.expiresAt !== "number" || !Number.isFinite(body.expiresAt) || body.expiresAt <= Date.now()) {
+      return err(400, "expiresAt must be a unix-ms timestamp in the future");
+    }
+    expiresAt = Math.floor(body.expiresAt);
+  }
+  // Idempotency: refuse to double-ban an already-restricted wallet.
+  const state = await getStateFor(deps, wallet);
+  if (state.status === "banned" || state.status === "temp-banned" || state.status === "timed-out") {
+    return err(409, `wallet ${wallet} is already restricted (${state.status})`);
+  }
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const msg: BanMessage = {
+    v: 1,
+    kind: "ban",
+    ts: new Date().toISOString(),
+    author: mod.name,
+    wallet,
+    username,
+    reason,
+    bannedBy: mod.name,
+    expiresAt,
+  };
+  return submitEnforcement(deps, topic, mod.session, msg);
+}
+
+export interface UnbanUserBody extends AuthBody {
+  username?: unknown;
+  /** Wallet to unban: Hedera account id (0.0.x) or EVM 0x address. */
+  wallet?: unknown;
+}
+
+/**
+ * Lift a wallet restriction (ban or timeout). Mod-only. Publishes kind
+ * "unban" on the forum topic; latest-wins semantics mean the restriction
+ * stops applying immediately.
+ *
+ * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * moderator, 404 wallet is not currently restricted.
+ */
+export async function unbanUser(deps: TownhallDeps, body: UnbanUserBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const rawWallet = typeof body.wallet === "string" ? body.wallet.trim() : "";
+  const wallet = canonicalAddress(rawWallet);
+  if (!wallet) {
+    return err(400, "wallet must be a valid Hedera account id (0.0.x) or EVM address (0x…)");
+  }
+  const state = await getStateFor(deps, wallet);
+  if (state.status === "clean" || state.status === "warned") {
+    return err(404, `wallet ${wallet} is not currently restricted`);
+  }
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const msg: UnbanMessage = {
+    v: 1,
+    kind: "unban",
+    ts: new Date().toISOString(),
+    author: mod.name,
+    wallet,
+    unbannedBy: mod.name,
+  };
+  return submitEnforcement(deps, topic, mod.session, msg);
+}
+
+export interface WarnUserBody extends AuthBody {
+  username?: unknown;
+  /** Wallet to warn: Hedera account id (0.0.x) or EVM 0x address. */
+  wallet?: unknown;
+  /** Informational username of the target, never used for enforcement. */
+  targetUsername?: unknown;
+  /** Reason shown to the warned user, 10–200 chars. */
+  reason?: unknown;
+}
+
+/**
+ * Issue a formal warning. Mod-only. No write restriction — a logged,
+ * visible notice and the first rung of the escalation ladder.
+ *
+ * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * moderator.
+ */
+export async function warnUser(deps: TownhallDeps, body: WarnUserBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const target = parseEnforcementTarget(body);
+  if (!target.ok) return target.result;
+  const { wallet, username, reason } = target;
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const msg: WarnMessage = {
+    v: 1,
+    kind: "warn",
+    ts: new Date().toISOString(),
+    author: mod.name,
+    wallet,
+    username,
+    reason,
+    warnedBy: mod.name,
+  };
+  return submitEnforcement(deps, topic, mod.session, msg);
+}
+
+export interface TimeoutUserBody extends AuthBody {
+  username?: unknown;
+  /** Wallet to time out: Hedera account id (0.0.x) or EVM 0x address. */
+  wallet?: unknown;
+  /** Informational username of the target, never used for enforcement. */
+  targetUsername?: unknown;
+  /** Reason shown to the timed-out user, 10–200 chars. */
+  reason?: unknown;
+  /** Timeout length in minutes: 1–43200 (30 days max; longer → temp ban). */
+  durationMinutes?: unknown;
+}
+
+/**
+ * Time a wallet out: no writes until expiresAt. Mod-only. Auto-expires;
+ * a later unban or appeal resolution (lifted) clears it early.
+ *
+ * 201 → {seq, wallet, expiresAt}. Errors: 400 bad input, 401 no session,
+ * 403 not a moderator, 409 wallet already restricted.
+ */
+export async function timeoutUser(deps: TownhallDeps, body: TimeoutUserBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const target = parseEnforcementTarget(body);
+  if (!target.ok) return target.result;
+  const { wallet, username, reason } = target;
+  if (
+    typeof body.durationMinutes !== "number" ||
+    !Number.isFinite(body.durationMinutes) ||
+    body.durationMinutes < 1 ||
+    body.durationMinutes > MAX_TIMEOUT_MINUTES
+  ) {
+    return err(400, `durationMinutes must be 1–${MAX_TIMEOUT_MINUTES}`);
+  }
+  const durationMinutes = Math.floor(body.durationMinutes);
+  const state = await getStateFor(deps, wallet);
+  if (state.status === "banned" || state.status === "temp-banned" || state.status === "timed-out") {
+    return err(409, `wallet ${wallet} is already restricted (${state.status})`);
+  }
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const msg: TimeoutMessage = {
+    v: 1,
+    kind: "timeout",
+    ts: new Date().toISOString(),
+    author: mod.name,
+    wallet,
+    username,
+    reason,
+    timedOutBy: mod.name,
+    durationMinutes,
+    expiresAt: Date.now() + durationMinutes * 60000,
+  };
+  const res = await submitEnforcement(deps, topic, mod.session, msg);
+  if (res.status === 201) {
+    return ok({ ...(res.json as Record<string, unknown>), expiresAt: msg.expiresAt }, 201);
+  }
+  return res;
+}
+
+export interface ListBansBody extends AuthBody {
+  username?: unknown;
+}
+
+/**
+ * Active enforcement list: current bans (temp + permanent) and timeouts,
+ * newest first. Mod-only (reasons and targets are not public).
+ */
+export async function listBans(deps: TownhallDeps, body: ListBansBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const bans: BanView[] = await getActiveBans(deps);
+  const timeouts: TimeoutView[] = await getActiveTimeouts(deps);
+  return ok({ bans, timeouts });
+}
+
+export interface SuggestEnforcementBody extends AuthBody {
+  username?: unknown;
+  /** Wallet to evaluate: Hedera account id (0.0.x) or EVM 0x address. */
+  wallet?: unknown;
+  /** Severity of the current violation. */
+  severity?: unknown;
+}
+
+/**
+ * Recommend the next enforcement step for a wallet from its HCS history
+ * and the violation severity. Mod-only. Advisory — the moderator makes
+ * the call (and may skip levels for severe violations).
+ */
+export async function suggestEnforcementAction(
+  deps: TownhallDeps,
+  body: SuggestEnforcementBody,
+): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const rawWallet = typeof body.wallet === "string" ? body.wallet.trim() : "";
+  const wallet = canonicalAddress(rawWallet);
+  if (!wallet) {
+    return err(400, "wallet must be a valid Hedera account id (0.0.x) or EVM address (0x…)");
+  }
+  const severity = body.severity;
+  if (severity !== "low" && severity !== "medium" && severity !== "high" && severity !== "critical") {
+    return err(400, 'severity must be "low", "medium", "high", or "critical"');
+  }
+  const topic = getTopicId("forum");
+  let events: ReturnType<typeof collectEnforcementEvents> = [];
+  if (topic) {
+    try {
+      events = collectEnforcementEvents(await deps.hcs.queryAll(topic));
+    } catch {
+      // History unreadable — suggest from zero history.
+    }
+  }
+  const suggestion: EnforcementSuggestion = suggestEnforcement(wallet, severity as ViolationSeverity, events);
+  const state = getEnforcementState(wallet, events);
+  return ok({ wallet, severity, suggestion, currentState: { status: state.status, reason: state.reason } });
+}
+
+/* ------------------------------------------------------------------ */
+/* Appeals                                                          */
+/* ------------------------------------------------------------------ */
+
+export interface SubmitAppealBody extends AuthBody {
+  /** Appellant's case, 20–500 chars. Not content-filtered. */
+  reason?: unknown;
+}
+
+/**
+ * Appeal a timeout or ban. The restricted user files this themselves —
+ * no page ownership, no dust fee, no restriction check (a banned user
+ * must always be able to be heard). One pending appeal per wallet.
+ *
+ * The appeal lands on the forum topic as kind "appeal". Like reports,
+ * the reason is NOT run through the content filter: an appellant
+ * describing the offending content must not be blocked for quoting it.
+ *
+ * 201 → {seq}. Errors: 400 bad input / no active restriction, 401 no
+ * session, 409 appeal already pending, 429 daily quota exceeded.
+ */
+export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): Promise<HandlerResult> {
+  const s = await requireSession(deps, body);
+  if (!s.ok) return s.result;
+  const wallet = canonicalAddress(s.session.address);
+  if (!wallet) return err(401, "invalid session wallet");
+  const state = await getStateFor(deps, wallet);
+  if (state.status === "clean" || state.status === "warned") {
+    return err(400, "no active timeout or ban to appeal");
+  }
+  if (typeof body.reason !== "string" || body.reason.trim().length < 20) {
+    return err(400, "reason must be at least 20 characters");
+  }
+  const reason = body.reason.trim();
+  if (reason.length > 500) return err(400, "reason too long (max 500 chars)");
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  let messages;
+  try {
+    messages = await deps.hcs.queryAll(topic);
+  } catch {
+    return err(502, "could not read appeal records — try again");
+  }
+  const appeals = collectAppealEvents(messages);
+  const resolutions = collectEnforcementEvents(messages).filter(
+    (e): e is AppealResolveMessage => e.kind === "appeal-resolve",
+  );
+  if (hasPendingAppeal(appeals, resolutions, wallet)) {
+    return err(409, "an appeal is already pending for this wallet");
+  }
+  const msg: AppealMessage = {
+    v: 1,
+    kind: "appeal",
+    ts: new Date().toISOString(),
+    author: s.session.address,
+    wallet,
+    reason,
+  };
+  // Free path (no dust fee): bound by the per-wallet daily quota like reports.
+  const quota = await requireTownhallWriteQuota(s.session);
+  if (quota) return quota;
+  const seq = await deps.hcs.submit(topic, msg);
+  return ok({ seq }, 201);
+}
+
+export interface QueryAppealsBody extends AuthBody {
+  username?: unknown;
+}
+
+/**
+ * Pending appeal queue, newest first. Mod-only.
+ */
+export async function queryAppeals(deps: TownhallDeps, body: QueryAppealsBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const appeals: AppealView[] = await getPendingAppeals(deps);
+  return ok({ appeals });
+}
+
+export interface ResolveAppealBody extends AuthBody {
+  username?: unknown;
+  /** Wallet whose appeal is resolved. */
+  wallet?: unknown;
+  /** "lifted" clears the restriction; "upheld" keeps it. */
+  action?: unknown;
+  /** Optional moderator note, max 200 chars. */
+  note?: unknown;
+}
+
+/**
+ * Resolve a pending appeal. Mod-only. Publishes kind "appeal-resolve" on
+ * the forum topic; "lifted" clears the timeout/ban immediately via the
+ * latest-wins state machine, "upheld" leaves it in force.
+ *
+ * 201 → {seq, wallet, action}. Errors: 400 bad input, 401 no session,
+ * 403 not a moderator, 404 no pending appeal for this wallet.
+ */
+export async function resolveAppeal(deps: TownhallDeps, body: ResolveAppealBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const rawWallet = typeof body.wallet === "string" ? body.wallet.trim() : "";
+  const wallet = canonicalAddress(rawWallet);
+  if (!wallet) {
+    return err(400, "wallet must be a valid Hedera account id (0.0.x) or EVM address (0x…)");
+  }
+  if (body.action !== "upheld" && body.action !== "lifted") {
+    return err(400, 'action must be "upheld" or "lifted"');
+  }
+  let note: string | null = null;
+  if (body.note !== undefined && body.note !== null) {
+    if (typeof body.note !== "string" || body.note.trim().length > 200) {
+      return err(400, "note too long (max 200 chars)");
+    }
+    note = body.note.trim() || null;
+  }
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  let messages;
+  try {
+    messages = await deps.hcs.queryAll(topic);
+  } catch {
+    return err(502, "could not read appeal records — try again");
+  }
+  const appeals = collectAppealEvents(messages);
+  const resolutions = collectEnforcementEvents(messages).filter(
+    (e): e is AppealResolveMessage => e.kind === "appeal-resolve",
+  );
+  if (!hasPendingAppeal(appeals, resolutions, wallet)) {
+    return err(404, `no pending appeal for wallet ${wallet}`);
+  }
+  const msg: AppealResolveMessage = {
+    v: 1,
+    kind: "appeal-resolve",
+    ts: new Date().toISOString(),
+    author: mod.name,
+    wallet,
+    resolvedBy: mod.name,
+    action: body.action,
+    note,
+  };
+  return submitEnforcement(deps, topic, mod.session, msg);
 }
 
 export interface ModStatusBody extends AuthBody {
@@ -1186,6 +1677,8 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
   const own = await requirePageOwner(deps, body, body.sellerUsername, "sellerUsername");
   if (!own.ok) return own.result;
   const sellerUsername = own.username;
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
   const payout = typeof body.seller === "string" ? body.seller.trim() : "";
   if (!looksLikeAddress(payout)) {
     return err(400, "seller must be a valid payout address (0x… or 0.0.x)");

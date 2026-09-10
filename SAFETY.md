@@ -82,9 +82,22 @@ Moderators (usernames in `TOWNHALL_MODS` or wallets in
 
 ## Other protections already in place
 
+- **Graduated enforcement ladder** — bad actors aren't just on/off banned.
+  Moderators escalate through: **warning** (logged notice, no restriction)
+  → **timeout** (no writes for minutes/hours, auto-expires) → **temp ban**
+  (no writes until expiry) → **permanent ban**. Repeat offenses escalate
+  automatically per the ladder; critical violations (CSAM, credible
+  threats) jump straight to permanent ban. `GET
+  /api/townhall/moderation/suggest?wallet=…&severity=…` recommends the next
+  step from the wallet's on-chain history. Every step is an HCS record on
+  the forum topic — fully auditable.
+- **Appeals** — restricted users can always file one free appeal
+  (`POST /api/townhall/appeals`, no dust fee); moderators review the queue
+  (`GET /api/townhall/appeals`) and uphold or lift the restriction.
 - **Wallet-signed sessions**: every write requires a signed login message;
-  authorship is cryptographically verified, so bans and reports stick to
-  real identities.
+  authorship is cryptographically verified, so warnings, timeouts, and
+  bans stick to real wallet identities (not usernames, which can be
+  re-registered).
 - **Dust fee**: every town-hall write costs a small HBAR fee to the
   treasury, making spam floods uneconomical.
 - **Rate limits**: per-IP flood bounds plus per-wallet daily quotas on

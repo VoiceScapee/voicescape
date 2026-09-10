@@ -27,7 +27,13 @@ export type TownhallKind =
   | "event"
   | "listing"
   | "report"
-  | "mod-action";
+  | "mod-action"
+  | "warn"
+  | "timeout"
+  | "ban"
+  | "unban"
+  | "appeal"
+  | "appeal-resolve";
 
 /** Forum post. Lives on the forum topic; boards/walls are fields. */
 export interface PostMessage extends TownhallEnvelope {
@@ -154,6 +160,100 @@ export interface ModActionMessage extends TownhallEnvelope {  kind: "mod-action"
   modWallet?: string | null;
 }
 
+/**
+ * Graduated enforcement ladder (from lightest to heaviest):
+ *   warn → timeout → temp ban → permanent ban.
+ * Warnings don't restrict; timeouts/temp bans auto-expire; unbans and
+ * appeal resolutions lift restrictions. All records live on the FORUM
+ * topic — one canonical, auditable location checkable from every write
+ * path. Enforcement keys on the canonical wallet, never the username.
+ */
+
+/** Formal warning. No write restriction — a logged, visible notice. */
+export interface WarnMessage extends TownhallEnvelope {
+  kind: "warn";
+  /** Canonical wallet address (0x lowercase) of the warned user. */
+  wallet: string;
+  /** Registered username at warn time, informational only. */
+  username: string | null;
+  /** Moderator's stated reason, 10–200 chars. */
+  reason: string;
+  /** Identity of the warning moderator (username or wallet). */
+  warnedBy: string;
+}
+
+/**
+ * Temporary write suspension. Auto-expires at expiresAt; a later
+ * "appeal-resolve" (lifted) or "unban" clears it early.
+ */
+export interface TimeoutMessage extends TownhallEnvelope {
+  kind: "timeout";
+  /** Canonical wallet address (0x lowercase) of the timed-out user. */
+  wallet: string;
+  /** Registered username at timeout time, informational only. */
+  username: string | null;
+  /** Moderator's stated reason, 10–200 chars. */
+  reason: string;
+  /** Identity of the timing-out moderator (username or wallet). */
+  timedOutBy: string;
+  /** Length of the timeout in minutes (1–43200). */
+  durationMinutes: number;
+  /** Unix ms when the timeout lifts. */
+  expiresAt: number;
+}
+
+/**
+ * Wallet ban. expiresAt set → temp ban; null → permanent. A later
+ * "unban" or "appeal-resolve" (lifted) clears it.
+ */
+export interface BanMessage extends TownhallEnvelope {
+  kind: "ban";
+  /** Canonical wallet address (0x lowercase) of the banned user. */
+  wallet: string;
+  /** Registered username at ban time, informational only. */
+  username: string | null;
+  /** Moderator's stated reason, 10–200 chars. */
+  reason: string;
+  /** Identity of the banning moderator (username or wallet). */
+  bannedBy: string;
+  /** Unix ms when the ban lifts; null = permanent. */
+  expiresAt: number | null;
+}
+
+/** Ban lift. Lives on the forum topic alongside the other records. */
+export interface UnbanMessage extends TownhallEnvelope {
+  kind: "unban";
+  /** Canonical wallet address (0x lowercase) being unbanned. */
+  wallet: string;
+  /** Identity of the unbanning moderator (username or wallet). */
+  unbannedBy: string;
+}
+
+/**
+ * Appeal of a timeout/ban by the restricted user. One pending appeal per
+ * wallet; free (no dust fee) so restricted users can always be heard.
+ */
+export interface AppealMessage extends TownhallEnvelope {
+  kind: "appeal";
+  /** Canonical wallet address (0x lowercase) of the appellant. */
+  wallet: string;
+  /** Appellant's case, 20–500 chars. Not content-filtered (they may quote the offending content). */
+  reason: string;
+}
+
+/** Moderator resolution of an appeal. */
+export interface AppealResolveMessage extends TownhallEnvelope {
+  kind: "appeal-resolve";
+  /** Canonical wallet address (0x lowercase) whose appeal was resolved. */
+  wallet: string;
+  /** Identity of the resolving moderator (username or wallet). */
+  resolvedBy: string;
+  /** "lifted" clears the restriction; "upheld" keeps it in force. */
+  action: "upheld" | "lifted";
+  /** Optional moderator note, max 200 chars. */
+  note: string | null;
+}
+
 export type TownhallMessage =
   | PostMessage
   | ChatMessage
@@ -164,7 +264,13 @@ export type TownhallMessage =
   | EventMessage
   | ListingMessage
   | ReportMessage
-  | ModActionMessage;
+  | ModActionMessage
+  | WarnMessage
+  | TimeoutMessage
+  | BanMessage
+  | UnbanMessage
+  | AppealMessage
+  | AppealResolveMessage;
 
 /** Stored HCS message: decoded payload + consensus metadata. */
 export interface StoredMessage<T = TownhallMessage> {
@@ -266,4 +372,59 @@ export interface ReportView {
   reason: string;
   reporter: string;
   ts: string;
+}
+
+/** An active wallet ban, as returned by the mod ban list. */
+export interface BanView {
+  wallet: string;
+  username: string | null;
+  reason: string;
+  bannedBy: string;
+  /** Unix ms when the ban lifts; null = permanent. */
+  expiresAt: number | null;
+  /** ISO-8601 when the ban was issued. */
+  ts: string;
+}
+
+/** An active timeout, as returned by the mod enforcement list. */
+export interface TimeoutView {
+  wallet: string;
+  username: string | null;
+  reason: string;
+  timedOutBy: string;
+  durationMinutes: number;
+  /** Unix ms when the timeout lifts. */
+  expiresAt: number;
+  /** ISO-8601 when the timeout was issued. */
+  ts: string;
+}
+
+/** A pending appeal, as returned by the mod appeal queue. */
+export interface AppealView {
+  wallet: string;
+  reporter: string;
+  reason: string;
+  /** ISO-8601 when the appeal was filed. */
+  ts: string;
+  /** The restriction being appealed, if still active. */
+  restriction: EnforcementStateSummary | null;
+}
+
+/** Compact enforcement state for API responses. */
+export interface EnforcementStateSummary {
+  status: "clean" | "warned" | "timed-out" | "temp-banned" | "banned";
+  reason: string | null;
+  /** Ms until expiry for timed-out/temp-banned; null otherwise. */
+  remainingMs: number | null;
+  expiresAt: number | null;
+}
+
+/** A suggested next enforcement step for a moderator. */
+export interface EnforcementSuggestion {
+  recommended: "warn" | "timeout" | "temp-ban" | "permanent-ban";
+  /** Suggested duration in minutes for timeout/temp-ban. */
+  durationMinutes: number | null;
+  /** Prior enforcement actions on record for this wallet. */
+  offenseCount: number;
+  note: string;
 }
