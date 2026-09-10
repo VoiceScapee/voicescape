@@ -141,7 +141,7 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
 
   const pairingPromise = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error("Pairing timed out — approve the connection in your wallet and try again.")),
+      () => reject(new Error("Pairing timed out after 3 minutes — approve the connection in your wallet app and try again. If no QR code appeared, your browser may be blocking popups.")),
       180_000,
     );
     hc.pairingEvent.on((data) => {
@@ -162,7 +162,18 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     return hcAccountId;
   }
 
-  await hc.openPairingModal("dark");
+  // Open the pairing modal. On mobile, this shows a QR code that the user
+  // scans with their wallet app (HashPack, Blade, etc.).
+  // If the modal fails to open, provide a clear error message.
+  try {
+    await hc.openPairingModal("dark");
+  } catch (modalErr) {
+    const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    throw new Error(
+      `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`
+    );
+  }
+  
   hcAccountId = await pairingPromise;
   return hcAccountId;
 }
