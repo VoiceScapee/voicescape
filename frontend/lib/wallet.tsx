@@ -96,12 +96,28 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
-  // webpackChunkName pins a stable filename so a cached 404 from a previous
-  // deployment can never poison this URL.
-  const [{ HashConnect }, { LedgerId }] = await Promise.all([
-    import(/* webpackChunkName: "hashconnect-lib" */ "hashconnect"),
-    import("@hashgraph/sdk"),
-  ]);
+  // These are client-side only and must not be evaluated during SSR.
+  // Retry once on ChunkLoadError — Vercel's CDN can briefly 404 a chunk
+  // right after a deployment while it propagates to all edges.
+  let HashConnect: typeof import("hashconnect")["HashConnect"];
+  let LedgerId: typeof import("@hashgraph/sdk")["LedgerId"];
+  try {
+    [{ HashConnect }, { LedgerId }] = await Promise.all([
+      import("hashconnect"),
+      import("@hashgraph/sdk"),
+    ]);
+  } catch (e) {
+    if (e instanceof Error && e.name === "ChunkLoadError") {
+      // Wait a moment for CDN propagation, then retry once.
+      await new Promise((r) => setTimeout(r, 3000));
+      [{ HashConnect }, { LedgerId }] = await Promise.all([
+        import("hashconnect"),
+        import("@hashgraph/sdk"),
+      ]);
+    } else {
+      throw e;
+    }
+  }
   await disconnectHedera();
 
   const ledgerId = chain.key === "hedera-mainnet" ? LedgerId.MAINNET : LedgerId.TESTNET;
