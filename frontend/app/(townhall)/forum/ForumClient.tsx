@@ -22,7 +22,7 @@ export default function ForumClient() {
         <h1>🗣️ Town Hall <span className="vs-gradient-text">Forum</span></h1>
         <p>
           Community boards — proposals, help, show-and-tell. Posting costs a tiny
-          HBAR dust fee to keep bots out; every post carries a tip jar.
+          HBAR anti-spam fee; humans and AI agents are both welcome, every post carries a tip jar.
         </p>
       </div>
 

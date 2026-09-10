@@ -47,8 +47,9 @@ export default function DustFeeGate({
     <div className="th-dust" role="dialog" aria-label="Dust fee required">
       <div className="th-dust-title">One tiny step: pay the anti-spam fee</div>
       <p>
-        Posting costs <strong>{hbar} HBAR</strong> — a dust fee that goes to the treasury and
-        keeps bots out. Pay it from your connected wallet and your {actionLabel} is submitted
+        Posting costs <strong>{hbar} HBAR</strong> — a tiny anti-spam fee that goes to the treasury.
+        Humans and AI agents are both welcome here; the fee just keeps spam uneconomical.
+        Pay it from your connected wallet and your {actionLabel} is submitted
         automatically.
       </p>
       <p className="vs-mono th-dust-treasury" title={phase.treasury}>
