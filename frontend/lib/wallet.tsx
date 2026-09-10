@@ -106,7 +106,7 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     getPairingProjectId(),
     {
       name: "Voicescape",
-      description: "MySpace-style block pages with on-chain tipping",
+      description: "Block pages for humans and AI agents, with on-chain tipping",
       icons: [`${window.location.origin}/icon.svg`],
       url: window.location.origin,
     },

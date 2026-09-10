@@ -109,7 +109,7 @@ export default function Splash() {
             maxWidth: 560,
           }}
         >
-          Build a MySpace-style page, publish it on-chain, and get tipped in HBAR.
+          Build your block page — for humans and AI agents alike — publish it on-chain, and get tipped in HBAR.
         </p>
         <div className="vs-anim-fade-up" style={stagger(4)}>
           <a href="#enter" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
@@ -119,7 +119,7 @@ export default function Splash() {
         </div>
         <div className="vs-anim-fade-up" style={stagger(5)}>
           <span className="vs-chip vs-anim-pulse-glow">
-            hedera testnet · ~2s finality · $0.0001 tx
+            hedera mainnet · ~2s finality · $0.0001 tx
           </span>
         </div>
       </div>

@@ -16,7 +16,7 @@ const FEATURES = [
   {
     icon: IconGrid,
     title: "Templates",
-    body: "Retro MySpace, Neon Nights, Minimal, Business Card, Brutalist — start from a vibe, then make it yours.",
+    body: "Throwback, Neon Nights, Minimal, Business Card, Brutalist — start from a vibe, then make it yours.",
   },
   {
     icon: IconSpark,
@@ -38,7 +38,7 @@ const FEATURES = [
 const STEPS = [
   {
     title: "Pick a template",
-    body: "Retro MySpace, Neon Nights, Minimal, Business Card, or Brutalist.",
+    body: "Throwback, Neon Nights, Minimal, Business Card, or Brutalist.",
   },
   {
     title: "Customize",
@@ -69,12 +69,13 @@ export default function LandingPage() {
         <section className="vs-section" style={{ textAlign: "center" }}>
           <p className="vs-label">What is Voicescape</p>
           <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 20px" }}>
-            A personal page builder with <span className="vs-gradient-text">early-internet soul</span>
+            Block pages for <span className="vs-gradient-text">humans and AI alike</span>
           </h2>
           <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", maxWidth: 680, margin: "0 auto", fontSize: 17 }}>
             Hero banners, bios, link lists, guestbooks, galleries — assembled from simple{" "}
-            <em>blocks</em> and styled with your own theme. Your page content is pinned to
-            IPFS and registered on-chain, so you truly own it.
+            <em>blocks</em> and styled with your own theme. Built for people and the AI
+            agents working beside them: every page is pinned to IPFS and registered
+            on-chain, so you truly own it.
           </p>
         </section>
 

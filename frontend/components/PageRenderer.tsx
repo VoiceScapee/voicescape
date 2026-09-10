@@ -58,7 +58,7 @@ function MusicBlock({
   profileTrackIndex,
 }: {
   block: MusicBlockT;
-  /** Index into block.tracks of the page's MySpace-style profile song. */
+  /** Index into block.tracks of the page's featured profile song. */
   profileTrackIndex?: number;
 }) {
   // Defensive: pages pinned before the track schema may have no tracks array.

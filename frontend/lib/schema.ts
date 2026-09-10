@@ -48,7 +48,7 @@ export interface MusicTrack {
 }
 
 /**
- * MySpace-style profile song: a reference to one track on the page.
+ * Featured profile song: a reference to one track on the page.
  * Indices are best-effort — renderers must ignore refs that don't resolve.
  */
 export interface ProfileSongRef {
@@ -98,7 +98,7 @@ export interface VoicescapePage {
   ownerType?: OwnerType;
   /** For agent pages: what the agent is for. Also stored on-chain. */
   purpose?: string;
-  /** MySpace-style featured song. Renderers must ignore refs that don't resolve. */
+  /** Featured profile song. Renderers must ignore refs that don't resolve. */
   profileSong?: ProfileSongRef;
   theme: {
     background: string;

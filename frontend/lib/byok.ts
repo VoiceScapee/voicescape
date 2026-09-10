@@ -32,7 +32,7 @@ The JSON must match this schema exactly:
 {
   "version": 1,
   "username": "string (lowercase letters, numbers, hyphens; never change the username unless the user explicitly asks)",
-  "profileSong": { "blockIndex": "number (optional, MySpace-style featured song: indexes into blocks[] then that music block's tracks[])" },
+  "profileSong": { "blockIndex": "number (optional, featured profile song: indexes into blocks[] then that music block's tracks[])" },
   "theme": {
     "background": "CSS color string",
     "foreground": "CSS color string",
@@ -62,7 +62,7 @@ Rules:
 - Service prices are always integer USD cents (priceUsdCents).
 - Apply ONLY the change the user asked for; preserve everything else from the current page JSON.
 - For "gallery" and "top8" blocks use emoji placeholders only — never real URLs or embeds.
-- "music" blocks use real tracks: "source" is one of spotify|youtube|soundcloud|ipfs, "id" is the platform embed ID (or IPFS CID for the owner's own upload). Never invent track IDs — only use links the user provided. "profileSong" (page level, optional) is { "blockIndex": number, "trackIndex": number }, the MySpace-style featured song.
+- "music" blocks use real tracks: "source" is one of spotify|youtube|soundcloud|ipfs, "id" is the platform embed ID (or IPFS CID for the owner's own upload). Never invent track IDs — only use links the user provided. "profileSong" (page level, optional) is { "blockIndex": number, "trackIndex": number }, the featured profile song.
 - Never invent usernames, real people, or external URLs beyond what the user provided.
 - Keep text concise and in the spirit of the request.`;
 

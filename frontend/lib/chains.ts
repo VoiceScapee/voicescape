@@ -51,8 +51,8 @@ export const CHAINS: Record<ChainKey, ChainConfig> = {
 };
 
 export const ACTIVE_CHAIN_KEY: ChainKey = ((): ChainKey => {
-  const raw = (process.env.NEXT_PUBLIC_CHAIN ?? "hedera-testnet") as string;
-  return raw in CHAINS ? (raw as ChainKey) : "hedera-testnet";
+  const raw = (process.env.NEXT_PUBLIC_CHAIN ?? "hedera-mainnet") as string;
+  return raw in CHAINS ? (raw as ChainKey) : "hedera-mainnet";
 })();
 
 export function getActiveChain(): ChainConfig {

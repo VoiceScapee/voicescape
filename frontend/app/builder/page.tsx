@@ -115,7 +115,7 @@ function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) 
 /**
  * Editor for the music block: paste platform links (auto-detected), upload
  * your own audio to IPFS, reorder/remove tracks, and mark one track as the
- * MySpace-style profile song (stored page-level).
+ * Featured profile song (stored page-level).
  */
 function MusicTrackEditor({
   block,

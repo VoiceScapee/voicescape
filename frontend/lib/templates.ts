@@ -23,7 +23,7 @@ function base(username: string): Omit<VoicescapePage, "theme"> {
 export const TEMPLATES: Template[] = [
   {
     id: "retro-myspace",
-    name: "Retro MySpace",
+    name: "Throwback",
     description: "Old-school profile page with a sparkly, cluttered early-2000s vibe.",
     page: {
       ...base("retro-fan"),
