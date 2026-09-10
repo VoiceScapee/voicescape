@@ -22,6 +22,8 @@ import React, {
 } from "react";
 import { ethers } from "ethers";
 import type { HashConnect } from "hashconnect";
+import { HashConnect as HashConnectImpl } from "hashconnect";
+import { LedgerId } from "@hashgraph/sdk";
 import { getActiveChain, type ChainConfig } from "./chains";
 import { createEvmTxSender, createHederaTxSender, type TxSender } from "./tx";
 
@@ -95,34 +97,9 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
  * HIP-820 wallet (HashPack mobile, Blade, Kabila…).
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
-  // These are client-side only and must not be evaluated during SSR.
-  // Wrap in a timeout so a hung chunk load fails fast instead of hanging.
-  // Retry once on ChunkLoadError — Vercel's CDN can briefly 404 a chunk
-  // right after a deployment while it propagates to all edges.
-  async function loadWalletLibs() {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Wallet library failed to load — please check your connection and try again.")), 15000)
-    );
-    return Promise.race([
-      Promise.all([import("hashconnect"), import("@hashgraph/sdk")]),
-      timeout,
-    ]);
-  }
-
-  let HashConnect: typeof import("hashconnect")["HashConnect"];
-  let LedgerId: typeof import("@hashgraph/sdk")["LedgerId"];
-  try {
-    [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
-  } catch (e) {
-    if (e instanceof Error && e.name === "ChunkLoadError") {
-      // Wait a moment for CDN propagation, then retry once.
-      await new Promise((r) => setTimeout(r, 3000));
-      [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
-    } else {
-      throw e;
-    }
-  }
+  // HashConnect and LedgerId are statically imported (client-only via
+  // webpack externals config). No dynamic chunk loading = no ChunkLoadError.
+  const HashConnect = HashConnectImpl;
   await disconnectHedera();
 
   const ledgerId = chain.key === "hedera-mainnet" ? LedgerId.MAINNET : LedgerId.TESTNET;
