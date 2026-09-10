@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "./Logo";
+import InstallAppButton from "./InstallAppButton";
 
 interface NavbarProps {
   right?: React.ReactNode;
@@ -56,6 +57,7 @@ export default function Navbar({ right }: NavbarProps) {
           >
             Builder
           </Link>
+          <InstallAppButton />
           {right}
         </div>
       </nav>
