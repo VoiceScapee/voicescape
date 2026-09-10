@@ -97,23 +97,28 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
   // These are client-side only and must not be evaluated during SSR.
+  // Wrap in a timeout so a hung chunk load fails fast instead of hanging.
   // Retry once on ChunkLoadError — Vercel's CDN can briefly 404 a chunk
   // right after a deployment while it propagates to all edges.
+  async function loadWalletLibs() {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("Wallet library failed to load — please check your connection and try again.")), 15000)
+    );
+    return Promise.race([
+      Promise.all([import("hashconnect"), import("@hashgraph/sdk")]),
+      timeout,
+    ]);
+  }
+
   let HashConnect: typeof import("hashconnect")["HashConnect"];
   let LedgerId: typeof import("@hashgraph/sdk")["LedgerId"];
   try {
-    [{ HashConnect }, { LedgerId }] = await Promise.all([
-      import("hashconnect"),
-      import("@hashgraph/sdk"),
-    ]);
+    [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
   } catch (e) {
     if (e instanceof Error && e.name === "ChunkLoadError") {
       // Wait a moment for CDN propagation, then retry once.
       await new Promise((r) => setTimeout(r, 3000));
-      [{ HashConnect }, { LedgerId }] = await Promise.all([
-        import("hashconnect"),
-        import("@hashgraph/sdk"),
-      ]);
+      [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
     } else {
       throw e;
     }
