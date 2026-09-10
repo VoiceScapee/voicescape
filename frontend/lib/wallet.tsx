@@ -155,15 +155,21 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
 
   await hc.init();
 
-  // An installed HashPack extension pairs automatically during init().
-  const autoPaired = hc.connectedAccountIds;
-  if (autoPaired.length > 0) {
-    hcAccountId = autoPaired[0].toString();
-    return hcAccountId;
+  // An installed HashPack extension (or HashPack's in-app browser) pairs
+  // automatically during init(). Give it a moment to complete before
+  // falling back to the QR pairing modal — on mobile the auto-pairing
+  // can take a few seconds.
+  for (let i = 0; i < 10; i++) {
+    const autoPaired = hc.connectedAccountIds;
+    if (autoPaired.length > 0) {
+      hcAccountId = autoPaired[0].toString();
+      return hcAccountId;
+    }
+    // Wait 500ms and check again (up to 5 seconds total).
+    await new Promise((r) => setTimeout(r, 500));
   }
 
-  // Open the pairing modal. On mobile, this shows a QR code that the user
-  // scans with their wallet app (HashPack, Blade, etc.).
+  // No auto-pairing happened. Open the QR pairing modal for mobile wallets.
   // If the modal fails to open, provide a clear error message.
   try {
     await hc.openPairingModal("dark");
