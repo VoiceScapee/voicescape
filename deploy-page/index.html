@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voicescape — Mainnet Deploy</title>
+<style>
+  :root {
+    --bg: #070b16;
+    --bg2: #0b1122;
+    --card: #101830;
+    --card2: #0d1428;
+    --line: #223055;
+    --txt: #e8eefc;
+    --mut: #93a1c4;
+    --acc1: #a855f7;
+    --acc2: #22d3ee;
+    --ok: #34d399;
+    --err: #f87171;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0; color: var(--txt);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:
+      radial-gradient(900px 500px at 15% -5%, rgba(168,85,247,.16), transparent 60%),
+      radial-gradient(800px 500px at 90% 0%, rgba(34,211,238,.12), transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+  }
+  .wrap { max-width: 600px; margin: 0 auto; padding: 20px 16px 64px; }
+  header.hero { text-align: center; padding: 26px 8px 10px; }
+  .logo {
+    font-size: 30px; font-weight: 800; letter-spacing: .5px;
+    background: linear-gradient(90deg, var(--acc1), var(--acc2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .sub { color: var(--mut); font-size: 14px; margin-top: 6px; }
+  .pill {
+    display: inline-block; margin-top: 12px; font-size: 12px; font-weight: 700;
+    padding: 6px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--card2); color: var(--acc2);
+  }
+  .card {
+    background: linear-gradient(180deg, var(--card), var(--card2));
+    border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; margin: 14px 0;
+  }
+  .card h2 { margin: 0 0 8px; font-size: 17px; }
+  .card h2 .n {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; font-size: 13px;
+    background: linear-gradient(135deg, var(--acc1), var(--acc2));
+    margin-right: 8px; vertical-align: 2px; color: #06101f; font-weight: 800;
+  }
+  .card p { color: var(--mut); font-size: 14px; line-height: 1.55; margin: 8px 0; }
+  .card p b { color: var(--txt); }
+  .fee {
+    display: inline-block; font-size: 12.5px; color: var(--warn);
+    background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.25);
+    padding: 5px 10px; border-radius: 8px; margin: 6px 0;
+  }
+  label { display: block; font-size: 13px; font-weight: 700; color: var(--mut); margin: 12px 0 6px; }
+  input[type=text] {
+    width: 100%; padding: 14px; font-size: 16px; border-radius: 12px;
+    border: 1px solid var(--line); background: #080d1c; color: var(--txt);
+    font-family: ui-monospace, monospace;
+  }
+  input[type=text]:focus { outline: none; border-color: var(--acc2); }
+  .hint { font-size: 12.5px; color: var(--mut); margin-top: 6px; line-height: 1.5; }
+  .hint a { color: var(--acc2); }
+  .btn {
+    display: block; width: 100%; padding: 16px; margin-top: 14px;
+    font-size: 16px; font-weight: 800; border: none; border-radius: 14px;
+    color: #06101f; background: linear-gradient(90deg, var(--acc1), var(--acc2));
+    cursor: pointer;
+  }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .btn.ghost {
+    background: transparent; color: var(--acc2);
+    border: 1px solid var(--line); font-weight: 700;
+  }
+  .status { font-size: 13.5px; margin-top: 10px; line-height: 1.5; }
+  .status.ok { color: var(--ok); }
+  .status.err { color: var(--err); }
+  .status.work { color: var(--acc2); }
+  .idrow {
+    font-family: ui-monospace, monospace; font-size: 13px;
+    background: #080d1c; border: 1px solid var(--line); border-radius: 10px;
+    padding: 10px 12px; margin-top: 8px; word-break: break-all; line-height: 1.7;
+  }
+  .idrow a { color: var(--acc2); font-size: 12px; }
+  .stepcard.locked { opacity: .45; }
+  .stepcard.done { border-color: rgba(52,211,153,.5); }
+  .stepcard.error { border-color: rgba(248,113,113,.5); }
+  .badge {
+    float: right; font-size: 11px; font-weight: 800; padding: 4px 10px;
+    border-radius: 999px; border: 1px solid var(--line); color: var(--mut);
+  }
+  .stepcard.done .badge { color: var(--ok); border-color: rgba(52,211,153,.4); }
+  .stepcard.working .badge { color: var(--acc2); border-color: rgba(34,211,238,.4); }
+  pre.env {
+    background: #060a15; border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; font-size: 12px; line-height: 1.7; overflow-x: auto;
+    white-space: pre; color: #c9f5ff; font-family: ui-monospace, monospace;
+  }
+  .check li { font-size: 14px; color: var(--mut); margin: 7px 0; line-height: 1.5; list-style: none; padding-left: 4px;}
+  .check { padding: 0; margin: 8px 0; }
+  .warnbox {
+    border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.06);
+    border-radius: 12px; padding: 12px 14px; font-size: 13.5px; color: var(--txt);
+    line-height: 1.55; margin: 12px 0;
+  }
+  .okbox {
+    border: 1px solid rgba(52,211,153,.35); background: rgba(52,211,153,.06);
+    border-radius: 12px; padding: 12px 14px; font-size: 13.5px; line-height: 1.55; margin: 12px 0;
+  }
+  details { margin-top: 10px; font-size: 13px; color: var(--mut); }
+  details summary { cursor: pointer; color: var(--acc2); }
+  .foot { text-align: center; color: var(--mut); font-size: 12px; margin-top: 26px; line-height: 1.6;}
+  .spinner {
+    display: inline-block; width: 15px; height: 15px; border-radius: 50%;
+    border: 2px solid rgba(34,211,238,.3); border-top-color: var(--acc2);
+    animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "@hashgraph/sdk": "https://cdn.jsdelivr.net/npm/@hashgraph/sdk@2.41.0/+esm",
+    "hashconnect": "https://cdn.jsdelivr.net/npm/hashconnect@3.0.14/+esm"
+  }
+}
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <div class="logo">VOICESCAPE</div>
+    <div class="sub">Mainnet deploy — contracts + town-hall topics</div>
+    <div class="pill">HEDERA MAINNET ONLY</div>
+  </header>
+
+  <div class="okbox">
+    <b>Your keys never leave your phone.</b><br>
+    This page builds each transaction, then your HashPack wallet pops up and asks
+    <i>you</i> to approve it. Nothing deploys, nothing spends, unless you tap approve.
+    No private keys are typed, stored, or sent anywhere — ever.
+  </div>
+
+  <div class="card">
+    <h2>Before you start</h2>
+    <ul class="check">
+      <li>✅ HashPack installed, switched to <b>Mainnet</b> (not Testnet)</li>
+      <li>✅ Deployer account funded with ~$15–20 of HBAR</li>
+      <li>✅ A free WalletConnect project ID (<a href="https://cloud.walletconnect.com" target="_blank" rel="noopener" style="color:#22d3ee">cloud.walletconnect.com</a> → new project → copy the ID)</li>
+    </ul>
+  </div>
+
+  <div class="card" id="setupCard">
+    <h2><span class="n">0</span>Settings</h2>
+    <label for="treasury">Treasury address — receives the 2% fee on every tip &amp; sale</label>
+    <input type="text" id="treasury" inputmode="text" autocomplete="off" placeholder="0.0.123456" value="0.0.10424063">
+    <div class="hint">Your Hedera account id, like <b>0.0.123456</b>. Pre-filled with your chosen treasury — change it here if you ever want a different one. It can also be changed later on-chain.</div>
+    <label for="wcid">WalletConnect project ID</label>
+    <input type="text" id="wcid" inputmode="text" autocomplete="off" placeholder="paste project id">
+    <div class="hint">Free at <a href="https://cloud.walletconnect.com" target="_blank" rel="noopener">cloud.walletconnect.com</a>. This is what lets the page talk to your wallet — nothing else uses it.</div>
+    <button class="btn" id="connectBtn">Connect HashPack wallet</button>
+    <div class="status" id="connStatus"></div>
+  </div>
+
+  <div id="steps"></div>
+
+  <div class="card" id="summaryCard" style="display:none">
+    <h2>🎉 Deploy complete</h2>
+    <p>Everything is live on Hedera mainnet. Paste this into your hosting env vars (Vercel → Project Settings → Environment Variables):</p>
+    <pre class="env" id="envOut"></pre>
+    <button class="btn ghost" id="copyEnv">Copy env snippet</button>
+    <div class="status" id="copyStatus"></div>
+    <p style="margin-top:14px">Still to add from the launch checklist: <b>APP_ORIGIN</b>, <b>SESSION_SECRET</b>, <b>UPSTASH_*</b>, <b>PINATA_JWT</b>, <b>TOWNHALL_OPERATOR_ID/KEY</b>, <b>DUST_FEE_TINYBARS</b>.</p>
+    <div id="allIds"></div>
+  </div>
+
+  <div class="foot">
+    Voicescape deploy page · builds real mainnet transactions · you approve each one<br>
+    <button class="btn ghost" id="resetBtn" style="max-width:220px;margin:14px auto 0;font-size:13px;padding:10px">Reset saved progress</button>
+  </div>
+</div>
+<noscript><p style="text-align:center">This page needs JavaScript to talk to your wallet.</p></noscript>
+
+<script type="module">
+import {
+  ContractCreateTransaction, TopicCreateTransaction, ContractFunctionParameters,
+  AccountId, Hbar, LedgerId, Client, TransactionReceiptQuery
+} from "@hashgraph/sdk";
+import { HashConnect } from "hashconnect";
+/* inlined from deploy-data.js — no private keys, only public bytecode/memos */
+// AUTO-GENERATED by /tmp/gen-deploy-data.js from contracts/artifacts.
+// Do not hand-edit: regenerate from the audited build instead.
+const DEPLOY_DATA = {
+ "registry": {
+  "name": "VoicescapeRegistry",
+  "bytecode": "0x608060405234801561001057600080fd5b506111ab806100206000396000f3fe608060405234801561001057600080fd5b50600436106100575760003560e01c806346b774a01461005c5780637f79710314610071578063b20ce98f1461009a578063c02fdb27146100be578063f309e3f9146100d1575b600080fd5b61006f61006a366004610a4c565b6100f4565b005b61008461007f366004610ab8565b61025f565b6040516100919190610b4a565b60405180910390f35b6100ad6100a8366004610ab8565b6102a9565b604051610091959493929190610b95565b61006f6100cc366004610beb565b6104b5565b6100e46100df366004610ab8565b61077e565b6040519015158152602001610091565b600061013585858080601f01602080910402602001604051908101604052809392919081815260200183838082843760009201919091525061081c92505050565b90506001816040516101479190610cbe565b9081526040519081900360200190205460ff16610184578484604051630eb2e22560e01b815260040161017b929190610d03565b60405180910390fd5b600080826040516101959190610cbe565b90815260405190819003602001902080549091506001600160a01b031633146101d757858533604051639a86aabd60e01b815260040161017b93929190610d1f565b600181016101e6848683610dea565b5060405133906101f7908490610cbe565b604051908190038120600284015490917fa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f39161024f918991899160ff82169161010090046001600160a01b03169060038a0190610eab565b60405180910390a3505050505050565b60606102a083838080601f01602080910402602001604051908101604052809392919081815260200183838082843760009201919091525061081c92505050565b90505b92915050565b60006060600080606060006102f388888080601f01602080910402602001604051908101604052809392919081815260200183838082843760009201919091525061081c92505050565b90506001816040516103059190610cbe565b9081526040519081900360200190205460ff16610339578787604051630eb2e22560e01b815260040161017b929190610d03565b6000808260405161034a9190610cbe565b908152604051908190036020019020805460028201546001830180549394506001600160a01b0392831693909260ff831692610100900416906003860190849061039390610d61565b80601f01602080910402602001604051908101604052809291908181526020018280546103bf90610d61565b801561040c5780601f106103e15761010080835404028352916020019161040c565b820191906000526020600020905b8154815290600101906020018083116103ef57829003601f168201915b5050505050935080805461041f90610d61565b80601f016020809104026020016040519081016040528092919081815260200182805461044b90610d61565b80156104985780601f1061046d57610100808354040283529160200191610498565b820191906000526020600020905b81548152906001019060200180831161047b57829003601f168201915b505050505090509650965096509650965050509295509295909350565b60006104f689898080601f01602080910402602001604051908101604052809392919081815260200183838082843760009201919091525061081c92505050565b90506001816040516105089190610cbe565b9081526040519081900360200190205460ff161561053d578888604051632b4e256760e01b815260040161017b929190610d03565b600185600181111561055157610551610b5d565b0361058c576001600160a01b038416158061056a575081155b1561058c578888604051630e54284160e41b815260040161017b929190610d03565b6001808260405161059d9190610cbe565b9081526040805160209281900383018120805460ff19169415159490941790935560a0830181523383528051601f8a01839004830281018301909152888152818301918a908a908190840183828082843760009201919091525050509082525060200186600181111561061257610612610b5d565b8152602001856001600160a01b0316815260200184848080601f016020809104026020016040519081016040528093929190818152602001838380828437600092018290525093909452505060405190915061066f908490610cbe565b90815260405160209181900382019020825181546001600160a01b0319166001600160a01b039091161781559082015160018201906106ae9082610f67565b50604082015160028201805460ff1916600183818111156106d1576106d1610b5d565b021790555060608201516002820180546001600160a01b0390921661010002610100600160a81b0319909216919091179055608082015160038201906107179082610f67565b505060405133915061072a908390610cbe565b60405180910390207fa327fd868734b8d16f5a1b2685a76b5cce3891a78c46bc724e7eb68ddd7917eb89898989898960405161076b96959493929190611027565b60405180910390a3505050505050505050565b604051637f79710360e01b81526000903090637f797103906107a69086908690600401610d03565b600060405180830381865afa9250505080156107e457506040513d6000823e601f3d908101601f191682016040526107e1919081019061106a565b60015b6107f0575060006102a3565b6001816040516108009190610cbe565b9081526040519081900360200190205460ff1691506102a39050565b60606000829050600381511080610834575060208151115b156108545782604051630eb2e22560e01b815260040161017b9190610b4a565b6000815167ffffffffffffffff81111561087057610870610d4b565b6040519080825280601f01601f19166020018201604052801561089a576020820181803683370190505b50905060005b82518110156109fb5760008382815181106108bd576108bd611117565b01602001516001600160f81b0319169050604160f81b81108015906108f05750602d60f91b6001600160f81b0319821611155b1561090a5761090460f882901c6020611143565b60f81b90505b6000606160f81b6001600160f81b03198316108015906109385750603d60f91b6001600160f81b0319831611155b8061096a5750600360fc1b6001600160f81b031983161080159061096a5750603960f81b6001600160f81b0319831611155b806109825750605f60f81b6001600160f81b03198316145b8061099a5750602d60f81b6001600160f81b03198316145b9050806109bc5786604051630eb2e22560e01b815260040161017b9190610b4a565b818484815181106109cf576109cf611117565b60200101906001600160f81b031916908160001a905350505080806109f39061115c565b9150506108a0565b509392505050565b60008083601f840112610a1557600080fd5b50813567ffffffffffffffff811115610a2d57600080fd5b602083019150836020828501011115610a4557600080fd5b9250929050565b60008060008060408587031215610a6257600080fd5b843567ffffffffffffffff80821115610a7a57600080fd5b610a8688838901610a03565b90965094506020870135915080821115610a9f57600080fd5b50610aac87828801610a03565b95989497509550505050565b60008060208385031215610acb57600080fd5b823567ffffffffffffffff811115610ae257600080fd5b610aee85828601610a03565b90969095509350505050565b60005b83811015610b15578181015183820152602001610afd565b50506000910152565b60008151808452610b36816020860160208601610afa565b601f01601f19169290920160200192915050565b6020815260006102a06020830184610b1e565b634e487b7160e01b600052602160045260246000fd5b60028110610b9157634e487b7160e01b600052602160045260246000fd5b9052565b600060018060a01b03808816835260a06020840152610bb760a0840188610b1e565b610bc46040850188610b73565b81861660608501528381036080850152610bde8186610b1e565b9998505050505050505050565b60008060008060008060008060a0898b031215610c0757600080fd5b883567ffffffffffffffff80821115610c1f57600080fd5b610c2b8c838d01610a03565b909a50985060208b0135915080821115610c4457600080fd5b610c508c838d01610a03565b909850965060408b0135915060028210610c6957600080fd5b90945060608a0135906001600160a01b0382168214610c8757600080fd5b90935060808a01359080821115610c9d57600080fd5b50610caa8b828c01610a03565b999c989b5096995094979396929594505050565b60008251610cd0818460208701610afa565b9190910192915050565b81835281816020850137506000828201602090810191909152601f909101601f19169091010190565b602081526000610d17602083018486610cda565b949350505050565b604081526000610d33604083018587610cda565b905060018060a01b0383166020830152949350505050565b634e487b7160e01b600052604160045260246000fd5b600181811c90821680610d7557607f821691505b602082108103610d9557634e487b7160e01b600052602260045260246000fd5b50919050565b601f821115610de557600081815260208120601f850160051c81016020861015610dc25750805b601f850160051c820191505b81811015610de157828155600101610dce565b5050505b505050565b67ffffffffffffffff831115610e0257610e02610d4b565b610e1683610e108354610d61565b83610d9b565b6000601f841160018114610e4a5760008515610e325750838201355b600019600387901b1c1916600186901b178355610ea4565b600083815260209020601f19861690835b82811015610e7b5786850135825560209485019460019092019101610e5b565b5086821015610e985760001960f88860031b161c19848701351681555b505060018560011b0183555b5050505050565b608081526000610ebf608083018789610cda565b6020610ecd81850188610b73565b6001600160a01b038616604085015283820360608501528454600090610ef281610d61565b80855260018281168015610f0d5760018114610f2757610f55565b60ff1984168787015282151560051b870186019450610f55565b896000528560002060005b84811015610f4d578154898201890152908301908701610f32565b880187019550505b50929c9b505050505050505050505050565b815167ffffffffffffffff811115610f8157610f81610d4b565b610f9581610f8f8454610d61565b84610d9b565b602080601f831160018114610fca5760008415610fb25750858301515b600019600386901b1c1916600185901b178555610de1565b600085815260208120601f198616915b82811015610ff957888601518255948401946001909101908401610fda565b50858210156110175787850151600019600388901b60f8161c191681555b5050505050600190811b01905550565b60808152600061103b60808301888a610cda565b6110486020840188610b73565b6001600160a01b03861660408401528281036060840152610bde818587610cda565b60006020828403121561107c57600080fd5b815167ffffffffffffffff8082111561109457600080fd5b818401915084601f8301126110a857600080fd5b8151818111156110ba576110ba610d4b565b604051601f8201601f19908116603f011681019083821181831017156110e2576110e2610d4b565b816040528281528760208487010111156110fb57600080fd5b61110c836020830160208801610afa565b979650505050505050565b634e487b7160e01b600052603260045260246000fd5b634e487b7160e01b600052601160045260246000fd5b60ff81811683821601908111156102a3576102a361112d565b60006001820161116e5761116e61112d565b506001019056fea2646970667358221220375fd647c0edbbf60d63ca21663d044afbdcc5eec2b37484895b2d4f20c72e4964736f6c63430008140033",
+  "fingerprint": "1ce47c8762c5bae5"
+ },
+ "tips": {
+  "name": "VoicescapeTips",
+  "bytecode": "0x60a060405234801561001057600080fd5b50604051610b22380380610b2283398101604081905261002f916100bc565b6001600160a01b038216158061004c57506001600160a01b038116155b1561006a5760405163e6c4247b60e01b815260040160405180910390fd5b6001600160a01b0391821660805260018054919092166001600160a01b03199182161790915560008054909116331790556100ef565b80516001600160a01b03811681146100b757600080fd5b919050565b600080604083850312156100cf57600080fd5b6100d8836100a0565b91506100e6602084016100a0565b90509250929050565b608051610a126101106000396000818160cf01526101cd0152610a126000f3fe60806040526004361061007b5760003560e01c80638e893f021161004e5780638e893f0214610126578063bf333f2c14610139578063e1a452181461015c578063f0f442601461017257600080fd5b806361d027b3146100805780637b103999146100bd5780638b0de5cb146100f15780638da5cb5b14610106575b600080fd5b34801561008c57600080fd5b506001546100a0906001600160a01b031681565b6040516001600160a01b0390911681526020015b60405180910390f35b3480156100c957600080fd5b506100a07f000000000000000000000000000000000000000000000000000000000000000081565b6101046100ff3660046106c4565b610192565b005b34801561011257600080fd5b506000546100a0906001600160a01b031681565b61010461013436600461071e565b6103fb565b34801561014557600080fd5b5061014e60c881565b6040519081526020016100b4565b34801561016857600080fd5b5061014e61271081565b34801561017e57600080fd5b5061010461018d366004610773565b6105d5565b346000036101b35760405163659d0bd560e01b815260040160405180910390fd5b60405163b20ce98f60e01b81526000906001600160a01b037f0000000000000000000000000000000000000000000000000000000000000000169063b20ce98f9061020490869086906004016107c0565b600060405180830381865afa158015610221573d6000803e3d6000fd5b505050506040513d6000823e601f3d908101601f191682016040526102499190810190610898565b505050509050600061271060c8346102619190610953565b61026b9190610970565b905060006102798234610992565b90506000836001600160a01b03168260405160006040518083038185875af1925050503d80600081146102c8576040519150601f19603f3d011682016040523d82523d6000602084013e6102cd565b606091505b5050905080610305576040516283497d60e71b81526001600160a01b0385166004820152602481018390526044015b60405180910390fd5b6001546040516000916001600160a01b03169085908381818185875af1925050503d8060008114610352576040519150601f19603f3d011682016040523d82523d6000602084013e610357565b606091505b505090508061038e576001546040516283497d60e71b81526001600160a01b039091166004820152602481018590526044016102fc565b846001600160a01b0316336001600160a01b031688886040516103b29291906109a5565b6040805191829003822034835260208301899052917fddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e910160405180910390a450505050505050565b3460000361041c576040516331ebb47760e11b815260040160405180910390fd5b6001600160a01b0383166104435760405163bab7ca3560e01b815260040160405180910390fd5b600061271061045360c834610953565b61045d9190610970565b9050600061046b8234610992565b90506000856001600160a01b03168260405160006040518083038185875af1925050503d80600081146104ba576040519150601f19603f3d011682016040523d82523d6000602084013e6104bf565b606091505b50509050806104f2576040516283497d60e71b81526001600160a01b0387166004820152602481018390526044016102fc565b6001546040516000916001600160a01b03169085908381818185875af1925050503d806000811461053f576040519150601f19603f3d011682016040523d82523d6000602084013e610544565b606091505b505090508061057b576001546040516283497d60e71b81526001600160a01b039091166004820152602481018590526044016102fc565b866001600160a01b0316336001600160a01b03167f8555727c6813e10ae0b5a9b0a53a88a93176679845f5a005a248cdb9f1c05f2e888834896040516105c494939291906109b5565b60405180910390a350505050505050565b6000546001600160a01b031633146106025760405163245aecd360e01b81523360048201526024016102fc565b6001600160a01b0381166106295760405163e6c4247b60e01b815260040160405180910390fd5b600180546001600160a01b038381166001600160a01b0319831681179093556040519116919082907f4ab5be82436d353e61ca18726e984e561f5c1cc7c6d38b29d2553c790434705a90600090a35050565b60008083601f84011261068d57600080fd5b50813567ffffffffffffffff8111156106a557600080fd5b6020830191508360208285010111156106bd57600080fd5b9250929050565b600080602083850312156106d757600080fd5b823567ffffffffffffffff8111156106ee57600080fd5b6106fa8582860161067b565b90969095509350505050565b6001600160a01b038116811461071b57600080fd5b50565b60008060006040848603121561073357600080fd5b833561073e81610706565b9250602084013567ffffffffffffffff81111561075a57600080fd5b6107668682870161067b565b9497909650939450505050565b60006020828403121561078557600080fd5b813561079081610706565b9392505050565b81835281816020850137506000828201602090810191909152601f909101601f19169091010190565b6020815260006107d4602083018486610797565b949350505050565b634e487b7160e01b600052604160045260246000fd5b600082601f83011261080357600080fd5b815167ffffffffffffffff8082111561081e5761081e6107dc565b604051601f8301601f19908116603f01168101908282118183101715610846576108466107dc565b8160405283815260209250868385880101111561086257600080fd5b600091505b838210156108845785820183015181830184015290820190610867565b600093810190920192909252949350505050565b600080600080600060a086880312156108b057600080fd5b85516108bb81610706565b602087015190955067ffffffffffffffff808211156108d957600080fd5b6108e589838a016107f2565b95506040880151915060ff821682146108fd57600080fd5b606088015191945061090e82610706565b60808801519193508082111561092357600080fd5b50610930888289016107f2565b9150509295509295909350565b634e487b7160e01b600052601160045260246000fd5b808202811582820484141761096a5761096a61093d565b92915050565b60008261098d57634e487b7160e01b600052601260045260246000fd5b500490565b8181038181111561096a5761096a61093d565b8183823760009101908152919050565b6060815260006109c9606083018688610797565b602083019490945250604001529291505056fea264697066735822122066c9a55c55e8e97dc25e3b1d663d8a76e6bab2537122482999f1dfd7b515b25664736f6c63430008140033",
+  "fingerprint": "53d54e8e8b4b30b9"
+ },
+ "topics": [
+  {
+   "domain": "forum",
+   "memo": "Voicescape Town Hall — forum (posts, walls, replies)",
+   "env": "TOWNHALL_TOPIC_FORUM"
+  },
+  {
+   "domain": "chat",
+   "memo": "Voicescape Town Hall — chat rooms",
+   "env": "TOWNHALL_TOPIC_CHAT"
+  },
+  {
+   "domain": "votes",
+   "memo": "Voicescape Town Hall — reputation votes",
+   "env": "TOWNHALL_TOPIC_VOTES"
+  },
+  {
+   "domain": "governance",
+   "memo": "Voicescape Town Hall — proposals, votes, events",
+   "env": "TOWNHALL_TOPIC_GOV"
+  },
+  {
+   "domain": "market",
+   "memo": "Voicescape Town Hall — marketplace listings",
+   "env": "TOWNHALL_TOPIC_MARKET"
+  }
+ ]
+};
+;
+
+/* ---------------- constants (match the audited repo) ---------------- */
+const GAS_REGISTRY = 2000000;
+const GAS_TIPS = 2000000;
+const MAX_FEE_CREATE = new Hbar(20);   // safety cap only — you pay the actual fee
+const MAX_FEE_TOPIC = new Hbar(2);
+const LS_KEY = "vs_deploy_results_v1";
+
+const $ = (id) => document.getElementById(id);
+const results = loadResults();   // { registry: {...}, tips: {...}, topics: { forum: "0.0.x", ... } }
+
+function loadResults() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+  catch { return {}; }
+}
+function saveResults() { localStorage.setItem(LS_KEY, JSON.stringify(results)); }
+
+function hexToBytes(hex) {
+  const h = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.substr(i * 2, 2), 16);
+  return out;
+}
+const evmOf = (idStr) => "0x" + AccountId.fromString(idStr).toSolidityAddress();
+const scanContract = (id) => `https://hashscan.io/mainnet/contract/${id}`;
+const scanTopic = (id) => `https://hashscan.io/mainnet/topic/${id}`;
+
+/* ---------------- step definitions ---------------- */
+const STEPS = [
+  {
+    id: "registry", n: 1, title: "Deploy VoicescapeRegistry",
+    desc: "The on-chain name registry — maps page names to their owners. This is the contract every page, tip and purchase looks up. No settings needed; one wallet approval.",
+    fee: "Est. network fee: under ~$1 (HashPack shows the exact fee before you approve)",
+    build() {
+      return new ContractCreateTransaction()
+        .setGas(GAS_REGISTRY)
+        .setBytecode(hexToBytes(DEPLOY_DATA.registry.bytecode))
+        .setMaxTransactionFee(MAX_FEE_CREATE);
+    },
+    extract(receipt) {
+      if (!receipt.contractId) throw new Error("no contract id in receipt");
+      const id = receipt.contractId.toString();
+      return { id, evm: evmOf(id) };
+    },
+    renderResult(r) {
+      return `<div class="idrow">Contract ID: <b>${r.id}</b><br>EVM address: <b>${r.evm}</b><br><a href="${scanContract(r.id)}" target="_blank" rel="noopener">View on HashScan →</a></div>`;
+    }
+  },
+  {
+    id: "tips", n: 2, title: "Deploy VoicescapeTips",
+    desc: "The payment splitter — every tip and marketplace sale flows through it, splitting <b>98% to the recipient and 2% to your treasury</b> inside a single transaction. It can never hold funds. Two settings are baked in at deploy: the registry from step 1, and your treasury address.",
+    fee: "Est. network fee: under ~$1 (HashPack shows the exact fee before you approve)",
+    needs: ["registry"],
+    build() {
+      const params = new ContractFunctionParameters()
+        .addAddress(results.registry.evm)
+        .addAddress(evmOf(treasury()));
+      return new ContractCreateTransaction()
+        .setGas(GAS_TIPS)
+        .setBytecode(hexToBytes(DEPLOY_DATA.tips.bytecode))
+        .setConstructorParameters(params)
+        .setMaxTransactionFee(MAX_FEE_CREATE);
+    },
+    extra() {
+      return `<div class="idrow">constructor args:<br>registry = ${results.registry.id} (${results.registry.evm})<br>treasury = ${treasury()} (${evmOf(treasury())})</div>`;
+    },
+    extract(receipt) {
+      if (!receipt.contractId) throw new Error("no contract id in receipt");
+      const id = receipt.contractId.toString();
+      return { id, evm: evmOf(id) };
+    },
+    renderResult(r) {
+      return `<div class="idrow">Contract ID: <b>${r.id}</b><br>EVM address: <b>${r.evm}</b><br><a href="${scanContract(r.id)}" target="_blank" rel="noopener">View on HashScan →</a></div>`;
+    }
+  },
+  ...DEPLOY_DATA.topics.map((t, i) => ({
+    id: "topic_" + t.domain, n: 3 + i,
+    title: "Create topic: " + t.domain,
+    desc: `The public town-hall log for <b>${t.domain}</b>. Memo: “${t.memo}”. One wallet approval.`,
+    fee: "Est. network fee: a few cents (HashPack shows the exact fee before you approve)",
+    needs: ["registry", "tips"],
+    build() {
+      return new TopicCreateTransaction()
+        .setTopicMemo(t.memo)
+        .setMaxTransactionFee(MAX_FEE_TOPIC);
+    },
+    extract(receipt) {
+      if (!receipt.topicId) throw new Error("no topic id in receipt");
+      return { id: receipt.topicId.toString(), env: t.env };
+    },
+    renderResult(r) {
+      return `<div class="idrow">Topic ID: <b>${r.id}</b><br><a href="${scanTopic(r.id)}" target="_blank" rel="noopener">View on HashScan →</a></div>`;
+    }
+  }))
+];
+
+/* ---------------- wallet ---------------- */
+let hc = null, pairedAccount = null;   // pairedAccount: AccountId
+const treasury = () => $("treasury").value.trim();
+const projectId = () => $("wcid").value.trim();
+
+function treasuryValid() { return /^0\.0\.\d{1,10}$/.test(treasury()); }
+
+$("connectBtn").addEventListener("click", async () => {
+  const st = $("connStatus");
+  if (!treasuryValid()) {
+    st.className = "status err";
+    st.textContent = "Treasury address must look like 0.0.123456.";
+    return;
+  }
+  if (!projectId()) {
+    st.className = "status err";
+    st.textContent = "Paste your WalletConnect project ID first (free at cloud.walletconnect.com).";
+    return;
+  }
+  st.className = "status work";
+  st.innerHTML = '<span class="spinner"></span>Opening wallet pairing… approve in HashPack.';
+  try {
+    hc = new HashConnect(
+      LedgerId.MAINNET,
+      projectId(),
+      { name: "Voicescape Deploy", description: "One-time Hedera mainnet deploy for Voicescape", icons: [], url: window.location.origin },
+      false
+    );
+    const paired = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Pairing timed out — approve the connection in HashPack and try again.")), 180000);
+      hc.pairingEvent.on((data) => {
+        const id = data.accountIds && data.accountIds[0];
+        if (id) { clearTimeout(timer); resolve(id); }
+      });
+    });
+    await hc.init();
+    let idStr = hc.connectedAccountIds.length > 0 ? hc.connectedAccountIds[0].toString() : null;
+    if (!idStr) {
+      await hc.openPairingModal("dark");
+      idStr = await paired;
+    }
+    pairedAccount = AccountId.fromString(idStr);
+    $("connectBtn").disabled = true;
+    $("treasury").disabled = true;
+    $("wcid").disabled = true;
+    st.className = "status ok";
+    st.textContent = "Connected: " + pairedAccount.toString() + " — this account pays the network fees and deploys the contracts.";
+    render();
+  } catch (e) {
+    st.className = "status err";
+    st.textContent = humanMsg(e).body;
+    hc = null;
+  }
+});
+
+/* ---------------- step runner ---------------- */
+const working = new Set();
+
+function stepState(s) {
+  const doneKey = s.id === "registry" ? "registry" : s.id === "tips" ? "tips" : null;
+  if ((doneKey && results[doneKey]) ||
+      (s.id.startsWith("topic_") && results.topics && results.topics[s.id.slice(6)])) return "done";
+  if (working.has(s.id)) return "working";
+  if (!pairedAccount) return "locked";
+  if (s.needs && s.needs.some((k) => !results[k])) return "locked";
+  return "ready";
+}
+
+function humanMsg(e) {
+  const m = (e && e.message ? e.message : String(e)) || "unknown error";
+  if (/user rejected|rejected the request|declined|denied|cancel/i.test(m))
+    return { title: "Rejected in wallet", body: "You rejected the transaction in HashPack. Nothing was deployed and nothing was spent — just tap the step again when ready." };
+  if (/INSUFFICIENT_PAYER_BALANCE|INSUFFICIENT_ACCOUNT_BALANCE|insufficient.*balance|payer.*balance/i.test(m))
+    return { title: "Not enough HBAR", body: "Your deployer account doesn't have enough HBAR to cover the network fee. Top it up and retry the step — nothing was deployed." };
+  if (/timed out|timeout/i.test(m))
+    return { title: "Timed out", body: "The wallet didn't respond in time. Make sure HashPack is open and on Mainnet, then try the step again." };
+  if (/INVALID_SIGNATURE|invalid signature/i.test(m))
+    return { title: "Signature problem", body: "The wallet refused to sign. Reconnect your wallet and try again." };
+  return { title: "Something went wrong", body: m };
+}
+
+async function receiptWithId(tx, receipt, kind) {
+  const idObj = kind === "contract" ? receipt.contractId : receipt.topicId;
+  if (idObj) return receipt;
+  // Fallback: re-query the receipt from a public client (free query).
+  const client = Client.forMainnet();
+  try {
+    const q = await new TransactionReceiptQuery().setTransactionId(tx.transactionId).execute(client);
+    return q;
+  } finally { client.close(); }
+}
+
+async function runStep(s) {
+  working.add(s.id);
+  render();
+  try {
+    const tx = s.build();
+    const signer = hc.getSigner(pairedAccount);
+    await tx.freezeWithSigner(signer);
+    let receipt = await hc.sendTransaction(pairedAccount, tx);
+    const status = receipt.status ? receipt.status.toString() : "";
+    if (status && !/SUCCESS/.test(status)) throw new Error("Transaction failed on network: " + status);
+    receipt = await receiptWithId(tx, receipt, s.id.startsWith("topic_") ? "topic" : "contract");
+    const r = s.extract(receipt);
+    if (s.id === "registry") results.registry = r;
+    else if (s.id === "tips") results.tips = r;
+    else { results.topics = results.topics || {}; results.topics[s.id.slice(6)] = r.id; }
+    saveResults();
+  } catch (e) {
+    const h = humanMsg(e);
+    const el = document.querySelector(`#err-${s.id}`);
+    if (el) {
+      el.style.display = "block";
+      el.innerHTML = "<b>" + h.title + ".</b> " + h.body +
+        (h.title === "Something went wrong" ? `<details><summary>Technical details</summary><pre style="white-space:pre-wrap">${String(e && e.message || e).slice(0, 600)}</pre></details>` : "");
+    }
+  } finally {
+    working.delete(s.id);
+  }
+  render();
+}
+
+function render() {
+  const host = $("steps");
+  host.innerHTML = "";
+  for (const s of STEPS) {
+    const state = stepState(s);
+    const card = document.createElement("div");
+    card.className = "card stepcard" + (state === "locked" ? " locked" : state === "done" ? " done" : state === "working" ? " working" : "");
+    const badge = state === "done" ? "✓ DONE" : state === "locked" ? "LOCKED" : state === "ready" ? "READY" : "WORKING";
+    let body = `<h2><span class="n">${s.n}</span>${s.title}<span class="badge">${badge}</span></h2><p>${s.desc}</p><div class="fee">${s.fee}</div>`;
+    if (s.id === "tips" && state === "ready") body += s.extra();
+    if (state === "done") {
+      const r = s.id === "registry" ? results.registry : s.id === "tips" ? results.tips
+        : { id: results.topics[s.id.slice(6)] };
+      body += s.renderResult(r);
+    } else if (state === "ready") {
+      body += `<button class="btn" data-step="${s.id}">${s.id.startsWith("topic_") ? "Create topic" : "Deploy"}</button><div class="status err" id="err-${s.id}" style="display:none"></div>`;
+    } else if (state === "working") {
+      body += `<div class="status work"><span class="spinner"></span>Waiting for your wallet — approve the transaction in HashPack…</div><div class="status err" id="err-${s.id}" style="display:none"></div>`;
+    } else if (state === "locked") {
+      body += `<p style="font-size:13px">Complete the previous steps first.</p>`;
+    }
+    card.innerHTML = body;
+    host.appendChild(card);
+  }
+  document.querySelectorAll("[data-step]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const s = STEPS.find((x) => x.id === b.getAttribute("data-step"));
+      if (s) runStep(s);
+    })
+  );
+  renderSummary();
+}
+
+function allDone() {
+  return results.registry && results.tips && results.topics &&
+    DEPLOY_DATA.topics.every((t) => results.topics[t.domain]);
+}
+
+function renderSummary() {
+  if (!allDone()) { $("summaryCard").style.display = "none"; return; }
+  $("summaryCard").style.display = "block";
+  const lines = [
+    "# Voicescape production (Hedera mainnet) — generated by the deploy page",
+    "# Paste into Vercel -> Project Settings -> Environment Variables",
+    "NEXT_PUBLIC_CHAIN=hedera-mainnet",
+    "NEXT_PUBLIC_REGISTRY_ADDRESS=" + results.registry.evm,
+    "NEXT_PUBLIC_TIPS_ADDRESS=" + results.tips.evm,
+    "NEXT_PUBLIC_TREASURY_ADDRESS=" + treasury(),
+    "TOWNHALL_HCS_NETWORK=mainnet",
+    ...DEPLOY_DATA.topics.map((t) => `${t.env}=${results.topics[t.domain]}`),
+  ];
+  $("envOut").textContent = lines.join("\n");
+  $("allIds").innerHTML =
+    `<div class="idrow">Registry: <b>${results.registry.id}</b> (${results.registry.evm})<br>` +
+    `Tips: <b>${results.tips.id}</b> (${results.tips.evm})<br>` +
+    DEPLOY_DATA.topics.map((t) => `${t.domain}: <b>${results.topics[t.domain]}</b>`).join("<br>") +
+    `<br>Treasury: <b>${treasury()}</b></div>`;
+}
+
+$("copyEnv").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("envOut").textContent);
+    $("copyStatus").className = "status ok";
+    $("copyStatus").textContent = "Copied — paste it into Vercel.";
+  } catch {
+    $("copyStatus").className = "status err";
+    $("copyStatus").textContent = "Copy failed — long-press the text to copy manually.";
+  }
+});
+
+$("resetBtn").addEventListener("click", () => {
+  if (confirm("Clear saved deploy progress on this device? (On-chain deployments are NOT undone.)")) {
+    localStorage.removeItem(LS_KEY);
+    location.reload();
+  }
+});
+
+/* restore inputs */
+try {
+  const saved = JSON.parse(localStorage.getItem("vs_deploy_inputs_v1") || "{}");
+  if (saved.treasury) $("treasury").value = saved.treasury;
+  if (saved.wcid) $("wcid").value = saved.wcid;
+} catch {}
+["treasury", "wcid"].forEach((id) =>
+  $(id).addEventListener("input", () => {
+    try { localStorage.setItem("vs_deploy_inputs_v1", JSON.stringify({ treasury: treasury(), wcid: projectId() })); } catch {}
+  })
+);
+
+render();
+setTimeout(() => {
+  if (!$("steps").children.length) {
+    $("steps").innerHTML = '<div class="card"><p>Couldn\'t load the page libraries. Check your connection and reload.</p></div>';
+  }
+}, 25000);
+</script>
+</body>
+</html>

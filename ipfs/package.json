@@ -1,0 +1,1 @@
+{"dependencies":{},"description":"IPFS helper module for Project Voicescape: publish and fetch page JSON via pinning providers.","engines":{"node":">=18"},"exports":{".":"./publish.js"},"main":"./publish.js","name":"@voicescape/ipfs","scripts":{"check":"node --check publish.js"},"type":"module","version":"0.1.0"}

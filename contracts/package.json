@@ -1,0 +1,20 @@
+{
+  "description": "Smart contracts for Project Voicescape (MySpace-style page registry + on-chain tips)",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^3.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.10"
+  },
+  "name": "voicescape-contracts",
+  "private": true,
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:amoy": "hardhat run scripts/deploy.js --network polygonAmoy",
+    "deploy:hedera-mainnet": "CONFIRM_MAINNET=1 hardhat run scripts/deploy.js --network hederaMainnet",
+    "deploy:hedera-testnet": "hardhat run scripts/deploy.js --network hederaTestnet",
+    "deploy:polygon": "CONFIRM_MAINNET=1 hardhat run scripts/deploy.js --network polygon",
+    "test": "hardhat test",
+    "deploy:dry-run": "DRY_RUN=1 hardhat run scripts/deploy.js --network hederaMainnet"
+  },
+  "version": "0.1.0"
+}

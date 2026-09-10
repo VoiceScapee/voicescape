@@ -1,0 +1,1871 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import PageRenderer from "@/components/PageRenderer";
+import Logo from "@/components/Logo";
+import {
+  IconArrowRight,
+  IconBolt,
+  IconBook,
+  IconCheck,
+  IconClose,
+  IconExternal,
+  IconGrid,
+  IconLink,
+  IconMusic,
+  IconPlus,
+  IconSpark,
+  IconTip,
+  IconTrash,
+  IconUsers,
+} from "@/components/icons";
+import {
+  BLOCK_TYPES,
+  createDefaultBlock,
+  isValidPage,
+  type Block,
+  type BlockType,
+  type MusicTrack,
+  type ProfileSongRef,
+  type VoicescapePage,
+} from "@/lib/schema";
+import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
+import { pinAudioFile } from "@/lib/ipfs";
+import { TEMPLATES, type Template } from "@/lib/templates";
+import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { WalletConnect } from "@/components/WalletConnect";
+import { RequireSession, useSession } from "@/lib/session";
+import {
+  BYOK_CONSOLE_URL,
+  ByokError,
+  clearByokKey,
+  DEFAULT_BYOK_MODEL,
+  generatePageWithByokKey,
+  getByokKey,
+  hasByokKey,
+  setByokKey,
+} from "@/lib/byok";
+import { getActiveChain } from "@/lib/chains";
+import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
+import { pinPageJson } from "@/lib/ipfs";
+import {
+  createWalletHederaSigner,
+  formatUsdCents,
+  getX402VibecodeUrl,
+  payX402,
+  probeX402,
+  type X402Rail,
+} from "@/lib/x402";
+import { AccountId } from "@hashgraph/sdk";
+import { summarizeChanges, type AiDraft } from "./vibecode-utils";
+import "./builder.css";
+
+const USERNAME_RE = /^[a-z0-9-]{3,24}$/;
+
+/* ---------------------------------------------------------------- */
+/* Helpers                                                          */
+/* ---------------------------------------------------------------- */
+
+function setBlock(blocks: Block[], index: number, next: Block): Block[] {
+  const copy = [...blocks];
+  copy[index] = next;
+  return copy;
+}
+
+function truncMiddle(v: string, head = 6, tail = 4): string {
+  return v.length > head + tail + 3 ? `${v.slice(0, head)}…${v.slice(-tail)}` : v;
+}
+
+const shortFont = (f: string) => f.split(",")[0];
+
+function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) {
+  switch (type) {
+    case "hero":
+      return <IconSpark size={size} />;
+    case "bio":
+      return <IconBook size={size} />;
+    case "links":
+      return <IconLink size={size} />;
+    case "music":
+      return <IconMusic size={size} />;
+    case "gallery":
+      return <IconGrid size={size} />;
+    case "guestbook":
+      return <IconUsers size={size} />;
+    case "tipJar":
+      return <IconTip size={size} />;
+    case "services":
+      return <IconBolt size={size} />;
+    case "capabilities":
+      return <IconSpark size={size} />;
+    case "operator":
+      return <IconUsers size={size} />;
+    case "reviews":
+      return <IconBook size={size} />;
+    case "booking":
+      return <IconLink size={size} />;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* Per-block field editors                                           */
+/* ---------------------------------------------------------------- */
+
+/**
+ * Editor for the music block: paste platform links (auto-detected), upload
+ * your own audio to IPFS, reorder/remove tracks, and mark one track as the
+ * MySpace-style profile song (stored page-level).
+ */
+function MusicTrackEditor({
+  block,
+  blockIndex,
+  onChange,
+  profileSong,
+  onProfileSongChange,
+}: {
+  block: Extract<Block, { type: "music" }>;
+  blockIndex: number;
+  onChange: (next: Block) => void;
+  profileSong?: ProfileSongRef;
+  onProfileSongChange: (ref: ProfileSongRef | undefined) => void;
+}) {
+  const tracks: MusicTrack[] = Array.isArray(block.tracks) ? block.tracks : [];
+  const [linkInput, setLinkInput] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const addTrack = (t: MusicTrack) =>
+    onChange({ ...block, tracks: [...tracks, t] });
+
+  const addLink = () => {
+    const parsed = parseMusicUrl(linkInput);
+    if (!parsed) {
+      setLinkError("Couldn't detect a Spotify, YouTube, or SoundCloud track in that link.");
+      return;
+    }
+    setLinkError(null);
+    setLinkInput("");
+    addTrack(parsed);
+  };
+
+  const moveTrack = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= tracks.length) return;
+    const next = [...tracks];
+    [next[i], next[j]] = [next[j], next[i]];
+    onChange({ ...block, tracks: next });
+    // Keep the profile-song ref pointing at the same track after reordering.
+    if (profileSong && profileSong.blockIndex === blockIndex) {
+      if (profileSong.trackIndex === i)
+        onProfileSongChange({ blockIndex, trackIndex: j });
+      else if (profileSong.trackIndex === j)
+        onProfileSongChange({ blockIndex, trackIndex: i });
+    }
+  };
+
+  const removeTrack = (i: number) => {
+    onChange({ ...block, tracks: tracks.filter((_, k) => k !== i) });
+    if (profileSong && profileSong.blockIndex === blockIndex) {
+      if (profileSong.trackIndex === i) onProfileSongChange(undefined);
+      else if (profileSong.trackIndex > i)
+        onProfileSongChange({ blockIndex, trackIndex: profileSong.trackIndex - 1 });
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const cid = await pinAudioFile(file);
+      const base = file.name.replace(/\.[^.]+$/, "");
+      addTrack({ source: "ipfs", id: cid, title: base || "My track" });
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isProfile = (i: number) =>
+    profileSong?.blockIndex === blockIndex && profileSong.trackIndex === i;
+
+  return (
+    <>
+      <div className="vb-row" style={{ gap: 8 }}>
+        <input
+          className="vs-input"
+          style={{ flex: 1 }}
+          value={linkInput}
+          placeholder="Paste a Spotify, YouTube, or SoundCloud link"
+          onChange={(e) => setLinkInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addLink();
+            }
+          }}
+          aria-label="Paste a music link"
+        />
+        <button type="button" className="vs-btn vs-btn-ghost" onClick={addLink}>
+          <IconPlus size={16} /> Add track
+        </button>
+      </div>
+      {linkError && <p className="vb-error">{linkError}</p>}
+
+      <div className="vb-row" style={{ gap: 8, marginTop: 8, alignItems: "center" }}>
+        <label className="vs-btn vs-btn-ghost" style={{ cursor: "pointer" }}>
+          <IconMusic size={16} /> {uploading ? "Uploading…" : "Upload your own music"}
+          <input
+            type="file"
+            accept="audio/*"
+            hidden
+            disabled={uploading}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void uploadFile(f);
+            }}
+          />
+        </label>
+        <span className="vs-hint">MP3, WAV, OGG… up to 25 MB, pinned to IPFS</span>
+      </div>
+      {uploadError && <p className="vb-error">{uploadError}</p>}
+
+      {tracks.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+          {tracks.map((t, i) => (
+            <div key={`${t.source}-${t.id}-${i}`} className="vb-row" style={{ gap: 8, alignItems: "center" }}>
+              <span className="vs-chip" title={t.id}>
+                {MUSIC_SOURCE_LABELS[t.source]}
+              </span>
+              <input
+                className="vs-input"
+                style={{ flex: 1, minWidth: 0 }}
+                value={t.title ?? ""}
+                placeholder="Title"
+                aria-label={`Track ${i + 1} title`}
+                onChange={(e) => {
+                  const next = [...tracks];
+                  next[i] = { ...next[i], title: e.target.value };
+                  onChange({ ...block, tracks: next });
+                }}
+              />
+              <input
+                className="vs-input"
+                style={{ flex: 1, minWidth: 0 }}
+                value={t.artist ?? ""}
+                placeholder="Artist"
+                aria-label={`Track ${i + 1} artist`}
+                onChange={(e) => {
+                  const next = [...tracks];
+                  next[i] = { ...next[i], artist: e.target.value };
+                  onChange({ ...block, tracks: next });
+                }}
+              />
+              <button
+                type="button"
+                className="vb-icon-btn"
+                title="Move up"
+                aria-label={`Move track ${i + 1} up`}
+                disabled={i === 0}
+                onClick={() => moveTrack(i, -1)}
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                className="vb-icon-btn"
+                title="Move down"
+                aria-label={`Move track ${i + 1} down`}
+                disabled={i === tracks.length - 1}
+                onClick={() => moveTrack(i, 1)}
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                className={`vb-icon-btn${isProfile(i) ? " is-active" : ""}`}
+                title={isProfile(i) ? "Profile song (click to unset)" : "Set as profile song"}
+                aria-label={isProfile(i) ? "Unset profile song" : `Set track ${i + 1} as profile song`}
+                aria-pressed={isProfile(i)}
+                onClick={() =>
+                  onProfileSongChange(
+                    isProfile(i) ? undefined : { blockIndex, trackIndex: i },
+                  )
+                }
+              >
+                ★
+              </button>
+              <button
+                type="button"
+                className="vb-icon-btn vb-icon-btn-danger"
+                title="Remove track"
+                aria-label={`Remove track ${i + 1}`}
+                onClick={() => removeTrack(i)}
+              >
+                <IconTrash size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {tracks.length === 0 && (
+        <p className="vs-hint" style={{ marginTop: 8 }}>
+          No tracks yet — paste a link or upload your own music above.
+        </p>
+      )}
+    </>
+  );
+}
+
+function BlockEditor({
+  block,
+  index,
+  onChange,
+  onRemove,
+  profileSong,
+  onProfileSongChange,
+}: {
+  block: Block;
+  index: number;
+  onChange: (next: Block) => void;
+  onRemove: () => void;
+  /** Page-level profile song ref (music blocks can mark one track as featured). */
+  profileSong?: ProfileSongRef;
+  onProfileSongChange?: (ref: ProfileSongRef | undefined) => void;
+}) {
+  return (
+    <div className="vb-block vs-card">
+      <div className="vb-block-head">
+        <span className="vb-block-type">
+          <BlockTypeIcon type={block.type} />
+          {block.type}
+        </span>
+        <button
+          type="button"
+          className="vb-icon-btn vb-icon-btn-danger"
+          onClick={onRemove}
+          title={`Remove ${block.type} block`}
+          aria-label={`Remove ${block.type} block`}
+        >
+          <IconTrash size={16} />
+        </button>
+      </div>
+
+      {block.type === "hero" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Title</span>
+            <input
+              className="vs-input"
+              value={block.title}
+              placeholder="Title"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Subtitle</span>
+            <input
+              className="vs-input"
+              value={block.subtitle ?? ""}
+              placeholder="Subtitle (optional)"
+              onChange={(e) => onChange({ ...block, subtitle: e.target.value })}
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Avatar</span>
+            <input
+              className="vs-input"
+              value={block.avatarEmoji ?? ""}
+              placeholder="Avatar emoji (optional)"
+              onChange={(e) => onChange({ ...block, avatarEmoji: e.target.value })}
+            />
+          </label>
+        </>
+      )}
+
+      {block.type === "bio" && (
+        <label className="vb-field">
+          <span className="vs-label">Bio text</span>
+          <textarea
+            className="vs-input"
+            rows={3}
+            value={block.text}
+            onChange={(e) => onChange({ ...block, text: e.target.value })}
+          />
+        </label>
+      )}
+
+      {block.type === "links" && (
+        <>
+          <span className="vs-label">Links</span>
+          {block.items.map((item, i) => (
+            <div className="vb-row" key={i}>
+              <input
+                className="vs-input"
+                style={{ flex: 1 }}
+                value={item.label}
+                placeholder="Label"
+                onChange={(e) => {
+                  const items = [...block.items];
+                  items[i] = { ...items[i], label: e.target.value };
+                  onChange({ ...block, items });
+                }}
+              />
+              <input
+                className="vs-input"
+                style={{ flex: 2 }}
+                value={item.url}
+                placeholder="URL"
+                onChange={(e) => {
+                  const items = [...block.items];
+                  items[i] = { ...items[i], url: e.target.value };
+                  onChange({ ...block, items });
+                }}
+              />
+              <button
+                type="button"
+                className="vb-icon-btn vb-icon-btn-danger"
+                onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                title="Remove link"
+                aria-label="Remove link"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() => onChange({ ...block, items: [...block.items, { label: "New link", url: "https://" }] })}
+          >
+            <IconPlus size={16} /> Add link
+          </button>
+        </>
+      )}
+
+      {block.type === "tipJar" && (
+        <label className="vb-field">
+          <span className="vs-label">Tip jar message</span>
+          <input
+            className="vs-input"
+            value={block.message ?? ""}
+            placeholder="Tip jar message (optional)"
+            onChange={(e) => onChange({ ...block, message: e.target.value })}
+          />
+        </label>
+      )}
+
+      {block.type === "guestbook" && (
+        <>
+          <span className="vs-label">Entries</span>
+          {block.entries.map((entry, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <span>Entry {i + 1}</span>
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, entries: block.entries.filter((_, j) => j !== i) })}
+                  title="Delete entry"
+                  aria-label="Delete guestbook entry"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+              <label className="vb-field">
+                <span className="vs-label">Name</span>
+                <input
+                  className="vs-input"
+                  value={entry.name}
+                  placeholder="Name"
+                  onChange={(e) => {
+                    const entries = [...block.entries];
+                    entries[i] = { ...entries[i], name: e.target.value };
+                    onChange({ ...block, entries });
+                  }}
+                />
+              </label>
+              <label className="vb-field">
+                <span className="vs-label">Message</span>
+                <input
+                  className="vs-input"
+                  value={entry.message}
+                  placeholder="Message"
+                  onChange={(e) => {
+                    const entries = [...block.entries];
+                    entries[i] = { ...entries[i], message: e.target.value };
+                    onChange({ ...block, entries });
+                  }}
+                />
+              </label>
+              <label className="vb-field">
+                <span className="vs-label">Date</span>
+                <input
+                  className="vs-input"
+                  value={entry.date}
+                  placeholder="YYYY-MM-DD"
+                  onChange={(e) => {
+                    const entries = [...block.entries];
+                    entries[i] = { ...entries[i], date: e.target.value };
+                    onChange({ ...block, entries });
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() =>
+              onChange({
+                ...block,
+                entries: [...block.entries, { name: "", message: "", date: new Date().toISOString().slice(0, 10) }],
+              })
+            }
+          >
+            <IconPlus size={16} /> Add entry
+          </button>
+        </>
+      )}
+
+      {block.type === "music" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              placeholder="Title (optional)"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <MusicTrackEditor
+            block={block}
+            blockIndex={index}
+            onChange={onChange}
+            profileSong={profileSong}
+            onProfileSongChange={(ref) => onProfileSongChange?.(ref)}
+          />
+        </>
+      )}
+
+      {block.type === "gallery" && (
+        <>
+          <span className="vs-label">Images</span>
+          {block.images.map((img, i) => (
+            <div className="vb-row" key={i}>
+              <input
+                className="vs-input"
+                style={{ flex: 1 }}
+                value={img}
+                placeholder="Emoji"
+                onChange={(e) => {
+                  const images = [...block.images];
+                  images[i] = e.target.value;
+                  onChange({ ...block, images });
+                }}
+              />
+              <button
+                type="button"
+                className="vb-icon-btn vb-icon-btn-danger"
+                onClick={() => onChange({ ...block, images: block.images.filter((_, j) => j !== i) })}
+                title="Remove image"
+                aria-label="Remove image"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() => onChange({ ...block, images: [...block.images, "✨"] })}
+          >
+            <IconPlus size={16} /> Add image
+          </button>
+        </>
+      )}
+
+      {block.type === "services" && (
+        <>
+          <span className="vs-label">Services (pay per call)</span>
+          {block.items.map((s, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <span>Service {i + 1}</span>
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                  title="Delete service"
+                  aria-label="Delete service"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+              {(
+                [
+                  ["name", "Name", "Summarize URL"],
+                  ["description", "Description", "What the endpoint does"],
+                  ["endpoint", "Endpoint URL", "https://…"],
+                ] as const
+              ).map(([key, label, ph]) => (
+                <label className="vb-field" key={key}>
+                  <span className="vs-label">{label}</span>
+                  <input
+                    className="vs-input"
+                    value={s[key]}
+                    placeholder={ph}
+                    onChange={(e) => {
+                      const items = [...block.items];
+                      items[i] = { ...items[i], [key]: e.target.value };
+                      onChange({ ...block, items });
+                    }}
+                  />
+                </label>
+              ))}
+              <label className="vb-field">
+                <span className="vs-label">Price (USD cents)</span>
+                <input
+                  className="vs-input"
+                  inputMode="numeric"
+                  value={String(s.priceUsdCents)}
+                  placeholder="100"
+                  onChange={(e) => {
+                    const v = Math.max(0, Math.floor(Number(e.target.value.replace(/[^0-9]/g, "")) || 0));
+                    const items = [...block.items];
+                    items[i] = { ...items[i], priceUsdCents: v };
+                    onChange({ ...block, items });
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() =>
+              onChange({
+                ...block,
+                items: [...block.items, { name: "New service", description: "", priceUsdCents: 100, endpoint: "https://" }],
+              })
+            }
+          >
+            <IconPlus size={16} /> Add service
+          </button>
+        </>
+      )}
+
+      {block.type === "capabilities" && (
+        <>
+          <span className="vs-label">Capabilities (machine-readable tags)</span>
+          {block.items.map((c, i) => (
+            <div className="vb-row" key={i}>
+              <input
+                className="vs-input vs-mono"
+                style={{ flex: 1 }}
+                value={c}
+                placeholder="e.g. summarization"
+                onChange={(e) => {
+                  const items = [...block.items];
+                  items[i] = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-");
+                  onChange({ ...block, items });
+                }}
+              />
+              <button
+                type="button"
+                className="vb-icon-btn vb-icon-btn-danger"
+                onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                title="Remove capability"
+                aria-label="Remove capability"
+              >
+                <IconClose size={14} />
+              </button>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() => onChange({ ...block, items: [...block.items, "new-capability"] })}
+          >
+            <IconPlus size={16} /> Add capability
+          </button>
+        </>
+      )}
+
+      {block.type === "operator" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Operator wallet</span>
+            <input
+              className="vs-input vs-mono"
+              value={block.wallet}
+              placeholder="0x… or 0.0.x"
+              onChange={(e) => onChange({ ...block, wallet: e.target.value })}
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Operator name (optional)</span>
+            <input
+              className="vs-input"
+              value={block.name ?? ""}
+              placeholder="Who runs this agent"
+              onChange={(e) => onChange({ ...block, name: e.target.value })}
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Operator URL (optional)</span>
+            <input
+              className="vs-input"
+              value={block.url ?? ""}
+              placeholder="https://…"
+              onChange={(e) => onChange({ ...block, url: e.target.value })}
+            />
+          </label>
+        </>
+      )}
+
+      {block.type === "reviews" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Section title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              placeholder="Reviews"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <span className="vs-label">Entries</span>
+          {block.entries.map((entry, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <span>Review {i + 1}</span>
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, entries: block.entries.filter((_, j) => j !== i) })}
+                  title="Delete review"
+                  aria-label="Delete review"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+              {(
+                [
+                  ["name", "Name", "Name"],
+                  ["message", "Message", "Message"],
+                  ["date", "Date", "YYYY-MM-DD"],
+                  ["txHash", "Payment tx hash (optional)", "0.0.x@… — links to HashScan proof"],
+                ] as const
+              ).map(([key, label, ph]) => (
+                <label className="vb-field" key={key}>
+                  <span className="vs-label">{label}</span>
+                  <input
+                    className={`vs-input${key === "txHash" ? " vs-mono" : ""}`}
+                    value={entry[key] ?? ""}
+                    placeholder={ph}
+                    onChange={(e) => {
+                      const entries = [...block.entries];
+                      entries[i] = { ...entries[i], [key]: e.target.value };
+                      onChange({ ...block, entries });
+                    }}
+                  />
+                </label>
+              ))}
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() =>
+              onChange({
+                ...block,
+                entries: [...block.entries, { name: "", message: "", date: new Date().toISOString().slice(0, 10) }],
+              })
+            }
+          >
+            <IconPlus size={16} /> Add review
+          </button>
+        </>
+      )}
+
+      {block.type === "booking" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Section title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              placeholder="Book me"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <span className="vs-label">Booking links</span>
+          {block.items.map((item, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <span>Link {i + 1}</span>
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                  title="Delete booking link"
+                  aria-label="Delete booking link"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+              <label className="vb-field">
+                <span className="vs-label">Label</span>
+                <input
+                  className="vs-input"
+                  value={item.label}
+                  placeholder="Label"
+                  onChange={(e) => {
+                    const items = [...block.items];
+                    items[i] = { ...items[i], label: e.target.value };
+                    onChange({ ...block, items });
+                  }}
+                />
+              </label>
+              <label className="vb-field">
+                <span className="vs-label">URL</span>
+                <input
+                  className="vs-input"
+                  value={item.url}
+                  placeholder="https://…"
+                  onChange={(e) => {
+                    const items = [...block.items];
+                    items[i] = { ...items[i], url: e.target.value };
+                    onChange({ ...block, items });
+                  }}
+                />
+              </label>
+              <label className="vb-field">
+                <span className="vs-label">Note (optional)</span>
+                <input
+                  className="vs-input"
+                  value={item.note ?? ""}
+                  placeholder="e.g. $50 / 30 min"
+                  onChange={(e) => {
+                    const items = [...block.items];
+                    items[i] = { ...items[i], note: e.target.value };
+                    onChange({ ...block, items });
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() => onChange({ ...block, items: [...block.items, { label: "New booking link", url: "https://" }] })}
+          >
+            <IconPlus size={16} /> Add booking link
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Theme editor                                                      */
+/* ---------------------------------------------------------------- */
+
+function ThemeEditor({
+  theme,
+  onChange,
+}: {
+  theme: VoicescapePage["theme"];
+  onChange: (key: keyof VoicescapePage["theme"], value: string) => void;
+}) {
+  const colors = [
+    ["background", "Background"],
+    ["foreground", "Foreground"],
+    ["accent", "Accent"],
+  ] as const;
+  return (
+    <div className="vb-theme vs-card">
+      <div className="vb-panel-title">Theme</div>
+      {colors.map(([key, label]) => (
+        <div className="vb-theme-row" key={key}>
+          <span className="vs-label">{label}</span>
+          <label className="vb-swatch" style={{ background: theme[key] }} title={`Pick ${label.toLowerCase()} color`}>
+            <input
+              type="color"
+              value={theme[key]}
+              aria-label={`${label} color`}
+              onChange={(e) => onChange(key, e.target.value)}
+            />
+          </label>
+          <code className="vs-mono vb-hex">{theme[key]}</code>
+        </div>
+      ))}
+      <label className="vb-field">
+        <span className="vs-label">Font</span>
+        <select className="vs-input" value={theme.fontFamily} onChange={(e) => onChange("fontFamily", e.target.value)}>
+          {[
+            "Arial, Helvetica, sans-serif",
+            "Georgia, serif",
+            "monospace",
+            "Comic Sans MS, cursive",
+            "Impact, sans-serif",
+          ].map((f) => (
+            <option key={f} value={f}>
+              {shortFont(f)}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Template picker                                                   */
+/* ---------------------------------------------------------------- */
+
+function TemplatePicker({
+  activeId,
+  onPick,
+}: {
+  activeId: string;
+  onPick: (t: Template) => void;
+}) {
+  return (
+    <div>
+      <div className="vb-panel-title">Template</div>
+      <div className="vb-template-grid">
+        {TEMPLATES.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onPick(t)}
+            title={t.description}
+            className={`vb-template-card${t.id === activeId ? " is-selected" : ""}`}
+            style={{ "--vb-accent": t.page.theme.accent } as React.CSSProperties}
+          >
+            <span
+              className="vb-template-swatch"
+              style={{
+                background: `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
+              }}
+            />
+            <span className="vb-template-name">{t.name}</span>
+            <span className="vb-template-desc">{t.description}</span>
+            {t.id === activeId && (
+              <span className="vb-template-check">
+                <IconCheck size={14} />
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Vibecode chat panel                                               */
+/* ---------------------------------------------------------------- */
+
+interface ChatMessage {
+  role: "user" | "assistant" | "error";
+  text: string;
+}
+
+const SUGGESTIONS = [
+  "make it neon cyberpunk",
+  "add a links section with my GitHub",
+  "make it brutalist and loud",
+  "add a guestbook block",
+  "give the hero a bolder title",
+];
+
+function VibecodeChat({
+  page,
+  draft,
+  onDraftChange,
+  onApplyDraft,
+  onDiscardDraft,
+}: {
+  page: VoicescapePage;
+  draft: AiDraft | null;
+  onDraftChange: (d: AiDraft | null) => void;
+  onApplyDraft: () => void;
+  onDiscardDraft: () => void;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant",
+      text: "Hey! Describe how you want your page to look and I'll draft a new version — you review it in the preview, then apply or discard.",
+    },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  // Two ways to pay for AI edits — both paid by the user, never by the app:
+  // "byok" calls Anthropic directly from this browser with the user's own
+  // API key; "x402" pays the x402 vibecode endpoint per edit from the
+  // wallet. There is no server-paid AI path.
+  const x402Url = getX402VibecodeUrl();
+  const [payMode, setPayMode] = useState<"byok" | "x402">("byok");
+  const [x402Rails, setX402Rails] = useState<X402Rail[] | null>(null);
+  const [x402Rail, setX402Rail] = useState<X402Rail | null>(null);
+  const [x402Pending, setX402Pending] = useState<string | null>(null);
+  const [x402Note, setX402Note] = useState<{ kind: "info" | "err" | "ok"; text: string } | null>(null);
+
+  // BYOK key state. The key lives ONLY in this browser's localStorage —
+  // it is never sent to our server.
+  const [byokHasKey, setByokHasKey] = useState<boolean>(() => hasByokKey());
+  const [byokInput, setByokInput] = useState("");
+  const [byokSettingsOpen, setByokSettingsOpen] = useState(false);
+  const [byokNote, setByokNote] = useState<{ kind: "info" | "err" | "ok"; text: string } | null>(null);
+
+  // Block types the x402 vibecode SERVICE currently accepts. Its schema is a
+  // copy of ours ("keep in sync" per its schema.ts) — warn before paying if
+  // the page uses newer block types, since the service would reject the
+  // request after the payment has settled.
+  const X402_KNOWN_BLOCKS = [
+    "hero",
+    "bio",
+    "links",
+    "tipJar",
+    "guestbook",
+    "music",
+    "gallery",
+    "top8",
+    "services",
+    "capabilities",
+    "operator",
+    "reviews",
+    "booking",
+  ];
+  const unknownToX402 = page.blocks.map((b) => b.type).filter((t) => !X402_KNOWN_BLOCKS.includes(t));
+
+  /**
+   * BYOK mode: call Anthropic DIRECTLY from the browser with the user's own
+   * key. The Voicescape server is not involved — no proxy, no spend on our
+   * side. Billed by Anthropic to the key owner.
+   */
+  const sendByok = async (instruction: string) => {
+    const key = getByokKey();
+    if (!key) {
+      setByokSettingsOpen(true);
+      setMessages((m) => [
+        ...m,
+        {
+          role: "error",
+          text: "Add your Anthropic API key in the AI key settings below first — generations use your key and are billed by Anthropic to you.",
+        },
+      ]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const pageJson = await generatePageWithByokKey({ pageJson: page, instruction, apiKey: key });
+      const summary = summarizeChanges(page, pageJson);
+      onDraftChange({ page: pageJson, summary, instruction });
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: "Drafted a new version — review it in the preview pane, then Apply or Discard." },
+      ]);
+    } catch (e) {
+      const msg =
+        e instanceof ByokError ? e.message : e instanceof Error ? e.message : String(e);
+      setMessages((m) => [...m, { role: "error", text: msg }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveByokKey = () => {
+    try {
+      setByokKey(byokInput);
+      setByokHasKey(true);
+      setByokInput("");
+      setByokNote({ kind: "ok", text: "Key saved in this browser only. It is never sent to our server." });
+    } catch (e) {
+      setByokNote({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
+  const removeByokKey = () => {
+    clearByokKey();
+    setByokHasKey(false);
+    setByokNote({ kind: "info", text: "Key removed from this browser." });
+  };
+
+  /** x402 mode step 1: probe the endpoint's 402 for rails + price. */
+  const startX402 = async (instruction: string) => {
+    if (!x402Url) {
+      setX402Note({ kind: "err", text: "NEXT_PUBLIC_X402_VIBECODE_URL is not set — pay-per-edit is unavailable." });
+      return;
+    }
+    setX402Note(null);
+    setX402Rails(null);
+    setX402Rail(null);
+    setX402Pending(instruction);
+    setLoading(true);
+    try {
+      const probe = await probeX402(x402Url);
+      setX402Rails(probe.rails);
+      setX402Rail(probe.rails[0] ?? null);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", text: "The x402 vibecode service charges per edit. Pick a rail below, then pay — your wallet signs one transfer, the service edits, and you review the draft here." },
+      ]);
+    } catch (e) {
+      setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** x402 mode step 2: pay on the chosen rail and fetch the edited page. */
+  const payX402Edit = async () => {
+    if (!x402Url || !x402Rail || !x402Pending) return;
+    setX402Note(null);
+    setLoading(true);
+    try {
+      const pairing = getHederaPairing();
+      if (!pairing) throw new Error("Connect a Hedera wallet (HashPack / Blade / WalletConnect) to pay.");
+      const signer = createWalletHederaSigner(pairing.accountId, (tx) =>
+        pairing.hc.signTransaction(AccountId.fromString(pairing.accountId), tx),
+      );
+      setX402Note({ kind: "info", text: `Paying ${x402Rail.amountDisplay} — approve the transfer in your wallet…` });
+      const { response, settleTxId } = await payX402(
+        x402Url,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ pageJson: page, instruction: x402Pending }),
+        },
+        x402Rail,
+        signer,
+      );
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(`Vibecode service returned ${response.status}: ${text.slice(0, 300)}`);
+      }
+      const data = JSON.parse(text) as { pageJson?: unknown; error?: string; mock?: boolean };
+      if (data.error || !isValidPage(data.pageJson)) {
+        throw new Error(data.error ?? "The service returned an invalid page.");
+      }
+      const summary = summarizeChanges(page, data.pageJson);
+      onDraftChange({ page: data.pageJson, summary, instruction: x402Pending });
+      setMessages((m) => [
+        ...m,
+        {
+          role: "assistant",
+          text: `Paid edit settled${settleTxId ? ` (tx ${settleTxId.slice(0, 20)}…)` : ""}${
+            data.mock ? " — note: the service returned a labeled MOCK edit." : ""
+          } Review the draft in the preview pane, then Apply or Discard.`,
+        },
+      ]);
+      setX402Pending(null);
+      setX402Rails(null);
+    } catch (e) {
+      setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const send = async (override?: string) => {
+    const instruction = (override ?? input).trim();
+    if (!instruction || loading) return;
+    setInput("");
+    setMessages((m) => [...m, { role: "user", text: instruction }]);
+    if (payMode === "x402") {
+      await startX402(instruction);
+    } else {
+      await sendByok(instruction);
+    }
+  };
+
+
+  const showSuggestions = messages.length <= 1 && !loading && !draft;
+
+  return (
+    <div className="vb-chat vs-card">
+      <div className="vb-chat-head">
+        <span className="vb-spark">
+          <IconSpark size={16} />
+        </span>
+        Vibecode AI
+      </div>
+
+      <div className="vb-paymode" role="group" aria-label="AI edit payment mode">
+        <button
+          type="button"
+          className={`vb-chip-btn${payMode === "byok" ? " is-active" : ""}`}
+          onClick={() => setPayMode("byok")}
+          disabled={loading}
+          title="Use your own Anthropic API key — billed by Anthropic to you"
+        >
+          <IconSpark size={13} /> My AI key
+        </button>
+        <button
+          type="button"
+          className={`vb-chip-btn${payMode === "x402" ? " is-active" : ""}`}
+          onClick={() => setPayMode("x402")}
+          disabled={loading || !x402Url}
+          title={x402Url ? "Pay the x402 vibecode endpoint per edit from your wallet" : "Set NEXT_PUBLIC_X402_VIBECODE_URL to enable pay-per-edit"}
+        >
+          <IconBolt size={13} /> Pay per edit (x402)
+        </button>
+      </div>
+
+      {payMode === "byok" && (
+        <div className="vb-x402-box" aria-live="polite">
+          <p className="vb-x402-status">
+            🔑 AI generation uses <strong>your own Anthropic API key</strong> — billed by Anthropic to you.
+            Voicescape never sees your key and never pays for your generations.
+          </p>
+          <button
+            type="button"
+            className="vb-chip-btn"
+            onClick={() => setByokSettingsOpen((o) => !o)}
+            disabled={loading}
+            aria-expanded={byokSettingsOpen}
+          >
+            {byokHasKey ? "✅ Key saved" : "➕ Add API key"}
+          </button>
+          {byokSettingsOpen && (
+            <div style={{ marginTop: 8 }}>
+              <input
+                className="vs-input"
+                type="password"
+                value={byokInput}
+                onChange={(e) => setByokInput(e.target.value)}
+                placeholder="sk-ant-…"
+                autoComplete="off"
+                disabled={loading}
+                style={{ width: "100%", marginBottom: 8 }}
+              />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="vs-btn vs-btn-primary"
+                  onClick={saveByokKey}
+                  disabled={loading || !byokInput.trim()}
+                >
+                  Save key
+                </button>
+                {byokHasKey && (
+                  <button
+                    type="button"
+                    className="vs-btn vs-btn-ghost"
+                    onClick={removeByokKey}
+                    disabled={loading}
+                  >
+                    Remove key
+                  </button>
+                )}
+              </div>
+              <p className="vb-x402-status" style={{ marginTop: 8 }}>
+                Stored only in this browser&apos;s local storage — it never leaves your device for our
+                servers. Get a key at{" "}
+                <a href={BYOK_CONSOLE_URL} target="_blank" rel="noreferrer">
+                  console.anthropic.com
+                </a>{" "}
+                (model: {DEFAULT_BYOK_MODEL}).
+              </p>
+              {byokNote && (
+                <p className={`vb-x402-status is-${byokNote.kind}`}>
+                  {byokNote.kind === "err" ? "❌ " : byokNote.kind === "ok" ? "✅ " : "ℹ️ "}
+                  {byokNote.text}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {payMode === "x402" && (
+        <div className="vb-x402-box" aria-live="polite">
+          {unknownToX402.length > 0 && (
+            <p className="vb-x402-status is-err">
+              ⚠️ This page uses block types the x402 service doesn&apos;t know yet (
+              {unknownToX402.join(", ")}) — it would reject the request <em>after</em> you pay.
+              Remove them or use My AI key for this edit.
+            </p>
+          )}
+          {x402Rails && x402Pending && (
+            <>
+              <div className="pv-rail-row" role="group" aria-label="Payment rail">
+                {x402Rails.map((r) => (
+                  <button
+                    key={`${r.network}:${r.asset}`}
+                    type="button"
+                    className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
+                    onClick={() => setX402Rail(r)}
+                    disabled={loading}
+                  >
+                    <span className="pv-rail-name">{r.label}</span>
+                    <span className="pv-rail-amt">
+                      {r.amountDisplay} · {formatUsdCents(r.usdCents)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="vs-btn vs-btn-primary"
+                onClick={payX402Edit}
+                disabled={loading || !x402Rail || unknownToX402.length > 0}
+                style={{ width: "100%", justifyContent: "center" }}
+              >
+                <IconBolt size={16} />
+                {loading ? "Paying…" : `Pay ${x402Rail ? x402Rail.amountDisplay : ""} & edit`}
+              </button>
+            </>
+          )}
+          {x402Note && (
+            <p className={`vb-x402-status is-${x402Note.kind}`}>
+              {x402Note.kind === "err" ? "❌ " : x402Note.kind === "ok" ? "✅ " : "ℹ️ "}
+              {x402Note.text}
+            </p>
+          )}
+        </div>
+      )}
+
+      <div className="vb-chat-log">
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`vb-bubble ${
+              m.role === "user" ? "vb-bubble-user" : m.role === "error" ? "vb-bubble-error" : "vb-bubble-assistant"
+            }`}
+          >
+            {m.text}
+          </div>
+        ))}
+        {loading && (
+          <div className="vb-dreaming">
+            <span className="vb-dreaming-orb" />
+            <span className="vb-shimmer-text">dreaming up your page…</span>
+          </div>
+        )}
+        {draft && (
+          <div className="vb-draft-summary">
+            <div className="vb-draft-summary-title">
+              <IconSpark size={14} /> Proposed changes
+            </div>
+            <ul>
+              {draft.summary.map((s, i) => (
+                <li key={i}>
+                  <IconCheck size={14} />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="vb-draft-summary-actions">
+              <button type="button" className="vs-btn vs-btn-primary" onClick={onApplyDraft}>
+                <IconCheck size={14} /> Apply
+              </button>
+              <button type="button" className="vs-btn vs-btn-ghost" onClick={onDiscardDraft}>
+                <IconClose size={14} /> Discard
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {showSuggestions && (
+        <div className="vb-chips">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="vb-chip-btn"
+              onClick={() => send(s)}
+              disabled={loading}
+            >
+              <IconSpark size={13} /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="vb-chat-input-row">
+        <input
+          className="vs-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Describe a change…"
+          disabled={loading}
+        />
+        <button type="button" className="vs-btn vs-btn-primary" onClick={() => send()} disabled={loading || !input.trim()}>
+          <IconArrowRight size={16} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Publish panel                                                     */
+/* ---------------------------------------------------------------- */
+
+function PublishPanel({
+  page,
+  onUsernameChange,
+  onPageChange,
+}: {
+  page: VoicescapePage;
+  onUsernameChange: (u: string) => void;
+  onPageChange: (p: VoicescapePage) => void;
+}) {
+  const { account, getTxSender } = useWallet();
+  const { requireSession } = useSession();
+  const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  // Phase B: who owns this page — human or agent. Agents MUST disclose an
+  // operator wallet + purpose (the registry contract reverts otherwise).
+  const [ownerType, setOwnerType] = useState<"human" | "agent">(page.ownerType ?? "human");
+  const [operatorWallet, setOperatorWallet] = useState("");
+  const [operatorName, setOperatorName] = useState("");
+  const [operatorUrl, setOperatorUrl] = useState("");
+  const [purpose, setPurpose] = useState(page.purpose ?? "");
+  const chain = getActiveChain();
+  const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ?? "(not set)";
+
+  const usernameValid = USERNAME_RE.test(page.username);
+
+  /** Normalize an operator wallet to a 0x address (accepts 0.0.x or 0x). */
+  const normalizeOperator = (raw: string): string => {
+    const v = raw.trim();
+    if (/^0x[0-9a-fA-F]{40}$/.test(v)) return v.toLowerCase();
+    if (/^0\.0\.\d+$/.test(v)) {
+      // Long-zero account -> EVM address form for the registry's address field.
+      return ("0x" + BigInt(v.slice(4)).toString(16).padStart(40, "0")).toLowerCase();
+    }
+    throw new Error("Operator wallet must be a 0x address or a 0.0.x account id.");
+  };
+
+  const publish = async (isUpdate: boolean) => {
+    setStatus(null);
+    setTxHash(null);
+    try {
+      requireSession();
+    } catch {
+      setStatus({ kind: "err", text: "Sign in with your wallet first." });
+      return;
+    }
+    if (!account) {
+      setStatus({ kind: "err", text: "Connect a wallet first." });
+      return;
+    }
+    if (!usernameValid) {
+      setStatus({ kind: "err", text: "Username must be 3–24 chars: lowercase letters, numbers, hyphens." });
+      return;
+    }
+    // Validate agent disclosure BEFORE pinning/paying anything.
+    let operator = ZERO_ADDRESS;
+    let purposeText = "";
+    if (ownerType === "agent") {
+      try {
+        operator = normalizeOperator(operatorWallet);
+      } catch (e) {
+        setStatus({ kind: "err", text: e instanceof Error ? e.message : String(e) });
+        return;
+      }
+      purposeText = purpose.trim();
+      if (!purposeText) {
+        setStatus({ kind: "err", text: "Agent pages must disclose a purpose." });
+        return;
+      }
+    }
+    setBusy(true);
+    try {
+      // Stamp the page JSON with the informational owner type / purpose, and
+      // sync the operator block (if present) with the registration fields.
+      const stamped: VoicescapePage = {
+        ...page,
+        ownerType,
+        purpose: ownerType === "agent" ? purposeText : page.purpose,
+        blocks: page.blocks.map((b) =>
+          b.type === "operator" && ownerType === "agent"
+            ? { ...b, wallet: operator, name: operatorName.trim() || b.name, url: operatorUrl.trim() || b.url }
+            : b,
+        ),
+      };
+      if (!isValidPage(stamped)) throw new Error("Page failed schema validation.");
+      onPageChange(stamped);
+      // 1. Pin page JSON to IPFS (server-side via Pinata)
+      setStatus({ kind: "info", text: "Pinning page to IPFS…" });
+      const ipfsHash = await pinPageJson(JSON.stringify(stamped));
+      // 2. Register or update on-chain with the connected wallet
+      setStatus({ kind: "info", text: isUpdate ? "Updating page on-chain…" : "Registering page on-chain…" });
+      const sender = await getTxSender();
+      const hash = isUpdate
+        ? await updatePage(stamped.username, ipfsHash, sender)
+        : await registerPage(
+            stamped.username,
+            ipfsHash,
+            ownerType === "agent" ? 1 : 0,
+            operator,
+            purposeText,
+            sender,
+          );
+      setTxHash(hash);
+      setStatus({ kind: "ok", text: "Published!" });
+    } catch (e) {
+      setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="vb-pub vs-card">
+      <div className="vb-pub-head">
+        <span className="vb-pub-icon">
+          <IconBolt size={17} />
+        </span>
+        Publish
+      </div>
+
+      <label className="vb-field">
+        <span className="vs-label">Username</span>
+        <input
+          className="vs-input vs-mono"
+          value={page.username}
+          onChange={(e) => onUsernameChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+          placeholder="your-name"
+        />
+        {!usernameValid && page.username.length > 0 && (
+          <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
+        )}
+        <div className="vb-live-url">
+          Live URL after publish: <span className="vs-mono">/{page.username || "your-name"}</span>
+        </div>
+      </label>
+
+      <span className="vs-label">Page owner</span>
+      <div className="pv-rail-row" role="group" aria-label="Page owner type" style={{ marginBottom: 4 }}>
+        <button
+          type="button"
+          className={`pv-rail-btn${ownerType === "human" ? " is-active" : ""}`}
+          onClick={() => setOwnerType("human")}
+        >
+          <span className="pv-rail-name">🧑 Human</span>
+          <span className="pv-rail-amt">a person&apos;s page</span>
+        </button>
+        <button
+          type="button"
+          className={`pv-rail-btn${ownerType === "agent" ? " is-active" : ""}`}
+          onClick={() => setOwnerType("agent")}
+        >
+          <span className="pv-rail-name">🤖 Agent</span>
+          <span className="pv-rail-amt">AI-operated · disclosure required</span>
+        </button>
+      </div>
+
+      {ownerType === "agent" && (
+        <div className="vb-agent-fields">
+          <label className="vb-field">
+            <span className="vs-label">Operator wallet *</span>
+            <input
+              className="vs-input vs-mono"
+              value={operatorWallet}
+              onChange={(e) => setOperatorWallet(e.target.value)}
+              placeholder="0x… or 0.0.x — who is responsible for this agent"
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Purpose *</span>
+            <textarea
+              className="vs-input"
+              rows={2}
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value)}
+              placeholder="What is this agent for? (shown on the page + stored on-chain)"
+            />
+          </label>
+          <div className="vb-row">
+            <label className="vb-field" style={{ flex: 1 }}>
+              <span className="vs-label">Operator name</span>
+              <input
+                className="vs-input"
+                value={operatorName}
+                onChange={(e) => setOperatorName(e.target.value)}
+                placeholder="Optional"
+              />
+            </label>
+            <label className="vb-field" style={{ flex: 1 }}>
+              <span className="vs-label">Operator URL</span>
+              <input
+                className="vs-input"
+                value={operatorUrl}
+                onChange={(e) => setOperatorUrl(e.target.value)}
+                placeholder="https://…"
+              />
+            </label>
+          </div>
+          <p className="vb-agent-hint">
+            🤖 Agent pages always render with the loud AGENT PAGE banner and this operator disclosure —
+            read from the on-chain registry, so visitors can never mistake it for a human&apos;s page.
+          </p>
+        </div>
+      )}
+
+      <div className="vb-pub-meta">
+        <span className="vs-chip">
+          <IconBolt size={14} /> {chain.label}
+        </span>
+        <span className="vs-mono vb-registry" title={registry}>
+          Registry {truncMiddle(registry)}
+        </span>
+      </div>
+
+      <WalletConnect />
+
+      <div className="vb-pub-actions">
+        <button
+          type="button"
+          className="vs-btn vs-btn-primary"
+          onClick={() => publish(false)}
+          disabled={busy || !account || !usernameValid}
+        >
+          {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish new page</>)}
+        </button>
+        <button
+          type="button"
+          className="vs-btn vs-btn-ghost"
+          onClick={() => publish(true)}
+          disabled={busy || !account || !usernameValid}
+        >
+          {busy ? "Publishing…" : "Update existing"}
+        </button>
+      </div>
+
+      {status && <div className={`vb-status is-${status.kind}`}>{status.text}</div>}
+
+      {txHash && (
+        <div className="vb-tx">
+          <span className="vs-label">Transaction</span>
+          <a
+            className="vs-mono vb-tx-link"
+            href={`${chain.blockExplorer}/transaction/${txHash}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {truncMiddle(txHash, 10, 8)} <IconExternal size={14} />
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Builder page                                                      */
+/* ---------------------------------------------------------------- */
+
+const TABS = [
+  { id: "customize", label: "Customize", icon: <IconGrid size={16} /> },
+  { id: "ai", label: "AI", icon: <IconSpark size={16} /> },
+  { id: "publish", label: "Publish", icon: <IconBolt size={16} /> },
+] as const;
+
+type TabId = (typeof TABS)[number]["id"];
+
+function BuilderInner() {
+  const chain = getActiveChain();
+  const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
+  const [page, setPage] = useState<VoicescapePage>(() =>
+    JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage,
+  );
+  const [addType, setAddType] = useState<BlockType>("bio");
+  const [tab, setTab] = useState<TabId>("customize");
+  const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+
+  const template: Template = useMemo(
+    () => TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0],
+    [templateId],
+  );
+
+  // Any manual edit invalidates a pending AI draft so the preview never lies.
+  const editPage = (next: VoicescapePage | ((p: VoicescapePage) => VoicescapePage)) => {
+    setAiDraft(null);
+    setPage(next);
+  };
+
+  const pickTemplate = (t: Template) => {
+    setTemplateId(t.id);
+    // Deep-clone so edits don't mutate the template definition.
+    editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
+  };
+
+  const updateTheme = (key: keyof VoicescapePage["theme"], value: string) =>
+    editPage((p) => ({ ...p, theme: { ...p.theme, [key]: value } }));
+
+  // Apply calls onPageUpdate(pending); Discard drops the draft.
+  const applyDraft = () => {
+    if (!aiDraft) return;
+    const pending = aiDraft.page;
+    setAiDraft(null);
+    setPage(pending);
+  };
+  const discardDraft = () => setAiDraft(null);
+
+  return (
+    <div className="vb-shell">
+      {/* Header */}
+      <header className="vb-header">
+        <Link href="/" className="vb-logo-link" aria-label="Voicescape home">
+          <Logo size={30} withWordmark />
+        </Link>
+        <span className="vb-header-divider" />
+        <h1 className="vb-header-title">Page Builder</h1>
+        <div className="vb-header-spacer" />
+        <span className="vs-chip">
+          <IconBolt size={14} /> {chain.label}
+        </span>
+      </header>
+
+      <div className="vb-main">
+        {/* Left: controls */}
+        <div className="vb-controls">
+          <TemplatePicker activeId={templateId} onPick={pickTemplate} />
+
+          <div className="vb-tabs" role="tablist" aria-label="Builder panels">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={tab === t.id}
+                onClick={() => setTab(t.id)}
+                className={`vb-tab${tab === t.id ? " is-active" : ""}`}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+
+          {tab === "customize" && (
+            <>
+              <ThemeEditor theme={page.theme} onChange={updateTheme} />
+
+              <div>
+                <div className="vb-panel-title">Blocks</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {page.blocks.map((block, i) => (
+                    <BlockEditor
+                      key={i}
+                      block={block}
+                      index={i}
+                      onChange={(next) => editPage((p) => ({ ...p, blocks: setBlock(p.blocks, i, next) }))}
+                      onRemove={() =>
+                        editPage((p) => ({
+                          ...p,
+                          // Drop the profile-song ref if its music block is removed.
+                          profileSong:
+                            p.profileSong && p.profileSong.blockIndex === i
+                              ? undefined
+                              : p.profileSong &&
+                                  p.profileSong.blockIndex > i
+                                ? { ...p.profileSong, blockIndex: p.profileSong.blockIndex - 1 }
+                                : p.profileSong,
+                          blocks: p.blocks.filter((_, j) => j !== i),
+                        }))
+                      }
+                      profileSong={page.profileSong}
+                      onProfileSongChange={(ref) =>
+                        editPage((p) => ({ ...p, profileSong: ref }))
+                      }
+                    />
+                  ))}
+                </div>
+                <div className="vb-add-row">
+                  <select
+                    className="vs-input"
+                    value={addType}
+                    onChange={(e) => setAddType(e.target.value as BlockType)}
+                    aria-label="Block type to add"
+                  >
+                    {BLOCK_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="vs-btn vs-btn-primary"
+                    onClick={() => editPage((p) => ({ ...p, blocks: [...p.blocks, createDefaultBlock(addType, p.username)] }))}
+                  >
+                    <IconPlus size={16} /> Add block
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+
+          {tab === "ai" && (
+            <VibecodeChat
+              page={page}
+              draft={aiDraft}
+              onDraftChange={setAiDraft}
+              onApplyDraft={applyDraft}
+              onDiscardDraft={discardDraft}
+            />
+          )}
+
+          {tab === "publish" && (
+            <PublishPanel
+              page={page}
+              onUsernameChange={(u) => editPage((p) => ({ ...p, username: u }))}
+              onPageChange={(p) => editPage(p)}
+            />
+          )}
+        </div>
+
+        {/* Right: live preview */}
+        <div className="vb-preview">
+          {aiDraft ? (
+            <div className="vb-draft-wrap">
+              <div className="vb-draft-inner">
+                <div className="vb-draft-bar vs-glass">
+                  <span className="vb-draft-bar-text">
+                    <IconSpark size={16} /> Previewing AI changes
+                  </span>
+                  <div className="vb-draft-bar-actions">
+                    <button type="button" className="vs-btn vs-btn-ghost" onClick={discardDraft}>
+                      <IconClose size={14} /> Discard
+                    </button>
+                    <button type="button" className="vs-btn vs-btn-primary" onClick={applyDraft}>
+                      <IconCheck size={14} /> Apply
+                    </button>
+                  </div>
+                </div>
+                <PageRenderer page={aiDraft.page} />
+              </div>
+            </div>
+          ) : (
+            <PageRenderer page={page} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function BuilderPage() {
+  return (
+    <RequireSession
+      title="Sign in to build your page"
+      description="Connect your wallet and sign the sign-in message to open the page builder."
+    >
+      <BuilderInner />
+    </RequireSession>
+  );
+}

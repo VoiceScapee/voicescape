@@ -1,0 +1,898 @@
+/* ==================================================================
+   Voicescape Builder — layout + builder-specific components.
+   Shared design-system classes (.vs-*) come from app/globals.css.
+   Classes here are prefixed `.vb-` (voicescape builder) to avoid
+   collisions with other workstreams' styles.
+   ================================================================== */
+
+.vb-shell {
+  --vb-header-h: 64px;
+  min-height: 100dvh;
+  background: var(--vs-bg);
+  color: var(--vs-text);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ------------------------------------------------------------------ */
+/* Header                                                             */
+/* ------------------------------------------------------------------ */
+
+.vb-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  height: var(--vb-header-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  background: rgba(6, 6, 14, 0.82);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.vb-logo-link {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+}
+
+.vb-header-divider {
+  width: 1px;
+  height: 26px;
+  background: var(--vs-border);
+}
+
+.vb-header-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.vb-header-spacer {
+  flex: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Main layout: controls + preview                                    */
+/* ------------------------------------------------------------------ */
+
+.vb-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+  align-items: start;
+}
+
+.vb-controls {
+  position: sticky;
+  top: var(--vb-header-h);
+  max-height: calc(100dvh - var(--vb-header-h));
+  overflow-y: auto;
+  padding: 20px 20px 40px;
+  border-right: 1px solid var(--vs-border);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.vb-preview {
+  position: relative;
+  min-height: calc(100dvh - var(--vb-header-h));
+}
+
+/* ------------------------------------------------------------------ */
+/* Panel titles / tabs                                                */
+/* ------------------------------------------------------------------ */
+
+.vb-panel-title {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vs-muted);
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.vb-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+}
+
+.vb-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 8px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--vs-muted);
+  font-family: var(--vs-font);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.vb-tab:hover {
+  color: var(--vs-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.vb-tab.is-active {
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
+  color: #06060e;
+  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.35);
+}
+
+/* ------------------------------------------------------------------ */
+/* Template picker                                                    */
+/* ------------------------------------------------------------------ */
+
+.vb-template-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.vb-template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+  border-radius: var(--vs-radius);
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+  color: var(--vs-text);
+  font-family: var(--vs-font);
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.vb-template-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(139, 92, 246, 0.55);
+}
+
+.vb-template-card.is-selected {
+  border-color: var(--vb-accent, var(--vs-violet));
+  box-shadow:
+    0 0 0 1px var(--vb-accent, var(--vs-violet)),
+    0 0 26px rgba(139, 92, 246, 0.35);
+}
+
+.vb-template-swatch {
+  display: block;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.vb-template-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.vb-template-desc {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--vs-muted);
+}
+
+.vb-template-check {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
+  color: #06060e;
+}
+
+/* ------------------------------------------------------------------ */
+/* Block editors                                                      */
+/* ------------------------------------------------------------------ */
+
+.vb-block {
+  padding: 14px;
+  animation: vsFadeUp 0.4s ease both;
+}
+
+.vb-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.vb-block-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vs-cyan);
+}
+
+.vb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid var(--vs-border);
+  background: transparent;
+  color: var(--vs-muted);
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.vb-icon-btn:hover {
+  color: var(--vs-text);
+  border-color: var(--vs-cyan);
+}
+
+.vb-icon-btn-danger:hover {
+  color: #ff8f8f;
+  border-color: rgba(255, 107, 107, 0.6);
+  background: rgba(255, 107, 107, 0.08);
+}
+
+.vb-field {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.vb-field:last-child {
+  margin-bottom: 0;
+}
+
+.vb-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.vb-row .vs-input {
+  margin: 0;
+}
+
+.vb-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.vb-add-row .vs-input {
+  width: auto;
+}
+
+.vb-entry {
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.vb-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--vs-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ------------------------------------------------------------------ */
+/* Theme editor                                                       */
+/* ------------------------------------------------------------------ */
+
+.vb-theme {
+  padding: 14px;
+}
+
+.vb-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.vb-theme-row .vs-label {
+  margin: 0;
+  width: 92px;
+  flex-shrink: 0;
+}
+
+.vb-hex {
+  font-size: 12px;
+  color: var(--vs-muted);
+}
+
+.vb-swatch {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid var(--vs-border);
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.vb-swatch input[type="color"] {
+  position: absolute;
+  inset: -10px;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  opacity: 0;
+}
+
+select.vs-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--vs-muted) 50%),
+    linear-gradient(135deg, var(--vs-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 15px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+select.vs-input option {
+  background: var(--vs-bg2);
+  color: var(--vs-text);
+}
+
+/* ------------------------------------------------------------------ */
+/* Vibecode chat                                                      */
+/* ------------------------------------------------------------------ */
+
+.vb-chat {
+  display: flex;
+  flex-direction: column;
+  height: 380px;
+  overflow: hidden;
+}
+
+.vb-chat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--vs-border);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.vb-chat-head .vb-spark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-magenta));
+  color: #06060e;
+}
+
+.vb-chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vb-bubble {
+  max-width: 88%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  animation: vsFadeUp 0.3s ease both;
+  word-break: break-word;
+}
+
+.vb-bubble-user {
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--vs-violet), #6d28d9);
+  color: #fff;
+  border-bottom-right-radius: 5px;
+}
+
+.vb-bubble-assistant {
+  align-self: flex-start;
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  color: var(--vs-text);
+  border-bottom-left-radius: 5px;
+}
+
+.vb-bubble-error {
+  align-self: flex-start;
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.45);
+  color: #ffb4b4;
+  border-bottom-left-radius: 5px;
+}
+
+.vb-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 12px;
+}
+
+.vb-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  background: rgba(139, 92, 246, 0.1);
+  color: #cdb4ff;
+  font-family: var(--vs-font);
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.vb-chip-btn:hover:not(:disabled) {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: var(--vs-violet);
+  transform: translateY(-1px);
+}
+
+.vb-chip-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.vb-dreaming {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: flex-start;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+  font-size: 14px;
+}
+
+.vb-dreaming-orb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan), var(--vs-magenta));
+  background-size: 200% 200%;
+  animation: vsPulseGlow 1.2s ease-in-out infinite, vbOrbSpin 2.4s linear infinite;
+}
+
+@keyframes vbOrbSpin {
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+
+.vb-shimmer-text {
+  background: linear-gradient(90deg, var(--vs-muted) 25%, #fff 50%, var(--vs-muted) 75%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: vsShimmer 1.6s linear infinite;
+}
+
+.vb-chat-input-row {
+  display: flex;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--vs-border);
+}
+
+.vb-chat-input-row .vs-input {
+  margin: 0;
+}
+
+/* AI draft summary card inside the chat */
+.vb-draft-summary {
+  align-self: flex-start;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.06);
+  padding: 12px 14px;
+  animation: vsFadeUp 0.3s ease both;
+}
+
+.vb-draft-summary-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vs-cyan);
+  margin-bottom: 8px;
+}
+
+.vb-draft-summary ul {
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vb-draft-summary li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vs-text);
+}
+
+.vb-draft-summary li svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--vs-cyan);
+}
+
+.vb-draft-summary-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------------ */
+/* AI draft preview overlay + floating bar                            */
+/* ------------------------------------------------------------------ */
+
+.vb-draft-wrap {
+  border-radius: 18px;
+  padding: 2px;
+  margin: 12px;
+  background: linear-gradient(120deg, var(--vs-violet), var(--vs-cyan), var(--vs-magenta), var(--vs-violet));
+  background-size: 300% 300%;
+  animation: vbBorderFlow 4s linear infinite;
+}
+
+@keyframes vbBorderFlow {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.vb-draft-inner {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--vs-bg);
+}
+
+.vb-draft-bar {
+  position: sticky;
+  top: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 12px 12px 0;
+  padding: 10px 12px 10px 16px;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.vb-draft-bar-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+
+.vb-draft-bar-text svg {
+  color: var(--vs-magenta);
+  flex-shrink: 0;
+}
+
+.vb-draft-bar-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.vb-draft-bar-actions .vs-btn {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.vb-draft-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+}
+
+/* ------------------------------------------------------------------ */
+/* Publish panel                                                      */
+/* ------------------------------------------------------------------ */
+
+.vb-pub {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vb-pub-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.vb-pub-head .vb-pub-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--vs-cyan), var(--vs-violet));
+  color: #06060e;
+}
+
+.vb-live-url {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--vs-muted);
+}
+
+.vb-live-url .vs-mono {
+  color: var(--vs-cyan);
+}
+
+.vb-username-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #ff9d9d;
+}
+
+.vb-pub-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.vb-registry {
+  font-size: 12px;
+  color: var(--vs-muted);
+}
+
+.vb-pub-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vb-pub-actions .vs-btn {
+  flex: 1;
+  justify-content: center;
+  min-width: 150px;
+}
+
+.vb-status {
+  font-size: 14px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+  animation: vsFadeUp 0.3s ease both;
+}
+
+.vb-status.is-ok {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: rgba(52, 211, 153, 0.08);
+  color: #a7f3d0;
+}
+
+.vb-status.is-err {
+  border-color: rgba(255, 107, 107, 0.5);
+  background: rgba(255, 107, 107, 0.08);
+  color: #ffb4b4;
+}
+
+.vb-tx {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vb-tx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--vs-cyan);
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.vb-tx-link:hover {
+  text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ */
+/* Responsive                                                         */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 960px) {
+  .vb-main {
+    grid-template-columns: 1fr;
+  }
+
+  .vb-controls {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    border-right: none;
+    border-bottom: 1px solid var(--vs-border);
+    padding: 16px 16px 28px;
+  }
+
+  .vb-tabs {
+    position: sticky;
+    top: var(--vb-header-h);
+    z-index: 40;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+
+  .vb-preview {
+    min-height: 70vh;
+  }
+
+  .vb-header {
+    padding: 0 14px;
+    gap: 10px;
+  }
+
+  .vb-header-title {
+    font-size: 14px;
+  }
+
+  .vb-draft-wrap {
+    margin: 8px;
+  }
+}
+
+/* ---------- Phase B: agent registration fields ---------- */
+
+.vb-agent-fields {
+  margin: 4px 0 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px dashed rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.06);
+}
+
+.vb-agent-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--vs-muted, #9a9ab0);
+  margin: 8px 0 0;
+}
+
+/* Reuse the public-page rail picker inside the builder publish panel. */
+.vb-pub .pv-rail-row {
+  margin-top: 6px;
+}
+
+.vb-pub .pv-rail-btn {
+  font-family: var(--vs-font, system-ui, sans-serif);
+}
+
+/* ---------- Phase B: x402 pay-per-edit ---------- */
+
+.vb-paymode {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.vb-x402-box {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--vs-border, rgba(255,255,255,0.12));
+  background: rgba(34, 211, 238, 0.05);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.vb-x402-box .pv-rail-row {
+  margin: 10px 0;
+}
+
+.vb-x402-status {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--vs-muted, #9a9ab0);
+}
+
+.vb-x402-status.is-err {
+  color: #f87171;
+}
+
+.vb-x402-status.is-ok {
+  color: #4ade80;
+}
+
+.vb-chip-btn.is-active {
+  background: rgba(139, 92, 246, 0.32);
+  border-color: var(--vs-violet, #8b5cf6);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------- music track editor ---------- */
+
+.vb-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #ff9d9d;
+}
+
+.vs-hint {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.vb-icon-btn.is-active {
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.5);
+}

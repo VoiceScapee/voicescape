@@ -1,0 +1,721 @@
+/* Town Hall layer — mobile-first, matches the Voicescape design system. */
+
+.th-shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(900px 480px at 12% -8%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(760px 420px at 92% 4%, rgba(34, 211, 238, 0.1), transparent 60%),
+    var(--vs-bg);
+}
+
+.th-main {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 16px 72px;
+}
+
+/* Wide desktop: use the extra room instead of stretching a narrow column. */
+@media (min-width: 1280px) {
+  .th-main,
+  .th-identity {
+    max-width: 1080px;
+  }
+}
+
+.th-nav {
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.th-nav-link {
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--vs-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.th-nav-link:hover {
+  color: var(--vs-text);
+  background: rgba(139, 92, 246, 0.12);
+}
+
+.th-nav-link.is-active {
+  color: var(--vs-text);
+  background: rgba(139, 92, 246, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.4);
+}
+
+/* Identity bar */
+.th-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--vs-muted);
+  border-bottom: 1px solid var(--vs-border);
+}
+
+.th-identity-name {
+  color: var(--vs-cyan);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.th-identity-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--vs-violet);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: var(--vs-font);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.th-identity-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1 1 100%;
+}
+
+.th-identity-input {
+  max-width: 240px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+/* Headings / layout */
+.th-page-head {
+  margin: 8px 0 18px;
+}
+
+.th-page-head h1 {
+  font-size: clamp(1.5rem, 5vw, 2.1rem);
+  margin: 0 0 6px;
+}
+
+.th-page-head p {
+  color: var(--vs-muted);
+  margin: 0;
+  line-height: 1.6;
+  font-size: 14.5px;
+}
+
+.th-h2 {
+  font-size: 1.15rem;
+  margin: 0 0 12px;
+}
+
+.th-section {
+  margin-bottom: 28px;
+}
+
+/* Cards */
+.th-card {
+  background: var(--vs-panel);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  padding: 18px;
+  margin-bottom: 12px;
+  animation: vsFadeUp 0.5s ease both;
+}
+
+.th-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.th-card-link:hover {
+  border-color: rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 22px rgba(139, 92, 246, 0.18);
+}
+
+.th-card h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.th-card p {
+  margin: 6px 0;
+  color: var(--vs-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.th-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.th-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.th-muted {
+  color: var(--vs-muted);
+  font-size: 13.5px;
+}
+
+.th-error {
+  color: #f87171;
+  font-size: 13.5px;
+}
+
+.th-btn-sm {
+  padding: 9px 20px;
+  font-size: 14px;
+}
+
+.th-btn-block {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.th-icon-btn {
+  background: none;
+  border: none;
+  color: var(--vs-muted);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+}
+
+.th-icon-btn:hover {
+  color: var(--vs-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* Posts */
+.th-post-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.th-post {
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  animation: vsFadeUp 0.4s ease both;
+}
+
+.th-post-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.th-post-author {
+  font-weight: 700;
+  color: var(--vs-cyan);
+  text-decoration: none;
+  font-size: 14.5px;
+}
+
+.th-post-author:hover {
+  text-decoration: underline;
+}
+
+.th-post-ts {
+  color: var(--vs-muted);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.th-post-body {
+  margin: 0 0 10px;
+  line-height: 1.65;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.th-post-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.th-action {
+  background: none;
+  border: 1px solid var(--vs-border);
+  border-radius: 999px;
+  color: var(--vs-muted);
+  font-family: var(--vs-font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.th-action:hover {
+  color: var(--vs-text);
+  border-color: var(--vs-cyan);
+}
+
+.th-action.is-tip:hover {
+  border-color: var(--vs-violet);
+  color: #d8c7ff;
+}
+
+.th-action.is-danger {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.th-action.is-danger:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
+.th-action:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Composer */
+.th-composer {
+  background: var(--vs-panel);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.th-textarea {
+  resize: vertical;
+  min-height: 64px;
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+/* Dust fee gate */
+.th-dust {
+  margin-top: 12px;
+  border: 1px dashed rgba(139, 92, 246, 0.6);
+  border-radius: 12px;
+  padding: 14px 16px;
+  background: rgba(139, 92, 246, 0.08);
+  animation: vsFadeUp 0.3s ease both;
+}
+
+.th-dust.is-error {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.07);
+}
+
+.th-dust-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.th-dust p {
+  font-size: 13.5px;
+  color: var(--vs-muted);
+  margin: 6px 0;
+  line-height: 1.6;
+}
+
+.th-dust-treasury {
+  font-size: 12px;
+  color: var(--vs-cyan);
+}
+
+/* Reputation */
+.th-rep {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--vs-mono);
+  border: 1px solid var(--vs-border);
+  color: var(--vs-muted);
+}
+
+.th-rep.is-good {
+  color: #6ee7b7;
+  border-color: rgba(110, 231, 183, 0.4);
+  background: rgba(110, 231, 183, 0.08);
+}
+
+.th-rep.is-bad {
+  color: #fca5a5;
+  border-color: rgba(252, 165, 165, 0.4);
+  background: rgba(252, 165, 165, 0.08);
+}
+
+.th-rep.is-compact {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.th-votes {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.th-vote {
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 999px;
+  color: var(--vs-muted);
+  font-family: var(--vs-mono);
+  font-size: 13px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.th-vote:hover {
+  color: var(--vs-text);
+  border-color: var(--vs-cyan);
+}
+
+.th-vote.is-active {
+  color: #06060e;
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.th-vote:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Modal */
+.th-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgba(4, 4, 10, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+@media (min-width: 640px) {
+  .th-modal-overlay {
+    align-items: center;
+  }
+}
+
+.th-modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--vs-panel);
+  border: 1px solid var(--vs-border);
+  border-radius: 18px;
+  padding: 20px;
+  animation: vsFadeUp 0.3s ease both;
+}
+
+.th-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.th-modal-head h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.th-chip-row {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.th-chip {
+  flex: 1;
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 10px;
+  color: var(--vs-text);
+  font-family: var(--vs-font);
+  font-weight: 700;
+  font-size: 15px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.th-chip.is-active {
+  border-color: var(--vs-violet);
+  background: rgba(139, 92, 246, 0.18);
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.3);
+}
+
+.th-tip-done {
+  text-align: center;
+  color: var(--vs-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.th-tip-done svg {
+  color: #6ee7b7;
+  margin-bottom: 8px;
+}
+
+.th-tx {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  color: var(--vs-cyan);
+  margin: 10px 0;
+}
+
+/* Governance */
+.th-tally {
+  display: flex;
+  gap: 12px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.th-tally-item {
+  font-family: var(--vs-mono);
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-border);
+  color: var(--vs-muted);
+}
+
+.th-tally-item.is-yes {
+  color: #6ee7b7;
+  border-color: rgba(110, 231, 183, 0.4);
+}
+
+.th-tally-item.is-no {
+  color: #fca5a5;
+  border-color: rgba(252, 165, 165, 0.4);
+}
+
+.th-countdown {
+  font-family: var(--vs-mono);
+  font-size: 12.5px;
+  color: var(--vs-cyan);
+}
+
+.th-countdown.is-closed {
+  color: var(--vs-muted);
+}
+
+.th-vote-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+/* Chat */
+.th-chat-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  min-height: 40vh;
+}
+
+.th-chat-msg {
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 12px;
+  padding: 10px 14px;
+  animation: vsFadeUp 0.25s ease both;
+}
+
+.th-chat-msg.is-mine {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.th-chat-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+
+.th-chat-body {
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.th-chat-status {
+  font-size: 12.5px;
+  font-family: var(--vs-mono);
+  margin-bottom: 10px;
+}
+
+.th-chat-status.is-live {
+  color: #6ee7b7;
+}
+
+.th-chat-status.is-retry {
+  color: #fbbf24;
+}
+
+.th-composer-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+.th-composer-row .vs-input {
+  flex: 1;
+}
+
+/* Marketplace */
+.th-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .th-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Wide desktop: three-up listing grid. */
+@media (min-width: 1100px) {
+  .th-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.th-price {
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 8px 0 2px;
+}
+
+.th-price-sub {
+  font-size: 12.5px;
+  color: var(--vs-muted);
+  font-family: var(--vs-mono);
+}
+
+.th-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid var(--vs-border);
+  color: var(--vs-muted);
+}
+
+.th-badge.is-physical {
+  color: var(--vs-cyan);
+  border-color: rgba(34, 211, 238, 0.4);
+}
+
+.th-badge.is-digital {
+  color: var(--vs-magenta);
+  border-color: rgba(232, 121, 249, 0.4);
+}
+
+.th-badge.is-sold {
+  color: #fca5a5;
+  border-color: rgba(252, 165, 165, 0.45);
+}
+
+.th-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.th-segment {
+  display: flex;
+  border: 1px solid var(--vs-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.th-segment button {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--vs-muted);
+  font-family: var(--vs-font);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.th-segment button.is-active {
+  background: rgba(139, 92, 246, 0.2);
+  color: var(--vs-text);
+}
+
+.th-note {
+  font-size: 13px;
+  color: var(--vs-muted);
+  line-height: 1.65;
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.th-wall-item {
+  position: relative;
+}
+
+.th-wall-item > .th-action.is-danger {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+.th-wall-item .th-post {
+  padding-right: 76px;
+}
+
+.th-wall {
+  margin-top: 40px;
+}

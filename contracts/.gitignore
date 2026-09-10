@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# env / secrets — NEVER commit real keys
+.env
+.env.local
+*.pem
+*.key
+
+# hardhat
+artifacts/
+cache/
+coverage/
+typechain-types/

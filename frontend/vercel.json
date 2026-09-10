@@ -1,0 +1,1 @@
+{"$schema":"https://openapi.vercel.sh/vercel.json","functions":{"app/api/pin/route.ts":{"maxDuration":60},"app/api/townhall/chat/[room]/stream/route.ts":{"maxDuration":60},"app/api/vibecode/route.ts":{"maxDuration":60}}}

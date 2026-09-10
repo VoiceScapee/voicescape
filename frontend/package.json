@@ -1,0 +1,32 @@
+{
+  "name": "voicescape-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "townhall:init": "tsx scripts/townhall-init.ts"
+  },
+  "dependencies": {
+    "@hashgraph/sdk": "^2.41.0",
+    "@x402/core": "^2.25.0",
+    "@x402/fetch": "^2.25.0",
+    "@x402/hedera": "^2.25.0",
+    "ethers": "^6.17.0",
+    "hashconnect": "^3.0.14",
+    "next": "14.2.13",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "^3.2.4"
+  }
+}

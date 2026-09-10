@@ -1,0 +1,263 @@
+/* Voicescape design system — hand-rolled CSS (no Tailwind). */
+
+:root {
+  --vs-bg: #06060e;
+  --vs-bg2: #0b0b18;
+  --vs-panel: #101022;
+  --vs-violet: #8b5cf6;
+  --vs-cyan: #22d3ee;
+  --vs-magenta: #e879f9;
+  --vs-text: #f2f2fa;
+  --vs-muted: #9a9ab5;
+  --vs-border: rgba(255, 255, 255, 0.1);
+  --vs-glass: rgba(255, 255, 255, 0.055);
+  --vs-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --vs-font: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --vs-radius: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: var(--vs-bg);
+  color: var(--vs-text);
+  font-family: var(--vs-font);
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+a {
+  color: inherit;
+}
+
+/* ------------------------------------------------------------------ */
+/* Utility classes                                                     */
+/* ------------------------------------------------------------------ */
+
+.vs-glass {
+  background: var(--vs-glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+}
+
+.vs-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 26px;
+  border-radius: 999px;
+  font-family: var(--vs-font);
+  font-size: 16px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+
+.vs-btn-primary {
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
+  color: #06060e;
+  box-shadow: 0 0 24px rgba(139, 92, 246, 0.45), 0 4px 18px rgba(34, 211, 238, 0.25);
+}
+
+.vs-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 36px rgba(139, 92, 246, 0.6), 0 6px 24px rgba(34, 211, 238, 0.35);
+}
+
+.vs-btn-ghost {
+  background: transparent;
+  color: var(--vs-text);
+  border-color: var(--vs-border);
+}
+
+.vs-btn-ghost:hover {
+  border-color: var(--vs-cyan);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.25);
+}
+
+.vs-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.vs-card {
+  background: var(--vs-panel);
+  border: 1px solid var(--vs-border);
+  border-radius: var(--vs-radius);
+  padding: 28px;
+}
+
+.vs-input {
+  width: 100%;
+  background: var(--vs-bg2);
+  border: 1px solid var(--vs-border);
+  border-radius: 10px;
+  color: var(--vs-text);
+  padding: 10px 14px;
+  font-family: var(--vs-font);
+  font-size: 15px;
+}
+
+.vs-input::placeholder {
+  color: var(--vs-muted);
+}
+
+.vs-label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vs-muted);
+  margin-bottom: 6px;
+}
+
+.vs-mono {
+  font-family: var(--vs-mono);
+}
+
+.vs-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+  font-family: var(--vs-mono);
+  font-size: 12px;
+  color: var(--vs-muted);
+}
+
+.vs-gradient-text {
+  background: linear-gradient(90deg, var(--vs-violet), var(--vs-cyan), var(--vs-magenta));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.vs-section {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 72px 24px;
+}
+
+.vs-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.vs-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 720px) {
+  .vs-grid-2,
+  .vs-grid-3 {
+    grid-template-columns: 1fr;
+  }
+  .vs-section {
+    padding: 48px 18px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Keyframes                                                           */
+/* ------------------------------------------------------------------ */
+
+@keyframes vsFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes vsFloat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-18px);
+  }
+}
+
+@keyframes vsPulseGlow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes vsShimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes vsSpinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.vs-anim-fade-up {
+  animation: vsFadeUp 0.8s ease both;
+}
+
+.vs-anim-float {
+  animation: vsFloat 7s ease-in-out infinite;
+}
+
+.vs-anim-pulse-glow {
+  animation: vsPulseGlow 3.2s ease-in-out infinite;
+}
+
+.vs-anim-shimmer {
+  background: linear-gradient(100deg, var(--vs-panel) 40%, #1b1b30 50%, var(--vs-panel) 60%);
+  background-size: 200% 100%;
+  animation: vsShimmer 1.6s linear infinite;
+}
+
+.vs-anim-spin-slow {
+  animation: vsSpinSlow 14s linear infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Accessibility                                                       */
+/* ------------------------------------------------------------------ */
+
+:focus-visible {
+  outline: 2px solid var(--vs-cyan);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.5);
+}
