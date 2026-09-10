@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
+import { VoiceInput } from "@/components/VoiceInput";
 import {
   IconArrowRight,
   IconBolt,
@@ -358,20 +359,24 @@ function BlockEditor({
         <>
           <label className="vb-field">
             <span className="vs-label">Title</span>
-            <input
+            <VoiceInput
               className="vs-input"
+              multiline={false}
               value={block.title}
-              placeholder="Title"
-              onChange={(e) => onChange({ ...block, title: e.target.value })}
+              onChange={(title) => onChange({ ...block, title })}
+              placeholder="Title — type or tap the mic to dictate"
+              ariaLabel="Hero title"
             />
           </label>
           <label className="vb-field">
             <span className="vs-label">Subtitle</span>
-            <input
+            <VoiceInput
               className="vs-input"
+              multiline={false}
               value={block.subtitle ?? ""}
+              onChange={(subtitle) => onChange({ ...block, subtitle })}
               placeholder="Subtitle (optional)"
-              onChange={(e) => onChange({ ...block, subtitle: e.target.value })}
+              ariaLabel="Hero subtitle"
             />
           </label>
           <label className="vb-field">
@@ -389,11 +394,13 @@ function BlockEditor({
       {block.type === "bio" && (
         <label className="vb-field">
           <span className="vs-label">Bio text</span>
-          <textarea
+          <VoiceInput
             className="vs-input"
             rows={3}
             value={block.text}
-            onChange={(e) => onChange({ ...block, text: e.target.value })}
+            onChange={(text) => onChange({ ...block, text })}
+            placeholder="Tell your story — type or tap the mic to dictate"
+            ariaLabel="Bio text"
           />
         </label>
       )}
@@ -608,23 +615,38 @@ function BlockEditor({
               </div>
               {(
                 [
-                  ["name", "Name", "Summarize URL"],
-                  ["description", "Description", "What the endpoint does"],
-                  ["endpoint", "Endpoint URL", "https://…"],
+                  ["name", "Name", "Summarize URL", false],
+                  ["description", "Description", "What the endpoint does — type or dictate", true],
+                  ["endpoint", "Endpoint URL", "https://…", false],
                 ] as const
-              ).map(([key, label, ph]) => (
+              ).map(([key, label, ph, voice]) => (
                 <label className="vb-field" key={key}>
                   <span className="vs-label">{label}</span>
-                  <input
-                    className="vs-input"
-                    value={s[key]}
-                    placeholder={ph}
-                    onChange={(e) => {
-                      const items = [...block.items];
-                      items[i] = { ...items[i], [key]: e.target.value };
-                      onChange({ ...block, items });
-                    }}
-                  />
+                  {voice ? (
+                    <VoiceInput
+                      className="vs-input"
+                      multiline={false}
+                      value={s[key]}
+                      placeholder={ph}
+                      ariaLabel={label}
+                      onChange={(v) => {
+                        const items = [...block.items];
+                        items[i] = { ...items[i], [key]: v };
+                        onChange({ ...block, items });
+                      }}
+                    />
+                  ) : (
+                    <input
+                      className="vs-input"
+                      value={s[key]}
+                      placeholder={ph}
+                      onChange={(e) => {
+                        const items = [...block.items];
+                        items[i] = { ...items[i], [key]: e.target.value };
+                        onChange({ ...block, items });
+                      }}
+                    />
+                  )}
                 </label>
               ))}
               <label className="vb-field">
