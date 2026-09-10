@@ -214,8 +214,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         let activeAccount = account;
         if ((!activeAdapter || !activeAccount) && targetAdapter) {
           // connect() resolves with the account, so no re-render wait needed.
+          // If it fails, propagate the actual wallet error instead of a generic message.
           activeAccount = await wallet.connect(targetAdapter);
           activeAdapter = targetAdapter;
+          if (!activeAccount) {
+            // wallet.connect() sets wallet.error with the specific failure reason.
+            // Throw that instead of the generic "Connect a wallet first."
+            throw new Error(wallet.error || "Wallet connection failed. Please try again.");
+          }
         }
         if (!activeAdapter || !activeAccount) {
           throw new Error("Connect a wallet first.");
@@ -440,7 +446,6 @@ function SignInButton() {
       </button>
       {showOptions && (
         <div
-          className="vs-glass"
           style={{
             position: "absolute",
             left: "50%",
@@ -450,6 +455,10 @@ function SignInButton() {
             minWidth: 220,
             padding: 6,
             overflow: "hidden",
+            background: "#101022",
+            border: "1px solid var(--vs-border)",
+            borderRadius: "var(--vs-radius)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
           }}
         >
           {options.map((o) => (

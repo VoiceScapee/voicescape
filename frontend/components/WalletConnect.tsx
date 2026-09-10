@@ -177,7 +177,6 @@ export function WalletConnect() {
       </button>
       {showOptions && (
         <div
-          className="vs-glass"
           style={{
             position: "absolute",
             right: 0,
@@ -186,6 +185,10 @@ export function WalletConnect() {
             minWidth: 210,
             padding: 6,
             overflow: "hidden",
+            background: "#101022",
+            border: "1px solid var(--vs-border)",
+            borderRadius: "var(--vs-radius)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
           }}
         >
           {options.map((o) => (
