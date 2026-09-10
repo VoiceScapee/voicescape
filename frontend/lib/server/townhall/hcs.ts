@@ -17,6 +17,7 @@ import {
 } from "@hashgraph/sdk";
 import { mirrorBaseUrl, townhallNetwork } from "./topics";
 import type { StoredMessage, TownhallMessage } from "./types";
+import { globalHcsCache, type HcsCache } from "./hcs-cache";
 
 export interface QueryOpts {
   /** Only messages with seq greater than this. */
@@ -177,8 +178,75 @@ export class MemoryHcsClient implements HcsPort {
 
 let singleton: HcsPort | null = null;
 
-/** Default port used by the API routes (real HCS client). */
+/** Options for the CachedHcsClient wrapper (tests tune the TTLs down). */
+export interface CachedHcsClientOpts {
+  /** TTL for single-page query() results. Default 15s. */
+  queryTtlSeconds?: number;
+  /** TTL for queryAll() history results. Default 30s. */
+  queryAllTtlSeconds?: number;
+}
+
+/**
+ * Read-through caching wrapper around any HcsPort.
+ *
+ * `query()` results are cached per (topic, afterSeq, limit) for a short TTL
+ * (chat/stream polls repeat the same query every few seconds), and
+ * `queryAll()` history for a longer TTL. `submit()` invalidates the whole
+ * topic's cache, so a write is immediately visible to subsequent reads.
+ * All cache failures are fail-open: a missed/failed cache is just a plain
+ * uncached call to the wrapped port.
+ */
+export class CachedHcsClient implements HcsPort {
+  private readonly queryTtlSeconds: number;
+  private readonly queryAllTtlSeconds: number;
+
+  constructor(
+    private readonly inner: HcsPort,
+    private readonly cache: HcsCache = globalHcsCache(),
+    opts: CachedHcsClientOpts = {},
+  ) {
+    this.queryTtlSeconds = opts.queryTtlSeconds ?? 15;
+    this.queryAllTtlSeconds = opts.queryAllTtlSeconds ?? 30;
+  }
+
+  async submit(topicId: string, message: object): Promise<number> {
+    const seq = await this.inner.submit(topicId, message);
+    await this.cache.invalidateTopic(topicId);
+    return seq;
+  }
+
+  async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
+    // Clamp before building the key so it matches RealHcsClient's behavior.
+    const limit = Math.min(opts.limit ?? 100, 100);
+    const after = opts.afterSeq ?? 0;
+    const key = `${topicId}:${after}:${limit}`;
+    const hit = await this.cache.get<StoredMessage<T>[]>(key);
+    if (hit !== null) {
+      console.debug(`[hcs-cache] query hit ${key}`);
+      return hit;
+    }
+    console.debug(`[hcs-cache] query miss ${key}`);
+    const res = await this.inner.query<T>(topicId, { ...opts, limit });
+    await this.cache.set(key, res, this.queryTtlSeconds);
+    return res;
+  }
+
+  async queryAll<T = TownhallMessage>(topicId: string, max = 2000): Promise<StoredMessage<T>[]> {
+    const key = `${topicId}:all:${max}`;
+    const hit = await this.cache.get<StoredMessage<T>[]>(key);
+    if (hit !== null) {
+      console.debug(`[hcs-cache] queryAll hit ${key}`);
+      return hit;
+    }
+    console.debug(`[hcs-cache] queryAll miss ${key}`);
+    const res = await this.inner.queryAll<T>(topicId, max);
+    await this.cache.set(key, res, this.queryAllTtlSeconds);
+    return res;
+  }
+}
+
+/** Default port used by the API routes (cached real HCS client). */
 export function defaultHcsPort(): HcsPort {
-  if (!singleton) singleton = new RealHcsClient();
+  if (!singleton) singleton = new CachedHcsClient(new RealHcsClient());
   return singleton;
 }
