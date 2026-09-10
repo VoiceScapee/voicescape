@@ -4,7 +4,7 @@ interface LogoProps {
 }
 
 /**
- * Voicescape mark: a hexagonal node with a violet→cyan gradient and two
+ * Voicescape mark: a hexagonal node with an emerald→mint gradient and two
  * orbiting dots, plus an optional gradient wordmark.
  */
 export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
@@ -29,8 +29,8 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
       >
         <defs>
           <linearGradient id={gid} x1="8" y1="6" x2="40" y2="42" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#8b5cf6" />
-            <stop offset="1" stopColor="#22d3ee" />
+            <stop offset="0" stopColor="#10b981" />
+            <stop offset="1" stopColor="#34d399" />
           </linearGradient>
         </defs>
         {/* hexagon */}
@@ -51,8 +51,8 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
           opacity="0.85"
         />
         {/* orbiting dots */}
-        <circle cx="11.5" cy="13" r="2.1" fill="#e879f9" />
-        <circle cx="36" cy="35" r="2.1" fill="#22d3ee" />
+        <circle cx="11.5" cy="13" r="2.1" fill="#6ee7b7" />
+        <circle cx="36" cy="35" r="2.1" fill="#34d399" />
       </svg>
       {withWordmark && (
         <span

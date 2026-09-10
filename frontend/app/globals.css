@@ -4,9 +4,9 @@
   --vs-bg: #06060e;
   --vs-bg2: #0b0b18;
   --vs-panel: #101022;
-  --vs-violet: #8b5cf6;
-  --vs-cyan: #22d3ee;
-  --vs-magenta: #e879f9;
+  --vs-violet: #10b981;
+  --vs-cyan: #34d399;
+  --vs-magenta: #6ee7b7;
   --vs-text: #f2f2fa;
   --vs-muted: #9a9ab5;
   --vs-border: rgba(255, 255, 255, 0.1);
@@ -66,12 +66,12 @@ a {
 .vs-btn-primary {
   background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
   color: #06060e;
-  box-shadow: 0 0 24px rgba(139, 92, 246, 0.45), 0 4px 18px rgba(34, 211, 238, 0.25);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.45), 0 4px 18px rgba(52, 211, 153, 0.25);
 }
 
 .vs-btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 0 36px rgba(139, 92, 246, 0.6), 0 6px 24px rgba(34, 211, 238, 0.35);
+  box-shadow: 0 0 36px rgba(16, 185, 129, 0.6), 0 6px 24px rgba(52, 211, 153, 0.35);
 }
 
 .vs-btn-ghost {
@@ -82,7 +82,7 @@ a {
 
 .vs-btn-ghost:hover {
   border-color: var(--vs-cyan);
-  box-shadow: 0 0 18px rgba(34, 211, 238, 0.25);
+  box-shadow: 0 0 18px rgba(52, 211, 153, 0.25);
 }
 
 .vs-btn:disabled {
@@ -259,5 +259,5 @@ a {
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.5);
+  background: rgba(16, 185, 129, 0.5);
 }

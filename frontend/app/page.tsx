@@ -31,7 +31,7 @@ const FEATURES = [
   {
     icon: IconTip,
     title: "98–2 tipping",
-    body: "Fans tip you in HBAR or POL. The contract splits it: 98% to you, 2% to the treasury. No middleman.",
+    body: "Fans tip you in HBAR. The contract splits it: 98% to you, 2% to the treasury. No middleman.",
   },
 ];
 
@@ -93,7 +93,7 @@ export default function LandingPage() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: "linear-gradient(135deg, rgba(139,92,246,0.25), rgba(34,211,238,0.18))",
+                    background: "linear-gradient(135deg, rgba(16,185,129,0.25), rgba(52,211,153,0.18))",
                     border: "1px solid var(--vs-border)",
                     color: "var(--vs-cyan)",
                   }}

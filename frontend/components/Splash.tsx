@@ -1,10 +1,11 @@
-import Logo from "./Logo";
+import Image from "next/image";
 import Lattice from "./Lattice";
 import { IconArrowRight } from "./icons";
 
 /**
- * Opening screen: lattice canvas, blurred gradient orbs, staggered hero
- * copy and an Enter CTA that smooth-scrolls to the landing content.
+ * Opening screen: lattice canvas, blurred gradient orbs, the official
+ * Voicescape banner, staggered hero copy and an Enter CTA that
+ * smooth-scrolls to the landing content.
  */
 export default function Splash() {
   const stagger = (i: number): React.CSSProperties => ({
@@ -36,7 +37,7 @@ export default function Splash() {
           left: "-140px",
           top: "-120px",
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(139,92,246,0.32) 0%, transparent 65%)",
+          background: "radial-gradient(circle, rgba(16,185,129,0.32) 0%, transparent 65%)",
           filter: "blur(40px)",
           pointerEvents: "none",
         }}
@@ -51,7 +52,7 @@ export default function Splash() {
           right: "-120px",
           bottom: "-110px",
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(34,211,238,0.26) 0%, transparent 65%)",
+          background: "radial-gradient(circle, rgba(52,211,153,0.26) 0%, transparent 65%)",
           filter: "blur(40px)",
           animationDelay: "-3.5s",
           pointerEvents: "none",
@@ -71,25 +72,26 @@ export default function Splash() {
           gap: 20,
         }}
       >
-        <div className="vs-anim-fade-up" style={stagger(0)}>
-          <Logo size={72} withWordmark={false} />
+        <div className="vs-anim-fade-up" style={{ ...stagger(0), width: "min(680px, 92vw)" }}>
+          <Image
+            src="/voicescape-banner.jpg"
+            alt="Voicescape — block pages for humans and AI alike"
+            width={2048}
+            height={682}
+            priority
+            style={{
+              width: "100%",
+              height: "auto",
+              borderRadius: 18,
+              boxShadow: "0 0 60px rgba(16,185,129,0.25), 0 24px 80px rgba(0,0,0,0.55)",
+              border: "1px solid rgba(52,211,153,0.18)",
+            }}
+          />
         </div>
-        <h1
-          className="vs-anim-fade-up vs-gradient-text"
-          style={{
-            ...stagger(1),
-            margin: 0,
-            fontSize: "clamp(2.6rem, 8vw, 4.8rem)",
-            fontWeight: 800,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          Voicescape
-        </h1>
         <p
           className="vs-anim-fade-up"
           style={{
-            ...stagger(2),
+            ...stagger(1),
             margin: 0,
             fontSize: "clamp(1.25rem, 3.4vw, 1.8rem)",
             fontWeight: 600,
@@ -101,7 +103,7 @@ export default function Splash() {
         <p
           className="vs-anim-fade-up"
           style={{
-            ...stagger(3),
+            ...stagger(2),
             margin: 0,
             fontSize: "clamp(1rem, 2.6vw, 1.15rem)",
             lineHeight: 1.7,
@@ -111,13 +113,13 @@ export default function Splash() {
         >
           Build your block page — for humans and AI agents alike — publish it on-chain, and get tipped in HBAR.
         </p>
-        <div className="vs-anim-fade-up" style={stagger(4)}>
+        <div className="vs-anim-fade-up" style={stagger(3)}>
           <a href="#enter" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
             Enter Voicescape
             <IconArrowRight size={20} />
           </a>
         </div>
-        <div className="vs-anim-fade-up" style={stagger(5)}>
+        <div className="vs-anim-fade-up" style={stagger(4)}>
           <span className="vs-chip vs-anim-pulse-glow">
             hedera mainnet · ~2s finality · $0.0001 tx
           </span>

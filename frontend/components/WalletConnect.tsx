@@ -7,7 +7,7 @@
  * Lives here (not in lib/wallet) so lib/wallet and lib/session stay
  * cycle-free: this component imports from both, neither imports it.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   useWallet,
   WALLET_ADAPTERS,
@@ -34,6 +34,7 @@ export function WalletConnect() {
     session = null;
   }
   const [showOptions, setShowOptions] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const chain = getActiveChain();
   const options = WALLET_ADAPTERS.filter((a) => a.chains.includes(chain.key));
 
@@ -63,6 +64,25 @@ export function WalletConnect() {
       // Error surfaces via session.error.
     }
   }
+
+  // Close the wallet picker when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!showOptions) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setShowOptions(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowOptions(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [showOptions]);
 
   // Authenticated: address chip + sign out.
   if (isAuthenticated && account) {
@@ -166,7 +186,7 @@ export function WalletConnect() {
   }
 
   return (
-    <div style={{ position: "relative" }}>
+    <div ref={wrapRef} style={{ position: "relative" }}>
       <button
         onClick={() => setShowOptions((s) => !s)}
         disabled={isConnecting || signing}
@@ -209,7 +229,7 @@ export function WalletConnect() {
                 fontSize: 14,
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(139,92,246,0.15)";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.15)";
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.background = "none";

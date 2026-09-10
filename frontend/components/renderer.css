@@ -118,9 +118,9 @@
   background: conic-gradient(
     from 180deg,
     var(--pv-accent),
-    var(--vs-violet, #8b5cf6),
-    var(--vs-cyan, #22d3ee),
-    var(--vs-magenta, #e879f9),
+    var(--vs-violet, #10b981),
+    var(--vs-cyan, #34d399),
+    var(--vs-magenta, #6ee7b7),
     var(--pv-accent)
   );
   animation: pvSpinGlow 12s linear infinite;
@@ -295,7 +295,7 @@
   height: 36px;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--pv-accent), var(--vs-magenta, #e879f9));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--pv-accent), var(--vs-magenta, #6ee7b7));
   flex-shrink: 0;
 }
 
@@ -315,7 +315,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--pv-accent), var(--vs-magenta, #e879f9));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--pv-accent), var(--vs-magenta, #6ee7b7));
   box-shadow: 0 6px 20px color-mix(in srgb, var(--pv-accent) 30%, transparent);
 }
 
@@ -624,7 +624,7 @@ a.pv-friend:hover {
   border: none;
   border-radius: 999px;
   cursor: pointer;
-  background: linear-gradient(135deg, var(--pv-accent), var(--vs-magenta, #e879f9));
+  background: linear-gradient(135deg, var(--pv-accent), var(--vs-magenta, #6ee7b7));
   color: #0a0a12;
   box-shadow: 0 8px 28px color-mix(in srgb, var(--pv-accent) 35%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -677,7 +677,7 @@ a.pv-friend:hover {
   border-radius: 20px;
   padding: 26px 24px;
   color: var(--vs-text, #f2f2f8);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--vs-violet, #8b5cf6) 18%, transparent);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--vs-violet, #10b981) 18%, transparent);
   font-family: var(--vs-font, system-ui, sans-serif);
   max-height: 92vh;
   overflow-y: auto;
@@ -706,7 +706,7 @@ a.pv-friend:hover {
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--vs-magenta, #e879f9));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-magenta, #6ee7b7));
   color: #fff;
 }
 
@@ -747,7 +747,7 @@ a.pv-friend:hover {
 .pv-tip-amount-sym {
   font-size: 16px;
   font-weight: 700;
-  color: var(--vs-cyan, #22d3ee);
+  color: var(--vs-cyan, #34d399);
   margin-left: 8px;
   letter-spacing: 0.06em;
 }
@@ -772,12 +772,12 @@ a.pv-friend:hover {
 }
 
 .pv-chip:hover {
-  border-color: var(--vs-violet, #8b5cf6);
+  border-color: var(--vs-violet, #10b981);
 }
 
 .pv-chip.is-active {
-  border-color: var(--vs-violet, #8b5cf6);
-  background: color-mix(in srgb, var(--vs-violet, #8b5cf6) 18%, transparent);
+  border-color: var(--vs-violet, #10b981);
+  background: color-mix(in srgb, var(--vs-violet, #10b981) 18%, transparent);
 }
 
 .pv-tip-input {
@@ -795,7 +795,7 @@ a.pv-friend:hover {
 
 .pv-tip-input:focus {
   outline: none;
-  border-color: var(--vs-violet, #8b5cf6);
+  border-color: var(--vs-violet, #10b981);
 }
 
 .pv-tip-btn {
@@ -811,7 +811,7 @@ a.pv-friend:hover {
   font-weight: 800;
   cursor: pointer;
   color: #0a0a12;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--vs-cyan, #22d3ee));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
@@ -888,7 +888,7 @@ a.pv-friend:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--vs-cyan, #22d3ee);
+  color: var(--vs-cyan, #34d399);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
@@ -912,7 +912,7 @@ a.pv-friend:hover {
 }
 
 .pv-tip-again:hover {
-  border-color: var(--vs-violet, #8b5cf6);
+  border-color: var(--vs-violet, #10b981);
 }
 
 /* ---------- loading / not-found / error states ---------- */
@@ -946,7 +946,7 @@ a.pv-friend:hover {
 .pv-state-code {
   font-size: 72px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--vs-cyan, #22d3ee));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -959,7 +959,7 @@ a.pv-friend:hover {
   margin-top: 8px;
   padding: 12px 28px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--vs-violet, #8b5cf6), var(--vs-cyan, #22d3ee));
+  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
   color: #0a0a12;
   font-weight: 800;
   text-decoration: none;
@@ -985,7 +985,7 @@ a.pv-friend:hover {
 }
 
 .pv-loading-text .vs-mono {
-  color: var(--vs-cyan, #22d3ee);
+  color: var(--vs-cyan, #34d399);
 }
 
 /* ---------- small screens ---------- */
@@ -1333,12 +1333,12 @@ a.pv-friend:hover {
 }
 
 .pv-rail-btn:hover {
-  border-color: var(--vs-cyan, #22d3ee);
+  border-color: var(--vs-cyan, #34d399);
 }
 
 .pv-rail-btn.is-active {
-  border-color: var(--vs-cyan, #22d3ee);
-  background: color-mix(in srgb, var(--vs-cyan, #22d3ee) 14%, transparent);
+  border-color: var(--vs-cyan, #34d399);
+  background: color-mix(in srgb, var(--vs-cyan, #34d399) 14%, transparent);
 }
 
 .pv-pay-params {

@@ -128,7 +128,7 @@
   text-overflow: ellipsis;
 }
 
-/* Distinct from the amber AGENT badge: violet gradient for editorial
+/* Distinct from the amber AGENT badge: emerald gradient for editorial
    "founding agent" featuring. Purely off-chain — never implies verification. */
 .hire-badge-founding {
   display: inline-flex;
@@ -141,16 +141,16 @@
   color: #06060e;
   padding: 5px 12px;
   border-radius: 6px;
-  box-shadow: 0 0 16px rgba(139, 92, 246, 0.45);
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
   white-space: nowrap;
 }
 
 .hire-card-featured {
-  border-color: rgba(139, 92, 246, 0.6);
+  border-color: rgba(16, 185, 129, 0.6);
 }
 
 .hire-card-featured:hover {
-  box-shadow: 0 0 28px rgba(139, 92, 246, 0.22), 0 10px 30px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.22), 0 10px 30px rgba(0, 0, 0, 0.45);
 }
 
 .hire-operator {

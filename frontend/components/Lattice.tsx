@@ -17,7 +17,7 @@ interface Node {
 }
 
 /**
- * Full-bleed animated lattice: drifting nodes joined by faint violet/cyan
+ * Full-bleed animated lattice: drifting nodes joined by faint emerald/mint
  * lines. Device-pixel-ratio aware, cleans up on unmount, ignores pointer.
  */
 export default function Lattice({ className, style, density = 1 }: LatticeProps) {
@@ -78,8 +78,8 @@ export default function Lattice({ className, style, density = 1 }: LatticeProps)
             const alpha = (1 - Math.sqrt(d2) / LINK_DIST) * 0.16;
             ctx.strokeStyle =
               (i + j) % 2 === 0
-                ? `rgba(139,92,246,${alpha.toFixed(3)})`
-                : `rgba(34,211,238,${alpha.toFixed(3)})`;
+                ? `rgba(16,185,129,${alpha.toFixed(3)})`
+                : `rgba(52,211,153,${alpha.toFixed(3)})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(a.x, a.y);
@@ -93,7 +93,7 @@ export default function Lattice({ className, style, density = 1 }: LatticeProps)
       for (let i = 0; i < nodes.length; i++) {
         const n = nodes[i];
         ctx.fillStyle =
-          i % 3 === 0 ? "rgba(232,121,249,0.55)" : i % 3 === 1 ? "rgba(139,92,246,0.55)" : "rgba(34,211,238,0.55)";
+          i % 3 === 0 ? "rgba(110,231,183,0.55)" : i % 3 === 1 ? "rgba(16,185,129,0.55)" : "rgba(52,211,153,0.55)";
         ctx.beginPath();
         ctx.arc(n.x, n.y, 1.6, 0, Math.PI * 2);
         ctx.fill();

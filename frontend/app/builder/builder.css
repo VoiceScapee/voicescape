@@ -136,7 +136,7 @@
 .vb-tab.is-active {
   background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
   color: #06060e;
-  box-shadow: 0 4px 18px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
 }
 
 /* ------------------------------------------------------------------ */
@@ -167,14 +167,14 @@
 
 .vb-template-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(139, 92, 246, 0.55);
+  border-color: rgba(16, 185, 129, 0.55);
 }
 
 .vb-template-card.is-selected {
   border-color: var(--vb-accent, var(--vs-violet));
   box-shadow:
     0 0 0 1px var(--vb-accent, var(--vs-violet)),
-    0 0 26px rgba(139, 92, 246, 0.35);
+    0 0 26px rgba(16, 185, 129, 0.35);
 }
 
 .vb-template-swatch {
@@ -462,8 +462,8 @@ select.vs-input option {
   gap: 6px;
   padding: 7px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(139, 92, 246, 0.45);
-  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  background: rgba(16, 185, 129, 0.1);
   color: #cdb4ff;
   font-family: var(--vs-font);
   font-size: 12.5px;
@@ -472,7 +472,7 @@ select.vs-input option {
 }
 
 .vb-chip-btn:hover:not(:disabled) {
-  background: rgba(139, 92, 246, 0.22);
+  background: rgba(16, 185, 129, 0.22);
   border-color: var(--vs-violet);
   transform: translateY(-1px);
 }
@@ -534,8 +534,8 @@ select.vs-input option {
   align-self: flex-start;
   width: 100%;
   border-radius: 14px;
-  border: 1px solid rgba(34, 211, 238, 0.35);
-  background: rgba(34, 211, 238, 0.06);
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.06);
   padding: 12px 14px;
   animation: vsFadeUp 0.3s ease both;
 }
@@ -849,7 +849,7 @@ select.vs-input option {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--vs-border, rgba(255,255,255,0.12));
-  background: rgba(34, 211, 238, 0.05);
+  background: rgba(52, 211, 153, 0.05);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -873,8 +873,8 @@ select.vs-input option {
 }
 
 .vb-chip-btn.is-active {
-  background: rgba(139, 92, 246, 0.32);
-  border-color: var(--vs-violet, #8b5cf6);
+  background: rgba(16, 185, 129, 0.32);
+  border-color: var(--vs-violet, #10b981);
   color: #fff;
   font-weight: 700;
 }
