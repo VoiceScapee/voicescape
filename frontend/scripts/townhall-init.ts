@@ -5,11 +5,11 @@
  *   TOWNHALL_OPERATOR_ID=0.0.x TOWNHALL_OPERATOR_KEY=<key> \
  *     TOWNHALL_HCS_NETWORK=testnet npx tsx scripts/townhall-init.ts
  *
- * (tsx is available via npx — no install needed.)
+ * Mainnet (only with Brandon's explicit go):
+ *   CONFIRM_MAINNET=1 TOWNHALL_OPERATOR_ID=0.0.x TOWNHALL_OPERATOR_KEY=<key> \
+ *     TOWNHALL_HCS_NETWORK=mainnet npx tsx scripts/townhall-init.ts
  *
- * NEVER run this against mainnet without an explicit go from Brandon.
- * The operator here only needs to CREATE topics; the server operator can
- * be the same account or a different one.
+ * (tsx is available via npx — no install needed.)
  */
 
 import {
@@ -26,6 +26,23 @@ const DOMAINS = [
   { domain: "market", memo: "Voicescape Town Hall — marketplace listings" },
 ] as const;
 
+/**
+ * Parse the operator key explicitly.
+ *
+ * A raw 64-char hex string is ambiguous: it could be an ED25519 or an ECDSA
+ * key, and PrivateKey.fromString() guesses (usually ED25519), which produces
+ * INVALID_SIGNATURE for ECDSA accounts. Since the mainnet operator is ECDSA,
+ * raw hex is parsed as ECDSA explicitly. DER/0x-prefixed forms keep the
+ * generic parser.
+ */
+function parseOperatorKey(s: string): PrivateKey {
+  const hex = s.startsWith("0x") ? s.slice(2) : s;
+  if (/^[0-9a-fA-F]{64}$/.test(hex)) {
+    return PrivateKey.fromStringECDSA(hex);
+  }
+  return PrivateKey.fromString(s);
+}
+
 async function main(): Promise<void> {
   const operatorId = process.env.TOWNHALL_OPERATOR_ID;
   const operatorKey = process.env.TOWNHALL_OPERATOR_KEY;
@@ -33,14 +50,20 @@ async function main(): Promise<void> {
   if (!operatorId || !operatorKey) {
     throw new Error("Set TOWNHALL_OPERATOR_ID and TOWNHALL_OPERATOR_KEY first.");
   }
-  if (network === "mainnet") {
+  // Mainnet requires Brandon's explicit go, expressed as CONFIRM_MAINNET=1
+  // (mirrors the CONFIRM_MAINNET rail in contracts/scripts/deploy.js).
+  if (network === "mainnet" && process.env.CONFIRM_MAINNET !== "1") {
     throw new Error(
-      "Refusing to create topics on mainnet from this script — re-run with an explicit TOWNHALL_HCS_NETWORK=mainnet only after Brandon's go.",
+      "Refusing to create topics on mainnet without CONFIRM_MAINNET=1."
     );
   }
   const client =
-    network === "previewnet" ? Client.forPreviewnet() : Client.forTestnet();
-  client.setOperator(operatorId, PrivateKey.fromString(operatorKey));
+    network === "mainnet"
+      ? Client.forMainnet()
+      : network === "previewnet"
+        ? Client.forPreviewnet()
+        : Client.forTestnet();
+  client.setOperator(operatorId, parseOperatorKey(operatorKey));
 
   const ids: Record<string, string> = {};
   for (const { domain, memo } of DOMAINS) {
