@@ -2,7 +2,7 @@
  * TxSender — one interface for Voicescape contract calls, implemented per
  * wallet family:
  *
- *  - EVM (MetaMask on Polygon): ethers v6 against the chain's JSON-RPC.
+ *  - EVM (MetaMask on Hedera): ethers v6 against the chain's JSON-RPC.
  *    Reads go through a public JsonRpcProvider; writes use the wallet signer.
  *  - Hedera (HashPack / Blade / WalletConnect via HashConnect): the same
  *    Solidity contracts are called through @hashgraph/sdk
@@ -63,7 +63,7 @@ export interface ResolveResult {
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export interface TxSender {
-  /** "evm" for MetaMask/Polygon, "hedera" for Hedera wallets. */
+  /** "evm" for MetaMask, "hedera" for Hedera wallets. */
   readonly kind: "evm" | "hedera";
   /** 0x… address or 0.0.x account id, depending on kind. */
   readonly account: string;

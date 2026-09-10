@@ -132,7 +132,7 @@ export default function LandingPage() {
             </ol>
             <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", fontSize: 16, marginBottom: 0 }}>
               The split is enforced <em>by the contract itself</em> — no middleman, no trust required.
-              Works on Hedera (HBAR) and Polygon (POL).
+              Runs on Hedera (HBAR).
             </p>
           </div>
         </section>

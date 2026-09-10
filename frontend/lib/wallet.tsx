@@ -7,7 +7,8 @@
  *  - Hedera (HashPack, Blade, WalletConnect): paired through HashConnect v3
  *    (WalletConnect-based). Contract calls go through @hashgraph/sdk
  *    transactions signed in the wallet — see lib/tx.ts.
- *  - Polygon (MetaMask): injected window.ethereum provider + ethers v6.
+ *  - MetaMask: injected window.ethereum provider + ethers v6, pointed at
+ *    Hedera (adds/switches to the Hedera network automatically).
  *
  * HashConnect pairing needs a WalletConnect project id:
  *   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (free at https://cloud.reown.com)
@@ -42,7 +43,7 @@ export const WALLET_ADAPTERS: { id: WalletAdapterId; name: string; chains: strin
   { id: "hashpack", name: "HashPack", chains: ["hedera-testnet", "hedera-mainnet"] },
   { id: "blade", name: "Blade", chains: ["hedera-testnet", "hedera-mainnet"] },
   { id: "walletconnect", name: "WalletConnect", chains: ["hedera-testnet", "hedera-mainnet"] },
-  { id: "metamask", name: "MetaMask", chains: ["polygon-amoy", "polygon"] },
+  { id: "metamask", name: "MetaMask", chains: ["hedera-testnet", "hedera-mainnet"] },
 ];
 
 /* ------------------------------------------------------------------ */

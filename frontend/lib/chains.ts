@@ -1,6 +1,6 @@
 /** Chain configs for Voicescape. RPC URLs come from env with public defaults. */
 
-export type ChainKey = "hedera-testnet" | "hedera-mainnet" | "polygon-amoy" | "polygon";
+export type ChainKey = "hedera-testnet" | "hedera-mainnet";
 
 export interface ChainConfig {
   key: ChainKey;
@@ -29,24 +29,6 @@ export const CHAINS: Record<ChainKey, ChainConfig> = {
     rpcUrl:
       process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC ?? "https://mainnet.hashio.io/api",
     blockExplorer: "https://hashscan.io/mainnet",
-  },
-  "polygon-amoy": {
-    key: "polygon-amoy",
-    label: "Polygon Amoy (testnet)",
-    chainId: 80002,
-    nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
-    rpcUrl:
-      process.env.NEXT_PUBLIC_POLYGON_AMOY_RPC ?? "https://rpc-amoy.polygon.technology",
-    blockExplorer: "https://amoy.polygonscan.com",
-  },
-  polygon: {
-    key: "polygon",
-    label: "Polygon",
-    chainId: 137,
-    nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
-    rpcUrl:
-      process.env.NEXT_PUBLIC_POLYGON_MAINNET_RPC ?? "https://polygon-rpc.com",
-    blockExplorer: "https://polygonscan.com",
   },
 };
 
