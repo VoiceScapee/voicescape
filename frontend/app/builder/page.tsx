@@ -1500,26 +1500,25 @@ function PublishPanel({
   const derivedUsername = account
     ? (deriveUsername(account) ?? deriveUsernameFromEvm(account))
     : null;
-  const [vanityOpen, setVanityOpen] = useState(false);
-  const [vanity, setVanity] = useState("");
-  // A loaded draft can suggest a custom name (e.g. the ?draft= link's
-  // username); a previously claimed name is remembered per wallet.
+  // KISS: single editable username. Defaults to the wallet-derived name,
+  // user can change it to anything (e.g. 0xcreator). One name, one publish.
+  const [username, setUsername] = useState("");
   useEffect(() => {
     if (!account) return;
-    if (initialVanity && isValidUsername(initialVanity) && initialVanity !== derivedUsername) {
-      setVanity(initialVanity);
-      setVanityOpen(true);
+    if (initialVanity && isValidUsername(initialVanity)) {
+      setUsername(initialVanity);
       return;
     }
     const stored = getVanityName(account);
-    if (stored && stored !== derivedUsername) {
-      setVanity(stored);
-      setVanityOpen(true);
+    if (stored) {
+      setUsername(stored);
+      return;
     }
+    if (derivedUsername) setUsername(derivedUsername);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
-  const vanityName = vanity.trim().toLowerCase();
-  const vanityValid = vanityName === "" || isValidUsername(vanityName);
+  const usernameTrimmed = username.trim().toLowerCase();
+  const usernameValid = isValidUsername(usernameTrimmed);
 
   /** Normalize an operator wallet to a 0x address (accepts 0.0.x or 0x). */
   const normalizeOperator = (raw: string): string => {
@@ -1558,13 +1557,13 @@ function PublishPanel({
       setStatus({ kind: "err", text: "Connect a wallet first." });
       return;
     }
-    const target = deriveUsername(account) ?? deriveUsernameFromEvm(account);
+    const target = usernameTrimmed;
     if (!target) {
-      setStatus({ kind: "err", text: "This wallet type isn't supported for publishing yet." });
+      setStatus({ kind: "err", text: "Choose a username for your page." });
       return;
     }
-    if (!vanityValid) {
-      setStatus({ kind: "err", text: "Custom name must be 3–24 chars: lowercase letters, numbers, hyphens." });
+    if (!usernameValid) {
+      setStatus({ kind: "err", text: "Username must be 3–24 chars: lowercase letters, numbers, hyphens." });
       return;
     }
     // Validate agent disclosure BEFORE pinning/paying anything.
@@ -1637,10 +1636,7 @@ function PublishPanel({
       };
       const hash = await publishName(target);
       setTxHash(hash);
-      if (vanityName) {
-        await publishName(vanityName);
-        setVanityName(account, vanityName);
-      }
+      setVanityName(account, target);
       setStatus({ kind: "ok", text: "Published!" });
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
@@ -1679,40 +1675,24 @@ function PublishPanel({
 
       <div className="vb-field">
         <span className="vs-label">Your page URL</span>
-        <div className="vs-mono vb-live-url" style={{ fontSize: 15 }}>
-          /{derivedUsername ?? "connect your wallet…"}
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          <span className="vs-mono" style={{ fontSize: 15, color: "var(--vs-muted)" }}>/</span>
+          <input
+            className="vs-input vs-mono"
+            value={username}
+            onChange={(e) =>
+              setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
+            }
+            placeholder={derivedUsername ?? "connect your wallet…"}
+            style={{ fontSize: 15 }}
+            aria-label="Page username"
+          />
         </div>
         <div className="vb-info-hint">
-          Your wallet is your identity — no sign-up needed.
+          Your wallet is your identity — no sign-up needed. Pick any name, like 0xcreator.
         </div>
-        <button
-          type="button"
-          className="vb-quiet-link"
-          onClick={() => setVanityOpen((v) => !v)}
-          style={{ marginTop: 6 }}
-        >
-          {vanityOpen ? "Hide custom name" : "Want a custom name like /0xcreator? Claim one →"}
-        </button>
-        {vanityOpen && (
-          <>
-            <input
-              className="vs-input vs-mono"
-              value={vanity}
-              onChange={(e) =>
-                setVanity(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
-              }
-              placeholder="0xcreator"
-              style={{ marginTop: 8 }}
-              aria-label="Custom page name"
-            />
-            {!vanityValid && vanity.length > 0 && (
-              <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
-            )}
-            <div className="vb-info-hint">
-              Claimed on-chain alongside your page{vanityName ? ` as /${vanityName}` : ""} — a second
-              wallet signature at publish time.
-            </div>
-          </>
+        {!usernameValid && username.length > 0 && (
+          <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
         )}
       </div>
 
@@ -1800,7 +1780,7 @@ function PublishPanel({
           type="button"
           className="vs-btn vs-btn-primary"
           onClick={() => publish()}
-          disabled={busy || !account || !vanityValid || !derivedUsername}
+          disabled={busy || !account || !usernameValid}
         >
           {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish page</>)}
         </button>
