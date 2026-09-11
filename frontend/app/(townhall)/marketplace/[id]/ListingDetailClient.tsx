@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ReviewNote, SellerLine, formatUsd } from "@/components/townhall/ListingCard";
 import { useWallet } from "@/lib/wallet";
+import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { buyListing } from "@/lib/contracts";
 import { getHbarUsdPrice } from "@/lib/x402";
@@ -34,6 +35,12 @@ function sellerToEvm(addr: string): string {
 export default function ListingDetailClient({ id }: { id: string }) {
   const { account, getTxSender } = useWallet();
   const { username: me, canWrite } = useWriteGate();
+  let viewerAddress: string | undefined;
+  try {
+    viewerAddress = useSession().session?.address ?? undefined;
+  } catch {
+    viewerAddress = undefined;
+  }
   const [listing, setListing] = useState<Listing | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,8 +85,32 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    load();
     getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
   }, [load]);
+
+  // Fire-and-forget listing view for creator analytics (counts toward the
+  // seller's stats; the server skips the seller's own views).
+  useEffect(() => {
+    if (!listing?.sellerUsername || !listing?.id) return;
+    fetch("/api/analytics/view", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: listing.sellerUsername,
+        subject: `listing:${listing.id}`,
+        label: listing.title,
+        viewerAddress,
+      }),
+      keepalive: true,
+    }).catch(() => {
+      /* analytics must never break the page */
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listing?.id]);
 
   const usd = listing ? listing.priceUsdCents / 100 : 0;
   const { address: sellerAddress } = parseSeller(listing ?? ({} as Listing));

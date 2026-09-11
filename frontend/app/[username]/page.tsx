@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
+import { useSession } from "@/lib/session";
 import "@/components/renderer.css";
 import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schema";
 import { getActiveChain } from "@/lib/chains";
@@ -373,6 +374,29 @@ function PublicPageInner({ username }: { username: string }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [tipOpen, setTipOpen] = useState(false);
   const [service, setService] = useState<ServiceItem | null>(null);
+  // Session may be absent outside the root providers; degrade gracefully.
+  let viewerAddress: string | undefined;
+  try {
+    viewerAddress = useSession().session?.address ?? undefined;
+  } catch {
+    viewerAddress = undefined;
+  }
+
+  // Fire-and-forget view tracking for creator analytics. Never blocks the
+  // page; the server rate-limits per IP and skips the owner's own views.
+  useEffect(() => {
+    const name = username.trim().toLowerCase();
+    if (!name) return;
+    fetch("/api/analytics/view", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: name, viewerAddress }),
+      keepalive: true,
+    }).catch(() => {
+      /* analytics must never break the page */
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username]);
 
   useEffect(() => {
     let cancelled = false;

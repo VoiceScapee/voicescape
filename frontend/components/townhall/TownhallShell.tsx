@@ -106,6 +106,7 @@ export default function TownhallShell({ children }: { children: React.ReactNode 
                   </Link>
                 );
               })}
+              <AnalyticsNavLink pathname={pathname} />
             </nav>
             <WalletConnect />
           </>
@@ -114,5 +115,21 @@ export default function TownhallShell({ children }: { children: React.ReactNode 
       <IdentityBar />
       <main className="th-main">{children}</main>
     </div>
+  );
+}
+
+/** "Analytics" nav link — only rendered once the wallet session is live. */
+function AnalyticsNavLink({ pathname }: { pathname: string }) {
+  const { isAuthenticated, sessionReady } = useWriteGate();
+  if (!sessionReady || !isAuthenticated) return null;
+  const active = pathname === "/analytics";
+  return (
+    <Link
+      href="/analytics"
+      className={`th-nav-link${active ? " is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+    >
+      📊 Analytics
+    </Link>
   );
 }
