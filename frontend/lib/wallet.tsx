@@ -164,36 +164,8 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
  * HIP-820 wallet (HashPack mobile, Blade, Kabila…).
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // ACTUAL FIX: Check for HashPack's injected provider FIRST, before loading
-  // the heavy HashConnect library. Inside HashPack's in-app browser,
-  // window.hashpack is already available — no pairing, no QR, no chunk load.
-  // This avoids the ChunkLoadError entirely on mobile.
-  const w = window as unknown as {
-    hashpack?: {
-      getAccounts?: () => Promise<string[]>;
-      accounts?: string[];
-    };
-  };
-  if (isHashPackInAppBrowser() && w.hashpack) {
-    try {
-      // Try to get accounts from the injected provider
-      let accounts: string[] | undefined;
-      if (typeof w.hashpack.getAccounts === "function") {
-        accounts = await w.hashpack.getAccounts();
-      } else if (Array.isArray(w.hashpack.accounts)) {
-        accounts = w.hashpack.accounts;
-      }
-      if (accounts && accounts.length > 0) {
-        const accountId = accounts[0];
-        hcAccountId = accountId;
-        // Mark as connected via injected provider (no HashConnect instance needed)
-        return accountId;
-      }
-    } catch (e) {
-      // Injected provider failed, fall through to HashConnect
-      console.warn("HashPack injected provider failed, falling back to HashConnect:", e);
-    }
-  }
+  // HashConnect v3 handles HashPack's in-app browser and desktop extension
+  // auto-pairing internally during init(). No custom injected-provider code.
 
   // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
   // These are client-side only and must not be evaluated during SSR.
