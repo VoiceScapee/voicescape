@@ -57,14 +57,16 @@ function useChunkErrorRecovery() {
  */
 function useServiceWorker() {
   React.useEffect(() => {
-    if (
-      process.env.NODE_ENV === "production" &&
-      typeof window !== "undefined" &&
-      "serviceWorker" in navigator
-    ) {
-      navigator.serviceWorker.register("/sw.js").catch(() => {
-        /* offline/installability is best-effort */
+    // Service worker disabled: it was causing stale chunk caching issues.
+    // Unregister any existing service worker.
+    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        regs.forEach((r) => r.unregister());
       });
+      // Clear all caches
+      if ("caches" in window) {
+        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+      }
     }
   }, []);
 }
