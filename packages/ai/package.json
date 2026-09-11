@@ -1,0 +1,8 @@
+{
+  "name": "@voicescape/ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voicescape ai package (scaffold — not yet extracted)",
+  "type": "module",
+  "license": "MIT"
+}
