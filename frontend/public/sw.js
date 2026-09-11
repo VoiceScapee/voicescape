@@ -1,16 +1,18 @@
-/* Voicescape service worker — safe, minimal PWA caching.
+/* Voicescape service worker — static assets only, NO HTML caching.
  *
  * Rules:
  * - API routes (/api/*) and non-GET requests: network only, never cached.
  * - Static assets (/_next/static/, /icons/, fonts, images): cache-first.
- * - Page navigations: network-first, fall back to cache when offline.
+ *   These are content-hashed and immutable, safe to cache.
+ * - Page navigations (HTML): NETWORK ONLY, never cached.
+ *   HTML references content-hashed chunks; caching HTML causes stale
+ *   chunk references when Vercel prunes old deployments (ChunkLoadError).
  *
  * The worker never intercepts wallet, HCS, or contract traffic (those go to
  * external hosts), and it never caches authenticated API responses.
  */
 
-const STATIC_CACHE = "voicescape-static-v2";
-const PAGES_CACHE = "voicescape-pages-v2";
+const STATIC_CACHE = "voicescape-static-v3";
 
 self.addEventListener("install", (event) => {
   // Activate immediately so the new worker takes over without a reload.
@@ -23,7 +25,7 @@ self.addEventListener("activate", (event) => {
       const keys = await caches.keys();
       await Promise.all(
         keys
-          .filter((k) => k !== STATIC_CACHE && k !== PAGES_CACHE)
+          .filter((k) => k !== STATIC_CACHE)
           .map((k) => caches.delete(k))
       );
       await self.clients.claim();
@@ -66,23 +68,11 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Page navigations: network-first, offline fallback to cache.
+  // Page navigations: NETWORK ONLY, never cached.
+  // HTML references content-hashed JS chunks. Caching HTML causes
+  // ChunkLoadError when Vercel prunes old deployments — the cached HTML
+  // points to chunks that no longer exist.
   if (request.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        const cache = await caches.open(PAGES_CACHE);
-        try {
-          const res = await fetch(request);
-          if (res.ok) cache.put(request, res.clone());
-          return res;
-        } catch {
-          const hit = await cache.match(request);
-          if (hit) return hit;
-          const home = await cache.match("/");
-          if (home) return home;
-          throw new Error("offline");
-        }
-      })()
-    );
+    return; // Let the browser handle it normally (no service worker).
   }
 });
