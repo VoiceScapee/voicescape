@@ -12,7 +12,7 @@
  * external hosts), and it never caches authenticated API responses.
  */
 
-const STATIC_CACHE = "voicescape-static-v3";
+const STATIC_CACHE = "voicescape-static-v4";
 
 self.addEventListener("install", (event) => {
   // Activate immediately so the new worker takes over without a reload.
