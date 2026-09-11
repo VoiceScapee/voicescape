@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
 import { VoiceInput } from "@/components/VoiceInput";
+import { consumeOnboardDraft } from "@/components/Onboarding";
+import { markPublished } from "@/components/OnboardingTrigger";
 import {
   IconArrowRight,
   IconBolt,
@@ -1439,10 +1441,12 @@ function PublishPanel({
   page,
   onUsernameChange,
   onPageChange,
+  initialOwnerType,
 }: {
   page: VoicescapePage;
   onUsernameChange: (u: string) => void;
   onPageChange: (p: VoicescapePage) => void;
+  initialOwnerType?: "human" | "agent";
 }) {
   const { account, getTxSender } = useWallet();
   const { requireSession } = useSession();
@@ -1451,7 +1455,9 @@ function PublishPanel({
   const [txHash, setTxHash] = useState<string | null>(null);
   // Phase B: who owns this page — human or agent. Agents MUST disclose an
   // operator wallet + purpose (the registry contract reverts otherwise).
-  const [ownerType, setOwnerType] = useState<"human" | "agent">(page.ownerType ?? "human");
+  const [ownerType, setOwnerType] = useState<"human" | "agent">(
+    initialOwnerType ?? page.ownerType ?? "human",
+  );
   const [operatorWallet, setOperatorWallet] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [operatorUrl, setOperatorUrl] = useState("");
@@ -1539,6 +1545,9 @@ function PublishPanel({
           );
       setTxHash(hash);
       setStatus({ kind: "ok", text: "Published!" });
+      // Mark onboarding complete — the user has a page now, so the guided
+      // onboarding will never show again for this browser.
+      markPublished(stamped.username);
       // Record a referral if the user arrived via ?ref= (captured into
       // localStorage by RootProviders). Best-effort — never blocks publish.
       if (!isUpdate) {
@@ -1743,6 +1752,45 @@ function BuilderInner() {
     editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
   };
 
+  // Onboarding draft: if the user just completed the guided onboarding,
+  // pre-fill the builder with their template + identity fields. Consumed
+  // once — the draft is cleared from localStorage on read.
+  const [draftOwnerType, setDraftOwnerType] = useState<"human" | "agent" | null>(null);
+  useEffect(() => {
+    const draft = consumeOnboardDraft();
+    if (!draft) return;
+    const t = TEMPLATES.find((x) => x.id === draft.templateId);
+    if (t) {
+      setTemplateId(t.id);
+      const fresh = JSON.parse(JSON.stringify(t.page)) as VoicescapePage;
+      fresh.blocks = fresh.blocks.map((b) => {
+        if (b.type === "hero") {
+          return {
+            ...b,
+            title: draft.displayName || b.title,
+            subtitle: draft.heroTitle || b.subtitle,
+          };
+        }
+        if (b.type === "bio" && draft.bio) {
+          return { ...b, text: draft.bio };
+        }
+        return b;
+      });
+      // Pre-fill username from display name (slugified) if it looks valid.
+      const slug = draft.displayName
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 24);
+      if (/^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/.test(slug)) {
+        fresh.username = slug;
+      }
+      setPage(fresh);
+    }
+    setDraftOwnerType(draft.ownerType === 1 ? "agent" : "human");
+  }, []);
+
   const updateTheme = (key: keyof VoicescapePage["theme"], value: string) =>
     editPage((p) => ({ ...p, theme: { ...p.theme, [key]: value } }));
 
@@ -1864,6 +1912,7 @@ function BuilderInner() {
               page={page}
               onUsernameChange={(u) => editPage((p) => ({ ...p, username: u }))}
               onPageChange={(p) => editPage(p)}
+              initialOwnerType={draftOwnerType ?? undefined}
             />
           )}
         </div>

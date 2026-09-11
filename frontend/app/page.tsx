@@ -3,6 +3,7 @@ import Splash from "@/components/Splash";
 import Navbar from "@/components/Navbar";
 import Logo from "@/components/Logo";
 import { WalletConnect } from "@/components/WalletConnect";
+import { OnboardingTrigger } from "@/components/OnboardingTrigger";
 import {
   IconArrowRight,
   IconCheck,
@@ -58,6 +59,7 @@ export default function LandingPage() {
   return (
     <>
       <Splash />
+      <OnboardingTrigger />
       <main id="enter">
         <Navbar
           right={
