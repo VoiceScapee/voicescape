@@ -117,23 +117,35 @@ describe("parseInstruction — buys", () => {
 });
 
 describe("buildTipTransaction", () => {
-  it("produces valid unsigned tx bytes (RETURN_BYTES, no signatures)", () => {
+  const TIPS = "0x" + "ab".repeat(20);
+
+  it("routes tips through the Tips contract (98/2 split, not a raw transfer)", () => {
     const built = buildTipTransaction(
       { kind: "tip", amountHbar: 5, targetUsername: "brandon" },
-      { ...TEST_CTX, tipRecipientAccountId: "0.0.67890" },
+      { ...TEST_CTX, tipsContractAddress: TIPS },
     );
     expect(built.description).toMatch(/tip 5 hbar/i);
-    expect(built.txType).toBe("TransferTransaction");
+    expect(built.description).toMatch(/98%/);
+    expect(built.txType).toBe("ContractExecuteTransaction");
     expect(built.transactionId).toMatch(/0\.0\.12345@/);
     // Base64-encoded bytes, non-empty.
     expect(built.unsignedTxBytes.length).toBeGreaterThan(100);
     expect(() => Buffer.from(built.unsignedTxBytes, "base64")).not.toThrow();
   });
 
-  it("throws without a recipient account id", () => {
+  it("throws without a tips contract address", () => {
     expect(() =>
       buildTipTransaction({ kind: "tip", amountHbar: 5, targetUsername: "x" }, TEST_CTX),
-    ).toThrow(/recipient/i);
+    ).toThrow(/tips contract/i);
+  });
+
+  it("throws on a malformed tips contract address", () => {
+    expect(() =>
+      buildTipTransaction(
+        { kind: "tip", amountHbar: 5, targetUsername: "x" },
+        { ...TEST_CTX, tipsContractAddress: "not-an-address" },
+      ),
+    ).toThrow(/invalid/);
   });
 });
 

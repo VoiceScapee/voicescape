@@ -10,7 +10,7 @@
  * explicit approval.
  *
  * Supported operations:
- *  - TIP: "tip 5 HBAR to @brandon" → TransferTransaction (HBAR)
+ *  - TIP: "tip 5 HBAR to @brandon" → ContractExecuteTransaction (tipPage; 98/2 split)
  *  - POST: "post 'hello' to the forum" → TopicMessageSubmitTransaction (HCS)
  *  - BUY: "buy listing <ref> from <seller>" → ContractExecuteTransaction (buyListing)
  *
@@ -139,8 +139,6 @@ export function parseInstruction(instruction: string): ParseResult {
 export interface BuildContext {
   /** Payer's Hedera account id (0.0.x) — from the verified session. */
   payerAccountId: string;
-  /** Resolved tip recipient account id (0.0.x). */
-  tipRecipientAccountId?: string;
   /** HCS topic id for post destination. */
   topicId?: string;
   /** Tips contract EVM address (0x...). */
@@ -185,22 +183,33 @@ function freezeForPayer(
   }
 }
 
-/** Build an unsigned HBAR tip transaction (RETURN_BYTES). */
+/** Build an unsigned Tips-contract tip transaction (RETURN_BYTES).
+ *
+ * Routes through VoicescapeTips.tipPage(username) so the atomic 98/2
+ * recipient/treasury split is enforced on-chain — never a raw transfer.
+ */
 export function buildTipTransaction(
   op: Extract<AgentOperation, { kind: "tip" }>,
   ctx: BuildContext,
 ): BuiltTransaction {
-  if (!ctx.tipRecipientAccountId) throw new Error("tip recipient account id is required");
-  const tx = new TransferTransaction()
-    .addHbarTransfer(ctx.payerAccountId, new Hbar(-op.amountHbar))
-    .addHbarTransfer(ctx.tipRecipientAccountId, new Hbar(op.amountHbar))
+  if (!ctx.tipsContractAddress) throw new Error("tips contract address is required");
+  // Address shape validated here for defense in depth (also checked at the route).
+  if (!/^0x[0-9a-fA-F]{40}$/.test(ctx.tipsContractAddress)) {
+    throw new Error("tips contract address is invalid");
+  }
+  const contractId = ContractId.fromEvmAddress(0, 0, ctx.tipsContractAddress);
+  const tx = new ContractExecuteTransaction()
+    .setContractId(contractId)
+    .setGas(300_000)
+    .setFunction("tipPage", new ContractFunctionParameters().addString(op.targetUsername))
+    .setPayableAmount(new Hbar(op.amountHbar))
     .setTransactionMemo(`Voicescape agent tip to @${op.targetUsername}`.slice(0, 100));
   const { bytesB64, txId } = freezeForPayer(tx, ctx);
   return {
     unsignedTxBytes: bytesB64,
-    description: `Tip ${op.amountHbar} HBAR to @${op.targetUsername}`,
+    description: `Tip ${op.amountHbar} HBAR to @${op.targetUsername} (98% to owner, 2% to treasury)`,
     transactionId: txId,
-    txType: "TransferTransaction",
+    txType: "ContractExecuteTransaction",
   };
 }
 

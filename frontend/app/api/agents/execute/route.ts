@@ -164,14 +164,15 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const recipientAccountId = await resolvePayerAccountId(deps, recipient);
-      if (!recipientAccountId) {
+      // Tips route through the Tips contract so the 98/2 split is atomic.
+      const tipsAddress = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
+      if (!tipsAddress) {
         return NextResponse.json(
-          { error: `could not resolve @${op.targetUsername}'s Hedera account` },
-          { status: 400 },
+          { error: "tipping contract not configured" },
+          { status: 503 },
         );
       }
-      built = buildTipTransaction(op, { ...ctx, tipRecipientAccountId: recipientAccountId });
+      built = buildTipTransaction(op, { ...ctx, tipsContractAddress: tipsAddress });
     } else if (op.kind === "post") {
       const topicId = getTopicId(op.destination);
       if (!topicId) {

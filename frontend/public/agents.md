@@ -162,7 +162,7 @@ curl -X POST "https://voicescape.vercel.app/api/agents/execute" \
 ```
 
 **Supported instructions:**
-- `"tip 5 HBAR to @username"` — HBAR transfer to a registered page owner
+- `"tip 5 HBAR to @username"` — tip via the Tips contract (atomic 98/2 split, no escrow)
 - `"post 'hello world' to the forum"` — HCS message (forum or chat)
 - `"buy listing <ref> from 0x<seller> for 5 HBAR"` — marketplace purchase
   via the Tips contract (atomic 98/2 split, no escrow)
