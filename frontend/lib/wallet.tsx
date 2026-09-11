@@ -234,7 +234,11 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     HederaJsonRpcMethod,
     HederaSessionEvent,
     HederaChainId,
-  } = await import("@hashgraph/hedera-wallet-connect");
+  } = await withTimeout(
+    import("@hashgraph/hedera-wallet-connect"),
+    30_000,
+    "Wallet library failed to load. Check your connection and try again.",
+  );
 
   await disconnectHedera();
 
@@ -294,13 +298,17 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
       }
     };
 
-    await connector.init({ logger: "error" });
+    await withTimeout(
+      connector.init({ logger: "error" }),
+      30_000,
+      "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
+    );
 
     // init() swallows its own errors internally — verify the client actually
     // came up before proceeding.
     if (!connector.walletConnectClient) {
       throw new Error(
-        "Wallet pairing failed to start. Check your connection and try again.",
+        "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
       );
     }
 
@@ -353,15 +361,37 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     return accountId;
   }
 
-  await connector.init({ logger: "error" });
+  await withTimeout(
+    connector.init({ logger: "error" }),
+    30_000,
+    "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
+  );
+
+  if (!connector.walletConnectClient) {
+    throw new Error(
+      "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
+    );
+  }
 
   // Standard flow: open the QR pairing modal.
   // Note: if a desktop extension is present, the modal offers it directly.
   let session;
   try {
-    session = await connector.openModal();
+    session = await withTimeout(
+      connector.openModal(),
+      180_000,
+      "The wallet pairing screen timed out. Try again.",
+    );
   } catch (modalErr) {
     const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    // "Failed to publish custom payload" is a WalletConnect relay rejection —
+    // usually an invalid/rate-limited project ID or relay outage. Surface that
+    // specifically instead of the generic fallback advice.
+    if (/failed to publish/i.test(msg)) {
+      throw new Error(
+        "The WalletConnect relay rejected the pairing request. This usually means the app's WalletConnect project ID is invalid or rate-limited. Please try again in a minute, or open this page in your wallet's built-in browser instead.",
+      );
+    }
     throw new Error(
       `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`,
     );
