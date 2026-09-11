@@ -24,6 +24,7 @@
 
 import type { ModActionMessage, PostView } from "./types";
 import { canonicalAddress } from "../../session-message";
+import { isFounderUsername } from "../../founders";
 
 export function getMods(): string[] {
   return (process.env.TOWNHALL_MODS ?? "")
@@ -33,7 +34,10 @@ export function getMods(): string[] {
 }
 
 export function isMod(username: string): boolean {
-  return getMods().includes(username.toLowerCase());
+  const name = username.toLowerCase();
+  // Founders are always mods (platform creators)
+  if (isFounderUsername(name)) return true;
+  return getMods().includes(name);
 }
 
 /**
