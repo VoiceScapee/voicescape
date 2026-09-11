@@ -33,7 +33,13 @@ export function usePageIdentity() {
 
   useEffect(() => {
     try {
-      const saved = window.localStorage.getItem(IDENTITY_KEY);
+      let saved = window.localStorage.getItem(IDENTITY_KEY);
+      // One-time cleanup: "0xcreator" was never registered on-chain.
+      // Drop the stale value so the wallet-derived name takes over.
+      if (saved === "0xcreator") {
+        window.localStorage.removeItem(IDENTITY_KEY);
+        saved = null;
+      }
       if (saved) {
         setUsernameState(saved);
       } else if (walletAccount) {
