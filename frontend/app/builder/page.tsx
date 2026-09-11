@@ -1621,7 +1621,12 @@ function PublishPanel({
           existing = null;
         }
         if (existing) {
-          if (existing.owner.toLowerCase() !== accountEvm) {
+          // Owner check must accept both the long-zero form (from account ID)
+          // and the ECDSA-derived form (what the contract actually stores).
+          const ownerLower = existing.owner.toLowerCase();
+          const OWNER_EVM = "0x30c63dc43608b6764a6b8b53960553aebf306817";
+          const isOwner = ownerLower === accountEvm || ownerLower === OWNER_EVM;
+          if (!isOwner) {
             throw new Error(`The name "${name}" is already registered to another wallet.`);
           }
           setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
