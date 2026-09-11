@@ -5,7 +5,7 @@
  * be changed without a contract deploy. To add a team member, append their
  * registered username below. Comparison is case-insensitive.
  */
-export const FOUNDER_USERNAMES: readonly string[] = ["brandon", "0xcreator", "user-10424063"];
+export const FOUNDER_USERNAMES: readonly string[] = ["0xcreator", "user-10424063"];
 
 /** True when the page's username belongs to a Voicescape founder. */
 export function isFounderUsername(username: string | null | undefined): boolean {
