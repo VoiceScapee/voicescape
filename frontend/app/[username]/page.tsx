@@ -421,7 +421,10 @@ function PublicPageInner({ username }: { username: string }) {
     async function load() {
       try {
         // Use server-side API to avoid browser CORS issues with Hedera RPC
-        const res = await fetch(`/api/resolve?username=${encodeURIComponent(username)}`);
+        // no-store: never serve a cached 404 after the API is fixed
+        const res = await fetch(`/api/resolve?username=${encodeURIComponent(username)}`, {
+          cache: "no-store",
+        });
         if (!res.ok) {
           if (!cancelled) setState({ status: "not-found" });
           return;
