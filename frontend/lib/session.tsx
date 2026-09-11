@@ -177,7 +177,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const pairing = getHederaPairing();
     if (!pairing) throw new Error("Wallet session not ready — reconnect and try again.");
     const walletConnect = await import("@hashgraph/hedera-wallet-connect");
-    const { proto } = await import("@hashgraph/proto");
+    const { proto } = await import("@hiero-ledger/proto");
     // DAppConnector.signMessage uses HIP-30 account format: "hedera:<network>:<accountId>"
     const chain = (await import("./chains")).getActiveChain();
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";

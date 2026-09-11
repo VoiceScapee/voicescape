@@ -170,6 +170,51 @@ function accountIdFromSession(session: { namespaces?: Record<string, { accounts?
 }
 
 /**
+ * Reject a promise after `ms` with a clear error. Used for wallet pairing
+ * timeouts so the UI shows a useful message instead of hanging forever.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
+/**
+ * Wait for HashPack's in-app browser to answer the iframe query.
+ * DAppConnector discovers the in-app wallet via async postMessage events;
+ * this polls its public `extensions` list until an iframe-capable entry
+ * appears (or the timeout expires).
+ */
+async function waitForIframeExtension(
+  connector: DAppConnector,
+  timeoutMs: number,
+): Promise<{ id: string }> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const ext = (connector.extensions as { id: string; availableInIframe?: boolean }[]).find(
+      (e) => e.availableInIframe,
+    );
+    if (ext) return { id: ext.id };
+    if (Date.now() >= deadline) {
+      throw new Error(
+        "HashPack did not respond. Make sure you opened this page inside HashPack's built-in browser (tap the globe icon in HashPack), not in Chrome or Safari.",
+      );
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/**
  * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
  *
  * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
@@ -212,36 +257,103 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   );
   dAppConnectorInstance = connector;
 
-  await connector.init({ logger: "error" });
-
   // Inside HashPack's in-app browser a QR pairing modal is useless — it
   // can't be scanned from within the wallet app itself. The pairing
-  // happens via the iframe session callback instead.
+  // happens via the iframe postMessage channel instead.
   const inHashPackBrowser = isHashPackInAppBrowser();
 
   if (inHashPackBrowser) {
-    // Wait for the iframe-based pairing (up to 3 minutes).
-    const accountId = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(
-        () =>
-          reject(
-            new Error(
-              "HashPack did not approve the connection — approve the request in HashPack and try again.",
-            ),
-          ),
-        180_000,
+    // FIX for the hanging "Connecting..." bug (2026-09-11):
+    //
+    // Root cause was a race condition in DAppConnector.init(). The connector
+    // discovers the in-app wallet via async postMessage events
+    // ("hedera-iframe-query" → "hedera-iframe-response"), but init()
+    // internally calls checkIframeConnect() (fire-and-forget) at the end —
+    // if HashPack's response hasn't arrived yet, extensions[] is empty and
+    // the pairing silently never starts. The old code then set
+    // onSessionIframeCreated AFTER init() returned, waiting on a callback
+    // that would never fire.
+    //
+    // Fix: set the callback BEFORE init(), then after init() explicitly
+    // drive the iframe pairing ourselves instead of relying on init()'s
+    // internal race-prone call.
+
+    // 1. Set the callback before init() so it's ready if init()'s internal
+    //    checkIframeConnect() happens to win the race.
+    let callbackSession: { namespaces?: Record<string, { accounts?: string[] }> } | null = null;
+    let resolveCallback: (s: { namespaces?: Record<string, { accounts?: string[] }> }) => void = () => {};
+    const callbackPromise = new Promise<{ namespaces?: Record<string, { accounts?: string[] }> }>(
+      (resolve) => {
+        resolveCallback = resolve;
+      },
+    );
+    connector.onSessionIframeCreated = (session) => {
+      if (!callbackSession) {
+        callbackSession = session;
+        resolveCallback(session);
+      }
+    };
+
+    await connector.init({ logger: "error" });
+
+    // init() swallows its own errors internally — verify the client actually
+    // came up before proceeding.
+    if (!connector.walletConnectClient) {
+      throw new Error(
+        "Wallet pairing failed to start. Check your connection and try again.",
       );
-      connector.onSessionIframeCreated = (session) => {
-        const id = accountIdFromSession(session);
-        if (id) {
-          clearTimeout(timer);
-          resolve(id);
-        }
-      };
-    });
+    }
+
+    // 2. If init()'s internal checkIframeConnect() found the iframe wallet,
+    //    a pairing request is already in-flight (user is seeing HashPack's
+    //    approval prompt). Just wait for the callback.
+    //    Otherwise the extension wasn't discovered in time — wait for
+    //    discovery, then drive connectExtension() explicitly.
+    const iframeExtensionFound = connector.extensions.some(
+      (ext) => (ext as { availableInIframe?: boolean }).availableInIframe,
+    );
+
+    let session: { namespaces?: Record<string, { accounts?: string[] }> };
+    if (iframeExtensionFound) {
+      // Internal flow is handling it — wait for user approval (up to 3 min).
+      session = await withTimeout(
+        callbackPromise,
+        180_000,
+        "HashPack did not approve the connection — approve the request in HashPack and try again.",
+      );
+    } else {
+      // Extension not discovered yet — wait for HashPack's iframe response
+      // (up to 15s), then connect explicitly. connectExtension() sends the
+      // pairing string to the parent frame and resolves with the session
+      // once the user approves (up to 3 min).
+      const extension = await waitForIframeExtension(connector, 15_000);
+      const connectPromise = (async () => {
+        // connectExtension is public API; it resolves with the session on approval.
+        const s = await (
+          connector as unknown as {
+            connectExtension: (id: string) => Promise<{
+              namespaces?: Record<string, { accounts?: string[] }>;
+            }>;
+          }
+        ).connectExtension(extension.id);
+        return s;
+      })();
+      session = await withTimeout(
+        Promise.race([callbackPromise, connectPromise]),
+        180_000,
+        "HashPack did not approve the connection — approve the request in HashPack and try again.",
+      );
+    }
+
+    const accountId = accountIdFromSession(session);
+    if (!accountId) {
+      throw new Error("Pairing succeeded but no Hedera account was returned.");
+    }
     hcAccountId = accountId;
     return accountId;
   }
+
+  await connector.init({ logger: "error" });
 
   // Standard flow: open the QR pairing modal.
   // Note: if a desktop extension is present, the modal offers it directly.
