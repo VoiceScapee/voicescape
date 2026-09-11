@@ -8,7 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBuyTransaction,
+  buildHcs10TopicTransactions,
   buildPostTransaction,
+  buildRegisterTransaction,
   buildTipTransaction,
   MAX_HBAR_PER_OP,
   parseInstruction,
@@ -197,5 +199,76 @@ describe("buildBuyTransaction", () => {
         TEST_CTX,
       ),
     ).toThrow(/contract/i);
+  });
+});
+
+describe("buildHcs10TopicTransactions", () => {
+  it("builds unsigned inbound + outbound topic creations via the official SDK", () => {
+    const { inbound, outbound } = buildHcs10TopicTransactions(TEST_CTX);
+    expect(inbound.txType).toBe("TopicCreateTransaction");
+    expect(outbound.txType).toBe("TopicCreateTransaction");
+    expect(inbound.transactionId).toMatch(/0\.0\.12345@/);
+    expect(outbound.transactionId).toMatch(/0\.0\.12345@/);
+    expect(inbound.unsignedTxBytes.length).toBeGreaterThan(100);
+    expect(outbound.unsignedTxBytes.length).toBeGreaterThan(100);
+    expect(() => Buffer.from(inbound.unsignedTxBytes, "base64")).not.toThrow();
+  });
+
+  it("throws on a malformed payer account id", () => {
+    expect(() =>
+      buildHcs10TopicTransactions({ ...TEST_CTX, payerAccountId: "nope" }),
+    ).toThrow(/0\.0\.x/);
+  });
+});
+
+describe("buildRegisterTransaction", () => {
+  const REGISTRY = "0x" + "cd".repeat(20);
+  const OPERATOR = "0x" + "11".repeat(20);
+  const REG_OP = {
+    username: "user-10424063",
+    ipfsHash: "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi",
+    ownerType: 1 as const,
+    operator: OPERATOR,
+    purpose: "I watch Hedera topics and post summaries.",
+  };
+
+  it("builds a frozen registerPage call with the CID baked in", () => {
+    const built = buildRegisterTransaction(REG_OP, {
+      ...TEST_CTX,
+      registryContractAddress: REGISTRY,
+    });
+    expect(built.txType).toBe("ContractExecuteTransaction");
+    expect(built.description).toMatch(/user-10424063/);
+    expect(built.transactionId).toMatch(/0\.0\.12345@/);
+    expect(built.unsignedTxBytes.length).toBeGreaterThan(100);
+    expect(() => Buffer.from(built.unsignedTxBytes, "base64")).not.toThrow();
+  });
+
+  it("throws without a registry contract address", () => {
+    expect(() => buildRegisterTransaction(REG_OP, TEST_CTX as never)).toThrow(/registry contract/i);
+  });
+
+  it("throws on a malformed registry contract address", () => {
+    expect(() =>
+      buildRegisterTransaction(REG_OP, { ...TEST_CTX, registryContractAddress: "nope" }),
+    ).toThrow(/invalid/);
+  });
+
+  it("throws on an invalid username", () => {
+    expect(() =>
+      buildRegisterTransaction({ ...REG_OP, username: "x" }, {
+        ...TEST_CTX,
+        registryContractAddress: REGISTRY,
+      }),
+    ).toThrow(/username/);
+  });
+
+  it("throws on a non-0x operator address", () => {
+    expect(() =>
+      buildRegisterTransaction({ ...REG_OP, operator: "0.0.12345" }, {
+        ...TEST_CTX,
+        registryContractAddress: REGISTRY,
+      }),
+    ).toThrow(/operator/);
   });
 });

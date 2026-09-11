@@ -29,11 +29,16 @@ import {
   ContractFunctionParameters,
   ContractId,
   Hbar,
+  TopicCreateTransaction,
   TopicId,
   TopicMessageSubmitTransaction,
   TransactionId,
   TransferTransaction,
 } from "@hashgraph/sdk";
+import {
+  buildHcs10CreateInboundTopicTx,
+  buildHcs10CreateOutboundTopicTx,
+} from "@hashgraphonline/standards-sdk";
 import { checkContent } from "../townhall/content-filter";
 
 /** Max HBAR per single agent operation — prevents accidents, not a spending cap. */
@@ -163,7 +168,7 @@ function buildClient(network: "mainnet" | "testnet"): Client {
 }
 
 function freezeForPayer(
-  tx: TransferTransaction | TopicMessageSubmitTransaction | ContractExecuteTransaction,
+  tx: TransferTransaction | TopicMessageSubmitTransaction | ContractExecuteTransaction | TopicCreateTransaction,
   ctx: BuildContext,
 ): { bytesB64: string; txId: string } {
   const client = buildClient(ctx.network);
@@ -265,6 +270,130 @@ export function buildBuyTransaction(
   return {
     unsignedTxBytes: bytesB64,
     description: `Buy listing "${op.listingRef}" for ${op.priceHbar} HBAR (98% to seller, 2% to treasury)`,
+    transactionId: txId,
+    txType: "ContractExecuteTransaction",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* HCS-10 topic transactions (official @hashgraphonline/standards-sdk) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Build unsigned HCS-10 inbound + outbound topic creation transactions
+ * (RETURN_BYTES) using the official standards SDK builders.
+ *
+ * The agent signs both with its own key, submits them, then uses the
+ * resulting topic ids to build the HCS-10 registry registration
+ * (see `buildHcs10RegistryRegisterTx` from the SDK — the agent calls it
+ * directly once it knows its inbound topic id).
+ *
+ * The server never touches keys: these are frozen unsigned bytes, same
+ * pattern as buildRegisterTransaction.
+ */
+export function buildHcs10TopicTransactions(ctx: BuildContext): {
+  inbound: BuiltTransaction;
+  outbound: BuiltTransaction;
+} {
+  if (!/^0\.0\.\d+$/.test(ctx.payerAccountId)) {
+    throw new Error("payerAccountId must be a 0.0.x account id");
+  }
+  // ttl 0 = no topic expiry (agent topics stay alive).
+  const inboundTx = buildHcs10CreateInboundTopicTx({ accountId: ctx.payerAccountId, ttl: 0 });
+  const outboundTx = buildHcs10CreateOutboundTopicTx({ ttl: 0 });
+
+  const inboundFrozen = freezeForPayer(inboundTx, ctx);
+  const outboundFrozen = freezeForPayer(outboundTx, ctx);
+  return {
+    inbound: {
+      unsignedTxBytes: inboundFrozen.bytesB64,
+      description: "Create HCS-10 inbound topic (receives connection requests)",
+      transactionId: inboundFrozen.txId,
+      txType: "TopicCreateTransaction",
+    },
+    outbound: {
+      unsignedTxBytes: outboundFrozen.bytesB64,
+      description: "Create HCS-10 outbound topic (records connection activity)",
+      transactionId: outboundFrozen.txId,
+      txType: "TopicCreateTransaction",
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Agent onboarding: unsigned registerPage transaction (RETURN_BYTES)  */
+/* ------------------------------------------------------------------ */
+
+/** Rate limit: 3 onboardings per wallet per day. */
+export const ONBOARD_RATE_LIMIT = 3;
+export const ONBOARD_RATE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Gas for the Registry registerPage call. */
+export const REGISTER_GAS = 600_000;
+
+export interface RegisterPageOperation {
+  username: string;
+  /** IPFS CID of the pinned agent page. */
+  ipfsHash: string;
+  /** 0 = human, 1 = agent. */
+  ownerType: 0 | 1;
+  /** 0x EVM address of the operator (the Registry requires 0x form). */
+  operator: string;
+  /** On-chain purpose disclosure (1-500 chars). */
+  purpose: string;
+}
+
+export interface RegisterBuildContext extends BuildContext {
+  registryContractAddress: string;
+}
+
+/**
+ * Build an unsigned Registry `registerPage` transaction (RETURN_BYTES).
+ *
+ * Validates the Registry address, username, CID, operator, and purpose,
+ * then builds the contract call with the CID baked in. The agent signs
+ * with its own Hedera key and submits — the server never signs.
+ */
+export function buildRegisterTransaction(
+  op: RegisterPageOperation,
+  ctx: RegisterBuildContext,
+): BuiltTransaction {
+  if (!ctx.registryContractAddress || !/^0x[0-9a-fA-F]{40}$/.test(ctx.registryContractAddress)) {
+    throw new Error("invalid registry contract address");
+  }
+  if (!op.username || op.username.length < 3 || op.username.length > 24) {
+    throw new Error("invalid username");
+  }
+  if (!op.ipfsHash || op.ipfsHash.trim() === "") {
+    throw new Error("ipfsHash (CID) is required");
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(op.operator)) {
+    throw new Error("operator must be a 0x EVM address");
+  }
+  if (!op.purpose || op.purpose.length > 500) {
+    throw new Error("purpose is required (1-500 chars)");
+  }
+  if (op.ownerType !== 0 && op.ownerType !== 1) {
+    throw new Error("ownerType must be 0 (human) or 1 (agent)");
+  }
+
+  const contractId = ContractId.fromEvmAddress(0, 0, ctx.registryContractAddress);
+  const params = new ContractFunctionParameters()
+    .addString(op.username)
+    .addString(op.ipfsHash)
+    .addUint8(op.ownerType)
+    .addAddress(op.operator)
+    .addString(op.purpose);
+
+  const tx = new ContractExecuteTransaction()
+    .setContractId(contractId)
+    .setGas(REGISTER_GAS)
+    .setFunction("registerPage", params);
+
+  const { bytesB64, txId } = freezeForPayer(tx, ctx);
+  return {
+    unsignedTxBytes: bytesB64,
+    description: `Register agent page @${op.username} on Voicescape (ownerType=agent)`,
     transactionId: txId,
     txType: "ContractExecuteTransaction",
   };
