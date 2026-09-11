@@ -464,6 +464,44 @@ export async function getPosts(deps: TownhallDeps, q: GetPostsQuery): Promise<Ha
   return ok({ posts: views });
 }
 
+/**
+ * Windowed forum-post query for the SSE stream. Same visibility rules as
+ * getPosts (mod-hides apply), but reads only messages after `afterSeq`
+ * instead of the full topic history. `board` filters to one board (null =
+ * all boards).
+ */
+export async function queryPostViews(
+  deps: TownhallDeps,
+  board: string | null,
+  afterSeq = 0,
+): Promise<PostView[]> {
+  const topic = getTopicId("forum");
+  if (!topic) return [];
+  const messages = await deps.hcs.query(topic, { afterSeq, limit: 100 });
+  const posts = collectPosts(messages);
+  const mods = messages
+    .filter((m): m is StoredMessage<ModActionMessage> => m.contents.kind === "mod-action")
+    .map((m) => m.contents);
+  const visible = filterHiddenPosts(
+    posts.map((p) => ({ ...p, board: p.contents.board, wall: p.contents.wall })),
+    mods,
+  );
+  const visibleSeqs = new Set(visible.map((v) => v.seq));
+  const want = board ? board.toLowerCase() : null;
+  return posts
+    .filter((p) => visibleSeqs.has(p.seq))
+    .filter((p) => !want || p.contents.board.toLowerCase() === want)
+    .map((p) => ({
+      seq: p.seq,
+      board: p.contents.board,
+      wall: p.contents.wall,
+      author: p.contents.author,
+      body: p.contents.body,
+      replyTo: p.contents.replyTo,
+      ts: p.contents.ts,
+    }));
+}
+
 export interface CreatePostBody extends AuthBody {
   board?: unknown;
   wall?: unknown;
@@ -724,6 +762,37 @@ export async function getProposals(deps: TownhallDeps): Promise<HandlerResult> {
     };
   });
   return ok({ proposals: views });
+}
+
+/** Minimal stream event for polls: enough for the client to know a refetch is needed. */
+export interface ProposalStreamEvent {
+  seq: number;
+  kind: "proposal" | "proposal-vote";
+  /** Proposal id the event belongs to. */
+  id: string;
+}
+
+/**
+ * Windowed proposal/vote query for the SSE stream. The client refetches the
+ * full proposal list (with tallies) when any of these arrive — the list is
+ * small, so a refetch is cheaper than streaming computed tallies.
+ */
+export async function queryProposalEvents(
+  deps: TownhallDeps,
+  afterSeq = 0,
+): Promise<ProposalStreamEvent[]> {
+  const topic = getTopicId("governance");
+  if (!topic) return [];
+  const messages = await deps.hcs.query(topic, { afterSeq, limit: 100 });
+  const out: ProposalStreamEvent[] = [];
+  for (const m of messages) {
+    if (m.contents.kind === "proposal") {
+      out.push({ seq: m.seq, kind: "proposal", id: (m.contents as ProposalMessage).id });
+    } else if (m.contents.kind === "proposal-vote") {
+      out.push({ seq: m.seq, kind: "proposal-vote", id: (m.contents as ProposalVoteMessage).proposal });
+    }
+  }
+  return out;
 }
 
 export interface CreateProposalBody extends AuthBody {
@@ -1823,6 +1892,38 @@ export async function getListings(deps: TownhallDeps): Promise<HandlerResult> {
       ts: m.contents.ts,
     }));
   return ok({ listings: views });
+}
+
+/**
+ * Windowed listing query for the SSE stream. Each message maps to a
+ * ListingView; the client upserts by id (latest message per id wins —
+ * status updates are new messages with the same id). `seq` is included so
+ * the SSE layer can track its position.
+ */
+export async function queryListingViews(
+  deps: TownhallDeps,
+  afterSeq = 0,
+): Promise<(ListingView & { seq: number })[]> {
+  const topic = getTopicId("market");
+  if (!topic) return [];
+  const messages = await deps.hcs.query(topic, { afterSeq, limit: 100 });
+  return messages
+    .filter((m): m is StoredMessage<ListingMessage> => m.contents.kind === "listing")
+    .map((m) => ({
+      seq: m.seq,
+      id: m.contents.id,
+      seller: m.contents.seller,
+      sellerUsername:
+        m.contents.sellerUsername ??
+        (!looksLikeAddress(m.contents.seller) ? m.contents.seller : null),
+      title: m.contents.title,
+      description: m.contents.description,
+      priceUsdCents: m.contents.priceUsdCents,
+      goodsType: m.contents.goodsType,
+      ipfsHash: m.contents.ipfsHash,
+      status: m.contents.status,
+      ts: m.contents.ts,
+    }));
 }
 
 export interface SearchListingsParams {

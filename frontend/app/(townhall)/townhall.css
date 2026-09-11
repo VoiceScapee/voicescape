@@ -719,3 +719,67 @@
 .th-wall {
   margin-top: 40px;
 }
+
+/* Live presence ("● N here now") */
+.th-presence {
+  font-size: 12.5px;
+  font-family: var(--vs-mono);
+  color: #6ee7b7;
+  white-space: nowrap;
+}
+
+/* Activity ticker — the "living block" strip under the town hall header */
+.th-ticker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  margin: 0 auto 16px;
+  max-width: var(--th-maxw, 1100px);
+  border: 1px solid var(--vs-border);
+  border-radius: 10px;
+  background: var(--vs-card);
+  overflow: hidden;
+}
+
+.th-ticker-live {
+  flex: none;
+  font-size: 12px;
+  font-family: var(--vs-mono);
+  color: #6ee7b7;
+  animation: th-pulse 2s ease-in-out infinite;
+}
+
+@keyframes th-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.th-ticker-items {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.th-ticker-items::-webkit-scrollbar {
+  display: none;
+}
+
+.th-ticker-item {
+  color: var(--vs-muted);
+  text-decoration: none;
+  flex: none;
+}
+
+.th-ticker-item:hover {
+  color: var(--vs-text);
+  text-decoration: underline;
+}
+
+.th-ticker-item strong {
+  color: var(--vs-text);
+  font-weight: 600;
+}

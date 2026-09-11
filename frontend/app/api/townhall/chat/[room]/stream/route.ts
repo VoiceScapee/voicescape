@@ -2,8 +2,8 @@ import { NextRequest } from "next/server";
 import {
   defaultDeps,
   queryChatMessages,
-  type ChatEvent,
 } from "@/lib/server/townhall/handlers";
+import { createSseStream, sinceParam } from "@/lib/server/townhall/sse";
 
 export const runtime = "nodejs";
 
@@ -16,66 +16,5 @@ export const runtime = "nodejs";
 export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
   const room = params.room;
   const deps = defaultDeps();
-  const sinceParam = Number(new URL(req.url).searchParams.get("since") ?? 0);
-  let lastSeq = Number.isFinite(sinceParam) && sinceParam > 0 ? sinceParam : 0;
-  const encoder = new TextEncoder();
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (e: ChatEvent) =>
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
-
-      const pollOnce = async () => {
-        const events = await queryChatMessages(deps, room, lastSeq);
-        for (const e of events) {
-          send(e);
-          if (e.seq > lastSeq) lastSeq = e.seq;
-        }
-      };
-
-      try {
-        await pollOnce();
-      } catch {
-        /* initial errors surface as an empty stream; keepalives continue */
-      }
-
-      const timer = setInterval(async () => {
-        try {
-          await pollOnce();
-        } catch {
-          /* transient mirror node hiccup — keep the stream alive */
-        }
-        try {
-          controller.enqueue(encoder.encode(": keepalive\n\n"));
-        } catch {
-          /* client gone */
-        }
-      }, 5000);
-      if (typeof (timer as unknown as { unref?: unknown }).unref === "function") {
-        (timer as unknown as { unref: () => void }).unref();
-      }
-
-      const cleanup = () => {
-        clearInterval(timer);
-        try {
-          controller.close();
-        } catch {
-          /* already closed */
-        }
-      };
-      req.signal.addEventListener("abort", cleanup);
-    },
-    cancel() {
-      /* abort listener handles cleanup */
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    },
-  });
+  return createSseStream(req.signal, (afterSeq) => queryChatMessages(deps, room, afterSeq), sinceParam(req.url));
 }

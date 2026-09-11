@@ -22,6 +22,9 @@ import {
   postChat,
   queryChatMessages,
   queryChatRooms,
+  queryListingViews,
+  queryPostViews,
+  queryProposalEvents,
   queryReports,
   recordReferral,
   searchListings,
@@ -1953,5 +1956,68 @@ describe("audit: enforcement + safety gates on all write paths", () => {
       reason: `appealing because ${THREAT.toLowerCase()} if you do not lift this`,
     });
     expect(blocked.status).toBe(400);
+  });
+});
+
+describe("stream queries (windowed, for SSE)", () => {
+  it("queryPostViews returns only posts after the cursor, filtered by board", async () => {
+    const deps = makeDeps();
+    const mk = (board: string, body: string) =>
+      createPost(deps, { author: "alice", auth: testCred("alice"), board, body, ...fee() });
+    expect((await mk("general", "one")).status).toBe(201);
+    expect((await mk("general", "two")).status).toBe(201);
+    expect((await mk("help", "three")).status).toBe(201);
+
+    const all = await queryPostViews(deps, null, 0);
+    expect(all.map((p) => p.body)).toEqual(["one", "two", "three"]);
+    expect(all[0]).toMatchObject({ board: "general", author: "alice", seq: 1 });
+
+    const general = await queryPostViews(deps, "general", 0);
+    expect(general.map((p) => p.body)).toEqual(["one", "two"]);
+
+    const afterOne = await queryPostViews(deps, null, 1);
+    expect(afterOne.map((p) => p.seq)).toEqual([2, 3]);
+  });
+
+  it("queryProposalEvents emits proposal and vote events with the proposal id", async () => {
+    const deps = makeDeps();
+    const created = await createProposal(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      title: "Fund the fountain",
+      body: "Build it.",
+      closesAt: "2026-12-01T00:00:00Z",
+      ...fee(),
+    });
+    const id = (created.json as { id: string }).id;
+    await voteProposal(deps, id, { voter: "bob", auth: testCred("bob"), choice: "yes" });
+
+    const events = await queryProposalEvents(deps, 0);
+    expect(events).toEqual([
+      { seq: 1, kind: "proposal", id },
+      { seq: 2, kind: "proposal-vote", id },
+    ]);
+    expect(await queryProposalEvents(deps, 1)).toEqual([{ seq: 2, kind: "proposal-vote", id }]);
+    expect(await queryProposalEvents(deps, 99)).toEqual([]);
+  });
+
+  it("queryListingViews returns listing views with seq for cursor tracking", async () => {
+    const deps = makeDeps();
+    const r = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Sticker pack",
+      description: "Cool stickers",
+      priceUsdCents: 500,
+      goodsType: "physical",
+      ...fee(),
+    });
+    expect(r.status).toBe(201);
+
+    const views = await queryListingViews(deps, 0);
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({ seq: 1, title: "Sticker pack", sellerUsername: "alice", status: "active" });
+    expect(await queryListingViews(deps, 1)).toEqual([]);
   });
 });

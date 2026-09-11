@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PostCard from "@/components/townhall/PostCard";
 import DustFeeGate from "@/components/townhall/DustFeeGate";
+import { PresenceDot } from "@/components/townhall/Presence";
 import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useStreamEvents } from "@/components/townhall/useStream";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
 import { IconClose } from "@/components/icons";
 
@@ -28,6 +30,27 @@ function buildThreads(posts: TownhallPost[]): ThreadNode[] {
   };
   sortRec(roots);
   return roots;
+}
+
+function isPostView(m: unknown): m is TownhallPost {
+  return (
+    !!m &&
+    typeof m === "object" &&
+    typeof (m as TownhallPost).seq === "number" &&
+    typeof (m as { body?: unknown }).body === "string"
+  );
+}
+
+/**
+ * The REST/stream APIs send ISO-8601 `ts`, but the client type is epoch ms.
+ * Normalize once at the boundary so sorting and timeAgo behave.
+ */
+function normalizePost(p: TownhallPost): TownhallPost {
+  const ts = (p as unknown as { ts: unknown }).ts;
+  return {
+    ...p,
+    ts: typeof ts === "string" ? Date.parse(ts) : typeof ts === "number" ? ts : Date.now(),
+  };
 }
 
 function Thread({
@@ -72,7 +95,7 @@ export default function BoardClient({ board }: { board: string }) {
       const data = await getJson<{ posts?: TownhallPost[] }>(
         `/api/townhall/posts?board=${encodeURIComponent(board)}&limit=100`,
       );
-      setPosts(Array.isArray(data.posts) ? data.posts : []);
+      setPosts(Array.isArray(data.posts) ? data.posts.map(normalizePost) : []);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -83,6 +106,24 @@ export default function BoardClient({ board }: { board: string }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Live: new posts arrive over SSE; prepend them (newest first).
+  const mergePosts = useCallback((incoming: TownhallPost[]) => {
+    if (incoming.length === 0) return;
+    setPosts((prev) => {
+      const seen = new Set(prev.map((p) => p.seq));
+      const fresh = incoming.filter((p) => !seen.has(p.seq));
+      if (fresh.length === 0) return prev;
+      return [...fresh, ...prev].slice(0, 300);
+    });
+  }, []);
+
+  const streamUrl = `/api/townhall/posts/stream?board=${encodeURIComponent(board)}`;
+  const streamConn = useStreamEvents<TownhallPost>(
+    streamUrl,
+    (events) => mergePosts(events.map(normalizePost)),
+    isPostView,
+  );
 
   const threads = useMemo(() => buildThreads(posts), [posts]);
 
@@ -95,19 +136,27 @@ export default function BoardClient({ board }: { board: string }) {
   const submit = async () => {
     const text = body.trim();
     if (!text || !canWrite) return;
+    const replySeq = replyTo?.seq ?? null;
+    let sentSeq: number | null = null;
     const ok = await dust.execute(async (dustFeeTxId) => {
-      await postJson<{ seq: number }>("/api/townhall/posts", {
+      const res = await postJson<{ seq: number }>("/api/townhall/posts", {
         board,
         body: text,
-        replyTo: replyTo?.seq ?? null,
+        replyTo: replySeq,
         author: me,
         dustFeeTxId,
       });
+      sentSeq = res.seq;
     });
     if (ok) {
       setBody("");
       setReplyTo(null);
-      load();
+      // Optimistic: show it now; the stream dedupes when the real copy arrives.
+      if (sentSeq != null && me) {
+        mergePosts([
+          { seq: sentSeq, board, wall: undefined, author: me, body: text, replyTo: replySeq, ts: Date.now() },
+        ]);
+      }
     }
   };
 
@@ -115,7 +164,11 @@ export default function BoardClient({ board }: { board: string }) {
     <>
       <div className="th-page-head">
         <h1>{board}</h1>
-        <p>Newest threads first — reply inline, tip posts you like.</p>
+        <p>
+          Newest threads first — reply inline, tip posts you like.{" "}
+          {streamConn === "live" && <span className="th-chat-status is-live">● live</span>}{" "}
+          <PresenceDot scope={`forum:${board}`} />
+        </p>
       </div>
 
       <div className="th-composer">

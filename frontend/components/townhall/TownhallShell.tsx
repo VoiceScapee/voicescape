@@ -11,6 +11,7 @@ import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { useWriteGate } from "./useTownhall";
 import RestrictionBanner from "./RestrictionBanner";
+import ActivityTicker from "./ActivityTicker";
 import { getAuthHeaders } from "@/lib/auth-client";
 
 const NAV: { href: string; label: string }[] = [
@@ -117,6 +118,7 @@ export default function TownhallShell({ children }: { children: React.ReactNode 
       />
       <RestrictionBanner />
       <IdentityBar />
+      <ActivityTicker />
       <main className="th-main">{children}</main>
     </div>
   );

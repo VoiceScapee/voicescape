@@ -3,8 +3,27 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import DustFeeGate from "@/components/townhall/DustFeeGate";
+import { PresenceDot } from "@/components/townhall/Presence";
 import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useStreamEvents } from "@/components/townhall/useStream";
 import { getJson, postJson, type Proposal } from "@/lib/townhall";
+
+/** Stream event: a new proposal or vote — the client refetches tallies. */
+interface ProposalStreamEvent {
+  seq: number;
+  kind: "proposal" | "proposal-vote";
+  id: string;
+}
+
+function isProposalStreamEvent(m: unknown): m is ProposalStreamEvent {
+  return (
+    !!m &&
+    typeof m === "object" &&
+    typeof (m as ProposalStreamEvent).seq === "number" &&
+    ((m as ProposalStreamEvent).kind === "proposal" ||
+      (m as ProposalStreamEvent).kind === "proposal-vote")
+  );
+}
 
 function useCountdown(closesAt: number): string {
   const [now, setNow] = useState(() => Date.now());
@@ -194,8 +213,8 @@ export default function PollsClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (quiet = false) => {
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       const data = await getJson<{ proposals?: Proposal[] }>("/api/townhall/proposals");
@@ -213,6 +232,13 @@ export default function PollsClient() {
     load();
   }, [load]);
 
+  // Live: any new proposal or vote refetches the (small) proposal list quietly.
+  useStreamEvents<ProposalStreamEvent>(
+    "/api/townhall/proposals/stream",
+    () => load(true),
+    isProposalStreamEvent,
+  );
+
   const open = proposals.filter((p) => p.closesAt > Date.now());
   const closed = proposals.filter((p) => p.closesAt <= Date.now());
 
@@ -220,7 +246,7 @@ export default function PollsClient() {
     <>
       <div className="th-page-head">
         <h1>🏛️ <span className="vs-gradient-text">Polls</span></h1>
-        <p>Advisory community polls — signaling only, no on-chain execution. Publishing a poll costs the dust fee; voting is free.</p>
+        <p>Advisory community polls — signaling only, no on-chain execution. Publishing a poll costs the dust fee; voting is free. <PresenceDot scope="polls" /></p>
       </div>
 
       <div className="th-section">
@@ -231,7 +257,7 @@ export default function PollsClient() {
       {error && (
         <p className="th-error">
           Couldn&apos;t load proposals: {error}{" "}
-          <button type="button" className="th-identity-link" onClick={load}>
+          <button type="button" className="th-identity-link" onClick={() => load()}>
             retry
           </button>
         </p>

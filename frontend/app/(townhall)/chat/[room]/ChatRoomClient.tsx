@@ -4,41 +4,28 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import DustFeeGate from "@/components/townhall/DustFeeGate";
 import ReportButton from "@/components/townhall/ReportButton";
+import { PresenceDot } from "@/components/townhall/Presence";
 import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useStreamEvents } from "@/components/townhall/useStream";
 import { postJson, timeAgo, type ChatMessage } from "@/lib/townhall";
 
-type ConnState = "connecting" | "live" | "polling" | "error";
-
-function parseSseChunk(text: string): ChatMessage[] {
-  const out: ChatMessage[] = [];
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (!t.startsWith("data:")) continue;
-    try {
-      const msg = JSON.parse(t.slice(5).trim()) as ChatMessage;
-      if (msg && typeof msg.seq === "number" && typeof msg.body === "string") out.push(msg);
-    } catch {
-      // partial line — skip
-    }
-  }
-  return out;
+function isChatMessage(m: unknown): m is ChatMessage {
+  return (
+    !!m &&
+    typeof m === "object" &&
+    typeof (m as ChatMessage).seq === "number" &&
+    typeof (m as ChatMessage).body === "string"
+  );
 }
 
 export default function ChatRoomClient({ room }: { room: string }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
   const dust = useDustFee();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [conn, setConn] = useState<ConnState>("connecting");
   const [body, setBody] = useState("");
   const seenRef = useRef<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
-  const connRef = useRef<ConnState>("connecting");
   const streamUrl = `/api/townhall/chat/${encodeURIComponent(room)}/stream`;
-
-  const setConnState = useCallback((c: ConnState) => {
-    connRef.current = c;
-    setConn(c);
-  }, []);
 
   const addMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) return;
@@ -52,78 +39,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
     });
   }, []);
 
-  useEffect(() => {
-    let es: EventSource | null = null;
-    let pollTimer: ReturnType<typeof setInterval> | null = null;
-    let cancelled = false;
-
-    // Polling fallback: short-lived fetch against the SSE endpoint every
-    // 5s, parsing whatever `data:` lines arrive. (There is no separate
-    // history endpoint in the API contract, so the stream itself is the
-    // poll target.)
-    const pollOnce = async () => {
-      const ctrl = new AbortController();
-      const killer = setTimeout(() => ctrl.abort(), 4500);
-      try {
-        const res = await fetch(streamUrl, {
-          headers: { accept: "text/event-stream" },
-          signal: ctrl.signal,
-        });
-        const text = await res.text();
-        if (!cancelled) addMessages(parseSseChunk(text));
-      } catch {
-        // Try again on the next tick.
-      } finally {
-        clearTimeout(killer);
-      }
-    };
-
-    const startPolling = () => {
-      if (cancelled || pollTimer) return;
-      setConnState("polling");
-      pollOnce();
-      pollTimer = setInterval(pollOnce, 5000);
-    };
-
-    try {
-      es = new EventSource(streamUrl);
-      es.onopen = () => {
-        if (!cancelled) setConnState("live");
-      };
-      es.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(ev.data) as ChatMessage;
-          if (msg && typeof msg.seq === "number") addMessages([msg]);
-        } catch {
-          // ignore malformed frames
-        }
-      };
-      es.onerror = () => {
-        es?.close();
-        es = null;
-        if (!cancelled) startPolling();
-      };
-    } catch {
-      startPolling();
-    }
-
-    // Safety net: if EventSource never opens within 6s, fall back to polling.
-    const watchdog = setTimeout(() => {
-      if (!cancelled && connRef.current === "connecting") {
-        es?.close();
-        es = null;
-        startPolling();
-      }
-    }, 6000);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(watchdog);
-      es?.close();
-      if (pollTimer) clearInterval(pollTimer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamUrl, setConnState]);
+  const conn = useStreamEvents<ChatMessage>(streamUrl, addMessages, isChatMessage);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -132,15 +48,24 @@ export default function ChatRoomClient({ room }: { room: string }) {
   const send = async () => {
     const text = body.trim();
     if (!text || !canWrite) return;
+    let sentSeq: number | null = null;
     const ok = await dust.execute(async (dustFeeTxId) => {
-      await postJson<{ seq: number }>(streamUrl.replace(/\/stream$/, ""), {
+      const res = await postJson<{ seq: number }>(streamUrl.replace(/\/stream$/, ""), {
         author: me,
         body: text,
         dustFeeTxId,
       });
+      sentSeq = res.seq;
     });
-    if (ok) setBody("");
-    // The message arrives back through the stream; no manual append needed.
+    if (ok) {
+      setBody("");
+      // Optimistic: show it now; the stream dedupes when the real copy arrives.
+      if (sentSeq != null && me) {
+        addMessages([
+          { seq: sentSeq, room, author: me, body: text, ts: new Date().toISOString() } as unknown as ChatMessage,
+        ]);
+      }
+    }
   };
 
   return (
@@ -152,6 +77,8 @@ export default function ChatRoomClient({ room }: { room: string }) {
           {conn === "connecting" && "○ connecting…"}
           {conn === "polling" && "◌ reconnecting — polling every 5s"}
           {conn === "error" && "✕ connection failed"}
+          {" · "}
+          <PresenceDot scope={`chat:${room}`} />
           {" · "}
           <Link href="/chat" className="th-identity-link">all rooms</Link>
         </p>

@@ -1,9 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ListingCard } from "@/components/townhall/ListingCard";
+import { PresenceDot } from "@/components/townhall/Presence";
+import { useStreamEvents } from "@/components/townhall/useStream";
 import { getJson, type Listing } from "@/lib/townhall";
+
+function isListingView(m: unknown): m is Listing {
+  return (
+    !!m &&
+    typeof m === "object" &&
+    typeof (m as Listing).id === "string" &&
+    typeof (m as Listing).title === "string"
+  );
+}
 
 export default function MarketplaceClient() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -17,6 +28,22 @@ export default function MarketplaceClient() {
       .catch((e) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Live: upsert by id (status updates are new messages with the same id);
+  // brand-new listings go on top, updates keep their position.
+  const mergeListings = useCallback((incoming: Listing[]) => {
+    if (incoming.length === 0) return;
+    setListings((prev) => {
+      const seen = new Set(prev.map((l) => l.id));
+      const fresh = incoming.filter((l) => !seen.has(l.id));
+      if (fresh.length === 0 && !incoming.some((l) => seen.has(l.id))) return prev;
+      const updates = new Map(incoming.map((l) => [l.id, l]));
+      const merged = prev.map((l) => updates.get(l.id) ?? l);
+      return [...fresh, ...merged];
+    });
+  }, []);
+
+  useStreamEvents<Listing>("/api/townhall/listings/stream", mergeListings, isListingView);
 
   const shown = listings.filter(
     (l) => filter === "all" || l.goodsType === filter,
@@ -36,7 +63,7 @@ export default function MarketplaceClient() {
           Direct sales, settled on-chain: one transaction pays the seller 98%
           and the treasury 2% — nothing is ever held in escrow. Prices in USD,
           settled in HBAR. Delivery is arranged with the seller; check their
-          reputation first.
+          reputation first. <PresenceDot scope="marketplace" />
         </p>
       </div>
 
