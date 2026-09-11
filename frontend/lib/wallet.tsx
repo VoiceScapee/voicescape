@@ -25,7 +25,40 @@ import React, {
 import { ethers } from "ethers";
 import type { HashConnect } from "hashconnect";
 import { getActiveChain, type ChainConfig } from "./chains";
-import { createEvmTxSender, createHederaTxSender, type TxSender } from "./tx";
+import type { TxSender } from "./tx";
+// NOTE: ./tx is intentionally NOT statically imported here. It pulls in the
+// entire @hashgraph/sdk (~2.3MB) which Vercel's CDN fails to serve reliably
+// on mobile ("Loading chunk 3322 failed"). The tx senders are dynamically
+// imported only when actually signing a transaction (after wallet connection).
+
+/**
+ * Minimal LedgerId shim — the real @hashgraph/sdk LedgerId is just a
+ * 1-byte wrapper ([0]=mainnet, [1]=testnet) with a toString() method.
+ * HashConnect's constructor only calls toString() on it, so we avoid
+ * pulling the entire 2.3MB SDK into the wallet connection chunk for this
+ * one trivial class.
+ */
+class MinimalLedgerId {
+  private readonly byte: number;
+  private constructor(byte: number) {
+    this.byte = byte;
+  }
+  toString(): string {
+    return this.byte === 0 ? "mainnet" : this.byte === 1 ? "testnet" : "previewnet";
+  }
+  toBytes(): Uint8Array {
+    return new Uint8Array([this.byte]);
+  }
+  isMainnet(): boolean {
+    return this.byte === 0;
+  }
+  isTestnet(): boolean {
+    return this.byte === 1;
+  }
+  static readonly MAINNET = new MinimalLedgerId(0);
+  static readonly TESTNET = new MinimalLedgerId(1);
+  static readonly PREVIEWNET = new MinimalLedgerId(2);
+}
 
 export interface WalletState {
   account: string | null;
@@ -164,35 +197,45 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
 
   // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
   // These are client-side only and must not be evaluated during SSR.
-  // Wrap in a timeout so a hung chunk load fails fast instead of hanging.
-  // Retry once on ChunkLoadError — Vercel's CDN can briefly 404 a chunk
-  // right after a deployment while it propagates to all edges.
-  async function loadWalletLibs() {
-    const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("Wallet library failed to load — please check your connection and try again.")), 15000)
-    );
-    return Promise.race([
-      Promise.all([import("hashconnect"), import("@hashgraph/sdk")]),
-      timeout,
-    ]);
+  // NOTE: We deliberately do NOT import @hashgraph/sdk here — it creates a
+  // 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
+  // LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
+  // (via ./tx) is only loaded when actually signing a transaction.
+  // Retry with exponential backoff (3 attempts) on chunk load failure —
+  // Vercel's CDN can briefly 404 a chunk right after a deployment while it
+  // propagates to all edges.
+  async function loadHashConnect() {
+    const MAX_ATTEMPTS = 3;
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const timeout = new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Wallet library failed to load — please check your connection and try again.")),
+            15000,
+          ),
+        );
+        const mod = await Promise.race([import("hashconnect"), timeout]);
+        return mod.HashConnect;
+      } catch (e) {
+        lastError = e;
+        const isChunkError = e instanceof Error && e.name === "ChunkLoadError";
+        if (!isChunkError || attempt === MAX_ATTEMPTS) break;
+        // Exponential backoff: 2s, 4s — gives the CDN time to propagate.
+        await new Promise((r) => setTimeout(r, 2000 * attempt));
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Wallet library failed to load — please check your connection and try again.");
   }
 
-  let HashConnect: typeof import("hashconnect")["HashConnect"];
-  let LedgerId: typeof import("@hashgraph/sdk")["LedgerId"];
-  try {
-    [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
-  } catch (e) {
-    if (e instanceof Error && e.name === "ChunkLoadError") {
-      // Wait a moment for CDN propagation, then retry once.
-      await new Promise((r) => setTimeout(r, 3000));
-      [{ HashConnect }, { LedgerId }] = await loadWalletLibs();
-    } else {
-      throw e;
-    }
-  }
+  const HashConnect = await loadHashConnect();
   await disconnectHedera();
 
-  const ledgerId = chain.key === "hedera-mainnet" ? LedgerId.MAINNET : LedgerId.TESTNET;
+  const ledgerId = (
+    chain.key === "hedera-mainnet" ? MinimalLedgerId.MAINNET : MinimalLedgerId.TESTNET
+  ) as unknown as import("@hashgraph/sdk").LedgerId;
   const hc = new HashConnect(
     ledgerId,
     getPairingProjectId(),
@@ -272,6 +315,9 @@ function hederaGetTxSender(chain: ChainConfig): () => Promise<TxSender> {
     if (!hcInstance || !hcAccountId) {
       throw new Error("Hedera wallet is not connected.");
     }
+    // Dynamic import: ./tx pulls in @hashgraph/sdk (~2.3MB). Only load it
+    // when actually signing — never on page load or wallet connection.
+    const { createHederaTxSender } = await import("./tx");
     return createHederaTxSender(hcInstance, hcAccountId, chain);
   };
 }
@@ -363,6 +409,8 @@ const metamaskAdapter: WalletAdapter = {
     const account = accounts[0];
     const ethForProvider = eth;
     const getTxSender = async (): Promise<TxSender> => {
+      // Dynamic import keeps @hashgraph/sdk out of the initial bundle.
+      const { createEvmTxSender } = await import("./tx");
       const provider = new ethers.BrowserProvider(ethForProvider as ethers.Eip1193Provider);
       const signer = await provider.getSigner();
       return createEvmTxSender(provider, signer, account);
