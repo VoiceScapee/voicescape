@@ -10,6 +10,7 @@
  */
 
 import { DEFAULT_BOARDS } from "./boards";
+import { canonicalAddress } from "../../session-message";
 import type { HcsPort } from "./hcs";
 import { defaultHcsPort } from "./hcs";
 import type { MirrorPort } from "./mirror";
@@ -169,6 +170,15 @@ async function requireDustFee(
   dustFeeTxId: unknown,
 ): Promise<HandlerResult | null> {
   const { dustFeeTinybars, treasury } = deps.mirror.feeInfo();
+  // The treasury owner doesn't pay the dust fee to themselves — Hedera
+  // rejects self-transfers (ACCOUNT_REPEATED_IN_ACCOUNT_AMOUNTS).
+  // session.address is the canonical 0x (lowercase); treasury may be 0.0.x
+  // or 0x, so normalize both via canonicalAddress.
+  const sessionCanon = canonicalAddress(session.address);
+  const treasuryCanon = treasury ? canonicalAddress(treasury) : null;
+  if (sessionCanon && treasuryCanon && sessionCanon === treasuryCanon) {
+    return null; // Owner posts free
+  }
   // Economics guard BEFORE fee verification: the dust fee goes to the
   // treasury while the OPERATOR's key pays the HCS submit fee. They are
   // enforced as separate accounts (conservative: if they're the same
