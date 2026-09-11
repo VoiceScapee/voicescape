@@ -22,9 +22,11 @@
  *  - EVM sessions (0x address): ethers.verifyMessage must recover the
  *    claimed address
  *  - Hedera sessions (0.0.x address): the account's public key is fetched
- *    from the mirror node and the Ed25519 signature is verified with Node's
- *    crypto. Only ED25519 keys are supported — anything else is rejected,
- *    never faked.
+ *    from the mirror node and the signature is verified against it —
+ *    Ed25519 with Node's crypto, ECDSA (secp256k1) with @noble/curves
+ *    (wallets sign keccak256(message), same convention as the Hedera SDK).
+ *    Only ED25519 and ECDSA_SECP256K1 keys are supported — anything else
+ *    is rejected, never faked.
  *
  * BEARER-TOKEN CAVEAT (do not soften this): the session token IS the
  * credential for the 7-day session lifetime. Anyone holding it can write
@@ -48,6 +50,8 @@
 
 import { createHash, createHmac, createPublicKey, timingSafeEqual, verify as cryptoVerify } from "crypto";
 import { ethers } from "ethers";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
 import { getActiveChain } from "../../chains";
 import { getKvStore } from "../store";
 import { mirrorBaseUrl } from "./topics";
@@ -77,7 +81,7 @@ export type VerifyResult =
 
 export interface AccountKey {
   keyHex: string; // raw hex, no 0x
-  keyType: string; // e.g. "ED25519"
+  keyType: string; // e.g. "ED25519" or "ECDSA_SECP256K1" (mirror-node _type)
 }
 
 export interface AuthPort {
@@ -388,6 +392,60 @@ export function verifyEd25519(message: Uint8Array, signature: Uint8Array, rawKey
   }
 }
 
+/**
+ * Verify a secp256k1 (ECDSA) signature made by a Hedera wallet's
+ * signMessage. Hedera wallets sign keccak256(message) and return the
+ * 64-byte compact (r || s) signature — the same convention as the Hedera
+ * SDK's PrivateKey.sign (see @hiero-ledger/cryptography primitive/ecdsa).
+ *
+ * The mirror node returns the raw public key as hex: 33-byte compressed
+ * (02/03 prefix), 65-byte uncompressed (04 prefix), or occasionally the
+ * 64-byte x||y coordinates without the prefix.
+ */
+export function verifyEcdsaSecp256k1(
+  message: Uint8Array,
+  signature: Uint8Array,
+  rawKey: Uint8Array,
+): boolean {
+  if (signature.length !== 64) return false;
+  let pub: Uint8Array;
+  if (rawKey.length === 33 && (rawKey[0] === 0x02 || rawKey[0] === 0x03)) {
+    pub = rawKey;
+  } else if (rawKey.length === 65 && rawKey[0] === 0x04) {
+    pub = rawKey;
+  } else if (rawKey.length === 64) {
+    pub = new Uint8Array(65);
+    pub[0] = 0x04;
+    pub.set(rawKey, 1);
+  } else {
+    return false;
+  }
+  try {
+    return secp256k1.verify(signature, keccak_256(message), pub);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * ECDSA analogue of verifyHederaSignature: accept signatures over the
+ * prefixed bytes OR the raw message bytes — both are deterministic
+ * functions of the exact sign-in text, so either requires the wallet's
+ * private key. Covers wallets that follow the "\x19Hedera Signed
+ * Message:" convention and wallets that sign raw bytes.
+ */
+function verifyHederaEcdsaSignature(
+  message: string,
+  sigBytes: Uint8Array,
+  keyBytes: Uint8Array,
+): boolean {
+  const msgBytes = new TextEncoder().encode(message);
+  return (
+    verifyEcdsaSecp256k1(hederaSignedMessageBytes(message), sigBytes, keyBytes) ||
+    verifyEcdsaSecp256k1(msgBytes, sigBytes, keyBytes)
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* The port                                                            */
 /* ------------------------------------------------------------------ */
@@ -444,17 +502,20 @@ export class RealAuthPort implements AuthPort {
     const address = canonicalAddress(fields.address);
     if (!address) return { ok: false, error: "invalid sign-in: bad address" };
 
-    // Route by address family: 0.0.x → Hedera (Ed25519 via mirror node),
-    // 0x… → EVM (personal_sign recovery).
+    // Route by address family: 0.0.x → Hedera (Ed25519/ECDSA via mirror
+    // node), 0x… → EVM (personal_sign recovery).
     if (isHederaAccountId(fields.address)) {
       const key = await this.fetchKey(fields.address);
       if (!key) {
         return { ok: false, error: "could not load the wallet's public key (mirror node)" };
       }
-      if (key.keyType !== "ED25519") {
+      const keyType = (key.keyType ?? "").toUpperCase();
+      const isEd25519 = keyType === "ED25519";
+      const isEcdsa = keyType === "ECDSA_SECP256K1" || keyType === "ECDSA";
+      if (!isEd25519 && !isEcdsa) {
         return {
           ok: false,
-          error: `unsupported key type ${key.keyType}: only Ed25519 wallets can sign in on Hedera`,
+          error: `unsupported key type ${key.keyType}: only Ed25519 and ECDSA (secp256k1) wallets can sign in on Hedera`,
         };
       }
       let sigBytes: Uint8Array;
@@ -465,7 +526,10 @@ export class RealAuthPort implements AuthPort {
       } catch {
         return { ok: false, error: "malformed signature or key" };
       }
-      if (!verifyHederaSignature(message, sigBytes, keyBytes)) {
+      const valid = isEd25519
+        ? verifyHederaSignature(message, sigBytes, keyBytes)
+        : verifyHederaEcdsaSignature(message, sigBytes, keyBytes);
+      if (!valid) {
         return { ok: false, error: "signature does not match this wallet" };
       }
     } else {

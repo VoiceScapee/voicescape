@@ -1,10 +1,12 @@
 /**
- * Session verification tests — EVM recovery, Hedera Ed25519 (mocked mirror
- * node), message validation, and the nonce registry. No network.
+ * Session verification tests — EVM recovery, Hedera Ed25519/ECDSA (mocked
+ * mirror node), message validation, and the nonce registry. No network.
  */
 import { generateKeyPairSync, sign as cryptoSign } from "crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ethers } from "ethers";
+import { secp256k1 } from "@noble/curves/secp256k1";
+import { keccak_256 } from "@noble/hashes/sha3";
 import {
   APP_NAME,
   SESSION_TTL_MS,
@@ -17,6 +19,7 @@ import {
   hederaSignedMessageBytes,
   issueSessionToken,
   testAuthPort,
+  verifyEcdsaSecp256k1,
   verifyEd25519,
   type AccountKey,
   type SessionCredential,
@@ -236,11 +239,90 @@ describe("Hedera sessions (Ed25519)", () => {
   it("rejects non-Ed25519 keys instead of faking verification", async () => {
     const { privateKey, rawHex } = hederaKey();
     const accountId = "0.0.999";
-    const p = port({ [accountId]: { keyHex: rawHex, keyType: "ECDSA" } });
+    const p = port({ [accountId]: { keyHex: rawHex, keyType: "RSA" } });
     const { message, signature } = await hederaCred(accountId, privateKey);
     const r = await p.verifySession({ message, signature });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/Ed25519/i);
+    if (!r.ok) expect(r.error).toMatch(/unsupported key type/i);
+  });
+});
+
+describe("Hedera sessions (ECDSA secp256k1)", () => {
+  function ecdsaKey() {
+    const priv = secp256k1.utils.randomPrivateKey();
+    const pubCompressed = secp256k1.getPublicKey(priv, true);
+    const pubUncompressed = secp256k1.getPublicKey(priv, false);
+    return {
+      priv,
+      compressedHex: Buffer.from(pubCompressed).toString("hex"),
+      uncompressedHex: Buffer.from(pubUncompressed).toString("hex"),
+    };
+  }
+
+  /** Mirror what a Hedera wallet does: sign keccak256(message) -> 64-byte compact (r||s). */
+  function walletSign(messageBytes: Uint8Array, priv: Uint8Array): string {
+    const sig = secp256k1.sign(keccak_256(messageBytes), priv).toCompactRawBytes();
+    return "0x" + Buffer.from(sig).toString("hex");
+  }
+
+  async function ecdsaCred(
+    accountId: string,
+    priv: Uint8Array,
+    opts: { raw?: boolean; tamper?: boolean } = {},
+  ) {
+    const message = msg({ address: accountId });
+    const what = opts.tamper ? message + "x" : message;
+    // Wallets sign the "\x19Hedera Signed Message:" prefixed bytes;
+    // `raw: true` covers wallets that sign the plain message bytes.
+    const bytes = opts.raw ? new TextEncoder().encode(what) : hederaSignedMessageBytes(what);
+    return { message, signature: walletSign(bytes, priv) };
+  }
+
+  it("accepts an ECDSA_SECP256K1 wallet signature (compressed key)", async () => {
+    const { priv, compressedHex } = ecdsaKey();
+    const accountId = "0.0.10424063";
+    const p = port({ [accountId]: { keyHex: compressedHex, keyType: "ECDSA_SECP256K1" } });
+    const { message, signature } = await ecdsaCred(accountId, priv);
+    const r = await p.verifySession({ message, signature });
+    expect(r.ok).toBe(true);
+  });
+
+  it("accepts uncompressed 65-byte keys and raw-bytes signatures", async () => {
+    const { priv, uncompressedHex } = ecdsaKey();
+    const accountId = "0.0.10424063";
+    const p = port({ [accountId]: { keyHex: uncompressedHex, keyType: "ECDSA_SECP256K1" } });
+    const { message, signature } = await ecdsaCred(accountId, priv, { raw: true });
+    expect((await p.verifySession({ message, signature })).ok).toBe(true);
+  });
+
+  it("rejects ECDSA signatures that do not match the wallet key", async () => {
+    const { priv, compressedHex } = ecdsaKey();
+    const other = ecdsaKey();
+    const accountId = "0.0.10424063";
+    const p = port({ [accountId]: { keyHex: other.compressedHex, keyType: "ECDSA_SECP256K1" } });
+    const { message, signature } = await ecdsaCred(accountId, priv);
+    const r = await p.verifySession({ message, signature });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/does not match/i);
+
+    const bad = await ecdsaCred(accountId, priv, { tamper: true });
+    const r2 = await p.verifySession({ message: bad.message, signature: bad.signature });
+    expect(r2.ok).toBe(false);
+  });
+});
+
+describe("verifyEcdsaSecp256k1", () => {
+  it("round-trips with noble", () => {
+    const priv = secp256k1.utils.randomPrivateKey();
+    const pub = secp256k1.getPublicKey(priv, true);
+    const message = new TextEncoder().encode("Voicescape test");
+    const sig = secp256k1.sign(keccak_256(message), priv).toCompactRawBytes();
+    expect(verifyEcdsaSecp256k1(message, sig, pub)).toBe(true);
+    const bad = new Uint8Array(sig);
+    bad[0] ^= 1;
+    expect(verifyEcdsaSecp256k1(message, bad, pub)).toBe(false);
+    expect(verifyEcdsaSecp256k1(message, new Uint8Array(10), pub)).toBe(false);
+    expect(verifyEcdsaSecp256k1(message, sig, new Uint8Array(32))).toBe(false);
   });
 });
 
