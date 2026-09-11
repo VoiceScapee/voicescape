@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withAuth } from "@/lib/server/townhall/route-auth";
+import { ipGate } from "@/lib/server/rate-limit";
 import {
   createChatRoom,
   defaultDeps,
@@ -24,6 +25,15 @@ export async function GET() {
  * session + ownership of the author page + the dust fee. 201 → {roomId}.
  */
 export async function POST(req: NextRequest) {
+  // Per-IP flood bound in front of the per-wallet quotas and dust fees.
+  const gated = await ipGate(
+    req,
+    "townhall",
+    "IP_RATE_LIMIT_TOWNHALL",
+    300,
+    "too many town hall writes from this network — try again later",
+  );
+  if (gated) return gated;
   let body: unknown;
   try {
     body = await req.json();

@@ -27,6 +27,7 @@ import {
   searchListings,
   setListingStatus,
   setProfileLinks,
+  submitAppeal,
   submitModAction,
   submitReport,
   getModStatus,
@@ -1503,16 +1504,25 @@ describe("safety reports", () => {
     expect(missing.status).toBe(404);
   });
 
-  it("report reasons are not run through the content filter (quoting is allowed)", async () => {
+  it("report reasons ARE run through the content filter (no quoting blocked text to HCS)", async () => {
     const deps = makeDeps();
     const seq = await seedPost(deps);
-    const r = await submitReport(deps, {
+    // Verbatim blocked text may not be quoted into an immutable HCS record —
+    // reporters paraphrase instead; the targetSeq points mods at the original.
+    const blocked = await submitReport(deps, {
       auth: testCred("bob"),
       targetKind: "post",
       targetSeq: seq,
       reason: "the post says 'i will kill you' which is a violent threat",
     });
-    expect(r.status).toBe(201);
+    expect(blocked.status).toBe(400);
+    const ok = await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "post",
+      targetSeq: seq,
+      reason: "the post contains a violent threat against another user, please review",
+    });
+    expect(ok.status).toBe(201);
   });
 
   it("queryReports is mod-only and lists reports newest-first", async () => {
@@ -1785,5 +1795,163 @@ describe("referrals (growth loop)", () => {
     const messages = await deps.hcs.queryAll("0.0.7001");
     const counts = collectReferralCounts(messages);
     expect(counts.get("brandon")).toBe(2);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* Production audit: enforcement + safety on every write path          */
+/*                                                                     */
+/* Regression tests for the audit fixes: every write path must run    */
+/* the graduated-enforcement check and the pre-publish safety filter   */
+/* BEFORE any fee is charged or any HCS write happens.                */
+/* ------------------------------------------------------------------ */
+
+describe("audit: enforcement + safety gates on all write paths", () => {
+  const FORUM = "0.0.7001";
+  const THREAT = "I will kill everyone in this chat";
+
+  /** Permanently ban a wallet by writing a ban record to the forum topic. */
+  async function banWallet(deps: TownhallDeps, wallet: string) {
+    await deps.hcs.submit(FORUM, {
+      v: 1,
+      kind: "ban",
+      ts: new Date().toISOString(),
+      author: "brandon",
+      wallet: wallet.toLowerCase(),
+      username: null,
+      reason: "audit fixture ban",
+      bannedBy: "brandon",
+      expiresAt: null,
+    });
+  }
+
+  const ALICE_WALLET = "0x000000000000000000000000000000000000a11c";
+  const BOB_WALLET = "0x00000000000000000000000000000000000000b0";
+
+  it("createProposal: banned wallet is blocked BEFORE the dust fee", async () => {
+    const deps = makeDeps();
+    await banWallet(deps, ALICE_WALLET);
+    const r = await createProposal(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      title: "A proposal",
+      body: "Some body text",
+      closesAt: "2027-01-01T00:00:00Z",
+      ...fee(),
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("createProposal: unsafe title/body is blocked BEFORE the dust fee", async () => {
+    const deps = makeDeps();
+    const r = await createProposal(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      title: THREAT,
+      body: "Some body text",
+      closesAt: "2027-01-01T00:00:00Z",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+    const r2 = await createProposal(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      title: "Fine title",
+      body: THREAT,
+      closesAt: "2027-01-01T00:00:00Z",
+      ...fee(),
+    });
+    expect(r2.status).toBe(400);
+  });
+
+  it("castRepVote: banned wallet cannot cast reputation votes", async () => {
+    const deps = makeDeps({ purchases: [["alice", "bob"]] });
+    await banWallet(deps, ALICE_WALLET);
+    const r = await castRepVote(deps, {
+      target: "bob",
+      voter: "alice",
+      auth: testCred("alice"),
+      value: 1,
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("voteProposal: banned wallet cannot vote on proposals", async () => {
+    const deps = makeDeps();
+    const created = await createProposal(deps, {
+      author: "brandon",
+      auth: testCred("brandon"),
+      title: "Should we?",
+      body: "A question",
+      closesAt: "2027-01-01T00:00:00Z",
+      ...fee(),
+    });
+    expect(created.status).toBe(201);
+    const id = (created.json as { id: string }).id;
+    await banWallet(deps, ALICE_WALLET);
+    const r = await voteProposal(deps, id, {
+      voter: "alice",
+      auth: testCred("alice"),
+      choice: "yes",
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("createEvent: unsafe title/description is blocked", async () => {
+    const deps = makeDeps();
+    const r = await createEvent(deps, {
+      author: "brandon",
+      auth: testCred("brandon"),
+      title: THREAT,
+      description: "A meetup",
+      startsAt: "2027-01-01T18:00:00Z",
+    });
+    expect(r.status).toBe(400);
+    const r2 = await createEvent(deps, {
+      author: "brandon",
+      auth: testCred("brandon"),
+      title: "Town hall",
+      description: THREAT,
+      startsAt: "2027-01-01T18:00:00Z",
+    });
+    expect(r2.status).toBe(400);
+  });
+
+  it("submitReport: unsafe reason text is blocked", async () => {
+    const deps = makeDeps();
+    const p = await createPost(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      body: "a post",
+      ...fee(),
+    });
+    expect(p.status).toBe(201);
+    const seq = (p.json as { seq: number }).seq;
+    const r = await submitReport(deps, {
+      auth: testCred("bob"),
+      targetKind: "post",
+      targetSeq: seq,
+      reason: `reporting this because ${THREAT.toLowerCase()} — please review`,
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("submitAppeal: banned wallets CAN appeal, but unsafe appeal text is blocked", async () => {
+    const deps = makeDeps();
+    await banWallet(deps, BOB_WALLET);
+    // A banned wallet must be able to appeal — no restriction check here.
+    const ok = await submitAppeal(deps, {
+      auth: testCred("bob"),
+      reason: "I believe this ban was a mistake and I would like a second review of my case",
+    });
+    expect(ok.status).toBe(201);
+
+    // A second banned wallet with abusive appeal text is blocked by the filter.
+    await banWallet(deps, ALICE_WALLET);
+    const blocked = await submitAppeal(deps, {
+      auth: testCred("alice"),
+      reason: `appealing because ${THREAT.toLowerCase()} if you do not lift this`,
+    });
+    expect(blocked.status).toBe(400);
   });
 });

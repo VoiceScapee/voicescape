@@ -32,6 +32,7 @@ import {
   formatRemaining,
   getActiveBans,
   getActiveTimeouts,
+  getActiveWarnings,
   getBanFor,
   getEnforcementState,
   getPendingAppeals,
@@ -78,6 +79,7 @@ import type {
   TimeoutView,
   UnbanMessage,
   WarnMessage,
+  WarnView,
 } from "./types";
 import {
   aggregateListings,
@@ -644,6 +646,9 @@ export async function castRepVote(deps: TownhallDeps, body: CastRepVoteBody): Pr
   if (!isNonEmptyString(body.target)) return err(400, "target is required");
   const own = await requirePageOwner(deps, body, body.voter, "voter");
   if (!own.ok) return own.result;
+  // Restricted wallets (timed out / banned) cannot cast reputation votes.
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
   const voter = own.username;
   const target = (body.target as string).trim();
   if (voter.toLowerCase() === target.toLowerCase()) return err(400, "cannot vote for yourself");
@@ -738,6 +743,13 @@ export async function createProposal(deps: TownhallDeps, body: CreateProposalBod
   if (!isNonEmptyString(body.closesAt) || Number.isNaN(Date.parse(body.closesAt))) {
     return err(400, "closesAt must be an ISO-8601 date");
   }
+  // Restricted wallets (timed out / banned) are stopped BEFORE the dust fee — they are never charged.
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
+  const gateTitle = safetyGate("proposal title", body.title, "proposal");
+  if (gateTitle) return gateTitle;
+  const gateBody = safetyGate("proposal body", body.body, "proposal");
+  if (gateBody) return gateBody;
   const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
   if (fee) return fee;
   const topic = topicOr503("governance");
@@ -773,6 +785,9 @@ export async function voteProposal(
   if (body.choice !== "yes" && body.choice !== "no" && body.choice !== "abstain") {
     return err(400, 'choice must be "yes", "no" or "abstain"');
   }
+  // Restricted wallets (timed out / banned) cannot vote on proposals.
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
   const topic = topicOr503("governance");
   if (typeof topic !== "string") return topic;
   // Free path (no dust fee): bound operator-subsidized writes per wallet.
@@ -957,7 +972,7 @@ export interface SubmitReportBody extends AuthBody {
   reason?: unknown;
 }
 
-type ReportTargetKind = "post" | "chat" | "listing";
+type ReportTargetKind = "post" | "chat" | "listing" | "profile";
 
 function reportTopicDomain(kind: ReportTargetKind): TopicDomain {
   return kind === "chat" ? "chat" : kind === "listing" ? "market" : "forum";
@@ -984,8 +999,8 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
   const restricted = await requireNotRestricted(deps, s.session.address);
   if (restricted) return restricted;
   const targetKind = body.targetKind;
-  if (targetKind !== "post" && targetKind !== "chat" && targetKind !== "listing") {
-    return err(400, 'targetKind must be "post", "chat", or "listing"');
+  if (targetKind !== "post" && targetKind !== "chat" && targetKind !== "listing" && targetKind !== "profile") {
+    return err(400, 'targetKind must be "post", "chat", "listing", or "profile"');
   }
   // Reporter identity: the registered username when it resolves to the
   // signing wallet, otherwise the canonical wallet address.
@@ -1004,6 +1019,8 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
   }
   const reason = body.reason.trim();
   if (reason.length > 500) return err(400, "reason too long (max 500 chars)");
+  const gate = safetyGate("report reason", reason, "report");
+  if (gate) return gate;
 
   const domain = reportTopicDomain(targetKind);
   const topic = topicOr503(domain);
@@ -1020,6 +1037,21 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
     targetId = body.targetId.trim();
     if (!aggregateListings(messages).has(targetId)) {
       return err(404, `listing "${targetId}" not found`);
+    }
+  } else if (targetKind === "profile") {
+    if (typeof body.targetId !== "string" || !body.targetId.trim()) {
+      return err(400, "targetId is required for profile reports (the reported username)");
+    }
+    targetId = body.targetId.trim().replace(/^@+/, "").toLowerCase();
+    let owner: string | null = null;
+    try {
+      owner = await deps.registry.resolveOwner(targetId);
+    } catch {
+      // Registry hiccup — fail open would let fake profiles be reported;
+      // fail closed here instead: the report target must be verifiable.
+    }
+    if (!owner) {
+      return err(404, `page "${targetId}" is not registered`);
     }
   } else {
     if (typeof body.targetSeq !== "number" || !Number.isInteger(body.targetSeq) || body.targetSeq <= 0) {
@@ -1221,6 +1253,15 @@ export interface UnbanUserBody extends AuthBody {
  * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
  * moderator, 404 wallet is not currently restricted.
  */
+/**
+ * Lift a wallet's enforcement state (warning, timeout, or ban).
+ * Mod-only. Publishes kind "unban" on the forum topic; the latest-wins
+ * state machine clears the wallet back to clean, so this also lifts
+ * warnings (which otherwise never expire).
+ *
+ * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * moderator, 404 wallet has no enforcement record to lift.
+ */
 export async function unbanUser(deps: TownhallDeps, body: UnbanUserBody): Promise<HandlerResult> {
   const mod = await requireBanMod(deps, body);
   if (!mod.ok) return mod.result;
@@ -1230,8 +1271,8 @@ export async function unbanUser(deps: TownhallDeps, body: UnbanUserBody): Promis
     return err(400, "wallet must be a valid Hedera account id (0.0.x) or EVM address (0x…)");
   }
   const state = await getStateFor(deps, wallet);
-  if (state.status === "clean" || state.status === "warned") {
-    return err(404, `wallet ${wallet} is not currently restricted`);
+  if (state.status === "clean") {
+    return err(404, `wallet ${wallet} has no enforcement record to lift`);
   }
   const topic = topicOr503("forum");
   if (typeof topic !== "string") return topic;
@@ -1359,6 +1400,121 @@ export async function listBans(deps: TownhallDeps, body: ListBansBody): Promise<
   return ok({ bans, timeouts });
 }
 
+export interface ListWarningsBody extends AuthBody {
+  username?: unknown;
+}
+
+/**
+ * Active warnings list, newest first. Mod-only (reasons and targets are
+ * not public). Warnings never expire; a warning disappears from this
+ * list only when a later enforcement event supersedes it for that wallet.
+ */
+export async function listWarnings(deps: TownhallDeps, body: ListWarningsBody): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const warnings: WarnView[] = await getActiveWarnings(deps);
+  return ok({ warnings });
+}
+
+export interface ResolveReportTargetBody extends AuthBody {
+  username?: unknown;
+  /** "post" | "chat" | "listing" | "profile". */
+  targetKind?: unknown;
+  /** HCS sequence number for post/chat targets. */
+  targetSeq?: unknown;
+  /** Listing id for listing targets, username for profile targets. */
+  targetId?: unknown;
+}
+
+/**
+ * Resolve a report's target to the offending identity: the author's
+ * registered username and their canonical wallet address, so a
+ * moderator can issue warn/timeout/ban from the report queue. Mod-only.
+ * Returns {username, wallet} — wallet may be null when the username has
+ * no resolvable on-chain owner (e.g. an unregistered chat alias).
+ */
+export async function resolveReportTarget(
+  deps: TownhallDeps,
+  body: ResolveReportTargetBody,
+): Promise<HandlerResult> {
+  const mod = await requireBanMod(deps, body);
+  if (!mod.ok) return mod.result;
+  const targetKind = body.targetKind;
+  if (targetKind !== "post" && targetKind !== "chat" && targetKind !== "listing" && targetKind !== "profile") {
+    return err(400, 'targetKind must be "post", "chat", "listing", or "profile"');
+  }
+  let username: string | null = null;
+  if (targetKind === "listing") {
+    if (typeof body.targetId !== "string" || !body.targetId.trim()) {
+      return err(400, "targetId is required for listing targets");
+    }
+    const topic = getTopicId("market");
+    if (!topic) return err(503, "marketplace topic not configured");
+    let messages;
+    try {
+      messages = await deps.hcs.queryAll(topic);
+    } catch {
+      return err(502, "could not read marketplace records — try again");
+    }
+    const listing = aggregateListings(messages).get(body.targetId.trim());
+    if (!listing) return err(404, `listing "${body.targetId.trim()}" not found`);
+    username = (listing.contents.sellerUsername ?? listing.contents.seller ?? "").trim() || null;
+  } else if (targetKind === "profile") {
+    if (typeof body.targetId !== "string" || !body.targetId.trim()) {
+      return err(400, "targetId is required for profile targets (the reported username)");
+    }
+    username = body.targetId.trim().replace(/^@+/, "").toLowerCase() || null;
+  } else {
+    if (typeof body.targetSeq !== "number" || !Number.isInteger(body.targetSeq) || body.targetSeq <= 0) {
+      return err(400, "targetSeq must be a positive integer");
+    }
+    const domain: TopicDomain = targetKind === "chat" ? "chat" : "forum";
+    const topic = getTopicId(domain);
+    if (!topic) return err(503, "topic not configured");
+    let messages;
+    try {
+      messages = await deps.hcs.queryAll(topic);
+    } catch {
+      return err(502, "could not read records — try again");
+    }
+    const wantKind = targetKind === "chat" ? "chat" : "post";
+    const found = messages.find((m) => m.seq === body.targetSeq && m.contents.kind === wantKind);
+    if (!found) return err(404, `${wantKind} #${body.targetSeq} not found`);
+    const contents = found.contents as { author?: unknown };
+    username = typeof contents.author === "string" && contents.author.trim() ? contents.author.trim() : null;
+  }
+  let wallet: string | null = null;
+  if (username) {
+    try {
+      const owner = await deps.registry.resolveOwner(username.replace(/^@+/, "").toLowerCase());
+      wallet = owner ? canonicalAddress(owner) : null;
+    } catch {
+      wallet = null; // registry hiccup — return the username; mod can act once resolvable
+    }
+  }
+  return ok({ username, wallet });
+}
+
+/**
+ * The signed-in wallet's own enforcement state. Session required —
+ * anyone may check their own restriction, so there is no mod gate.
+ * Fail-open: when HCS is unreadable the wallet reports clean (the write
+ * path still enforces independently).
+ */
+export async function getMyRestriction(deps: TownhallDeps, body: AuthBody): Promise<HandlerResult> {
+  const s = await requireSession(deps, body);
+  if (!s.ok) return s.result;
+  const wallet = canonicalAddress(s.session.address);
+  if (!wallet) return err(401, "invalid session wallet");
+  const state = await getStateFor(deps, wallet);
+  return ok({
+    status: state.status,
+    reason: state.reason,
+    remainingMs: state.remainingMs,
+    expiresAt: state.expiresAt,
+  });
+}
+
 export interface SuggestEnforcementBody extends AuthBody {
   username?: unknown;
   /** Wallet to evaluate: Hedera account id (0.0.x) or EVM 0x address. */
@@ -1436,6 +1592,11 @@ export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): 
   }
   const reason = body.reason.trim();
   if (reason.length > 500) return err(400, "reason too long (max 500 chars)");
+  // Appeals come from restricted wallets by design (no restriction check
+  // here), but the free-text reason still passes the safety filter before
+  // it is written to immutable HCS.
+  const gate = safetyGate("appeal reason", reason, "appeal");
+  if (gate) return gate;
   const topic = topicOr503("forum");
   if (typeof topic !== "string") return topic;
   let messages;
@@ -1611,6 +1772,10 @@ export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Pr
   if (!isNonEmptyString(body.startsAt) || Number.isNaN(Date.parse(body.startsAt))) {
     return err(400, "startsAt must be an ISO-8601 date");
   }
+  const gateTitle = safetyGate("event title", body.title, "event");
+  if (gateTitle) return gateTitle;
+  const gateDesc = safetyGate("event description", body.description, "event");
+  if (gateDesc) return gateDesc;
   // Free path (no dust fee, mods only): bound operator-subsidized writes.
   const quota = await requireTownhallWriteQuota(actor.session);
   if (quota) return quota;

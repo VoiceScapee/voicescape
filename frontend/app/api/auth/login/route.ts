@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { defaultAuthPort, issueSessionToken } from "@/lib/server/townhall/auth";
+import { ipGate } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
@@ -18,6 +19,16 @@ export const runtime = "nodejs";
  * instead of a session that 401s on every write.
  */
 export async function POST(req: NextRequest) {
+  // Signature verification does ecrecover / mirror-node work per request —
+  // bound per IP against resource-exhaustion abuse.
+  const gated = await ipGate(
+    req,
+    "auth",
+    "IP_RATE_LIMIT_AUTH",
+    60,
+    "too many sign-in attempts from this network — try again later",
+  );
+  if (gated) return gated;
   let body: unknown;
   try {
     body = await req.json();
