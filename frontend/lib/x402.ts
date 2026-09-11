@@ -37,6 +37,7 @@ import {
   AccountId,
   Client,
   Hbar,
+  Long,
   TokenId,
   Transaction,
   TransactionId,
@@ -277,8 +278,10 @@ export function createWalletHederaSigner(accountId: string, signTx: WalletSignTx
         tx.addHbarTransfer(payTo, Hbar.fromTinybars(amount.toString()));
       } else {
         const tokenId = TokenId.fromString(requirements.asset);
-        tx.addTokenTransfer(tokenId, payer, -amount);
-        tx.addTokenTransfer(tokenId, payTo, amount);
+        // amount is bigint (from @x402/hedera); the SDK takes number | Long —
+        // convert via string so no precision is lost.
+        tx.addTokenTransfer(tokenId, payer, Long.fromString((-amount).toString()));
+        tx.addTokenTransfer(tokenId, payTo, Long.fromString(amount.toString()));
       }
       // Mirror @x402/hedera: transaction id is generated with the
       // facilitator's fee-payer account as the payer.
