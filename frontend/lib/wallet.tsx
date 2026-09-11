@@ -4,13 +4,14 @@
  * Wallet abstraction for Voicescape.
  *
  * One interface, multiple adapters:
- *  - Hedera (HashPack, Blade, WalletConnect): paired through HashConnect v3
- *    (WalletConnect-based). Contract calls go through @hashgraph/sdk
- *    transactions signed in the wallet — see lib/tx.ts.
+ *  - Hedera (HashPack, Blade, WalletConnect): paired through DAppConnector
+ *    from @hashgraph/hedera-wallet-connect (official, HIP-820 based).
+ *    Contract calls go through @hashgraph/sdk transactions signed in the
+ *    wallet — see lib/tx.ts.
  *  - MetaMask: injected window.ethereum provider + ethers v6, pointed at
  *    Hedera (adds/switches to the Hedera network automatically).
  *
- * HashConnect pairing needs a WalletConnect project id:
+ * Hedera pairing needs a WalletConnect project id:
  *   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (free at https://cloud.reown.com)
  */
 import React, {
@@ -23,20 +24,22 @@ import React, {
   useState,
 } from "react";
 import { ethers } from "ethers";
-import type { HashConnect } from "hashconnect";
+import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import { getActiveChain, type ChainConfig } from "./chains";
 import type { TxSender } from "./tx";
 // NOTE: ./tx is intentionally NOT statically imported here. It pulls in the
 // entire @hashgraph/sdk (~2.3MB) which Vercel's CDN fails to serve reliably
 // on mobile ("Loading chunk 3322 failed"). The tx senders are dynamically
 // imported only when actually signing a transaction (after wallet connection).
+// The @hashgraph/hedera-wallet-connect package is also dynamically imported
+// for the same reason + SSR safety.
 
 /**
- * Minimal LedgerId shim — the real @hashgraph/sdk LedgerId is just a
- * 1-byte wrapper ([0]=mainnet, [1]=testnet) with a toString() method.
- * HashConnect's constructor only calls toString() on it, so we avoid
- * pulling the entire 2.3MB SDK into the wallet connection chunk for this
- * one trivial class.
+ * Minimal LedgerId shim — the real SDK LedgerId is just a 1-byte wrapper
+ * ([0]=mainnet, [1]=testnet) with a toString() method. DAppConnector only
+ * calls toString() on it (via ledgerIdToCAIPChainId), so we avoid pulling
+ * the entire 2.3MB SDK into the wallet connection chunk for this one
+ * trivial class.
  */
 class MinimalLedgerId {
   private readonly byte: number;
@@ -116,10 +119,10 @@ export function isHashPackInAppBrowser(): boolean {
 }
 
 /* ------------------------------------------------------------------ */
-/* Shared Hedera pairing via HashConnect v3                             */
+/* Shared Hedera pairing via DAppConnector                              */
 /* ------------------------------------------------------------------ */
 
-let hcInstance: HashConnect | null = null;
+let dAppConnectorInstance: DAppConnector | null = null;
 let hcAccountId: string | null = null;
 
 function getPairingProjectId(): string {
@@ -133,13 +136,13 @@ function getPairingProjectId(): string {
 }
 
 async function disconnectHedera(): Promise<void> {
-  if (hcInstance) {
+  if (dAppConnectorInstance) {
     try {
-      await hcInstance.disconnect();
+      await dAppConnectorInstance.disconnectAll();
     } catch {
       // Best effort.
     }
-    hcInstance = null;
+    dAppConnectorInstance = null;
     hcAccountId = null;
   }
 }
@@ -149,148 +152,126 @@ async function disconnectHedera(): Promise<void> {
  * than contract calls — e.g. signing x402 payment transactions or direct
  * token transfers. Returns null when no Hedera wallet is paired.
  */
-export function getHederaPairing(): { hc: HashConnect; accountId: string } | null {
-  if (!hcInstance || !hcAccountId) return null;
-  return { hc: hcInstance, accountId: hcAccountId };
+export function getHederaPairing(): { hc: DAppConnector; accountId: string } | null {
+  if (!dAppConnectorInstance || !hcAccountId) return null;
+  return { hc: dAppConnectorInstance, accountId: hcAccountId };
 }
 
 /**
- * Pair a Hedera wallet through HashConnect v3.
+ * Extract the account ID from a WalletConnect session.
+ * Session accounts look like "hedera:mainnet:0.0.12345" (HIP-30 format).
+ */
+function accountIdFromSession(session: { namespaces?: Record<string, { accounts?: string[] }> }): string | null {
+  const accounts = session.namespaces?.hedera?.accounts;
+  if (!accounts || accounts.length === 0) return null;
+  // Format: "hedera:<network>:<accountId>" → take the last part
+  const parts = accounts[0].split(":");
+  return parts[parts.length - 1] || null;
+}
+
+/**
+ * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
  *
- * Flow (per the hashconnect 3.x API): construct HashConnect with the ledger
- * id + WalletConnect project id + dapp metadata, attach a pairingEvent
- * listener, init() (a HashPack browser extension auto-pairs here when
- * present), otherwise openPairingModal() for QR-based pairing with any
- * HIP-820 wallet (HashPack mobile, Blade, Kabila…).
+ * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
+ * project id, init(), then openModal() for QR-based pairing with any HIP-820
+ * wallet (HashPack mobile, Blade, Kabila…). Inside HashPack's in-app browser
+ * the pairing happens via the iframe callback instead of a QR modal.
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // HashConnect v3 handles HashPack's in-app browser and desktop extension
-  // auto-pairing internally during init(). No custom injected-provider code.
-
-  // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
-  // These are client-side only and must not be evaluated during SSR.
+  // Dynamic import keeps the wallet library out of the initial bundle and
+  // avoids SSR issues (the package touches browser APIs at import time).
   // NOTE: We deliberately do NOT import @hashgraph/sdk here — it creates a
   // 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
   // LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
   // (via ./tx) is only loaded when actually signing a transaction.
-  // Retry with exponential backoff (3 attempts) on chunk load failure —
-  // Vercel's CDN can briefly 404 a chunk right after a deployment while it
-  // propagates to all edges.
-  async function loadHashConnect() {
-    const MAX_ATTEMPTS = 3;
-    let lastError: unknown = null;
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      try {
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error("Wallet library failed to load — please check your connection and try again.")),
-            15000,
-          ),
-        );
-        const mod = await Promise.race([import("hashconnect"), timeout]);
-        return mod.HashConnect;
-      } catch (e) {
-        lastError = e;
-        const isChunkError = e instanceof Error && e.name === "ChunkLoadError";
-        if (!isChunkError || attempt === MAX_ATTEMPTS) break;
-        // Exponential backoff: 2s, 4s — gives the CDN time to propagate.
-        await new Promise((r) => setTimeout(r, 2000 * attempt));
-      }
-    }
-    throw lastError instanceof Error
-      ? lastError
-      : new Error("Wallet library failed to load — please check your connection and try again.");
-  }
+  const {
+    DAppConnector: DAppConnectorClass,
+    HederaJsonRpcMethod,
+    HederaSessionEvent,
+    HederaChainId,
+  } = await import("@hashgraph/hedera-wallet-connect");
 
-  const HashConnect = await loadHashConnect();
   await disconnectHedera();
 
-  const ledgerId = (
-    chain.key === "hedera-mainnet" ? MinimalLedgerId.MAINNET : MinimalLedgerId.TESTNET
-  ) as unknown as import("@hashgraph/sdk").LedgerId;
-  const hc = new HashConnect(
-    ledgerId,
-    getPairingProjectId(),
+  const isMainnet = chain.key === "hedera-mainnet";
+  // MinimalLedgerId shim: DAppConnector only calls toString() on the ledger id.
+  const ledgerId = (isMainnet ? MinimalLedgerId.MAINNET : MinimalLedgerId.TESTNET) as unknown as never;
+
+  const connector = new DAppConnectorClass(
     {
       name: "Voicescape",
       description: "Block pages for humans and AI agents, with on-chain tipping",
-      icons: [`${window.location.origin}/icon.svg`],
       url: window.location.origin,
+      icons: [`${window.location.origin}/icon.svg`],
     },
-    false,
+    ledgerId,
+    getPairingProjectId(),
+    Object.values(HederaJsonRpcMethod),
+    [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
+    [isMainnet ? HederaChainId.Mainnet : HederaChainId.Testnet],
   );
-  hcInstance = hc;
+  dAppConnectorInstance = connector;
+
+  await connector.init({ logger: "error" });
 
   // Inside HashPack's in-app browser a QR pairing modal is useless — it
   // can't be scanned from within the wallet app itself. The pairing
-  // approval happens in-app through the pairingEvent listener above, so
-  // wait for it directly instead of opening the modal.
+  // happens via the iframe session callback instead.
   const inHashPackBrowser = isHashPackInAppBrowser();
 
-  const pairingPromise = new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(
-      () =>
-        reject(
-          new Error(
-            inHashPackBrowser
-              ? "HashPack did not approve the connection — approve the request in HashPack and try again."
-              : "Pairing timed out after 3 minutes — approve the connection in your wallet app and try again. If no QR code appeared, your browser may be blocking popups.",
+  if (inHashPackBrowser) {
+    // Wait for the iframe-based pairing (up to 3 minutes).
+    const accountId = await new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          reject(
+            new Error(
+              "HashPack did not approve the connection — approve the request in HashPack and try again.",
+            ),
           ),
-        ),
-      180_000,
-    );
-    hc.pairingEvent.on((data) => {
-      const id = data.accountIds?.[0];
-      if (id) {
-        clearTimeout(timer);
-        resolve(id);
-      }
-    });
-  });
-
-  await hc.init();
-
-  // An installed HashPack extension (or HashPack's in-app browser) pairs
-  // automatically during init(). Give it a moment to complete before
-  // falling back to the QR pairing modal — on mobile the auto-pairing
-  // can take a few seconds.
-  for (let i = 0; i < 10; i++) {
-    const autoPaired = hc.connectedAccountIds;
-    if (autoPaired.length > 0) {
-      hcAccountId = autoPaired[0].toString();
-      return hcAccountId;
-    }
-    // Wait 500ms and check again (up to 5 seconds total).
-    await new Promise((r) => setTimeout(r, 500));
-  }
-
-  // No auto-pairing happened. Outside HashPack's browser, open the QR
-  // pairing modal for mobile wallets. Inside HashPack's browser the
-  // approval already happens in-app — just wait for the pairing event.
-  if (!inHashPackBrowser) {
-    try {
-      await hc.openPairingModal("dark");
-    } catch (modalErr) {
-      const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
-      throw new Error(
-        `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`
+        180_000,
       );
-    }
+      connector.onSessionIframeCreated = (session) => {
+        const id = accountIdFromSession(session);
+        if (id) {
+          clearTimeout(timer);
+          resolve(id);
+        }
+      };
+    });
+    hcAccountId = accountId;
+    return accountId;
   }
 
-  hcAccountId = await pairingPromise;
-  return hcAccountId;
+  // Standard flow: open the QR pairing modal.
+  // Note: if a desktop extension is present, the modal offers it directly.
+  let session;
+  try {
+    session = await connector.openModal();
+  } catch (modalErr) {
+    const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    throw new Error(
+      `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`,
+    );
+  }
+
+  const accountId = accountIdFromSession(session);
+  if (!accountId) {
+    throw new Error("Pairing succeeded but no Hedera account was returned.");
+  }
+  hcAccountId = accountId;
+  return accountId;
 }
 
 function hederaGetTxSender(chain: ChainConfig): () => Promise<TxSender> {
   return async () => {
-    if (!hcInstance || !hcAccountId) {
+    if (!dAppConnectorInstance || !hcAccountId) {
       throw new Error("Hedera wallet is not connected.");
     }
     // Dynamic import: ./tx pulls in @hashgraph/sdk (~2.3MB). Only load it
     // when actually signing — never on page load or wallet connection.
     const { createHederaTxSender } = await import("./tx");
-    return createHederaTxSender(hcInstance, hcAccountId, chain);
+    return createHederaTxSender(dAppConnectorInstance, hcAccountId, chain);
   };
 }
 
@@ -397,7 +378,7 @@ const metamaskAdapter: WalletAdapter = {
 const ADAPTERS: Record<WalletAdapterId, WalletAdapter> = {
   hashpack: makeHederaAdapter("hashpack"),
   // Blade and generic WalletConnect pair through the same WalletConnect-based
-  // HashConnect modal, which supports any HIP-820 Hedera wallet.
+  // modal, which supports any HIP-820 Hedera wallet.
   blade: makeHederaAdapter("blade"),
   walletconnect: makeHederaAdapter("walletconnect"),
   metamask: metamaskAdapter,
@@ -495,4 +476,3 @@ export function useWallet(): WalletState {
   if (!ctx) throw new Error("useWallet must be used inside <WalletProvider>");
   return ctx;
 }
-

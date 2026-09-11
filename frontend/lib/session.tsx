@@ -174,35 +174,26 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [account]);
 
   const signHederaMessage = useCallback(async (message: string, accountId: string): Promise<string> => {
-    // Try HashPack's injected provider first (no HashConnect needed)
-    const w = window as unknown as {
-      hashpack?: {
-        signMessage?: (args: { accountId: string; message: string }) => Promise<{ signature: Uint8Array | number[] }>;
-      };
-    };
-    if (w.hashpack?.signMessage) {
-      try {
-        const result = await w.hashpack.signMessage({ accountId, message });
-        const sig = result.signature;
-        if (!sig || sig.length === 0) throw new Error("The wallet did not return a signature.");
-        return "0x" + bytesToHex(sig instanceof Uint8Array ? sig : new Uint8Array(sig));
-      } catch (e) {
-        // Fall through to HashConnect
-        console.warn("Injected signMessage failed, trying HashConnect:", e);
-      }
-    }
     const pairing = getHederaPairing();
     if (!pairing) throw new Error("Wallet session not ready — reconnect and try again.");
-    const { AccountId } = await import("@hashgraph/sdk");
-    const results = await pairing.hc.signMessages(AccountId.fromString(accountId), message);
-    const first = results?.[0];
-    const sig = first?.signature;
+    const walletConnect = await import("@hashgraph/hedera-wallet-connect");
+    const { proto } = await import("@hashgraph/proto");
+    // DAppConnector.signMessage uses HIP-30 account format: "hedera:<network>:<accountId>"
+    const chain = (await import("./chains")).getActiveChain();
+    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+    const result = (await pairing.hc.signMessage({
+      signerAccountId: `hedera:${network}:${accountId}`,
+      message,
+    })) as unknown as { result?: { signatureMap?: string }; signatureMap?: string };
+    // Handle both enveloped (result.signatureMap) and unwrapped shapes
+    const sigMapB64 = result?.result?.signatureMap ?? result?.signatureMap;
+    if (!sigMapB64) throw new Error("The wallet did not return a signature.");
+    // signatureMap is a base64-encoded proto.SignatureMap — decode and extract
+    const sigMapBytes = walletConnect.base64StringToUint8Array(sigMapB64);
+    const sigMap = proto.SignatureMap.decode(sigMapBytes);
+    const sig = walletConnect.extractFirstSignature(sigMap as unknown as Parameters<typeof walletConnect.extractFirstSignature>[0]);
     if (!sig || sig.length === 0) throw new Error("The wallet did not return a signature.");
-    const returnedAccount = first.accountId?.toString?.();
-    if (returnedAccount && returnedAccount !== accountId) {
-      throw new Error("The wallet signed with a different account. Reconnect and try again.");
-    }
-    return "0x" + bytesToHex(sig instanceof Uint8Array ? sig : new Uint8Array(sig));
+    return "0x" + bytesToHex(sig);
   }, []);
 
   const signEvmMessage = useCallback(async (message: string, address: string): Promise<string> => {

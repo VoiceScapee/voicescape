@@ -1159,9 +1159,25 @@ function VibecodeChat({
     try {
       const pairing = getHederaPairing();
       if (!pairing) throw new Error("Connect a Hedera wallet (HashPack / Blade / WalletConnect) to pay.");
-      const signer = createWalletHederaSigner(pairing.accountId, (tx) =>
-        pairing.hc.signTransaction(AccountId.fromString(pairing.accountId), tx),
-      );
+      const { getActiveChain } = await import("@/lib/chains");
+      const activeChain = getActiveChain();
+      const network = activeChain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+      const signer = createWalletHederaSigner(pairing.accountId, async (tx) => {
+        // Serialize to base64 — avoids hiero-sdk/hashgraph-sdk type friction.
+        const txBytes = tx.toBytes();
+        let binary = "";
+        txBytes.forEach((b) => { binary += String.fromCharCode(b); });
+        const txB64 = btoa(binary);
+        const result = await (pairing.hc.signTransaction as unknown as (params: object) => Promise<unknown>)({
+          signerAccountId: `hedera:${network}:${pairing.accountId}`,
+          transactionBody: txB64,
+        });
+        const { Transaction } = await import("@hashgraph/sdk");
+        if (result instanceof Transaction) {
+          return result;
+        }
+        throw new Error("Wallet did not return a signed transaction.");
+      });
       setX402Note({ kind: "info", text: `Paying ${x402Rail.amountDisplay} — approve the transfer in your wallet…` });
       const { response, settleTxId } = await payX402(
         x402Url,

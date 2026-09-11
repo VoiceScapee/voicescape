@@ -213,10 +213,20 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
     const tx = new TransferTransaction()
       .addHbarTransfer(payer, amount.negated())
       .addHbarTransfer(toAccountId(treasury), amount);
-    const signer = hc.getSigner(payer);
+    // DAppConnector.getSigner returns a hiero-sdk DAppSigner; cast to the
+    // hashgraph-sdk Signer — the two SDKs are runtime-compatible.
+    const signer = (hc.getSigner as unknown as (id: unknown) => Parameters<typeof tx.freezeWithSigner>[0])(payer);
     await tx.freezeWithSigner(signer);
     const txId = tx.transactionId?.toString() ?? "";
-    await hc.sendTransaction(payer, tx);
+    // DAppConnector signs AND executes via the wallet (HIP-820).
+    const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
+    const { getActiveChain } = await import("./chains");
+    const chain = getActiveChain();
+    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+    await (hc.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
+      signerAccountId: `hedera:${network}:${accountId}`,
+      transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),
+    });
     if (!txId) throw new Error("Wallet did not return a transaction id.");
     return txId;
   }

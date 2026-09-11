@@ -24,7 +24,7 @@ import {
   ContractId,
   Hbar,
 } from "@hashgraph/sdk";
-import type { HashConnect as HashConnectType } from "hashconnect";
+import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
 
 /* ------------------------------------------------------------------ */
@@ -171,11 +171,11 @@ function hederaContractId(evmAddress: string): ContractId {
 }
 
 /**
- * @param hc        Live HashConnect instance, or null for a read-only sender.
+ * @param dAppConnector Live DAppConnector instance, or null for a read-only sender.
  * @param accountIdStr Paired Hedera account id ("0.0.x"), or null when read-only.
  */
 export function createHederaTxSender(
-  hc: HashConnectType | null,
+  dAppConnector: DAppConnector | null,
   accountIdStr: string | null,
   chain: ChainConfig,
 ): TxSender {
@@ -183,9 +183,9 @@ export function createHederaTxSender(
   // Public client — no operator needed for ContractCallQuery.
   const queryClient = isMainnet ? Client.forMainnet() : Client.forTestnet();
 
-  function requireWallet(): { hc: HashConnectType; accountId: AccountId } {
-    if (!hc || !accountIdStr) throw new Error("Connect a Hedera wallet to send transactions.");
-    return { hc, accountId: AccountId.fromString(accountIdStr) };
+  function requireWallet(): { dAppConnector: DAppConnector; accountId: AccountId } {
+    if (!dAppConnector || !accountIdStr) throw new Error("Connect a Hedera wallet to send transactions.");
+    return { dAppConnector, accountId: AccountId.fromString(accountIdStr) };
   }
 
   async function executeWrite(
@@ -194,7 +194,7 @@ export function createHederaTxSender(
     params: ContractFunctionParameters,
     valueWei?: bigint,
   ): Promise<string> {
-    const { hc: liveHc, accountId } = requireWallet();
+    const { dAppConnector: liveConnector, accountId } = requireWallet();
     const tx = new ContractExecuteTransaction()
       .setContractId(hederaContractId(evmAddress))
       .setGas(HEDERA_WRITE_GAS)
@@ -208,10 +208,18 @@ export function createHederaTxSender(
       tx.setPayableAmount(Hbar.fromTinybars(tinybars.toString()));
     }
     // freezeWithSigner fills in transaction id + node account ids via the wallet.
-    const signer = liveHc.getSigner(accountId);
+    // DAppConnector.getSigner returns a DAppSigner (hiero-sdk based); cast to
+    // the hashgraph-sdk Signer interface — the two SDKs are runtime-compatible.
+    const signer = (liveConnector.getSigner as unknown as (id: unknown) => Parameters<typeof tx.freezeWithSigner>[0])(accountId);
     await tx.freezeWithSigner(signer);
     const txId = tx.transactionId?.toString() ?? "";
-    await liveHc.sendTransaction(accountId, tx);
+    // DAppConnector signs AND executes via the wallet (HIP-820).
+    const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
+    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+    await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
+      signerAccountId: `hedera:${network}:${accountId.toString()}`,
+      transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),
+    });
     // HashScan deep link format: <network>/transaction/<txId>
     return txId;
   }
