@@ -12,6 +12,7 @@
 import React from "react";
 import { WalletProvider } from "@/lib/wallet";
 import { SessionProvider } from "@/lib/session";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 
 /**
  * Recovers from stale-cache ChunkLoadErrors: if a Next.js chunk fails to
@@ -96,7 +97,9 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
   useChunkErrorRecovery();
   return (
     <WalletProvider>
-      <SessionProvider>{children}</SessionProvider>
+      <SessionProvider>
+        <LanguageProvider>{children}</LanguageProvider>
+      </SessionProvider>
     </WalletProvider>
   );
 }

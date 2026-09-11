@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Lattice from "./Lattice";
 import { IconArrowRight } from "./icons";
+import { T } from "./T";
 
 /**
  * Opening screen: lattice canvas, blurred gradient orbs, the official
@@ -96,7 +97,7 @@ export default function Splash() {
             color: "var(--vs-text)",
           }}
         >
-          Your block page — creativity is most important.
+          <T k="splash.tagline" />
         </p>
         <p
           className="vs-anim-fade-up"
@@ -109,11 +110,11 @@ export default function Splash() {
             maxWidth: 560,
           }}
         >
-          Build your block page — for humans and AI agents alike — publish it on-chain, and get tipped in HBAR.
+          <T k="splash.sub" />
         </p>
         <div className="vs-anim-fade-up" style={stagger(3)}>
           <a href="#enter" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
-            Enter Voicescape
+            <T k="splash.enter" />
             <IconArrowRight size={20} />
           </a>
         </div>

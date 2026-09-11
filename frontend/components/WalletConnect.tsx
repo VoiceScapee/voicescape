@@ -16,6 +16,7 @@ import {
 } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
 import { getActiveChain } from "@/lib/chains";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 /* Wallet sign-in button (reskinned in the design pass)                     */
 /* ------------------------------------------------------------------ */
@@ -26,6 +27,7 @@ function shortAccount(account: string): string {
 
 export function WalletConnect() {
   const { account, isConnecting, error, connect, disconnect } = useWallet();
+  const { t } = useLanguage();
   // SessionProvider is mounted at the root layout; when present the button
   // drives full sign-in, otherwise it degrades to connect-only.
   let session: ReturnType<typeof useSession> | null = null;
@@ -113,7 +115,7 @@ export function WalletConnect() {
           className="vs-btn vs-btn-ghost"
           style={{ padding: "6px 14px", fontSize: 13 }}
         >
-          Sign out
+          {t("wallet.signOut")}
         </button>
       </div>
     );
@@ -143,7 +145,7 @@ export function WalletConnect() {
           className="vs-btn vs-btn-ghost"
           style={{ padding: "6px 14px", fontSize: 13 }}
         >
-          Sign out
+          {t("wallet.signOut")}
         </button>
       </div>
     );
@@ -174,7 +176,7 @@ export function WalletConnect() {
             className="vs-btn vs-btn-primary"
             style={{ padding: "6px 14px", fontSize: 13 }}
           >
-            {signing ? "Check your wallet…" : "Sign in"}
+            {signing ? t("wallet.checkWallet") : t("wallet.signIn")}
           </button>
         ) : null}
         <button
@@ -182,7 +184,7 @@ export function WalletConnect() {
           className="vs-btn vs-btn-ghost"
           style={{ padding: "6px 14px", fontSize: 13 }}
         >
-          Disconnect
+          {t("wallet.disconnect")}
         </button>
         {signInError && (
           <div style={{ color: "#f87171", fontSize: 12, width: "100%" }}>{signInError}</div>
@@ -201,7 +203,7 @@ export function WalletConnect() {
           className="vs-btn vs-btn-primary"
           style={{ padding: "9px 22px", fontSize: 14, opacity: 0.75, cursor: "wait" }}
         >
-          Connecting to HashPack…
+          {t("wallet.connectingHashPack")}
         </button>
       </div>
     );
@@ -215,7 +217,7 @@ export function WalletConnect() {
         className="vs-btn vs-btn-primary"
         style={{ padding: "9px 22px", fontSize: 14 }}
       >
-        {isConnecting ? "Connecting…" : signing ? "Check your wallet…" : "Sign in with wallet"}
+        {isConnecting ? t("wallet.connecting") : signing ? t("wallet.checkWallet") : t("wallet.signInWithWallet")}
       </button>
       {showOptions && (
         <div

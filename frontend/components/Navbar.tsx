@@ -1,6 +1,8 @@
 import Link from "next/link";
 import Logo from "./Logo";
 import InstallAppButton from "./InstallAppButton";
+import { LanguageSelector } from "./LanguageSelector";
+import { T } from "./T";
 
 interface NavbarProps {
   right?: React.ReactNode;
@@ -48,16 +50,17 @@ export default function Navbar({ right }: NavbarProps) {
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}
           >
-            Town Hall
+            <T k="nav.townHall" />
           </Link>
           <Link
             href="/builder"
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}
           >
-            Builder
+            <T k="nav.builder" />
           </Link>
           <InstallAppButton />
+          <LanguageSelector />
           {right}
         </div>
       </nav>
