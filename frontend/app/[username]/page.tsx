@@ -26,6 +26,7 @@ import {
 } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import { AccountId } from "@hashgraph/sdk";
+import { normalizeUsername } from "@/lib/identity";
 
 type LoadState =
   | { status: "loading" }
@@ -513,9 +514,11 @@ function PublicPageInner({ username }: { username: string }) {
 
 export default function PublicPage({ params }: { params: { username: string } }) {
   const { username } = params;
+  // KISS identity: /0.0.10424063 resolves to the wallet's derived page
+  // (user-10424063) so users can share either form.
   return (
     <WalletProvider>
-      <PublicPageInner username={username} />
+      <PublicPageInner username={normalizeUsername(username)} />
     </WalletProvider>
   );
 }

@@ -73,6 +73,21 @@ export function WalletConnect() {
     }
   }
 
+  // KISS: after the wallet connects — including the HashPack in-app
+  // browser auto-connect — request the 7-day session signature
+  // automatically, so connecting is one gesture instead of two. Requested
+  // once per connected account: if the user dismisses it they stay
+  // connected and publishing will prompt them once more (graceful, no loop).
+  const autoSignFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session || session.status !== "connected" || !account) return;
+    if (autoSignFor.current === account) return;
+    autoSignFor.current = account;
+    void session.signIn().catch(() => {
+      // Dismissal surfaces via session.error; the user can sign in later.
+    });
+  }, [session, account]);
+
   // Close the wallet picker when clicking outside or pressing Escape.
   useEffect(() => {
     if (!showOptions) return;

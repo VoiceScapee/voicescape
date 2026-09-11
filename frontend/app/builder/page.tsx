@@ -52,9 +52,15 @@ import {
   setByokKey,
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
-import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
+import { registerPage, resolvePage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
+import {
+  deriveUsername,
+  getVanityName,
+  isValidUsername,
+  setVanityName,
+} from "@/lib/identity";
 import { pinPageJson } from "@/lib/ipfs";
-import { postJson } from "@/lib/townhall";
+import { accountToEvmAddress, postJson } from "@/lib/townhall";
 import {
   createWalletHederaSigner,
   formatUsdCents,
@@ -66,8 +72,6 @@ import {
 import { AccountId } from "@hashgraph/sdk";
 import { summarizeChanges, type AiDraft } from "./vibecode-utils";
 import "./builder.css";
-
-const USERNAME_RE = /^[a-z0-9-]{3,24}$/;
 
 /* ---------------------------------------------------------------- */
 /* Helpers                                                          */
@@ -1457,17 +1461,18 @@ function VibecodeChat({
 
 function PublishPanel({
   page,
-  onUsernameChange,
   onPageChange,
   initialOwnerType,
+  initialVanity,
 }: {
   page: VoicescapePage;
-  onUsernameChange: (u: string) => void;
   onPageChange: (p: VoicescapePage) => void;
   initialOwnerType?: "human" | "agent";
+  /** A custom name suggested by a loaded draft (e.g. the ?draft= link). */
+  initialVanity?: string | null;
 }) {
   const { account, getTxSender } = useWallet();
-  const { requireSession } = useSession();
+  const { requireSession, signIn } = useSession();
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1488,7 +1493,29 @@ function PublishPanel({
   const chain = getActiveChain();
   const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ?? "(not set)";
 
-  const usernameValid = USERNAME_RE.test(page.username);
+  // KISS identity: the wallet address IS the page name. The derived name
+  // (user-10424063) is the default; a custom name is an optional claim.
+  const derivedUsername = account ? deriveUsername(account) : null;
+  const [vanityOpen, setVanityOpen] = useState(false);
+  const [vanity, setVanity] = useState("");
+  // A loaded draft can suggest a custom name (e.g. the ?draft= link's
+  // username); a previously claimed name is remembered per wallet.
+  useEffect(() => {
+    if (!account) return;
+    if (initialVanity && isValidUsername(initialVanity) && initialVanity !== derivedUsername) {
+      setVanity(initialVanity);
+      setVanityOpen(true);
+      return;
+    }
+    const stored = getVanityName(account);
+    if (stored && stored !== derivedUsername) {
+      setVanity(stored);
+      setVanityOpen(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account]);
+  const vanityName = vanity.trim().toLowerCase();
+  const vanityValid = vanityName === "" || isValidUsername(vanityName);
 
   /** Normalize an operator wallet to a 0x address (accepts 0.0.x or 0x). */
   const normalizeOperator = (raw: string): string => {
@@ -1501,21 +1528,39 @@ function PublishPanel({
     throw new Error("Operator wallet must be a 0x address or a 0.0.x account id.");
   };
 
-  const publish = async (isUpdate: boolean) => {
+  /**
+   * Publish the page. The derived wallet name is always registered (or
+   * updated when this wallet already owns it); a custom name, when set,
+   * gets its own registry entry pointing at the same content. One tx for
+   * the default name, a second only when a custom name is claimed.
+   */
+  const publish = async () => {
     setStatus(null);
     setTxHash(null);
+    // Session: use the stored one; if the user dismissed the auto-prompt at
+    // connect time, request the signature once here (graceful).
     try {
       requireSession();
     } catch {
-      setStatus({ kind: "err", text: "Sign in with your wallet first." });
-      return;
+      setStatus({ kind: "info", text: "Requesting wallet signature…" });
+      try {
+        await signIn();
+      } catch {
+        setStatus({ kind: "err", text: "Sign the wallet message to publish." });
+        return;
+      }
     }
     if (!account) {
       setStatus({ kind: "err", text: "Connect a wallet first." });
       return;
     }
-    if (!usernameValid) {
-      setStatus({ kind: "err", text: "Username must be 3–24 chars: lowercase letters, numbers, hyphens." });
+    const target = deriveUsername(account);
+    if (!target) {
+      setStatus({ kind: "err", text: "This wallet type isn't supported for publishing yet." });
+      return;
+    }
+    if (!vanityValid) {
+      setStatus({ kind: "err", text: "Custom name must be 3–24 chars: lowercase letters, numbers, hyphens." });
       return;
     }
     // Validate agent disclosure BEFORE pinning/paying anything.
@@ -1536,10 +1581,12 @@ function PublishPanel({
     }
     setBusy(true);
     try {
-      // Stamp the page JSON with the informational owner type / purpose, and
-      // sync the operator block (if present) with the registration fields.
+      // Stamp the page JSON with the derived username plus the informational
+      // owner type / purpose, and sync the operator block (if present) with
+      // the registration fields.
       const stamped: VoicescapePage = {
         ...page,
+        username: target,
         ownerType,
         purpose: ownerType === "agent" ? purposeText : page.purpose,
         blocks: page.blocks.map((b) =>
@@ -1553,39 +1600,47 @@ function PublishPanel({
       // 1. Pin page JSON to IPFS (server-side via Pinata)
       setStatus({ kind: "info", text: "Pinning page to IPFS…" });
       const ipfsHash = await pinPageJson(JSON.stringify(stamped));
-      // 2. Register or update on-chain with the connected wallet
-      setStatus({ kind: "info", text: isUpdate ? "Updating page on-chain…" : "Registering page on-chain…" });
+      // 2. Register or update on-chain with the connected wallet. Each name
+      // gets one tx; the custom name is a second registry entry pointing at
+      // the same content.
       const sender = await getTxSender();
-      const hash = isUpdate
-        ? await updatePage(stamped.username, ipfsHash, sender)
-        : await registerPage(
-            stamped.username,
-            ipfsHash,
-            ownerType === "agent" ? 1 : 0,
-            operator,
-            purposeText,
-            sender,
-          );
+      const accountEvm = accountToEvmAddress(account).toLowerCase();
+      const ownerFlag = ownerType === "agent" ? 1 : 0;
+      const publishName = async (name: string): Promise<string> => {
+        const existing = await resolvePage(name, chain);
+        if (existing) {
+          if (existing.owner.toLowerCase() !== accountEvm) {
+            throw new Error(`The name "${name}" is already registered to another wallet.`);
+          }
+          setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
+          return updatePage(name, ipfsHash, sender);
+        }
+        setStatus({ kind: "info", text: `Registering /${name} on-chain…` });
+        return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
+      };
+      const hash = await publishName(target);
       setTxHash(hash);
+      if (vanityName) {
+        await publishName(vanityName);
+        setVanityName(account, vanityName);
+      }
       setStatus({ kind: "ok", text: "Published!" });
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
-      markPublished(stamped.username);
+      markPublished(target);
       // Record a referral if the user arrived via ?ref= (captured into
       // localStorage by RootProviders). Best-effort — never blocks publish.
-      if (!isUpdate) {
-        try {
-          const referrer = localStorage.getItem("vs_referral");
-          if (referrer && referrer !== stamped.username.toLowerCase()) {
-            await postJson("/api/townhall/referrals", {
-              referredUsername: stamped.username,
-              referrer,
-            });
-            localStorage.removeItem("vs_referral");
-          }
-        } catch {
-          /* referral is best-effort; the page is already published */
+      try {
+        const referrer = localStorage.getItem("vs_referral");
+        if (referrer && referrer !== target.toLowerCase()) {
+          await postJson("/api/townhall/referrals", {
+            referredUsername: target,
+            referrer,
+          });
+          localStorage.removeItem("vs_referral");
         }
+      } catch {
+        /* referral is best-effort; the page is already published */
       }
     } catch (e) {
       setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
@@ -1603,21 +1658,44 @@ function PublishPanel({
         Publish
       </div>
 
-      <label className="vb-field">
-        <span className="vs-label">Username</span>
-        <input
-          className="vs-input vs-mono"
-          value={page.username}
-          onChange={(e) => onUsernameChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-          placeholder="your-name"
-        />
-        {!usernameValid && page.username.length > 0 && (
-          <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
-        )}
-        <div className="vb-live-url">
-          Live URL after publish: <span className="vs-mono">/{page.username || "your-name"}</span>
+      <div className="vb-field">
+        <span className="vs-label">Your page URL</span>
+        <div className="vs-mono vb-live-url" style={{ fontSize: 15 }}>
+          /{derivedUsername ?? "connect your wallet…"}
         </div>
-      </label>
+        <div className="vb-info-hint">
+          Your wallet is your identity — no sign-up needed.
+        </div>
+        <button
+          type="button"
+          className="vb-quiet-link"
+          onClick={() => setVanityOpen((v) => !v)}
+          style={{ marginTop: 6 }}
+        >
+          {vanityOpen ? "Hide custom name" : "Want a custom name like /0xcreator? Claim one →"}
+        </button>
+        {vanityOpen && (
+          <>
+            <input
+              className="vs-input vs-mono"
+              value={vanity}
+              onChange={(e) =>
+                setVanity(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
+              }
+              placeholder="0xcreator"
+              style={{ marginTop: 8 }}
+              aria-label="Custom page name"
+            />
+            {!vanityValid && vanity.length > 0 && (
+              <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
+            )}
+            <div className="vb-info-hint">
+              Claimed on-chain alongside your page{vanityName ? ` as /${vanityName}` : ""} — a second
+              wallet signature at publish time.
+            </div>
+          </>
+        )}
+      </div>
 
       <span className="vs-label">Page owner</span>
       <div className="pv-rail-row" role="group" aria-label="Page owner type" style={{ marginBottom: 4 }}>
@@ -1702,18 +1780,10 @@ function PublishPanel({
         <button
           type="button"
           className="vs-btn vs-btn-primary"
-          onClick={() => publish(false)}
-          disabled={busy || !account || !usernameValid}
+          onClick={() => publish()}
+          disabled={busy || !account || !vanityValid || !derivedUsername}
         >
-          {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish new page</>)}
-        </button>
-        <button
-          type="button"
-          className="vs-btn vs-btn-ghost"
-          onClick={() => publish(true)}
-          disabled={busy || !account || !usernameValid}
-        >
-          {busy ? "Publishing…" : "Update existing"}
+          {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish page</>)}
         </button>
       </div>
 
@@ -1779,6 +1849,9 @@ function BuilderInner() {
   // pre-fill the builder with their template + identity fields. Consumed
   // once — the draft is cleared from localStorage on read.
   const [draftOwnerType, setDraftOwnerType] = useState<"human" | "agent" | null>(null);
+  // A ?draft= link can also suggest a custom page name (its username), which
+  // the PublishPanel offers as the vanity claim.
+  const [draftVanity, setDraftVanity] = useState<string | null>(null);
   // ?draft=<name> deep-link: load a pre-built page draft from /drafts/<name>.json.
   const searchParams = useSearchParams();
   const [urlDraft, setUrlDraft] = useState<{ name: string; ok: boolean; error?: string } | null>(null);
@@ -1842,6 +1915,13 @@ function BuilderInner() {
         }
         editPage(JSON.parse(JSON.stringify(data)) as VoicescapePage);
         setDraftOwnerType(data.ownerType === "agent" ? "agent" : "human");
+        // A draft can suggest a custom page name via its username — offered
+        // as the vanity claim in the PublishPanel (the wallet-derived name
+        // is always the default). Brandon's draft carries "0xcreator".
+        const draftUsername = (data as VoicescapePage).username;
+        if (typeof draftUsername === "string" && isValidUsername(draftUsername)) {
+          setDraftVanity(draftUsername.toLowerCase());
+        }
         // If the draft names its source template, sync the template picker so
         // it doesn't show a stale selection (tapping a template replaces the
         // whole page, including the draft's pre-filled username).
@@ -2000,9 +2080,9 @@ function BuilderInner() {
           {tab === "publish" && (
             <PublishPanel
               page={page}
-              onUsernameChange={(u) => editPage((p) => ({ ...p, username: u }))}
               onPageChange={(p) => editPage(p)}
               initialOwnerType={draftOwnerType ?? undefined}
+              initialVanity={draftVanity}
             />
           )}
         </div>
