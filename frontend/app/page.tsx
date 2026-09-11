@@ -139,6 +139,35 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Track your transactions */}
+        <section className="vs-section">
+          <p className="vs-label">Transparency</p>
+          <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 24px" }}>
+            Track every transaction <span className="vs-gradient-text">for free</span>
+          </h2>
+          <ol style={{ lineHeight: 2, paddingLeft: 20, margin: 0, fontSize: 16 }}>
+            <li>Every tip, purchase, and page registration is a Hedera transaction with a unique ID. The app shows it to you right after you confirm.</li>
+            <li>
+              Go to{" "}
+              <a
+                href="https://hashscan.io"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="vs-mono"
+                style={{ color: "var(--vs-cyan)", fontSize: 15 }}
+              >
+                hashscan.io
+              </a>{" "}
+              and paste the transaction ID into the search bar — no account needed.
+            </li>
+            <li>You&apos;ll see the full details: sender, receiver, amounts, and the 98/2 split happening in the same transaction.</li>
+            <li>You can also look up any account — like a page owner&apos;s wallet — to see all of its transactions in one place.</li>
+          </ol>
+          <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", fontSize: 16, marginBottom: 0 }}>
+            Don&apos;t take our word for it — the 98/2 split is <em>public on-chain</em>, and anyone can verify it in seconds.
+          </p>
+        </section>
+
         {/* How it works */}
         <section className="vs-section">
           <p className="vs-label" style={{ textAlign: "center" }}>Getting started</p>
