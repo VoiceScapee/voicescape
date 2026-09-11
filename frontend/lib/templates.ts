@@ -65,7 +65,7 @@ export const TEMPLATES: Template[] = [
       },
       blocks: [
         ...base("neon-rider").blocks,
-        { type: "gallery", images: ["🌃", "🛸", "⚡", "💾"] },
+        { type: "gallery", images: ["🌃", "🛸", "💾"] },
       ],
     },
   },

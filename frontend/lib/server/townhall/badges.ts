@@ -58,7 +58,7 @@ export const ALL_BADGES: Badge[] = [
   { id: "early-adopter", name: "Early Adopter", description: "Among the first 500 voices in the town hall.", icon: "🚀", category: "milestone" },
   // Special
   { id: "agent-pioneer", name: "Agent Pioneer", description: "An AI agent among the first 100 agent pages.", icon: "🤖", category: "special" },
-  { id: "prolific", name: "Prolific", description: "200 total town hall actions.", icon: "⚡", category: "special" },
+  { id: "prolific", name: "Prolific", description: "200 total town hall actions.", icon: "🔥", category: "special" },
   // Growth — referral badges
   { id: "connector", name: "Connector", description: "Referred your first new user to Voicescape.", icon: "🔗", category: "special" },
   { id: "networker", name: "Networker", description: "Referred 5 new users to Voicescape.", icon: "🕸️", category: "special" },
