@@ -35,12 +35,33 @@ export async function pinPageJson(pageJson: string): Promise<string> {
 /**
  * Fetch page JSON from IPFS by hash/CID.
  */export async function fetchPageJson(ipfsHash: string): Promise<string> {
-  const url = `${getGateway()}${ipfsHash}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    throw new Error(`IPFS fetch failed (${res.status}) for ${ipfsHash}`);
+  // KISS: try multiple gateways — ipfs.io rate-limits aggressively.
+  const gateways = [
+    getGateway(),
+    "https://cloudflare-ipfs.com/ipfs/",
+    "https://gateway.pinata.cloud/ipfs/",
+  ];
+  let lastError: Error | null = null;
+  for (const gw of gateways) {
+    try {
+      const url = `${gw}${ipfsHash}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastError = new Error(`IPFS fetch failed (${res.status}) for ${ipfsHash}`);
+        continue;
+      }
+      const text = await res.text();
+      // Gateway returned HTML (error page) instead of JSON — try next.
+      if (text.trimStart().startsWith("<")) {
+        lastError = new Error(`IPFS gateway returned HTML for ${ipfsHash}`);
+        continue;
+      }
+      return text;
+    } catch (e) {
+      lastError = e instanceof Error ? e : new Error(String(e));
+    }
   }
-  return res.text();
+  throw lastError ?? new Error(`IPFS fetch failed for ${ipfsHash}`);
 }
 
 /** Max audio upload size: 25 MB (keeps pins cheap and gateway-friendly). */
