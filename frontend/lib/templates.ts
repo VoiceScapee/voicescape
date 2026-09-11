@@ -579,4 +579,272 @@ export const TEMPLATES: Template[] = [
       ],
     },
   },
+  // ---- Expressive originals: bold, personal, Web3-native ----
+  {
+    id: "aurora-drift",
+    name: "Aurora Drift",
+    description: "Flowing northern-light gradients for dreamers, makers, and late-night thinkers.",
+    page: {
+      ...base("aurora.wav"),
+      theme: {
+        background:
+          "radial-gradient(ellipse 55% 40% at 15% 25%, rgba(94,234,212,0.28), transparent 70%), radial-gradient(ellipse 60% 45% at 85% 40%, rgba(167,139,250,0.32), transparent 70%), radial-gradient(ellipse 50% 40% at 50% 85%, rgba(236,72,153,0.22), transparent 70%), linear-gradient(180deg, #060a24 0%, #0b1035 100%)",
+        foreground: "#f0f4ff",
+        accent: "#5eead4",
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+      },
+      blocks: [
+        { type: "hero", title: "aurora.wav", subtitle: "chasing light, making sound", avatarEmoji: "🌠" },
+        { type: "bio", text: "currently: somewhere between a daydream and a deadline ✨ send good playlists, not small talk." },
+        { type: "bio", text: "i make things that glow — music, visuals, weird little web experiments. this page is my sketchbook and my stage. come back often, it changes when i do." },
+        { type: "music", title: "what i'm making 🎧", tracks: [] },
+        {
+          type: "top8",
+          title: "people who get it",
+          friends: [
+            { name: "lumen", avatarEmoji: "💡" },
+            { name: "nocturne.jpg", avatarEmoji: "🌃" },
+            { name: "soft.focus", avatarEmoji: "🫧" },
+            { name: "violet.hour", avatarEmoji: "🟣" },
+            { name: "daydream.fm", avatarEmoji: "📻" },
+          ],
+        },
+        { type: "gallery", images: ["🌠", "🎨", "🌊", "💭", "🫧", "🪩"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "lumen", message: "this page feels like the sky at 2am. never change it. (okay, change it, that's the point)", date: "2026-09-01" },
+          ],
+        },
+        {
+          type: "links",
+          items: [{ label: "my latest drop", url: "https://example.com" }],
+        },
+        { type: "tipJar", message: "fuel the next project — tips land on-chain, straight to the source ✨" },
+      ],
+    },
+  },
+  {
+    id: "block-explorer",
+    name: "Block Explorer",
+    description: "Web3-native identity: dark terminal, tx-hash motifs. My wallet is my resume.",
+    page: {
+      ...base("0xCreator"),
+      theme: {
+        background:
+          "repeating-linear-gradient(0deg, rgba(74,222,128,0.04) 0 1px, transparent 1px 4px), linear-gradient(180deg, #04070d 0%, #0a0f1a 100%)",
+        foreground: "#e2e8f0",
+        accent: "#4ade80",
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      },
+      blocks: [
+        { type: "hero", title: "0xCreator", subtitle: "my wallet is my resume", avatarEmoji: "⛓️" },
+        { type: "bio", text: "$ status: building in public\n$ last_commit: today\n$ vibe: shipped > perfect" },
+        { type: "bio", text: "on-chain builder. everything i make settles in public — code, art, ideas. no pitch decks, just transactions. verify, don't trust." },
+        { type: "music", title: "coding playlist 🔊", tracks: [] },
+        {
+          type: "top8",
+          title: "verified connections",
+          friends: [
+            { name: "0xBuilder", avatarEmoji: "🧱" },
+            { name: "0xArtist", avatarEmoji: "🎨" },
+            { name: "node.runner", avatarEmoji: "🖥️" },
+            { name: "hash.packer", avatarEmoji: "📦" },
+            { name: "consensus.queen", avatarEmoji: "🟢" },
+          ],
+        },
+        { type: "gallery", images: ["⛓️", "🧱", "🔏", "📦", "🔍", "🟢"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "0xBuilder", message: "confirmed: this human ships. tx history doesn't lie.", date: "2026-08-22" },
+          ],
+        },
+        {
+          type: "links",
+          items: [
+            { label: "my contracts", url: "https://example.com" },
+            { label: "github", url: "https://example.com" },
+          ],
+        },
+        { type: "tipJar", message: "tips settle on-chain, obviously. 98/2, verifiable by anyone ⛓️" },
+      ],
+    },
+  },
+  {
+    id: "lofi-room",
+    name: "Lo-Fi Room",
+    description: "Warm lamplight and rain sounds. A cozy corner for bedroom creators.",
+    page: {
+      ...base("the-lofi-room"),
+      theme: {
+        background:
+          "radial-gradient(ellipse 60% 45% at 50% 110%, rgba(245,158,11,0.25), transparent 70%), linear-gradient(180deg, #241407 0%, #3a2110 55%, #1c1008 100%)",
+        foreground: "#fdf6ec",
+        accent: "#f59e0b",
+        fontFamily: "Georgia, 'Times New Roman', serif",
+      },
+      blocks: [
+        { type: "hero", title: "the lofi room", subtitle: "beats, tea & slow mornings", avatarEmoji: "🎧" },
+        { type: "bio", text: "currently: rain sounds + unfinished songs 🌧️ the kettle's on, the loop is looping, you're welcome to stay a while." },
+        { type: "bio", text: "i make quiet music for loud minds. everything here is recorded in one room, mostly after midnight, always with feeling. put this page on in the background and get cozy." },
+        { type: "music", title: "bedroom tapes 📼", tracks: [] },
+        {
+          type: "top8",
+          title: "regulars at the table",
+          friends: [
+            { name: "tea.first", avatarEmoji: "🍵" },
+            { name: "window.rain", avatarEmoji: "🌧️" },
+            { name: "tape.hiss", avatarEmoji: "📼" },
+            { name: "candle.light", avatarEmoji: "🕯️" },
+            { name: "slow.sunday", avatarEmoji: "🛋️" },
+          ],
+        },
+        { type: "gallery", images: ["☕", "🎧", "🕯️", "📼", "🌧️", "🧸"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "tea.first", message: "fell asleep to your latest loop. woke up happier. 10/10.", date: "2026-09-05" },
+          ],
+        },
+        {
+          type: "links",
+          items: [{ label: "all my tapes", url: "https://example.com" }],
+        },
+        { type: "tipJar", message: "buy me a coffee? tips go straight on-chain ☕" },
+      ],
+    },
+  },
+  {
+    id: "solarpunk-garden",
+    name: "Solarpunk Garden",
+    description: "Sunlit and hopeful — growing a kinder internet, one page at a time.",
+    page: {
+      ...base("the-garden"),
+      theme: {
+        background:
+          "radial-gradient(ellipse 70% 50% at 50% -10%, rgba(253,224,71,0.3), transparent 70%), radial-gradient(ellipse 45% 40% at 12% 80%, rgba(163,230,53,0.18), transparent 70%), linear-gradient(180deg, #1d3a1f 0%, #2c5a2e 60%, #16281a 100%)",
+        foreground: "#f7fee7",
+        accent: "#a3e635",
+        fontFamily: "'Segoe UI', Verdana, Geneva, sans-serif",
+      },
+      blocks: [
+        { type: "hero", title: "the garden", subtitle: "growing a kinder internet 🌱", avatarEmoji: "🌱" },
+        { type: "bio", text: "currently: planting seeds, digital & otherwise 🌻 this page runs on sunlight and good intentions." },
+        { type: "bio", text: "i believe the internet can be a garden, not a strip mall. i grow open-source projects, community spaces, and actual tomatoes. everything here is tended by hand." },
+        { type: "music", title: "morning garden mix 🌻", tracks: [] },
+        {
+          type: "top8",
+          title: "fellow gardeners",
+          friends: [
+            { name: "compost.queen", avatarEmoji: "🪱" },
+            { name: "solar.sam", avatarEmoji: "☀️" },
+            { name: "seed.library", avatarEmoji: "🌰" },
+            { name: "bees.knees", avatarEmoji: "🐝" },
+            { name: "wildflower.will", avatarEmoji: "🌼" },
+          ],
+        },
+        { type: "gallery", images: ["🌱", "🌻", "🍃", "🦋", "☀️", "🌿"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "bees.knees", message: "pollinated your guestbook. left some honey. keep growing 🐝", date: "2026-06-15" },
+          ],
+        },
+        {
+          type: "links",
+          items: [{ label: "community seed swap", url: "https://example.com" }],
+        },
+        { type: "tipJar", message: "water the garden — tips go straight on-chain 🌱" },
+      ],
+    },
+  },
+  {
+    id: "night-signal",
+    name: "Night Signal",
+    description: "Pirate-radio energy. You are the media — broadcast yourself.",
+    page: {
+      ...base("night-signal"),
+      theme: {
+        background:
+          "radial-gradient(ellipse 50% 35% at 50% 30%, rgba(248,113,113,0.16), transparent 70%), repeating-linear-gradient(90deg, rgba(248,113,113,0.05) 0 2px, transparent 2px 7px), linear-gradient(180deg, #120607 0%, #1e0a0c 60%, #0b0505 100%)",
+        foreground: "#fef2f2",
+        accent: "#f87171",
+        fontFamily: "'Helvetica Neue', Arial, sans-serif",
+      },
+      blocks: [
+        { type: "hero", title: "NIGHT SIGNAL", subtitle: "you are the media 📡", avatarEmoji: "📡" },
+        { type: "bio", text: "🔴 ON AIR: late-night thoughts, unfiltered. broadcasting from somewhere the algorithm can't find." },
+        { type: "bio", text: "this is an independent station. no sponsors, no scripts, no permission needed. i talk about what matters at 1am — tech, truth, and the future we're actually going to live in. tune in." },
+        { type: "music", title: "tonight's broadcast 🎙️", tracks: [] },
+        {
+          type: "top8",
+          title: "fellow broadcasters",
+          friends: [
+            { name: "static.bloom", avatarEmoji: "📻" },
+            { name: "midnight.modem", avatarEmoji: "💾" },
+            { name: "frequency.fae", avatarEmoji: "🧚" },
+            { name: "dead.air.dan", avatarEmoji: "🎚️" },
+            { name: "pirate.polly", avatarEmoji: "🏴‍☠️" },
+          ],
+        },
+        { type: "gallery", images: ["📡", "🎙️", "📻", "🌃", "🔴", "🎚️"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "static.bloom", message: "signal came through crystal clear last night. keep transmitting.", date: "2026-09-08" },
+          ],
+        },
+        {
+          type: "links",
+          items: [{ label: "listen to the archive", url: "https://example.com" }],
+        },
+        { type: "tipJar", message: "keep the signal alive — tips go straight on-chain 📡" },
+      ],
+    },
+  },
+  {
+    id: "wanderer-atlas",
+    name: "Wanderer Atlas",
+    description: "A travel journal in page form. Collecting places, not things.",
+    page: {
+      ...base("atlas-in-progress"),
+      theme: {
+        background:
+          "radial-gradient(ellipse 80% 45% at 50% 108%, rgba(251,146,60,0.35), transparent 70%), linear-gradient(180deg, #101c2e 0%, #274060 55%, #3d2b1f 100%)",
+        foreground: "#faf5ec",
+        accent: "#fb923c",
+        fontFamily: "Georgia, 'Times New Roman', serif",
+      },
+      blocks: [
+        { type: "hero", title: "atlas in progress", subtitle: "collecting places, not things 🧭", avatarEmoji: "🧭" },
+        { type: "bio", text: "currently: somewhere with unfamiliar stars ✦ last stamped: somewhere i can't pronounce yet." },
+        { type: "bio", text: "field notes from a life in motion. i go slow, stay long, and learn the names of things. this page is my journal, my map, and my postcard to everyone back home." },
+        { type: "music", title: "road songs 🚂", tracks: [] },
+        {
+          type: "top8",
+          title: "travel companions",
+          friends: [
+            { name: "window.seat", avatarEmoji: "🪟" },
+            { name: "night.train", avatarEmoji: "🚂" },
+            { name: "hostel.hana", avatarEmoji: "🏠" },
+            { name: "summit.sue", avatarEmoji: "⛰️" },
+            { name: "harbor.hugo", avatarEmoji: "⚓" },
+          ],
+        },
+        { type: "gallery", images: ["🧭", "🗺️", "⛰️", "🌅", "🎒", "🚂"] },
+        {
+          type: "guestbook",
+          entries: [
+            { name: "night.train", message: "met you in a sleeper car outside nowhere. best conversation of the trip.", date: "2026-07-30" },
+          ],
+        },
+        {
+          type: "links",
+          items: [{ label: "the full journal", url: "https://example.com" }],
+        },
+        { type: "tipJar", message: "fuel the next mile — tips go straight on-chain 🧭" },
+      ],
+    },
+  },
 ];
