@@ -14,6 +14,7 @@ import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
 import ProfileLinks from "@/components/townhall/ProfileLinks";
 import ReferralCard from "@/components/townhall/ReferralCard";
+import ReportButton from "@/components/townhall/ReportButton";
 import { IconBolt, IconCheck, IconClose, IconExternal, IconTip } from "@/components/icons";
 import {
   createWalletHederaSigner,
@@ -482,6 +483,12 @@ function PublicPageInner({ username }: { username: string }) {
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />
         <ReferralCard username={username} />
+        <div style={{ marginTop: 16, textAlign: "center" }}>
+          <span className="th-muted" style={{ fontSize: "0.85rem", marginRight: 4 }}>
+            Something wrong with this page?
+          </span>
+          <ReportButton targetKind="profile" targetId={username} />
+        </div>
         <CommentWall username={username} owner={state.meta.owner} />
       </div>
     </>

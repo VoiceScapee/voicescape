@@ -6,6 +6,7 @@
 import Link from "next/link";
 import ReputationBadge, { VoteControls } from "./Reputation";
 import ShareListing from "./ShareListing";
+import ReportButton from "./ReportButton";
 import { parseSeller, type Listing } from "@/lib/townhall";
 
 export function formatUsd(cents: number): string {
@@ -50,6 +51,7 @@ export function ListingCard({ listing }: { listing: Listing }) {
         <span className="th-row" style={{ gap: 8 }}>
           {sold && <span className="th-badge is-sold">sold</span>}
           <ShareListing listing={listing} />
+          <ReportButton targetKind="listing" targetId={listing.id} />
         </span>
       </div>
       <h3 style={{ marginTop: 10 }}>{listing.title}</h3>

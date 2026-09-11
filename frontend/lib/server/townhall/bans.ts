@@ -37,6 +37,7 @@ import type {
   TimeoutView,
   UnbanMessage,
   WarnMessage,
+  WarnView,
 } from "./types";
 
 /** Records that change a wallet's enforcement state. */
@@ -262,14 +263,16 @@ async function readEnforcementEvents(deps: HcsOnly): Promise<EnforcementEvent[]>
   }
 }
 
-/** Latest enforcement event per wallet, newest-first input. */
+/** Latest enforcement event per wallet, newest-first input. On timestamp
+ *  ties the later message in iteration order wins (queryAll returns
+ *  seq-ordered, oldest first — so the higher-seq event is truly later). */
 function latestPerWallet(events: EnforcementEvent[]): Map<string, EnforcementEvent> {
   const latest = new Map<string, EnforcementEvent>();
   for (const e of events) {
     const c = walletOf(e);
     if (!c) continue;
     const prev = latest.get(c);
-    if (!prev || e.ts > prev.ts) latest.set(c, e);
+    if (!prev || e.ts >= prev.ts) latest.set(c, e);
   }
   return latest;
 }
@@ -305,6 +308,19 @@ export async function getActiveTimeouts(deps: HcsOnly, nowMs: number = Date.now(
       expiresAt: e.expiresAt,
       ts: e.ts,
     });
+  }
+  out.sort((a, b) => b.ts.localeCompare(a.ts));
+  return out;
+}
+
+/** All currently-active warnings (latest warn per wallet, not superseded by a later action), newest first. Warnings never expire. */
+export async function getActiveWarnings(deps: HcsOnly): Promise<WarnView[]> {
+  const events = await readEnforcementEvents(deps);
+  const out: WarnView[] = [];
+  for (const [, e] of latestPerWallet(events)) {
+    if (e.kind !== "warn") continue;
+    const c = walletOf(e)!;
+    out.push({ wallet: c, username: e.username, reason: e.reason, warnedBy: e.warnedBy, ts: e.ts });
   }
   out.sort((a, b) => b.ts.localeCompare(a.ts));
   return out;
@@ -371,10 +387,12 @@ export function pendingAppeals(
   appeals: AppealMessage[],
   resolutions: AppealResolveMessage[],
 ): AppealMessage[] {
+  // A resolution always causally follows the appeal it resolves, so on a
+  // same-millisecond timestamp tie the resolution still wins (>=).
   return appeals.filter((a) => {
     const c = canonicalAddress(a.wallet);
     if (!c) return false;
-    return !resolutions.some((r) => canonicalAddress(r.wallet) === c && r.ts > a.ts);
+    return !resolutions.some((r) => canonicalAddress(r.wallet) === c && r.ts >= a.ts);
   });
 }
 

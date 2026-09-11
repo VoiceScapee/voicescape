@@ -15,6 +15,7 @@ import { timeAgo, type TownhallPost } from "@/lib/townhall";
 import { IconTip, IconClose, IconCheck } from "@/components/icons";
 import ReputationBadge from "./Reputation";
 import ModHideButton from "./ModHideButton";
+import ReportButton from "./ReportButton";
 
 const TIP_PRESETS = [1, 5, 10];
 
@@ -153,6 +154,7 @@ export default function PostCard({
           <IconTip size={14} /> Tip
         </button>
         {onHidden && <ModHideButton post={post} onHidden={onHidden} />}
+        <ReportButton targetKind="post" targetSeq={post.seq} />
       </div>
       {tipping && <TipModal author={post.author} onClose={() => setTipping(false)} />}
     </article>

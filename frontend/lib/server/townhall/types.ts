@@ -127,10 +127,10 @@ export interface ListingMessage extends TownhallEnvelope {
  */
 export interface ReportMessage extends TownhallEnvelope {
   kind: "report";
-  targetKind: "post" | "chat" | "listing";
-  /** HCS sequence number of the target (post/chat). Null for listings. */
+  targetKind: "post" | "chat" | "listing" | "profile";
+  /** HCS sequence number of the target (post/chat). Null for listings/profiles. */
   targetSeq: number | null;
-  /** Listing id for listing targets. Null for post/chat. */
+  /** Listing id for listing targets, username for profile targets. Null for post/chat. */
   targetId: string | null;
   /** Reporter's explanation, 10–500 chars. */
   reason: string;
@@ -384,7 +384,7 @@ export interface ListingView {
 /** A user safety report, as returned by the mod report queue. */
 export interface ReportView {
   seq: number;
-  targetKind: "post" | "chat" | "listing";
+  targetKind: "post" | "chat" | "listing" | "profile";
   targetSeq: number | null;
   targetId: string | null;
   reason: string;
@@ -444,6 +444,16 @@ export interface TimeoutView {
   /** Unix ms when the timeout lifts. */
   expiresAt: number;
   /** ISO-8601 when the timeout was issued. */
+  ts: string;
+}
+
+/** A currently-active warning (latest warn per wallet, not superseded), as returned by the mod warnings list. */
+export interface WarnView {
+  wallet: string;
+  username: string | null;
+  reason: string;
+  warnedBy: string;
+  /** ISO-8601 when the warning was issued. */
   ts: string;
 }
 

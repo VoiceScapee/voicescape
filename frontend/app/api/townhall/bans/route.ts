@@ -54,9 +54,10 @@ export async function POST(req: NextRequest) {
 /**
  * DELETE /api/townhall/bans {wallet}
  *
- * Lift a wallet restriction (ban or timeout). Mod-only.
+ * Lift a wallet's enforcement state (warning, timeout, or ban).
+ * Mod-only.
  * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
- * moderator, 404 wallet is not currently restricted.
+ * moderator, 404 wallet has no enforcement record to lift.
  */
 export async function DELETE(req: NextRequest) {
   const gated = await ipGate(

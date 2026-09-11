@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import DustFeeGate from "@/components/townhall/DustFeeGate";
+import ReportButton from "@/components/townhall/ReportButton";
 import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
 import { postJson, timeAgo, type ChatMessage } from "@/lib/townhall";
 
@@ -167,6 +168,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
                 @{m.author}
               </Link>
               <span className="th-post-ts">{timeAgo(m.ts)}</span>
+              {m.author !== me && <ReportButton targetKind="chat" targetSeq={m.seq} />}
             </div>
             <p className="th-chat-body">{m.body}</p>
           </div>

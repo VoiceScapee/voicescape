@@ -42,14 +42,19 @@ export function isMod(username: string): boolean {
  * canonicalized (0.0.x → long-zero 0x form; 0x… → lowercase) so either form
  * matches a session's canonical address; invalid or empty entries are
  * dropped.
+ *
+ * MOD_WALLET_ADDRESSES is honored as an alias of the same list, so the
+ * moderation UI and the town-hall mod-action path agree on who is a mod.
  */
 export function getModWallets(): string[] {
-  return (process.env.TOWNHALL_MOD_WALLETS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((s) => canonicalAddress(s))
-    .filter((s): s is string => s !== null);
+  const seen = new Set<string>();
+  for (const raw of [process.env.TOWNHALL_MOD_WALLETS, process.env.MOD_WALLET_ADDRESSES]) {
+    for (const s of (raw ?? "").split(",")) {
+      const c = canonicalAddress(s.trim());
+      if (c) seen.add(c);
+    }
+  }
+  return [...seen];
 }
 
 export function isModWallet(address: string): boolean {

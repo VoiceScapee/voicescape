@@ -4,12 +4,14 @@
  * Town Hall chrome: sticky nav (Forum / Chat / Events / Polls /
  * Marketplace), wallet connect, and the posting-identity bar.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { useWriteGate } from "./useTownhall";
+import RestrictionBanner from "./RestrictionBanner";
+import { getAuthHeaders } from "@/lib/auth-client";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/forum", label: "Forum" },
@@ -107,11 +109,13 @@ export default function TownhallShell({ children }: { children: React.ReactNode 
                 );
               })}
               <AnalyticsNavLink pathname={pathname} />
+              <ModNavLink pathname={pathname} />
             </nav>
             <WalletConnect />
           </>
         }
       />
+      <RestrictionBanner />
       <IdentityBar />
       <main className="th-main">{children}</main>
     </div>
@@ -130,6 +134,43 @@ function AnalyticsNavLink({ pathname }: { pathname: string }) {
       aria-current={active ? "page" : undefined}
     >
       📊 Analytics
+    </Link>
+  );
+}
+
+/** "Mod" nav link — only rendered when the signed-in wallet is a moderator. */
+function ModNavLink({ pathname }: { pathname: string }) {
+  const { isAuthenticated, sessionReady } = useWriteGate();
+  const [isMod, setIsMod] = useState(false);
+  useEffect(() => {
+    if (!sessionReady || !isAuthenticated) {
+      setIsMod(false);
+      return;
+    }
+    let live = true;
+    fetch("/api/townhall/mod-status", { headers: { ...getAuthHeaders() } })
+      .then(async (res) => {
+        if (!live || !res.ok) return;
+        const body = (await res.json().catch(() => null)) as { isMod?: boolean } | null;
+        if (live) setIsMod(!!body?.isMod);
+      })
+      .catch(() => {
+        // Fail-closed for the link: hide it when the status check fails.
+        if (live) setIsMod(false);
+      });
+    return () => {
+      live = false;
+    };
+  }, [sessionReady, isAuthenticated]);
+  if (!isMod) return null;
+  const active = pathname === "/mod";
+  return (
+    <Link
+      href="/mod"
+      className={`th-nav-link${active ? " is-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+    >
+      🛡️ Mod
     </Link>
   );
 }
