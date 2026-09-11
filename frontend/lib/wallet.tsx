@@ -107,6 +107,11 @@ export function detectHashPackInAppBrowser(signals: {
  * signal. In that environment the wallet is one tap away — the QR pairing
  * modal is never useful, and the app auto-connects on mount instead of
  * waiting for the user to pick a wallet.
+ *
+ * NOTE: HashPack's iOS in-app browser provides NEITHER signal (no
+ * `window.hashpack` injection, no "hashpack" in the WKWebView user agent),
+ * so this returns false there. Use `isHashPackInAppBrowserAsync()` when
+ * you need a reliable answer on iOS.
  */
 export function isHashPackInAppBrowser(): boolean {
   if (typeof window === "undefined") return false;
@@ -117,6 +122,83 @@ export function isHashPackInAppBrowser(): boolean {
     userAgent: ua,
   });
 }
+
+/**
+ * True on a mobile user agent (phone/tablet). Used to decide whether the
+ * iframe-channel probe is worth the wait: on desktop the WalletConnect
+ * modal is always the right fallback, so we skip the probe and show it
+ * immediately.
+ */
+export function isMobileUserAgent(ua?: string): boolean {
+  const agent =
+    ua ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(agent);
+}
+
+/**
+ * Probe for a wallet in-app browser via the iframe postMessage channel.
+ * Posts `hedera-iframe-query` to the parent frame and waits for a
+ * `hedera-iframe-response` — the same handshake DAppConnector uses for
+ * in-app discovery, so it's platform-agnostic: it works in HashPack's iOS
+ * in-app browser, which provides no `window.hashpack` injection or UA
+ * signal. Resolves true when a wallet answers, false on timeout. Never
+ * rejects.
+ */
+export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(false);
+      return;
+    }
+    const w = window as unknown as { hashpack?: unknown };
+    if (w.hashpack !== undefined && w.hashpack !== null) {
+      resolve(true);
+      return;
+    }
+    const onMessage = (event: MessageEvent) => {
+      const data = event?.data as
+        | { type?: string; metadata?: unknown }
+        | undefined;
+      if (data?.type === "hedera-iframe-response" && data.metadata) {
+        cleanup();
+        resolve(true);
+      }
+    };
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve(false);
+    }, timeoutMs);
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+    };
+    window.addEventListener("message", onMessage);
+    try {
+      // The wallet's in-app container answers from the parent frame.
+      // A top-level page posts to itself — harmless, nothing answers.
+      window.parent.postMessage({ type: "hedera-iframe-query" }, "*");
+    } catch {
+      cleanup();
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * Reliable in-app browser detection, including iOS. Synchronous signals
+ * first (fast path); on mobile, falls back to a brief iframe-channel
+ * probe, which is the only signal HashPack's iOS in-app browser provides.
+ * Resolves false on desktop without probing so the pairing modal appears
+ * without delay there.
+ */
+export async function isHashPackInAppBrowserAsync(): Promise<boolean> {
+  if (isHashPackInAppBrowser()) return true;
+  if (!isMobileUserAgent()) return false;
+  return probeInAppWallet(IN_APP_PROBE_TIMEOUT_MS);
+}
+
+/** How long the mobile iframe-channel probe waits for a wallet answer. */
+export const IN_APP_PROBE_TIMEOUT_MS = 4_000;
 
 /* ------------------------------------------------------------------ */
 /* Shared Hedera pairing via DAppConnector                              */
@@ -261,79 +343,95 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   );
   dAppConnectorInstance = connector;
 
-  // Inside HashPack's in-app browser a QR pairing modal is useless — it
-  // can't be scanned from within the wallet app itself. The pairing
-  // happens via the iframe postMessage channel instead.
-  const inHashPackBrowser = isHashPackInAppBrowser();
-
-  if (inHashPackBrowser) {
-    // FIX for the hanging "Connecting..." bug (2026-09-11):
-    //
-    // Root cause was a race condition in DAppConnector.init(). The connector
-    // discovers the in-app wallet via async postMessage events
-    // ("hedera-iframe-query" → "hedera-iframe-response"), but init()
-    // internally calls checkIframeConnect() (fire-and-forget) at the end —
-    // if HashPack's response hasn't arrived yet, extensions[] is empty and
-    // the pairing silently never starts. The old code then set
-    // onSessionIframeCreated AFTER init() returned, waiting on a callback
-    // that would never fire.
-    //
-    // Fix: set the callback BEFORE init(), then after init() explicitly
-    // drive the iframe pairing ourselves instead of relying on init()'s
-    // internal race-prone call.
-
-    // 1. Set the callback before init() so it's ready if init()'s internal
-    //    checkIframeConnect() happens to win the race.
-    let callbackSession: { namespaces?: Record<string, { accounts?: string[] }> } | null = null;
-    let resolveCallback: (s: { namespaces?: Record<string, { accounts?: string[] }> }) => void = () => {};
-    const callbackPromise = new Promise<{ namespaces?: Record<string, { accounts?: string[] }> }>(
-      (resolve) => {
-        resolveCallback = resolve;
-      },
-    );
-    connector.onSessionIframeCreated = (session) => {
-      if (!callbackSession) {
-        callbackSession = session;
-        resolveCallback(session);
-      }
-    };
-
-    await withTimeout(
-      connector.init({ logger: "error" }),
-      30_000,
-      "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
-    );
-
-    // init() swallows its own errors internally — verify the client actually
-    // came up before proceeding.
-    if (!connector.walletConnectClient) {
-      throw new Error(
-        "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
-      );
+  // Set the iframe-session callback BEFORE init() in all flows: init()'s
+  // internal checkIframeConnect() may fire a pairing request, and the
+  // callback must be ready. Harmless in the modal flow.
+  //
+  // FIX for the hanging "Connecting..." bug (2026-09-11):
+  //
+  // Root cause was a race condition in DAppConnector.init(). The connector
+  // discovers the in-app wallet via async postMessage events
+  // ("hedera-iframe-query" → "hedera-iframe-response"), but init()
+  // internally calls checkIframeConnect() (fire-and-forget) at the end —
+  // if HashPack's response hasn't arrived yet, extensions[] is empty and
+  // the pairing silently never starts. The old code then set
+  // onSessionIframeCreated AFTER init() returned, waiting on a callback
+  // that would never fire.
+  //
+  // Fix: set the callback BEFORE init(), then after init() explicitly
+  // drive the iframe pairing ourselves instead of relying on init()'s
+  // internal race-prone call.
+  let callbackSession: { namespaces?: Record<string, { accounts?: string[] }> } | null = null;
+  let resolveCallback: (s: { namespaces?: Record<string, { accounts?: string[] }> }) => void = () => {};
+  const callbackPromise = new Promise<{ namespaces?: Record<string, { accounts?: string[] }> }>(
+    (resolve) => {
+      resolveCallback = resolve;
+    },
+  );
+  connector.onSessionIframeCreated = (session) => {
+    if (!callbackSession) {
+      callbackSession = session;
+      resolveCallback(session);
     }
+  };
 
-    // 2. If init()'s internal checkIframeConnect() found the iframe wallet,
-    //    a pairing request is already in-flight (user is seeing HashPack's
-    //    approval prompt). Just wait for the callback.
-    //    Otherwise the extension wasn't discovered in time — wait for
-    //    discovery, then drive connectExtension() explicitly.
-    const iframeExtensionFound = connector.extensions.some(
-      (ext) => (ext as { availableInIframe?: boolean }).availableInIframe,
+  await withTimeout(
+    connector.init({ logger: "error" }),
+    30_000,
+    "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
+  );
+
+  // init() swallows its own errors internally — verify the client actually
+  // came up before proceeding.
+  if (!connector.walletConnectClient) {
+    throw new Error(
+      "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
     );
+  }
 
+  // Was an iframe wallet already discovered when init() returned? If so,
+  // init()'s internal checkIframeConnect() may already have started a
+  // pairing request — don't drive a second one.
+  const iframeDiscoveredAtInit = connector.extensions.some(
+    (ext) => (ext as { availableInIframe?: boolean }).availableInIframe,
+  );
+
+  // Choose the pairing channel.
+  //
+  // Inside a wallet's in-app browser a QR/deep-link pairing modal is
+  // useless — it can't be completed from within the wallet app itself (on
+  // iPhone it hangs on "Tap 'Open' to continue..."). The pairing happens
+  // via the iframe postMessage channel instead.
+  //
+  // FIX for HashPack iOS (2026-09-11): the synchronous in-app signals
+  // (window.hashpack injection, user agent) catch Android and desktop, but
+  // HashPack's iOS in-app browser provides NEITHER — sync detection missed
+  // it, so the modal flow ran and hung. When sync detection misses, probe
+  // the iframe postMessage channel directly (mobile only): the handshake is
+  // platform-agnostic — if a wallet answers hedera-iframe-query, we're
+  // inside its in-app browser no matter what the UA says. Desktop skips
+  // the probe so the modal appears without delay.
+  let useIframeFlow = iframeDiscoveredAtInit;
+  if (!useIframeFlow) {
+    useIframeFlow = await isHashPackInAppBrowserAsync();
+  }
+
+  if (useIframeFlow) {
     let session: { namespaces?: Record<string, { accounts?: string[] }> };
-    if (iframeExtensionFound) {
-      // Internal flow is handling it — wait for user approval (up to 3 min).
+    if (iframeDiscoveredAtInit) {
+      // init()'s internal checkIframeConnect() already started pairing
+      // (the user is seeing the wallet's approval prompt). Just wait for
+      // the callback — up to 3 min for approval.
       session = await withTimeout(
         callbackPromise,
         180_000,
         "HashPack did not approve the connection — approve the request in HashPack and try again.",
       );
     } else {
-      // Extension not discovered yet — wait for HashPack's iframe response
-      // (up to 15s), then connect explicitly. connectExtension() sends the
-      // pairing string to the parent frame and resolves with the session
-      // once the user approves (up to 3 min).
+      // The wallet was discovered after init()'s internal check ran —
+      // drive connectExtension() explicitly. It sends the pairing string
+      // to the parent frame and resolves with the session once the user
+      // approves (up to 3 min).
       const extension = await waitForIframeExtension(connector, 15_000);
       const connectPromise = (async () => {
         // connectExtension is public API; it resolves with the session on approval.
@@ -361,20 +459,9 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     return accountId;
   }
 
-  await withTimeout(
-    connector.init({ logger: "error" }),
-    30_000,
-    "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
-  );
-
-  if (!connector.walletConnectClient) {
-    throw new Error(
-      "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
-    );
-  }
-
   // Standard flow: open the QR pairing modal.
   // Note: if a desktop extension is present, the modal offers it directly.
+  // (init() already ran once above — shared by both flows.)
   let session;
   try {
     session = await withTimeout(
@@ -581,9 +668,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAdapterName(null);
   }, [adapterName]);
 
-  /* Auto-connect inside HashPack's in-app browser: the wallet is already
+  /* Auto-connect inside a wallet's in-app browser: the wallet is already
      at hand there, so connect on mount instead of making the user tap
-     through a wallet picker. The 7-day session still requires one
+     through a wallet picker. Uses async detection so HashPack's iOS
+     in-app browser (no sync signal) is covered too; on desktop it
+     resolves false immediately. The 7-day session still requires one
      explicit signature (handled by the session layer) — authentication
      is never skipped. Failures surface via wallet.error and the manual
      "Sign in with wallet" picker stays available as a fallback. */
@@ -591,12 +680,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (autoConnectTried.current) return;
     if (account) return;
-    if (!isHashPackInAppBrowser()) return;
     autoConnectTried.current = true;
-    void connect("hashpack").catch(() => {
-      // connect() already recorded the specific failure in wallet.error
-      // and rethrows; swallow the rethrow here since the error state is
-      // the user-visible signal.
+    void isHashPackInAppBrowserAsync().then((inApp) => {
+      if (!inApp) return;
+      return connect("hashpack").catch(() => {
+        // connect() already recorded the specific failure in wallet.error
+        // and rethrows; swallow the rethrow here since the error state is
+        // the user-visible signal.
+      });
     });
   }, [connect, account]);
 
