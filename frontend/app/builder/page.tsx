@@ -52,7 +52,7 @@ import {
   setByokKey,
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
-import { registerPage, resolvePage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
+import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
 import {
   deriveUsername,
   deriveUsernameFromEvm,
@@ -1611,7 +1611,15 @@ function PublishPanel({
       const accountEvm = accountToEvmAddress(account).toLowerCase();
       const ownerFlag = ownerType === "agent" ? 1 : 0;
       const publishName = async (name: string): Promise<string> => {
-        const existing = await resolvePage(name, chain);
+        // Use server-side resolve to avoid browser CORS issues with Hedera RPC
+        let existing: { owner: string } | null = null;
+        try {
+          const res = await fetch(`/api/resolve?username=${encodeURIComponent(name)}`);
+          if (res.ok) existing = await res.json();
+        } catch {
+          // If resolve fails, assume not registered and try to register
+          existing = null;
+        }
         if (existing) {
           if (existing.owner.toLowerCase() !== accountEvm) {
             throw new Error(`The name "${name}" is already registered to another wallet.`);
