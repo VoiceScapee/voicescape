@@ -22,7 +22,6 @@ import type { AuthPort, VerifiedSession } from "./auth";
 import { defaultAuthPort } from "./auth";
 import type { SalesPort } from "./sales";
 import { defaultSalesPort } from "./sales";
-import { canonicalAddress } from "../../session-message";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
 import { getTopicId, mirrorBaseUrl, type TopicDomain } from "./topics";
 import { checkContent } from "./content-filter";
