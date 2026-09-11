@@ -60,6 +60,35 @@
   flex: 1;
 }
 
+/* ?draft= deep-link indicator chip */
+.vb-draft-chip {
+  border-color: rgba(252, 211, 77, 0.45);
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.08);
+  white-space: nowrap;
+}
+.vb-draft-chip.is-error {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+}
+.vb-draft-chip-short {
+  display: none;
+}
+@media (max-width: 640px) {
+  .vb-draft-chip-full {
+    display: none;
+  }
+  .vb-draft-chip-short {
+    display: inline;
+  }
+  .vb-draft-chip {
+    max-width: 38vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Main layout: controls + preview                                    */
 /* ------------------------------------------------------------------ */

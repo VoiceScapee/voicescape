@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
@@ -37,6 +38,7 @@ import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
 import { pinAudioFile } from "@/lib/ipfs";
 import { TEMPLATES, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
 import { RequireSession, useSession } from "@/lib/session";
 import {
@@ -1772,6 +1774,9 @@ function BuilderInner() {
   // pre-fill the builder with their template + identity fields. Consumed
   // once — the draft is cleared from localStorage on read.
   const [draftOwnerType, setDraftOwnerType] = useState<"human" | "agent" | null>(null);
+  // ?draft=<name> deep-link: load a pre-built page draft from /drafts/<name>.json.
+  const searchParams = useSearchParams();
+  const [urlDraft, setUrlDraft] = useState<{ name: string; ok: boolean; error?: string } | null>(null);
   useEffect(() => {
     const draft = consumeOnboardDraft();
     if (!draft) return;
@@ -1807,6 +1812,43 @@ function BuilderInner() {
     setDraftOwnerType(draft.ownerType === 1 ? "agent" : "human");
   }, []);
 
+  // ?draft=<name> deep-link: load a pre-built page draft from /drafts/<name>.json
+  // and validate it with isValidPage() before applying. Declared after the
+  // onboarding-draft effect so an explicit shared link wins when both exist.
+  useEffect(() => {
+    const raw = searchParams.get("draft");
+    if (raw == null || raw === "") return;
+    const name = sanitizeDraftName(raw);
+    if (!name) {
+      setUrlDraft({ name: raw, ok: false, error: "Invalid draft name." });
+      return;
+    }
+    let live = true;
+    fetch(draftFileUrl(name))
+      .then((r) => {
+        if (!r.ok) throw new Error("not found");
+        return r.json();
+      })
+      .then((data: unknown) => {
+        if (!live) return;
+        if (!isValidPage(data)) {
+          setUrlDraft({ name, ok: false, error: `Draft "${name}" is not a valid page.` });
+          return;
+        }
+        editPage(JSON.parse(JSON.stringify(data)) as VoicescapePage);
+        setDraftOwnerType(data.ownerType === "agent" ? "agent" : "human");
+        setUrlDraft({ name, ok: true });
+      })
+      .catch(() => {
+        if (live) setUrlDraft({ name, ok: false, error: `Could not load draft "${name}".` });
+      });
+    return () => {
+      live = false;
+    };
+    // Mount-only: the draft param is read once, like the onboarding draft above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const updateTheme = (key: keyof VoicescapePage["theme"], value: string) =>
     editPage((p) => ({ ...p, theme: { ...p.theme, [key]: value } }));
 
@@ -1828,6 +1870,23 @@ function BuilderInner() {
         </Link>
         <span className="vb-header-divider" />
         <h1 className="vb-header-title">Page Builder</h1>
+        {urlDraft?.ok && (
+          <span
+            className="vs-chip vb-draft-chip"
+            title={`Pre-built draft "${urlDraft.name}" loaded — review it and publish when ready.`}
+          >
+            <IconCheck size={14} />
+            <span className="vb-draft-chip-full">Draft loaded: {urlDraft.name}</span>
+            <span className="vb-draft-chip-short">Draft</span>
+          </span>
+        )}
+        {urlDraft && !urlDraft.ok && (
+          <span className="vs-chip vb-draft-chip is-error" title={urlDraft.error}>
+            <IconClose size={14} />
+            <span className="vb-draft-chip-full">{urlDraft.error}</span>
+            <span className="vb-draft-chip-short">Draft error</span>
+          </span>
+        )}
         <div className="vb-header-spacer" />
         <span className="vs-chip">
           <IconBolt size={14} /> {chain.label}
@@ -1969,7 +2028,16 @@ export default function BuilderPage() {
       title="Sign in to build your page"
       description="Connect your wallet and sign the sign-in message to open the page builder."
     >
-      <BuilderInner />
+      {/* Suspense boundary required by Next.js for useSearchParams (?draft= deep-link). */}
+      <Suspense
+        fallback={
+          <div className="vb-shell" style={{ padding: 32, color: "var(--vs-muted)" }}>
+            Loading builder…
+          </div>
+        }
+      >
+        <BuilderInner />
+      </Suspense>
     </RequireSession>
   );
 }
