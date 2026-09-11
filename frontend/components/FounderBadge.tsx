@@ -13,7 +13,7 @@ export default function FounderBadge() {
       title="Voicescape Founder"
       aria-label="Voicescape Founder"
     >
-      <span aria-hidden="true">👑</span>
+      <span aria-hidden="true">🎤</span>
       <span>Founder</span>
     </span>
   );
