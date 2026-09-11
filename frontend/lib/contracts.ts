@@ -21,6 +21,15 @@ export { ZERO_ADDRESS };
 export function getRegistryAddress(): string {
   const addr = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
   if (!addr) throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is not set — deploy the contracts and add the address to your env.");
+  // Ethers needs the 0x EVM address, not the 0.0.x Hedera ID.
+  // If the env has the Hedera ID format, use the known mainnet EVM address.
+  if (/^0\.0\.\d+$/.test(addr.trim())) {
+    // Mainnet Registry 0.0.10854058 -> 0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58
+    if (addr.trim() === "0.0.10854058") {
+      return "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
+    }
+    throw new Error(`Registry address ${addr} is a Hedera ID, not an EVM address. Set NEXT_PUBLIC_REGISTRY_ADDRESS to the 0x address.`);
+  }
   return addr;
 }
 
