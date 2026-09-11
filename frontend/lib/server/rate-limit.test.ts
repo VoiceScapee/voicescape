@@ -17,9 +17,20 @@ beforeEach(async () => {
 });
 
 describe("clientIpFromHeaders", () => {
-  it("takes the first x-forwarded-for entry", () => {
+  it("takes the LAST x-forwarded-for entry (first is attacker-controlled)", () => {
     const h = new Headers({ "x-forwarded-for": "203.0.113.7, 70.41.3.18" });
-    expect(clientIpFromHeaders(h)).toBe("203.0.113.7");
+    expect(clientIpFromHeaders(h)).toBe("70.41.3.18");
+  });
+  it("prefers x-vercel-forwarded-for over x-forwarded-for", () => {
+    const h = new Headers({
+      "x-forwarded-for": "203.0.113.7, 70.41.3.18",
+      "x-vercel-forwarded-for": "198.51.100.42",
+    });
+    expect(clientIpFromHeaders(h)).toBe("198.51.100.42");
+  });
+  it("a spoofed first x-forwarded-for entry does not change the result", () => {
+    const h = new Headers({ "x-forwarded-for": "10.0.0.1, 70.41.3.18" });
+    expect(clientIpFromHeaders(h)).toBe("70.41.3.18");
   });
   it("falls back to x-real-ip", () => {
     const h = new Headers({ "x-real-ip": "2001:db8::1" });

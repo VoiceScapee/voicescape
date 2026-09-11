@@ -41,15 +41,32 @@ function sanitizeIp(ip: string): string {
 }
 
 /**
- * Best-effort client IP. On Vercel (and most reverse proxies)
- * x-forwarded-for's first entry is the real client IP. Documented so a
- * self-hosted operator knows to trust their own proxy headers.
+ * Best-effort client IP.
+ *
+ * Header trust order:
+ * 1. `x-vercel-forwarded-for` — set by the Vercel edge itself, so it is the
+ *    most trustworthy source on Vercel deployments.
+ * 2. The LAST `x-forwarded-for` entry — each proxy appends to the list, so
+ *    the last entry is the one added closest to our server (the Vercel edge
+ *    appending the real client IP). The FIRST entry is attacker-controlled
+ *    and must not be trusted: spoofing it used to give every IP flood gate
+ *    a fresh bucket.
+ * 3. `x-real-ip` (for a self-hosted operator's own proxy).
  */
 export function clientIpFromHeaders(headers: Headers): string {
+  const vercel = headers.get("x-vercel-forwarded-for");
+  if (vercel) {
+    const first = vercel.split(",")[0]?.trim();
+    if (first) return sanitizeIp(first);
+  }
   const xff = headers.get("x-forwarded-for");
   if (xff) {
-    const first = xff.split(",")[0]?.trim();
-    if (first) return sanitizeIp(first);
+    const entries = xff
+      .split(",")
+      .map((e) => e.trim())
+      .filter(Boolean);
+    const last = entries[entries.length - 1];
+    if (last) return sanitizeIp(last);
   }
   const real = headers.get("x-real-ip");
   if (real) return sanitizeIp(real);

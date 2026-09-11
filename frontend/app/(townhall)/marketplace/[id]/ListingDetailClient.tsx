@@ -6,7 +6,8 @@ import { ReviewNote, SellerLine, formatUsd } from "@/components/townhall/Listing
 import { useWallet } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
-import { buyListing } from "@/lib/contracts";
+import { buyListing, resolvePage } from "@/lib/contracts";
+import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import {
@@ -48,6 +49,14 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [buy, setBuy] = useState<BuyPhase>({ kind: "idle" });
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
+  /**
+   * On-chain seller verification: does the listing's payout address match the
+   * registered owner of the seller's page? Guards against a compromised
+   * server (or MITM) swapping the payout address before the wallet prompt.
+   */
+  const [sellerCheck, setSellerCheck] = useState<
+    "idle" | "checking" | "match" | "mismatch" | "unknown"
+  >("idle");
 
   /** Seller-only: mark sold / cancelled. The server verifies the signed session owns the seller page. */
   const changeStatus = async (status: "sold" | "cancelled") => {
@@ -111,6 +120,38 @@ export default function ListingDetailClient({ id }: { id: string }) {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listing?.id]);
+
+  // Cross-check the listing's payout address against the on-chain registry:
+  // resolve the seller's username and compare its registered owner to the
+  // address the buy button would pay. Runs once per listing load; a failure
+  // to resolve leaves the check in "unknown" rather than blocking the page.
+  useEffect(() => {
+    let live = true;
+    const sellerUsername = listing?.sellerUsername;
+    const { address: rawSellerAddress } = parseSeller(listing ?? ({} as Listing));
+    if (!sellerUsername || !rawSellerAddress) {
+      setSellerCheck("unknown");
+      return;
+    }
+    setSellerCheck("checking");
+    resolvePage(sellerUsername, getActiveChain())
+      .then((resolved) => {
+        if (!live) return;
+        if (!resolved?.owner) {
+          setSellerCheck("unknown");
+          return;
+        }
+        const onChainOwner = resolved.owner.toLowerCase();
+        const listingPayout = sellerToEvm(rawSellerAddress).toLowerCase();
+        setSellerCheck(onChainOwner === listingPayout ? "match" : "mismatch");
+      })
+      .catch(() => {
+        if (live) setSellerCheck("unknown");
+      });
+    return () => {
+      live = false;
+    };
+  }, [listing?.sellerUsername, listing?.id]);
 
   const usd = listing ? listing.priceUsdCents / 100 : 0;
   const { address: sellerAddress } = parseSeller(listing ?? ({} as Listing));
@@ -179,6 +220,31 @@ export default function ListingDetailClient({ id }: { id: string }) {
             <ReviewNote listing={listing} />
           </div>
 
+          {!sold && !isOwnListing && sellerAddress && (
+            <div className="th-section" style={{ margin: "18px 0" }}>
+              <p className="th-muted" style={{ marginBottom: 4 }}>
+                Payout address: <span className="vs-mono">{sellerToEvm(sellerAddress).slice(0, 10)}…{sellerToEvm(sellerAddress).slice(-8)}</span>
+              </p>
+              {sellerCheck === "checking" && (
+                <p className="th-muted" role="status">Verifying seller on-chain…</p>
+              )}
+              {sellerCheck === "match" && (
+                <p className="th-note" style={{ color: "var(--vs-green, #34d399)" }}>
+                  ✅ Verified — this address matches the seller&apos;s registered page.
+                </p>
+              )}
+              {sellerCheck === "mismatch" && (
+                <div className="th-dust is-error" role="alert" style={{ marginTop: 8 }}>
+                  <div className="th-dust-title">⚠️ Seller mismatch</div>
+                  <p>
+                    This payout address does <strong>not</strong> match the address
+                    registered to the seller&apos;s page. Do not buy until the seller
+                    fixes it — your payment would go to an unverified address.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
           {!sold && !isOwnListing && buy.kind === "idle" && (
             <button type="button" className="vs-btn vs-btn-primary th-btn-block" onClick={startBuy}>
               Buy now — {formatUsd(listing.priceUsdCents)}
