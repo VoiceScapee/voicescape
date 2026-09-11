@@ -91,10 +91,82 @@ function useReferralCapture() {
   }, []);
 }
 
+/**
+ * Privacy-first client error reporting.
+ *
+ * Listens for uncaught errors and unhandled promise rejections and sends
+ * a minimal report to POST /api/client-error. What leaves the browser:
+ *   - error.message only (max 200 chars, scrubbed of wallet addresses)
+ *   - window.location.pathname (no query strings — they can carry PII)
+ *   - an optional component tag
+ * Never sent: stack traces, filenames, IPs, user agents, wallet addresses.
+ *
+ * Delivery is fire-and-forget via navigator.sendBeacon (works during page
+ * unload), with a keepalive fetch fallback. Reporting never throws and
+ * never retries: a failure to report is silently dropped so telemetry can
+ * never cause an error loop. At most 10 unique reports per page load.
+ */
+function useClientErrorReporting() {
+  React.useEffect(() => {
+    const seen = new Set<string>();
+    const scrub = (s: string): string =>
+      s.replace(/0x[a-fA-F0-9]{8,}/g, "0x…").replace(/\b\d{1,10}\.\d{1,10}\.\d{1,10}\b/g, "0.0.…");
+
+    const report = (message: string, component?: string) => {
+      try {
+        const msg = scrub(message).trim().replace(/\s+/g, " ").slice(0, 200);
+        if (!msg) return;
+        // Pathname only — strip query string and fragment (can carry PII).
+        const page = (window.location.pathname || "/").split("?")[0].split("#")[0] || "/";
+        const key = `${page}|${component ?? ""}|${msg}`;
+        if (seen.has(key) || seen.size >= 10) return;
+        seen.add(key);
+        const payload = JSON.stringify({ message: msg, page, ...(component ? { component } : {}) });
+        if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+          navigator.sendBeacon("/api/client-error", new Blob([payload], { type: "application/json" }));
+        } else {
+          void fetch("/api/client-error", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: payload,
+            keepalive: true,
+          }).catch(() => {
+            /* telemetry failure is silently dropped */
+          });
+        }
+      } catch {
+        /* reporting must never throw */
+      }
+    };
+
+    const onError = (e: ErrorEvent) => {
+      // e.message only — never e.filename / e.error.stack (paths, PII).
+      report(typeof e.message === "string" && e.message ? e.message : "unknown error");
+    };
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const r: unknown = e.reason;
+      const msg =
+        r instanceof Error && r.message
+          ? r.message
+          : typeof r === "string" && r
+            ? r
+            : "unhandled promise rejection";
+      report(msg);
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+}
+
 export function RootProviders({ children }: { children: React.ReactNode }) {
   useServiceWorker();
   useReferralCapture();
   useChunkErrorRecovery();
+  useClientErrorReporting();
   return (
     <WalletProvider>
       <SessionProvider>
