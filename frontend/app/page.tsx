@@ -52,6 +52,51 @@ export default function LandingPage() {
           </p>
         </section>
 
+        {/* How it works — the 4-step value prop, right up top */}
+        <section className="vs-section" style={{ paddingTop: 0 }}>
+          <p className="vs-label" style={{ textAlign: "center" }}><T k="landing.gettingStarted" /></p>
+          <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 32px", textAlign: "center" }}>
+            <T k="landing.howItWorks" />
+          </h2>
+          <div className="vs-grid-2">
+            {STEPS.map((s, i) => (
+              <div key={s.titleKey} className="vs-glass" style={{ padding: 24, display: "flex", gap: 16 }}>
+                <div
+                  className="vs-mono"
+                  style={{
+                    flexShrink: 0,
+                    width: 40,
+                    height: 40,
+                    borderRadius: "50%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    background: "linear-gradient(135deg, var(--vs-violet), var(--vs-cyan))",
+                    color: "#06060e",
+                  }}
+                >
+                  {i + 1}
+                </div>
+                <div>
+                  <h3 style={{ margin: "0 0 6px", fontSize: 17, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ color: "var(--vs-cyan)", display: "inline-flex" }}><IconCheck size={16} /></span>
+                    <T k={s.titleKey} />
+                  </h3>
+                  <p style={{ margin: 0, color: "var(--vs-muted)", lineHeight: 1.7, fontSize: 15 }}><T k={s.bodyKey} /></p>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ textAlign: "center", marginTop: 40 }}>
+            <Link href="/builder" className="vs-btn vs-btn-primary">
+              <T k="landing.openBuilder" />
+              <IconArrowRight size={18} />
+            </Link>
+          </div>
+        </section>
+
         {/* Features */}
         <section className="vs-section" style={{ paddingTop: 0 }}>
           <div className="vs-grid-2">
@@ -138,49 +183,30 @@ export default function LandingPage() {
           </p>
         </section>
 
-        {/* How it works */}
-        <section className="vs-section">
-          <p className="vs-label" style={{ textAlign: "center" }}><T k="landing.gettingStarted" /></p>
-          <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 32px", textAlign: "center" }}>
-            <T k="landing.howItWorks" />
+        {/* Closing CTA */}
+        <section
+          className="vs-section"
+          style={{
+            textAlign: "center",
+            background: "var(--vs-bg2)",
+            borderTop: "1px solid var(--vs-border)",
+          }}
+        >
+          <h2
+            style={{
+              fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)",
+              margin: "0 0 12px",
+            }}
+          >
+            <span className="vs-gradient-text"><T k="splash.tagline" /></span>
           </h2>
-          <div className="vs-grid-2">
-            {STEPS.map((s, i) => (
-              <div key={s.titleKey} className="vs-glass" style={{ padding: 24, display: "flex", gap: 16 }}>
-                <div
-                  className="vs-mono"
-                  style={{
-                    flexShrink: 0,
-                    width: 40,
-                    height: 40,
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                    fontWeight: 700,
-                    background: "linear-gradient(135deg, var(--vs-violet), var(--vs-cyan))",
-                    color: "#06060e",
-                  }}
-                >
-                  {i + 1}
-                </div>
-                <div>
-                  <h3 style={{ margin: "0 0 6px", fontSize: 17, display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ color: "var(--vs-cyan)", display: "inline-flex" }}><IconCheck size={16} /></span>
-                    <T k={s.titleKey} />
-                  </h3>
-                  <p style={{ margin: 0, color: "var(--vs-muted)", lineHeight: 1.7, fontSize: 15 }}><T k={s.bodyKey} /></p>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ textAlign: "center", marginTop: 40 }}>
-            <Link href="/builder" className="vs-btn vs-btn-primary">
-              <T k="landing.openBuilder" />
-              <IconArrowRight size={18} />
-            </Link>
-          </div>
+          <p style={{ color: "var(--vs-muted)", fontSize: 16, margin: "0 0 28px" }}>
+            <T k="splash.sub" />
+          </p>
+          <Link href="/builder" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
+            <T k="landing.openBuilder" />
+            <IconArrowRight size={20} />
+          </Link>
         </section>
 
         {/* Footer */}
