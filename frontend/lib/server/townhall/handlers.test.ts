@@ -68,6 +68,11 @@ const OWNERS: Record<string, string> = {
   // carol's wallet doubles as the TOWNHALL_MOD_WALLETS fixture address
   // (0.0.424242) in the wallet-mod tests below.
   carol: "0x0000000000000000000000000000000000067932",
+  // The platform owner's REAL ECDSA-derived EVM address for 0.0.10424063
+  // (proven on-chain at user-10424063 registration). The dust-fee owner
+  // bypass must match this form — NOT the long-zero form that
+  // canonicalAddress("0.0.10424063") produces.
+  owner: "0x30c63dc43608b6764a6b8b53960553aebf306817",
 };
 
 /**
@@ -214,6 +219,19 @@ describe("dust-fee enforcement (402)", () => {
     const [r1, r2] = await Promise.all([p1, p2]);
     expect([r1.status, r2.status].sort()).toEqual([201, 402]);
     expect(verifyCalls).toBe(1);
+  });
+
+  it("the treasury owner posts free (no dust fee, no self-transfer)", async () => {
+    // Regression: the owner's ECDSA-derived EVM address must match the
+    // bypass — canonicalAddress("0.0.10424063") yields the long-zero form,
+    // which never equals the wallet's real address, and the bypass silently
+    // failed (owner got 402, then ACCOUNT_REPEATED_IN_ACCOUNT_AMOUNTS).
+    const r = await createPost(makeDeps(), {
+      author: "owner",
+      auth: testCred("owner"),
+      body: "owner post, no fee",
+    });
+    expect(r.status).toBe(201);
   });
 
   it("a failed fee verification releases the tx id for retry", async () => {

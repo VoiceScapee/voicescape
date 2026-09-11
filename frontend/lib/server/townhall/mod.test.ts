@@ -1,6 +1,6 @@
 /** Moderation hide-filter tests — pure logic, no network. */
 import { afterEach, describe, expect, it } from "vitest";
-import { filterHiddenPosts, getModWallets, hiddenSeqs, isAuthorizedModAction, isGlobalMod, isModWallet } from "./mod";
+import { filterHiddenPosts, getModWallets, hiddenSeqs, isAuthorizedModAction, isGlobalMod, isModWallet, isOwnerAddress } from "./mod";
 import type { ModActionMessage } from "./types";
 
 process.env.TOWNHALL_MODS = "brandon, mod2";
@@ -81,6 +81,21 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
   it("isModWallet is false when the env list is empty", () => {
     delete process.env.TOWNHALL_MOD_WALLETS;
     expect(isModWallet(MOD_WALLET)).toBe(false);
+  });
+
+  it("the platform owner is a mod wallet in every address form", () => {
+    // Regression: canonicalAddress("0.0.10424063") yields the long-zero
+    // form, which never equals the wallet's ECDSA-derived EVM address.
+    // The owner check must match all forms.
+    delete process.env.TOWNHALL_MOD_WALLETS;
+    expect(isOwnerAddress("0x30c63dc43608b6764a6b8b53960553aebf306817")).toBe(true);
+    expect(isOwnerAddress("0.0.10424063")).toBe(true);
+    expect(isOwnerAddress("0x00000000000000000000000000000000009f0eff")).toBe(true);
+    expect(isOwnerAddress("0x0000000000000000000000000000000000000b001")).toBe(false);
+    expect(isModWallet("0x30c63dc43608b6764a6b8b53960553aebf306817")).toBe(true);
+    expect(isModWallet("0.0.10424063")).toBe(true);
+    expect(isGlobalMod("user-10424063", null)).toBe(true);
+    expect(isGlobalMod("someone", "0x30c63dc43608b6764a6b8b53960553aebf306817")).toBe(true);
   });
 
   it("isGlobalMod passes for mod usernames and mod wallets", () => {

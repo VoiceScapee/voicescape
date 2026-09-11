@@ -15,7 +15,7 @@ import type { HcsPort } from "./hcs";
 import { defaultHcsPort } from "./hcs";
 import type { MirrorPort } from "./mirror";
 import { consumeDustFeeTx, defaultMirrorPort, releaseDustFeeTx, reserveDustFeeTx } from "./mirror";
-import { filterHiddenPosts, isAuthorizedModAction, isGlobalMod, isModWallet } from "./mod";
+import { filterHiddenPosts, isAuthorizedModAction, isGlobalMod, isModWallet, isOwnerAddress } from "./mod";
 import type { RegistryPort } from "./registry-check";
 import { defaultRegistryPort } from "./registry-check";
 import type { AuthPort, VerifiedSession } from "./auth";
@@ -171,11 +171,10 @@ async function requireDustFee(
   const { dustFeeTinybars, treasury } = deps.mirror.feeInfo();
   // The treasury owner doesn't pay the dust fee to themselves — Hedera
   // rejects self-transfers (ACCOUNT_REPEATED_IN_ACCOUNT_AMOUNTS).
-  // session.address is the canonical 0x (lowercase); treasury may be 0.0.x
-  // or 0x, so normalize both via canonicalAddress.
-  const sessionCanon = canonicalAddress(session.address);
-  const treasuryCanon = treasury ? canonicalAddress(treasury) : null;
-  if (sessionCanon && treasuryCanon && sessionCanon === treasuryCanon) {
+  // isOwnerAddress matches the owner's ECDSA-derived EVM address as well
+  // as the 0.0.x/long-zero forms (canonicalAddress alone can't match the
+  // ECDSA form).
+  if (isOwnerAddress(session.address)) {
     return null; // Owner posts free
   }
   // Economics guard BEFORE fee verification: the dust fee goes to the

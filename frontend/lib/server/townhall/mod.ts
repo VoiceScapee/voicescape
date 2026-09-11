@@ -32,6 +32,25 @@ import { canonicalAddress } from "../../session-message";
  */
 const OWNER_WALLET = "0.0.10424063";
 const OWNER_USERNAME = "user-10424063";
+/**
+ * Brandon's ECDSA-derived EVM address for 0.0.10424063 — proven on-chain
+ * when he registered user-10424063 (registry owner =
+ * 0x30C63DC43608B6764A6b8b53960553AEbF306817). NOTE: canonicalAddress()
+ * maps 0.0.x to the LONG-ZERO 0x form, which never equals a wallet's
+ * ECDSA-derived EVM address — so owner checks must compare against BOTH
+ * forms. Never compare OWNER_WALLET via canonicalAddress alone.
+ */
+const OWNER_EVM = "0x30c63dc43608b6764a6b8b53960553aebf306817";
+
+/**
+ * True when the address belongs to the platform owner, in either address
+ * form (Hedera 0.0.x / long-zero 0x, or the ECDSA-derived EVM address).
+ */
+export function isOwnerAddress(address: string | null | undefined): boolean {
+  const c = address ? canonicalAddress(address) : null;
+  if (!c) return false;
+  return c === canonicalAddress(OWNER_WALLET) || c === OWNER_EVM;
+}
 
 export function getMods(): string[] {
   return (process.env.TOWNHALL_MODS ?? "")
@@ -72,7 +91,7 @@ export function isModWallet(address: string): boolean {
   const c = canonicalAddress(address);
   if (c === null) return false;
   // Only the platform owner has mod access until the team scales
-  if (c === canonicalAddress(OWNER_WALLET)) return true;
+  if (isOwnerAddress(address)) return true;
   return getModWallets().includes(c);
 }
 
