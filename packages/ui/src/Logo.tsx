@@ -4,8 +4,9 @@ interface LogoProps {
 }
 
 /**
- * Voicescape mark: a hexagonal node with an emerald→mint gradient and two
- * orbiting dots, plus an optional gradient wordmark.
+ * Voicescape mark: a microphone with flanking soundwave bars, in an
+ * emerald→mint gradient — matching the splash banner branding.
+ * Plus an optional gradient wordmark.
  */
 export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
   const gid = "vs-logo-grad";
@@ -28,31 +29,49 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
         aria-label="Voicescape logo"
       >
         <defs>
-          <linearGradient id={gid} x1="8" y1="6" x2="40" y2="42" gradientUnits="userSpaceOnUse">
+          <linearGradient id={gid} x1="10" y1="6" x2="38" y2="42" gradientUnits="userSpaceOnUse">
             <stop offset="0" stopColor="#10b981" />
             <stop offset="1" stopColor="#34d399" />
           </linearGradient>
         </defs>
-        {/* hexagon */}
-        <path
-          d="M24 4 40 13.2v17.6L24 44 8 30.8V13.2L24 4Z"
+        {/* soundwave bars, left */}
+        <rect x="7" y="19" width="3" height="10" rx="1.5" fill="#34d399" opacity="0.5" />
+        <rect x="12" y="14" width="3" height="20" rx="1.5" fill="#34d399" opacity="0.75" />
+        {/* soundwave bars, right */}
+        <rect x="33" y="14" width="3" height="20" rx="1.5" fill="#34d399" opacity="0.75" />
+        <rect x="38" y="19" width="3" height="10" rx="1.5" fill="#34d399" opacity="0.5" />
+        {/* mic capsule */}
+        <rect
+          x="18"
+          y="6"
+          width="12"
+          height="20"
+          rx="6"
           stroke={`url(#${gid})`}
           strokeWidth="2.6"
-          strokeLinejoin="round"
         />
-        {/* inner node */}
-        <circle cx="24" cy="24" r="4.6" fill={`url(#${gid})`} />
-        {/* spokes */}
+        {/* mic grille lines */}
         <path
-          d="M24 24 13.5 15.5M24 24l10.5-8.5M24 24l-1 13M24 24l9.6 8.6"
+          d="M21.5 12.5h5M21.5 16.5h5M21.5 20.5h5"
           stroke={`url(#${gid})`}
-          strokeWidth="1.6"
+          strokeWidth="1.5"
           strokeLinecap="round"
-          opacity="0.85"
+          opacity="0.75"
         />
-        {/* orbiting dots */}
-        <circle cx="11.5" cy="13" r="2.1" fill="#6ee7b7" />
-        <circle cx="36" cy="35" r="2.1" fill="#34d399" />
+        {/* mic stand */}
+        <path
+          d="M24 26v7"
+          stroke={`url(#${gid})`}
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
+        {/* mic base */}
+        <path
+          d="M18 37h12"
+          stroke={`url(#${gid})`}
+          strokeWidth="2.6"
+          strokeLinecap="round"
+        />
       </svg>
       {withWordmark && (
         <span

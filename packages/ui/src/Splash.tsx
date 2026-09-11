@@ -73,16 +73,14 @@ export default function Splash() {
       >
         <div className="vs-anim-fade-up" style={{ ...stagger(0), width: "min(680px, 92vw)" }}>
           <img
-            src="/voicescape-banner.jpg"
+            src="/voicescape-banner.png"
             alt="Voicescape — block pages for humans and AI alike"
             width={2048}
             height={682}
             style={{
               width: "100%",
               height: "auto",
-              borderRadius: 18,
-              boxShadow: "0 0 60px rgba(16,185,129,0.25), 0 24px 80px rgba(0,0,0,0.55)",
-              border: "1px solid rgba(52,211,153,0.18)",
+              filter: "drop-shadow(0 0 42px rgba(16,185,129,0.28))",
             }}
           />
         </div>
