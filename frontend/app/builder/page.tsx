@@ -1476,6 +1476,11 @@ function PublishPanel({
   const [ownerType, setOwnerType] = useState<"human" | "agent">(
     initialOwnerType ?? page.ownerType ?? "human",
   );
+  // If the draft deep-link resolves after this panel mounts, sync the owner
+  // type from it (useState's initializer only runs once).
+  useEffect(() => {
+    if (initialOwnerType) setOwnerType(initialOwnerType);
+  }, [initialOwnerType]);
   const [operatorWallet, setOperatorWallet] = useState("");
   const [operatorName, setOperatorName] = useState("");
   const [operatorUrl, setOperatorUrl] = useState("");
@@ -1837,6 +1842,16 @@ function BuilderInner() {
         }
         editPage(JSON.parse(JSON.stringify(data)) as VoicescapePage);
         setDraftOwnerType(data.ownerType === "agent" ? "agent" : "human");
+        // If the draft names its source template, sync the template picker so
+        // it doesn't show a stale selection (tapping a template replaces the
+        // whole page, including the draft's pre-filled username).
+        const draftTemplateId = (data as { templateId?: unknown }).templateId;
+        if (
+          typeof draftTemplateId === "string" &&
+          TEMPLATES.some((t) => t.id === draftTemplateId)
+        ) {
+          setTemplateId(draftTemplateId);
+        }
         setUrlDraft({ name, ok: true });
       })
       .catch(() => {
