@@ -118,6 +118,15 @@ export default function ModDashboardPage() {
   // mod acts under one (TOWNHALL_MODS path), empty for pure wallet mods.
   const modIdentity = { username: me ?? "" };
 
+  // Username-only moderators (TOWNHALL_MODS without a wallet in the mod
+  // wallet lists) must identify on GETs too — the session alone carries
+  // only the wallet. Wallet-configured mods are unaffected.
+  const withModUser = (url: string) => {
+    if (!me) return url;
+    const sep = url.includes("?") ? "&" : "?";
+    return `${url}${sep}username=${encodeURIComponent(me)}`;
+  };
+
   const load = useCallback(async () => {
     if (!sessionReady || !isAuthenticated) return;
     setLoading(true);
@@ -125,10 +134,10 @@ export default function ModDashboardPage() {
     setDenied(false);
     try {
       const [rq, wq, bq, aq] = await Promise.all([
-        authed<{ reports?: Report[] }>(`/api/townhall/reports`),
-        authed<{ warnings?: Warn[] }>(`/api/townhall/warnings`),
-        authed<{ bans?: Ban[]; timeouts?: Timeout[] }>(`/api/townhall/bans`),
-        authed<{ appeals?: Appeal[] }>(`/api/townhall/appeals`),
+        authed<{ reports?: Report[] }>(withModUser(`/api/townhall/reports`)),
+        authed<{ warnings?: Warn[] }>(withModUser(`/api/townhall/warnings`)),
+        authed<{ bans?: Ban[]; timeouts?: Timeout[] }>(withModUser(`/api/townhall/bans`)),
+        authed<{ appeals?: Appeal[] }>(withModUser(`/api/townhall/appeals`)),
       ]);
       setReports(Array.isArray(rq.reports) ? rq.reports : []);
       setWarnings(Array.isArray(wq.warnings) ? wq.warnings : []);
@@ -143,7 +152,7 @@ export default function ModDashboardPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionReady, isAuthenticated]);
+  }, [sessionReady, isAuthenticated, me]);
 
   useEffect(() => {
     void load();
@@ -308,6 +317,7 @@ function ReportActions({
       const q = new URLSearchParams({ targetKind: report.targetKind });
       if (report.targetSeq !== null && report.targetSeq !== undefined) q.set("targetSeq", String(report.targetSeq));
       if (report.targetId) q.set("targetId", report.targetId);
+      if (modIdentity.username) q.set("username", modIdentity.username);
       const d = await authed<{ username: string | null; wallet: string | null }>(
         `/api/townhall/reports/target?${q.toString()}`,
       );

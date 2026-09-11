@@ -52,9 +52,10 @@ export async function POST(req: NextRequest) {
  * x-vs-session header via withAuth.
  */
 export async function GET(req: NextRequest) {
+  const q = req.nextUrl.searchParams;
   const { status, json } = await queryReports(
     defaultDeps(),
-    withAuth({} as QueryReportsBody, req),
+    withAuth({ username: q.get("username") ?? undefined } as QueryReportsBody, req),
   );
   return NextResponse.json(json, { status });
 }

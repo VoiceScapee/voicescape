@@ -16,6 +16,10 @@ export const runtime = "nodejs";
  * 200 → {warnings: WarnView[]}.
  */
 export async function GET(req: NextRequest) {
-  const { status, json } = await listWarnings(defaultDeps(), withAuth({} as ListWarningsBody, req));
+  const q = req.nextUrl.searchParams;
+  const { status, json } = await listWarnings(
+    defaultDeps(),
+    withAuth({ username: q.get("username") ?? undefined } as ListWarningsBody, req),
+  );
   return NextResponse.json(json, { status });
 }

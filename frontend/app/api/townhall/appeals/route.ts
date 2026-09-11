@@ -46,6 +46,10 @@ export async function POST(req: NextRequest) {
  * restriction state. Mod-only. Session from the x-vs-session header.
  */
 export async function GET(req: NextRequest) {
-  const { status, json } = await queryAppeals(defaultDeps(), withAuth({} as QueryAppealsBody, req));
+  const q = req.nextUrl.searchParams;
+  const { status, json } = await queryAppeals(
+    defaultDeps(),
+    withAuth({ username: q.get("username") ?? undefined } as QueryAppealsBody, req),
+  );
   return NextResponse.json(json, { status });
 }

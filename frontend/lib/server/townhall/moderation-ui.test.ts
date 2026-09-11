@@ -46,6 +46,7 @@ const OWNERS: Record<string, string> = {
   brandon: "0x000000000000000000000000000000000000b001",
   alice: "0x000000000000000000000000000000000000a11c",
   bob: "0x00000000000000000000000000000000000000b0",
+  carol: "0x000000000000000000000000000000000000ca01",
 };
 
 function testCred(username: string): { message: string; signature: string } {
@@ -193,6 +194,22 @@ describe("listWarnings", () => {
   it("403s for non-mods", async () => {
     const r = await listWarnings(makeDeps(), { auth: testCred("alice") });
     expect(r.status).toBe(403);
+  });
+
+  it("honors username-only mods (TOWNHALL_MODS) via body username", async () => {
+    const OLD = process.env.TOWNHALL_MODS;
+    process.env.TOWNHALL_MODS = "brandon,carol";
+    try {
+      const deps = makeDeps();
+      // carol's wallet is in no mod wallet list — only her username grants access.
+      const ok = await listWarnings(deps, { username: "carol", auth: testCred("carol") });
+      expect(ok.status).toBe(200);
+      // Without the username the same session is denied.
+      const denied = await listWarnings(deps, { auth: testCred("carol") });
+      expect(denied.status).toBe(403);
+    } finally {
+      process.env.TOWNHALL_MODS = OLD;
+    }
   });
 
   it("returns active warnings newest-first and drops lifted ones", async () => {

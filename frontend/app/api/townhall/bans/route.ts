@@ -21,7 +21,11 @@ export const runtime = "nodejs";
  * wallet). Session from the x-vs-session header.
  */
 export async function GET(req: NextRequest) {
-  const { status, json } = await listBans(defaultDeps(), withAuth({} as ListBansBody, req));
+  const q = req.nextUrl.searchParams;
+  const { status, json } = await listBans(
+    defaultDeps(),
+    withAuth({ username: q.get("username") ?? undefined } as ListBansBody, req),
+  );
   return NextResponse.json(json, { status });
 }
 

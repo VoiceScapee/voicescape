@@ -25,6 +25,7 @@ export async function GET(req: NextRequest) {
     defaultDeps(),
     withAuth(
       {
+        username: q.get("username") ?? undefined,
         targetKind: q.get("targetKind"),
         targetSeq: rawSeq === null || rawSeq === "" ? undefined : Number(rawSeq),
         targetId: q.get("targetId") ?? undefined,
