@@ -24,7 +24,14 @@
 
 import type { ModActionMessage, PostView } from "./types";
 import { canonicalAddress } from "../../session-message";
-import { isFounderUsername } from "../../founders";
+
+/**
+ * Platform owner — the only account with mod access until the team scales.
+ * Brandon's treasury wallet. Hardcoded intentionally: this is the bootstrap
+ * phase, and mod access should not be broadly granted.
+ */
+const OWNER_WALLET = "0.0.10424063";
+const OWNER_USERNAME = "user-10424063";
 
 export function getMods(): string[] {
   return (process.env.TOWNHALL_MODS ?? "")
@@ -35,8 +42,8 @@ export function getMods(): string[] {
 
 export function isMod(username: string): boolean {
   const name = username.toLowerCase();
-  // Founders are always mods (platform creators)
-  if (isFounderUsername(name)) return true;
+  // Only the platform owner has mod access until the team scales
+  if (name === OWNER_USERNAME) return true;
   return getMods().includes(name);
 }
 
@@ -63,7 +70,10 @@ export function getModWallets(): string[] {
 
 export function isModWallet(address: string): boolean {
   const c = canonicalAddress(address);
-  return c !== null && getModWallets().includes(c);
+  if (c === null) return false;
+  // Only the platform owner has mod access until the team scales
+  if (c === canonicalAddress(OWNER_WALLET)) return true;
+  return getModWallets().includes(c);
 }
 
 /**
