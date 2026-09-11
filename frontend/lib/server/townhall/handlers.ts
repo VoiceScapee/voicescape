@@ -61,6 +61,8 @@ import type {
   ModActionMessage,
   PostMessage,
   PostView,
+  ProfileLinksMessage,
+  ProfileLinksView,
   ProposalMessage,
   ProposalView,
   ProposalVoteMessage,
@@ -1655,6 +1657,79 @@ export async function getListings(deps: TownhallDeps): Promise<HandlerResult> {
   return ok({ listings: views });
 }
 
+export interface SearchListingsParams {
+  q?: string;
+  /** Alias for goodsType: "physical" | "digital". */
+  category?: string;
+  minPriceCents?: number;
+  maxPriceCents?: number;
+  sort?: "newest" | "price-asc" | "price-desc";
+  limit?: number;
+}
+
+export interface SearchListingView extends ListingView {
+  /** Absolute deep link to the listing detail page. */
+  url: string;
+}
+
+/**
+ * Public marketplace search for external consumers (price-comparison
+ * agents, etc.). Session-less, no auth — rate-limited at the route
+ * layer. Only active listings are returned; seller payout addresses are
+ * included (they're already public on the listings feed) but never
+ * private wallet metadata.
+ */
+export async function searchListings(
+  deps: TownhallDeps,
+  params: SearchListingsParams,
+  siteUrl: string,
+): Promise<HandlerResult> {
+  const topic = topicOr503("market");
+  if (typeof topic !== "string") return topic;
+  const messages = await deps.hcs.queryAll(topic);
+  const latest = aggregateListings(messages);
+
+  const q = (params.q ?? "").trim().toLowerCase();
+  const category = (params.category ?? "").trim().toLowerCase();
+  const minCents = params.minPriceCents;
+  const maxCents = params.maxPriceCents;
+  const sort = params.sort ?? "newest";
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 100);
+
+  let views: SearchListingView[] = [];
+  for (const m of latest.values()) {
+    if (m.contents.status !== "active") continue;
+    if (category && m.contents.goodsType !== category) continue;
+    if (minCents !== undefined && m.contents.priceUsdCents < minCents) continue;
+    if (maxCents !== undefined && m.contents.priceUsdCents > maxCents) continue;
+    if (q) {
+      const hay = `${m.contents.title} ${m.contents.description}`.toLowerCase();
+      if (!hay.includes(q)) continue;
+    }
+    views.push({
+      id: m.contents.id,
+      seller: m.contents.seller,
+      sellerUsername:
+        m.contents.sellerUsername ??
+        (!looksLikeAddress(m.contents.seller) ? m.contents.seller : null),
+      title: m.contents.title,
+      description: m.contents.description,
+      priceUsdCents: m.contents.priceUsdCents,
+      goodsType: m.contents.goodsType,
+      ipfsHash: m.contents.ipfsHash,
+      status: m.contents.status,
+      ts: m.contents.ts,
+      url: `${siteUrl.replace(/\/$/, "")}/marketplace/${encodeURIComponent(m.contents.id)}`,
+    });
+  }
+
+  if (sort === "price-asc") views.sort((a, b) => a.priceUsdCents - b.priceUsdCents);
+  else if (sort === "price-desc") views.sort((a, b) => b.priceUsdCents - a.priceUsdCents);
+  else views.sort((a, b) => (a.ts < b.ts ? 1 : -1));
+
+  return ok({ listings: views.slice(0, limit), count: views.length });
+}
+
 export interface CreateListingBody extends AuthBody {
   seller?: unknown;
   sellerUsername?: unknown;
@@ -1760,4 +1835,98 @@ export async function setListingStatus(
   if (quota) return quota;
   await deps.hcs.submit(topic, updated);
   return ok({});
+}
+
+/* ------------------------------------------------------------------ */
+/* Profile links (cross-platform identity)                            */
+/* ------------------------------------------------------------------ */
+
+export interface SetProfileLinksBody extends AuthBody {
+  username?: unknown;
+  links?: unknown;
+}
+
+const PROFILE_LINK_KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+
+/**
+ * Set cross-platform identity links for your own registered page
+ * (twitter, github, website, farcaster, …). Lives on the forum topic as
+ * kind "profile-links"; latest message per username wins.
+ *
+ * Auth: the signing wallet must own the claimed username (page owner).
+ * No dust fee — declaring identity is free. Links are NOT run through
+ * the content filter (they're short platform handles/URLs, validated by
+ * shape), but values are length-bounded and key names are restricted to
+ * safe slugs.
+ *
+ * 201 → {seq}. Errors: 400 bad input, 401 no session, 403 not the page
+ * owner, 429 daily quota exceeded.
+ */
+export async function setProfileLinks(
+  deps: TownhallDeps,
+  body: SetProfileLinksBody,
+): Promise<HandlerResult> {
+  const own = await requirePageOwner(deps, body, body.username, "username");
+  if (!own.ok) return own.result;
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
+
+  if (body.links === null || typeof body.links !== "object" || Array.isArray(body.links)) {
+    return err(400, "links must be an object of platform → handle/URL");
+  }
+  const entries = Object.entries(body.links as Record<string, unknown>);
+  if (entries.length > 20) return err(400, "too many links (max 20)");
+  const links: Record<string, string> = {};
+  for (const [k, v] of entries) {
+    const key = k.trim().toLowerCase();
+    if (!PROFILE_LINK_KEY_RE.test(key)) {
+      return err(400, `invalid link platform "${k}" — use lowercase letters, digits, - or _ (max 32 chars)`);
+    }
+    if (typeof v !== "string" || !v.trim()) {
+      return err(400, `link "${key}" must be a non-empty string`);
+    }
+    const val = v.trim();
+    if (val.length > 200) return err(400, `link "${key}" too long (max 200 chars)`);
+    links[key] = val;
+  }
+
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const msg: ProfileLinksMessage = {
+    v: 1,
+    kind: "profile-links",
+    ts: new Date().toISOString(),
+    author: own.username,
+    username: own.username.toLowerCase(),
+    links,
+  };
+  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
+  const seq = await deps.hcs.submit(topic, msg);
+  return ok({ seq }, 201);
+}
+
+/**
+ * Read a user's cross-platform identity links. Session-less public read —
+ * latest kind "profile-links" message for the username wins.
+ * 200 → {links: {}} when none set.
+ */
+export async function getProfileLinks(
+  deps: TownhallDeps,
+  username: string,
+): Promise<HandlerResult> {
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const name = username.trim().toLowerCase();
+  if (!name) return err(400, "username is required");
+  const messages = await deps.hcs.queryAll(topic);
+  let latest: ProfileLinksView | null = null;
+  for (const m of messages) {
+    if (m.contents.kind !== "profile-links") continue;
+    const c = m.contents as ProfileLinksMessage;
+    if (c.username !== name) continue;
+    latest = { username: name, links: c.links, ts: c.ts };
+  }
+  return ok(latest ?? { username: name, links: {}, ts: "" });
 }

@@ -5,6 +5,7 @@
  */
 import Link from "next/link";
 import ReputationBadge, { VoteControls } from "./Reputation";
+import ShareListing from "./ShareListing";
 import { parseSeller, type Listing } from "@/lib/townhall";
 
 export function formatUsd(cents: number): string {
@@ -46,7 +47,10 @@ export function ListingCard({ listing }: { listing: Listing }) {
         <span className={`th-badge is-${listing.goodsType}`}>
           {listing.goodsType === "digital" ? "⬇ digital" : "📦 physical"}
         </span>
-        {sold && <span className="th-badge is-sold">sold</span>}
+        <span className="th-row" style={{ gap: 8 }}>
+          {sold && <span className="th-badge is-sold">sold</span>}
+          <ShareListing listing={listing} />
+        </span>
       </div>
       <h3 style={{ marginTop: 10 }}>{listing.title}</h3>
       <div className="th-price">{formatUsd(listing.priceUsdCents)}</div>

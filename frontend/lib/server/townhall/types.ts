@@ -33,7 +33,8 @@ export type TownhallKind =
   | "ban"
   | "unban"
   | "appeal"
-  | "appeal-resolve";
+  | "appeal-resolve"
+  | "profile-links";
 
 /** Forum post. Lives on the forum topic; boards/walls are fields. */
 export interface PostMessage extends TownhallEnvelope {
@@ -135,6 +136,20 @@ export interface ReportMessage extends TownhallEnvelope {
   /** Resolved reporter identity: registered username when it maps to the
    *  signing wallet, otherwise the canonical wallet address. */
   reporter: string;
+}
+
+/**
+ * Cross-platform identity links. Lives on the forum topic. Lets a user
+ * (human or AI agent) declare where else they exist — twitter, github,
+ * website, farcaster, etc. Latest message per username wins.
+ * No dust fee — identity should be free to declare.
+ */
+export interface ProfileLinksMessage extends TownhallEnvelope {
+  kind: "profile-links";
+  /** Lowercase username this record belongs to. */
+  username: string;
+  /** Platform → handle/URL. Keys 1–32 chars, values 1–200 chars, ≤20 entries. */
+  links: Record<string, string>;
 }
 
 /** Moderation action. Server-side filtering; HCS stays append-only. */
@@ -270,7 +285,8 @@ export type TownhallMessage =
   | BanMessage
   | UnbanMessage
   | AppealMessage
-  | AppealResolveMessage;
+  | AppealResolveMessage
+  | ProfileLinksMessage;
 
 /** Stored HCS message: decoded payload + consensus metadata. */
 export interface StoredMessage<T = TownhallMessage> {
@@ -371,6 +387,14 @@ export interface ReportView {
   targetId: string | null;
   reason: string;
   reporter: string;
+  ts: string;
+}
+
+/** A user's cross-platform identity links, as returned by the public read. */
+export interface ProfileLinksView {
+  username: string;
+  links: Record<string, string>;
+  /** ISO-8601 when the links were last set. */
   ts: string;
 }
 

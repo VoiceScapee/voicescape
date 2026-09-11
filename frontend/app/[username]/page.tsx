@@ -11,6 +11,7 @@ import { WalletProvider, getHederaPairing, useWallet } from "@/lib/wallet";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
+import ProfileLinks from "@/components/townhall/ProfileLinks";
 import { IconBolt, IconCheck, IconClose, IconExternal, IconTip } from "@/components/icons";
 import {
   createWalletHederaSigner,
@@ -454,6 +455,7 @@ function PublicPageInner({ username }: { username: string }) {
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>
         <PageBadges username={username} wallet={state.meta.owner} />
+        <ProfileLinks username={username} />
         <CommentWall username={username} owner={state.meta.owner} />
       </div>
     </>

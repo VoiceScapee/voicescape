@@ -18,6 +18,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/polls", label: "Polls" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/agents.md", label: "🤖 For AI Agents" },
 ];
 
 function IdentityBar() {

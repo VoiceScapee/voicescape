@@ -14,13 +14,16 @@ import {
   getEvents,
   getListings,
   getPosts,
+  getProfileLinks,
   getProposals,
   getReputation,
   postChat,
   queryChatMessages,
   queryChatRooms,
   queryReports,
+  searchListings,
   setListingStatus,
+  setProfileLinks,
   submitModAction,
   submitReport,
   getModStatus,
@@ -1540,5 +1543,157 @@ describe("safety reports", () => {
       expect(r).toMatchObject({ targetKind: "post", targetSeq: seq });
       expect(r.reason.length).toBeGreaterThanOrEqual(10);
     }
+  });
+});
+
+describe("market search (public agent API)", () => {
+  let deps: TownhallDeps;
+  beforeEach(async () => {
+    deps = makeDeps();
+    await createListing(deps, {
+      seller: OWNERS.alice,
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Pixel art commission",
+      description: "Custom pixel art avatar",
+      priceUsdCents: 2000,
+      goodsType: "digital",
+      ...fee(),
+    });
+    await createListing(deps, {
+      seller: OWNERS.bob,
+      sellerUsername: "bob",
+      auth: testCred("bob"),
+      title: "Vintage synth",
+      description: "Analog synthesizer, great condition",
+      priceUsdCents: 45000,
+      goodsType: "physical",
+      ...fee(),
+    });
+  });
+
+  it("returns active listings with deep-link urls, no auth needed", async () => {
+    const r = await searchListings(deps, {}, "https://voicescape.vercel.app");
+    expect(r.status).toBe(200);
+    const { listings, count } = r.json as { listings: { url: string; status: string }[]; count: number };
+    expect(count).toBe(2);
+    for (const l of listings) {
+      expect(l.status).toBe("active");
+      expect(l.url).toMatch(/^https:\/\/voicescape\.vercel\.app\/marketplace\//);
+    }
+  });
+
+  it("filters by text query, category, and price range", async () => {
+    const q = await searchListings(deps, { q: "synth" }, "https://x.test");
+    expect((q.json as { count: number }).count).toBe(1);
+
+    const cat = await searchListings(deps, { category: "digital" }, "https://x.test");
+    const catJson = cat.json as { listings: { title: string }[] };
+    expect(catJson.listings.length).toBe(1);
+    expect(catJson.listings[0].title).toBe("Pixel art commission");
+
+    const cheap = await searchListings(deps, { maxPriceCents: 5000 }, "https://x.test");
+    expect((cheap.json as { count: number }).count).toBe(1);
+
+    const pricey = await searchListings(deps, { minPriceCents: 10000 }, "https://x.test");
+    expect((pricey.json as { count: number }).count).toBe(1);
+  });
+
+  it("sorts by price and excludes sold listings", async () => {
+    const { id } = (await createListing(deps, {
+      seller: OWNERS.alice,
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      title: "Cheap sticker",
+      description: "A sticker",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ...fee(),
+    })).json as { id: string };
+    await setListingStatus(deps, id, { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
+
+    const asc = await searchListings(deps, { sort: "price-asc" }, "https://x.test");
+    const listings = (asc.json as { listings: { priceUsdCents: number }[] }).listings;
+    expect(listings.length).toBe(2); // sold one excluded
+    expect(listings[0].priceUsdCents).toBeLessThanOrEqual(listings[1].priceUsdCents);
+
+    const desc = await searchListings(deps, { sort: "price-desc" }, "https://x.test");
+    const dlist = (desc.json as { listings: { priceUsdCents: number }[] }).listings;
+    expect(dlist[0].priceUsdCents).toBeGreaterThanOrEqual(dlist[1].priceUsdCents);
+  });
+
+  it("caps limit at 100", async () => {
+    const r = await searchListings(deps, { limit: 500 }, "https://x.test");
+    expect(r.status).toBe(200);
+  });
+});
+
+describe("profile links (cross-platform identity)", () => {
+  let deps: TownhallDeps;
+  beforeEach(() => {
+    deps = makeDeps();
+  });
+
+  it("sets and reads links for the page owner", async () => {
+    const set = await setProfileLinks(deps, {
+      username: "alice",
+      auth: testCred("alice"),
+      links: { twitter: "@alice", website: "https://alice.example" },
+    });
+    expect(set.status).toBe(201);
+
+    const get = await getProfileLinks(deps, "alice");
+    expect(get.status).toBe(200);
+    const view = get.json as { username: string; links: Record<string, string> };
+    expect(view.username).toBe("alice");
+    expect(view.links).toEqual({ twitter: "@alice", website: "https://alice.example" });
+  });
+
+  it("latest write wins", async () => {
+    await setProfileLinks(deps, { username: "alice", auth: testCred("alice"), links: { twitter: "@old" } });
+    await setProfileLinks(deps, { username: "alice", auth: testCred("alice"), links: { twitter: "@new" } });
+    const get = await getProfileLinks(deps, "ALICE");
+    expect((get.json as { links: Record<string, string> }).links).toEqual({ twitter: "@new" });
+  });
+
+  it("rejects non-owners, bad keys, and oversized values", async () => {
+    const notOwner = await setProfileLinks(deps, {
+      username: "alice",
+      auth: testCred("bob"),
+      links: { twitter: "@bob" },
+    });
+    expect(notOwner.status).toBe(403);
+
+    const badKey = await setProfileLinks(deps, {
+      username: "alice",
+      auth: testCred("alice"),
+      links: { "evil key!": "x" },
+    });
+    expect(badKey.status).toBe(400);
+
+    const tooLong = await setProfileLinks(deps, {
+      username: "alice",
+      auth: testCred("alice"),
+      links: { website: "https://" + "x".repeat(300) },
+    });
+    expect(tooLong.status).toBe(400);
+
+    const notObject = await setProfileLinks(deps, {
+      username: "alice",
+      auth: testCred("alice"),
+      links: ["nope"],
+    });
+    expect(notObject.status).toBe(400);
+  });
+
+  it("returns empty links for unknown users", async () => {
+    const get = await getProfileLinks(deps, "nobody");
+    expect(get.status).toBe(200);
+    expect((get.json as { links: Record<string, string> }).links).toEqual({});
+  });
+
+  it("requires a session", async () => {
+    const r = await setProfileLinks(deps, { username: "alice", links: { twitter: "@x" } });
+    expect(r.status).toBe(401);
   });
 });
