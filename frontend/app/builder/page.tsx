@@ -61,7 +61,7 @@ import {
   setVanityName,
 } from "@/lib/identity";
 import { pinPageJson } from "@/lib/ipfs";
-import { accountToEvmAddress, postJson } from "@/lib/townhall";
+import { postJson } from "@/lib/townhall";
 import {
   createWalletHederaSigner,
   formatUsdCents,
@@ -1607,27 +1607,21 @@ function PublishPanel({
       // gets one tx; the custom name is a second registry entry pointing at
       // the same content.
       const sender = await getTxSender();
-      const accountEvm = accountToEvmAddress(account).toLowerCase();
       const ownerFlag = ownerType === "agent" ? 1 : 0;
       const publishName = async (name: string): Promise<string> => {
-        // Use server-side resolve to avoid browser CORS issues with Hedera RPC
-        let existing: { owner: string } | null = null;
+        // Check if the name exists (via server API to avoid CORS).
+        // KISS: no client-side owner check — the contract enforces ownership.
+        // If you don't own it, the transaction reverts.
+        let exists = false;
         try {
-          const res = await fetch(`/api/resolve?username=${encodeURIComponent(name)}`);
-          if (res.ok) existing = await res.json();
+          const res = await fetch(`/api/resolve?username=${encodeURIComponent(name)}`, {
+            cache: "no-store",
+          });
+          exists = res.ok;
         } catch {
-          // If resolve fails, assume not registered and try to register
-          existing = null;
+          exists = false;
         }
-        if (existing) {
-          // Owner check must accept both the long-zero form (from account ID)
-          // and the ECDSA-derived form (what the contract actually stores).
-          const ownerLower = existing.owner.toLowerCase();
-          const OWNER_EVM = "0x30c63dc43608b6764a6b8b53960553aebf306817";
-          const isOwner = ownerLower === accountEvm || ownerLower === OWNER_EVM;
-          if (!isOwner) {
-            throw new Error(`The name "${name}" is already registered to another wallet.`);
-          }
+        if (exists) {
           setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
           return updatePage(name, ipfsHash, sender);
         }
