@@ -9,6 +9,7 @@
  * owner's own IPFS upload. We never proxy or re-host third-party audio.
  */
 import type { MusicSource, MusicTrack } from "./schema";
+import { safeExternalUrl } from "./url";
 
 export const MUSIC_SOURCES: readonly MusicSource[] = [
   "spotify",
@@ -165,7 +166,8 @@ export function trackEmbedUrl(track: MusicTrack): string | null {
  * otherwise a canonical platform URL reconstructed from the ID.
  */
 export function trackOpenUrl(track: MusicTrack): string | null {
-  if (track.url) return track.url;
+  // track.url is user-supplied page JSON — sanitize before it reaches an href.
+  if (track.url) return safeExternalUrl(track.url);
   switch (track.source) {
     case "spotify":
       return `https://open.spotify.com/${track.kind ?? "track"}/${encodeURIComponent(track.id)}`;

@@ -8,6 +8,7 @@ import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
+import { safeExternalUrl } from "@/lib/url";
 import {
   MUSIC_SOURCE_LABELS,
   trackEmbedHeight,
@@ -248,7 +249,7 @@ function BlockView({
             <a
               key={i}
               className="pv-link-btn"
-              href={item.url}
+              href={safeExternalUrl(item.url) ?? undefined}
               target="_blank"
               rel="noreferrer"
             >
@@ -325,8 +326,9 @@ function BlockView({
                     <span className="pv-friend-name">{f.name}</span>
                   </>
                 );
-                return f.url ? (
-                  <a key={i} className="pv-friend" href={f.url} target="_blank" rel="noreferrer">
+                const friendUrl = f.url ? safeExternalUrl(f.url) : null;
+                return friendUrl ? (
+                  <a key={i} className="pv-friend" href={friendUrl} target="_blank" rel="noreferrer">
                     {inner}
                   </a>
                 ) : (
@@ -416,6 +418,8 @@ function CapabilitiesBlock({ block }: { block: Extract<Block, { type: "capabilit
 
 function OperatorBlock({ block }: { block: Extract<Block, { type: "operator" }> }) {
   const chain = getActiveChain();
+  // block.url is user-supplied page JSON — sanitize before it reaches an href.
+  const operatorUrl = block.url ? safeExternalUrl(block.url) : null;
   return (
     <section className="pv-block pv-operator pv-glass" aria-label="Operator disclosure">
       <h2 className="pv-block-title">
@@ -427,8 +431,8 @@ function OperatorBlock({ block }: { block: Extract<Block, { type: "operator" }> 
           <>
             <dt>Name</dt>
             <dd>
-              {block.url ? (
-                <a href={block.url} target="_blank" rel="noreferrer">
+              {operatorUrl ? (
+                <a href={operatorUrl} target="_blank" rel="noreferrer">
                   {block.name} <IconExternal size={13} />
                 </a>
               ) : (
@@ -500,7 +504,7 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
       </h2>
       <div className="pv-links">
         {block.items.map((item, i) => (
-          <a key={i} className="pv-link-btn" href={item.url} target="_blank" rel="noreferrer">
+          <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url) ?? undefined} target="_blank" rel="noreferrer">
             <IconLink size={18} />
             <span className="pv-link-label">
               {item.label}
