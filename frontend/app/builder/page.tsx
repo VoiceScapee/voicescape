@@ -1631,6 +1631,27 @@ function PublishPanel({
       const hash = await publishName(target);
       setTxHash(hash);
       setVanityName(account, target);
+      // KISS: verify the name actually resolves on-chain before redirecting.
+      // A wallet "success" + blind redirect is what produced the 404s.
+      setStatus({ kind: "info", text: "Confirming on-chain… (waiting for the network)" });
+      let confirmed = false;
+      for (let i = 0; i < 10; i++) {
+        try {
+          const res = await fetch(`/api/resolve?username=${encodeURIComponent(target)}`, {
+            cache: "no-store",
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { ipfsHash?: string };
+            if (data.ipfsHash === ipfsHash) {
+              confirmed = true;
+              break;
+            }
+          }
+        } catch {
+          // try again
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
       setStatus({ kind: "ok", text: "Published!" });
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
@@ -1649,8 +1670,16 @@ function PublishPanel({
       } catch {
         /* referral is best-effort; the page is already published */
       }
-      // Redirect to the live page after successful publish
-      window.location.href = `/${target}`;
+      if (confirmed) {
+        // Redirect to the live page only once it provably resolves.
+        window.location.href = `/${target}`;
+      } else {
+        // Don't send the user to a 404 — show the tx and a manual link.
+        setStatus({
+          kind: "info",
+          text: `Transaction sent (${hash.slice(0, 10)}…). The page will appear at /${target} once the network confirms it — give it a minute, then tap below.`,
+        });
+      }
     } catch (e) {
       setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
