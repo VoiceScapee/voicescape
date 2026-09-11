@@ -25,7 +25,9 @@
 import { getAuthHeaders } from "./auth-client";
 import {
   AccountId,
+  Client,
   Hbar,
+  TransactionId,
   TransferTransaction,
 } from "@hashgraph/sdk";
 import { getHederaPairing } from "./wallet";
@@ -213,15 +215,21 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
     const tx = new TransferTransaction()
       .addHbarTransfer(payer, amount.negated())
       .addHbarTransfer(toAccountId(treasury), amount);
-    // DAppConnector.getSigner returns a hiero-sdk DAppSigner; cast to the
-    // hashgraph-sdk Signer — the two SDKs are runtime-compatible.
-    const signer = (hc.getSigner as unknown as (id: unknown) => Parameters<typeof tx.freezeWithSigner>[0])(payer);
-    await tx.freezeWithSigner(signer);
+    // Freeze the tx body so the wallet can sign it (HIP-820). Do NOT use
+    // freezeWithSigner here: the DAppSigner's populateTransaction only sets
+    // the transaction id — it never sets node account ids — so freeze()
+    // throws "`nodeAccountId` must be set or `client` must be provided with
+    // `freezeWith`". Set the tx id from the payer and freeze with a public
+    // network client; freezeWith signs nothing, the wallet signs via
+    // signAndExecuteTransaction.
+    const { getActiveChain } = await import("./chains");
+    const chain = getActiveChain();
+    const networkClient = chain.key === "hedera-mainnet" ? Client.forMainnet() : Client.forTestnet();
+    tx.setTransactionId(TransactionId.generate(payer));
+    tx.freezeWith(networkClient);
     const txId = tx.transactionId?.toString() ?? "";
     // DAppConnector signs AND executes via the wallet (HIP-820).
     const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
-    const { getActiveChain } = await import("./chains");
-    const chain = getActiveChain();
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
     await (hc.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
       signerAccountId: `hedera:${network}:${accountId}`,

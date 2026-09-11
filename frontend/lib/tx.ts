@@ -23,6 +23,7 @@ import {
   ContractFunctionParameters,
   ContractId,
   Hbar,
+  TransactionId,
 } from "@hashgraph/sdk";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
@@ -180,8 +181,10 @@ export function createHederaTxSender(
   chain: ChainConfig,
 ): TxSender {
   const isMainnet = chain.key === "hedera-mainnet";
-  // Public client — no operator needed for ContractCallQuery.
-  const queryClient = isMainnet ? Client.forMainnet() : Client.forTestnet();
+  // Public client — no operator needed. Used for ContractCallQuery and for
+  // freezing write transactions (fills in node account ids) before the
+  // wallet signs them via HIP-820.
+  const networkClient = isMainnet ? Client.forMainnet() : Client.forTestnet();
 
   function requireWallet(): { dAppConnector: DAppConnector; accountId: AccountId } {
     if (!dAppConnector || !accountIdStr) throw new Error("Connect a Hedera wallet to send transactions.");
@@ -207,11 +210,15 @@ export function createHederaTxSender(
       }
       tx.setPayableAmount(Hbar.fromTinybars(tinybars.toString()));
     }
-    // freezeWithSigner fills in transaction id + node account ids via the wallet.
-    // DAppConnector.getSigner returns a DAppSigner (hiero-sdk based); cast to
-    // the hashgraph-sdk Signer interface — the two SDKs are runtime-compatible.
-    const signer = (liveConnector.getSigner as unknown as (id: unknown) => Parameters<typeof tx.freezeWithSigner>[0])(accountId);
-    await tx.freezeWithSigner(signer);
+    // Freeze the tx body so the wallet can sign it (HIP-820). Do NOT use
+    // freezeWithSigner here: the DAppSigner's populateTransaction only sets
+    // the transaction id — it never sets node account ids — so freeze()
+    // throws "`nodeAccountId` must be set or `client` must be provided with
+    // `freezeWith`". Instead set the tx id from the wallet account and freeze
+    // with the public network client, which fills in the node account ids.
+    // freezeWith signs nothing; HashPack signs via signAndExecuteTransaction.
+    tx.setTransactionId(TransactionId.generate(accountId));
+    tx.freezeWith(networkClient);
     const txId = tx.transactionId?.toString() ?? "";
     // DAppConnector signs AND executes via the wallet (HIP-820).
     const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
@@ -233,7 +240,7 @@ export function createHederaTxSender(
           .setContractId(hederaContractId(registryAddress))
           .setGas(HEDERA_QUERY_GAS)
           .setFunction("resolvePage", new ContractFunctionParameters().addString(username))
-          .execute(queryClient);
+          .execute(networkClient);
         return {
           owner: result.getAddress(0),
           ipfsHash: result.getString(1),
