@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { FOUNDER_USERNAMES, isFounderUsername } from "./founders";
 
 describe("founders", () => {
-  it("flags brandon as a founder", () => {
-    expect(isFounderUsername("brandon")).toBe(true);
+  it("flags 0xcreator as a founder", () => {
+    expect(isFounderUsername("0xcreator")).toBe(true);
   });
 
   it("matches case-insensitively and trims whitespace", () => {
-    expect(isFounderUsername("Brandon")).toBe(true);
-    expect(isFounderUsername("  BRANDON  ")).toBe(true);
+    expect(isFounderUsername("0xCreator")).toBe(true);
+    expect(isFounderUsername("  0XCREATOR  ")).toBe(true);
   });
 
   it("returns false for non-founders and empty input", () => {
@@ -20,6 +20,6 @@ describe("founders", () => {
 
   it("keeps the founder list immutable and non-empty", () => {
     expect(FOUNDER_USERNAMES.length).toBeGreaterThan(0);
-    expect(FOUNDER_USERNAMES).toContain("brandon");
+    expect(FOUNDER_USERNAMES).toContain("0xcreator");
   });
 });
