@@ -1642,6 +1642,8 @@ function PublishPanel({
       } catch {
         /* referral is best-effort; the page is already published */
       }
+      // Redirect to the live page after successful publish
+      window.location.href = `/${target}`;
     } catch (e) {
       setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
