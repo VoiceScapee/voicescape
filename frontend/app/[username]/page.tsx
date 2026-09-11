@@ -420,11 +420,13 @@ function PublicPageInner({ username }: { username: string }) {
     let cancelled = false;
     async function load() {
       try {
-        const resolved = await resolvePage(username, getActiveChain());
-        if (!resolved) {
+        // Use server-side API to avoid browser CORS issues with Hedera RPC
+        const res = await fetch(`/api/resolve?username=${encodeURIComponent(username)}`);
+        if (!res.ok) {
           if (!cancelled) setState({ status: "not-found" });
           return;
         }
+        const resolved = await res.json();
         const json = await fetchPageJson(resolved.ipfsHash);
         const parsed: unknown = JSON.parse(json);
         if (!isValidPage(parsed)) throw new Error("Page JSON does not match the schema.");
