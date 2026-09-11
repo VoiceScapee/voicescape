@@ -299,8 +299,7 @@ export function createHederaTxSender(
 /* ------------------------------------------------------------------ */
 
 export function createReadOnlySender(chain: ChainConfig): TxSender {
-  if (chain.key === "hedera-testnet" || chain.key === "hedera-mainnet") {
-    return createHederaTxSender(null, null, chain);
-  }
+  // Use ethers for all read-only queries (simpler, works for Hedera via JSON-RPC).
+  // The Hedera SDK ContractCallQuery path is only needed for wallet-signed writes.
   return createEvmTxSender(new ethers.JsonRpcProvider(chain.rpcUrl), null, "");
 }
