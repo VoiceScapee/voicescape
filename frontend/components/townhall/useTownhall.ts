@@ -8,6 +8,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DustFeeRequired, sendDustFeeTo } from "@/lib/townhall";
 import { useSession } from "@/lib/session";
+import { useWallet } from "@/lib/wallet";
+import { deriveUsername, deriveUsernameFromEvm } from "@/lib/identity";
 
 const IDENTITY_KEY = "vs-townhall-username";
 
@@ -20,16 +22,34 @@ const IDENTITY_KEY = "vs-townhall-username";
 export function usePageIdentity() {
   const [username, setUsernameState] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // KISS: default to the wallet-derived username so users can post
+  // immediately without manually entering a name.
+  let walletAccount: string | null = null;
+  try {
+    walletAccount = useWallet().account ?? null;
+  } catch {
+    walletAccount = null;
+  }
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(IDENTITY_KEY);
-      if (saved) setUsernameState(saved);
+      if (saved) {
+        setUsernameState(saved);
+      } else if (walletAccount) {
+        // No saved username — use the wallet-derived one.
+        const derived = deriveUsername(walletAccount) ?? deriveUsernameFromEvm(walletAccount);
+        if (derived) {
+          setUsernameState(derived);
+          window.localStorage.setItem(IDENTITY_KEY, derived);
+        }
+      }
     } catch {
       // Storage unavailable — identity stays unset.
     }
     setLoaded(true);
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAccount]);
 
   const setUsername = useCallback((raw: string) => {
     const clean = raw.trim().replace(/^@+/, "").toLowerCase();
