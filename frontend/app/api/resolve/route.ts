@@ -16,7 +16,7 @@ const REGISTRY_ABI = [
 
 // Mainnet Registry EVM address
 const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
-const RPC_URL = process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC ?? "https://mainnet.hashio.io/api";
+const RPC_URL = process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC?.trim() || "https://mainnet.hashio.io/api";
 
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get("username");
