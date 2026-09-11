@@ -14,6 +14,43 @@ import { WalletProvider } from "@/lib/wallet";
 import { SessionProvider } from "@/lib/session";
 
 /**
+ * Recovers from stale-cache ChunkLoadErrors: if a Next.js chunk fails to
+ * load (usually because the browser cached HTML from an old build), force
+ * a hard reload with cache bypass instead of showing a broken page.
+ * This is critical for HashPack's in-app browser which caches aggressively.
+ */
+function useChunkErrorRecovery() {
+  React.useEffect(() => {
+    const onError = (e: ErrorEvent) => {
+      const msg = e.message || "";
+      if (msg.includes("Loading chunk") && msg.includes("failed")) {
+        // Prevent infinite reload loops: only retry once per session.
+        if (!sessionStorage.getItem("vs-chunk-recovery")) {
+          sessionStorage.setItem("vs-chunk-recovery", "1");
+          window.location.reload();
+        }
+      }
+    };
+    // Also catch unhandled promise rejections (dynamic imports).
+    const onRejection = (e: PromiseRejectionEvent) => {
+      const msg = String(e.reason?.message || e.reason || "");
+      if (msg.includes("Loading chunk") && msg.includes("failed")) {
+        if (!sessionStorage.getItem("vs-chunk-recovery")) {
+          sessionStorage.setItem("vs-chunk-recovery", "1");
+          window.location.reload();
+        }
+      }
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+}
+
+/**
  * Registers the PWA service worker (production only). The worker caches
  * static assets and page shells for installability/offline; it never
  * touches /api/* or cross-origin traffic.
@@ -54,6 +91,7 @@ function useReferralCapture() {
 export function RootProviders({ children }: { children: React.ReactNode }) {
   useServiceWorker();
   useReferralCapture();
+  useChunkErrorRecovery();
   return (
     <WalletProvider>
       <SessionProvider>{children}</SessionProvider>
