@@ -13,9 +13,9 @@ import { dictionaries, LANGS, type Lang } from "./dictionaries";
 describe("i18n dictionaries", () => {
   const enKeys = Object.keys(dictionaries.en).sort();
 
-  it("declares English and Spanish", () => {
+  it("declares all seven supported languages", () => {
     const codes = LANGS.map((l) => l.code).sort();
-    expect(codes).toEqual(["en", "es"]);
+    expect(codes).toEqual(["ar", "en", "es", "fr", "hi", "pt", "zh"]);
   });
 
   for (const { code } of LANGS) {

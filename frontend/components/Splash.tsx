@@ -120,7 +120,7 @@ export default function Splash() {
         </div>
         <div className="vs-anim-fade-up" style={stagger(4)}>
           <span className="vs-chip vs-anim-pulse-glow">
-            hedera mainnet · ~2s finality · $0.0001 tx
+            ⚡ <T k="splash.poweredBy" /> · <T k="splash.hederaSpecs" />
           </span>
         </div>
       </div>

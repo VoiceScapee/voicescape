@@ -4,10 +4,11 @@
  * LanguageProvider — app-wide i18n state.
  *
  * - Language persists in localStorage ("vs_lang").
- * - First visit defaults to the browser language (Spanish if it starts
- *   with "es", otherwise English).
+ * - First visit defaults to the browser language (matched against the
+ *   supported codes, e.g. "pt-BR" → "pt", "ar-EG" → "ar"), otherwise English.
  * - t(key) falls back to English, then to the key itself — never blank.
- * - Keeps <html lang> in sync for screen readers and SEO.
+ * - Keeps <html lang> in sync for screen readers and SEO, and sets
+ *   dir="rtl" for right-to-left languages (Arabic).
  */
 import React, {
   createContext,
@@ -16,16 +17,23 @@ import React, {
   useEffect,
   useState,
 } from "react";
-import { dictionaries, type I18nKey, type Lang } from "./dictionaries";
+import {
+  dictionaries,
+  LANGS,
+  RTL_LANGS,
+  type I18nKey,
+  type Lang,
+} from "./dictionaries";
 
 const STORAGE_KEY = "vs_lang";
 
 function detectInitialLang(): Lang {
   try {
     const saved = window.localStorage.getItem(STORAGE_KEY);
-    if (saved === "en" || saved === "es") return saved;
+    if (saved && LANGS.some((l) => l.code === saved)) return saved as Lang;
     const nav = (window.navigator.language || "en").toLowerCase();
-    if (nav.startsWith("es")) return "es";
+    const match = LANGS.find((l) => l.code !== "en" && nav.startsWith(l.code));
+    if (match) return match.code;
   } catch {
     /* storage unavailable — fall through to English */
   }
@@ -53,6 +61,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     try {
       document.documentElement.lang = lang;
+      document.documentElement.dir = RTL_LANGS.includes(lang) ? "rtl" : "ltr";
       window.localStorage.setItem(STORAGE_KEY, lang);
     } catch {
       /* storage unavailable — language still applies for this visit */
