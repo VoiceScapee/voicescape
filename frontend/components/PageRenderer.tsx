@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
+import { isFounderUsername } from "@/lib/founders";
+import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
@@ -208,11 +210,14 @@ function BlockView({
   block,
   onPayService,
   profileTrackIndex,
+  isFounder,
 }: {
   block: Block;
   onPayService?: (s: ServiceItem) => void;
   /** For music blocks: index of the page's profile song within block.tracks. */
   profileTrackIndex?: number;
+  /** Render the platform Founder badge in the hero (not user-editable). */
+  isFounder?: boolean;
 }) {
   switch (block.type) {
     case "hero": {
@@ -226,6 +231,7 @@ function BlockView({
           </div>
           <h1 className="pv-title">{block.title}</h1>
           {block.subtitle && <p className="pv-subtitle">{block.subtitle}</p>}
+          {isFounder && <FounderBadge />}
         </section>
       );
     }
@@ -605,6 +611,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayS
             key={i}
             block={block}
             onPayService={onPayService}
+            isFounder={isFounderUsername(page.username)}
             profileTrackIndex={
               block.type === "music" &&
               page.profileSong &&
