@@ -18,7 +18,7 @@ export const CHAINS: Record<ChainKey, ChainConfig> = {
     chainId: 296,
     nativeCurrency: { name: "HBAR", symbol: "HBAR", decimals: 18 },
     rpcUrl:
-      process.env.NEXT_PUBLIC_HEDERA_TESTNET_RPC ?? "https://testnet.hashio.io/api",
+      process.env.NEXT_PUBLIC_HEDERA_TESTNET_RPC?.trim() || "https://testnet.hashio.io/api",
     blockExplorer: "https://hashscan.io/testnet",
   },
   "hedera-mainnet": {
@@ -27,7 +27,9 @@ export const CHAINS: Record<ChainKey, ChainConfig> = {
     chainId: 295,
     nativeCurrency: { name: "HBAR", symbol: "HBAR", decimals: 18 },
     rpcUrl:
-      process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC ?? "https://mainnet.hashio.io/api",
+      // KISS: Vercel has this var set but EMPTY — ?? doesn't catch "".
+      // Use trim() || fallback so an empty var doesn't break all RPC calls.
+      process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC?.trim() || "https://mainnet.hashio.io/api",
     blockExplorer: "https://hashscan.io/mainnet",
   },
 };
