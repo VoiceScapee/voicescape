@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import {
+  isHashPackInAppBrowser,
   useWallet,
   WALLET_ADAPTERS,
   type WalletAdapterId,
@@ -42,6 +43,11 @@ export function WalletConnect() {
   const isAuthenticated = session?.isAuthenticated ?? false;
   const signing = status === "signing";
   const signInError = session?.error;
+  // Inside HashPack's browser the wallet auto-connects on mount — show a
+  // connecting state instead of the adapter picker. If auto-connect
+  // failed, fall through to the manual picker so the user can retry.
+  const inHashPackBrowser = isHashPackInAppBrowser();
+  const autoConnectPending = inHashPackBrowser && !error && !signInError;
 
   async function handlePick(adapterId: WalletAdapterId) {
     setShowOptions(false);
@@ -181,6 +187,22 @@ export function WalletConnect() {
         {signInError && (
           <div style={{ color: "#f87171", fontSize: 12, width: "100%" }}>{signInError}</div>
         )}
+      </div>
+    );
+  }
+
+  // Anonymous: inside HashPack's browser the wallet is auto-connecting —
+  // show a connecting state (falls back to the picker on failure).
+  if (autoConnectPending) {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          disabled
+          className="vs-btn vs-btn-primary"
+          style={{ padding: "9px 22px", fontSize: 14, opacity: 0.75, cursor: "wait" }}
+        >
+          Connecting to HashPack…
+        </button>
       </div>
     );
   }

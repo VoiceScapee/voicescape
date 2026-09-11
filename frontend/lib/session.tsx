@@ -174,6 +174,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [account]);
 
   const signHederaMessage = useCallback(async (message: string, accountId: string): Promise<string> => {
+    // Try HashPack's injected provider first (no HashConnect needed)
+    const w = window as unknown as {
+      hashpack?: {
+        signMessage?: (args: { accountId: string; message: string }) => Promise<{ signature: Uint8Array | number[] }>;
+      };
+    };
+    if (w.hashpack?.signMessage) {
+      try {
+        const result = await w.hashpack.signMessage({ accountId, message });
+        const sig = result.signature;
+        if (!sig || sig.length === 0) throw new Error("The wallet did not return a signature.");
+        return "0x" + bytesToHex(sig instanceof Uint8Array ? sig : new Uint8Array(sig));
+      } catch (e) {
+        // Fall through to HashConnect
+        console.warn("Injected signMessage failed, trying HashConnect:", e);
+      }
+    }
     const pairing = getHederaPairing();
     if (!pairing) throw new Error("Wallet session not ready — reconnect and try again.");
     const { AccountId } = await import("@hashgraph/sdk");

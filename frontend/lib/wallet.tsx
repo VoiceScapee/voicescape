@@ -17,7 +17,9 @@ import React, {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ethers } from "ethers";
@@ -45,6 +47,40 @@ export const WALLET_ADAPTERS: { id: WalletAdapterId; name: string; chains: strin
   { id: "walletconnect", name: "WalletConnect", chains: ["hedera-testnet", "hedera-mainnet"] },
   { id: "metamask", name: "MetaMask", chains: ["hedera-testnet", "hedera-mainnet"] },
 ];
+
+/* ------------------------------------------------------------------ */
+/* HashPack in-app (dApp) browser detection                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Signals used to detect HashPack's built-in dApp browser. Kept as a pure
+ * function of its inputs so it can be unit-tested without a DOM.
+ */
+export function detectHashPackInAppBrowser(signals: {
+  hasInjectedHashpack: boolean;
+  userAgent: string;
+}): boolean {
+  if (signals.hasInjectedHashpack) return true;
+  return /hashpack/i.test(signals.userAgent);
+}
+
+/**
+ * True when the page is running inside HashPack's in-app browser (or the
+ * HashPack extension has injected its provider). HashPack injects
+ * `window.hashpack` there; the user agent is checked as a secondary
+ * signal. In that environment the wallet is one tap away — the QR pairing
+ * modal is never useful, and the app auto-connects on mount instead of
+ * waiting for the user to pick a wallet.
+ */
+export function isHashPackInAppBrowser(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as { hashpack?: unknown };
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  return detectHashPackInAppBrowser({
+    hasInjectedHashpack: w.hashpack !== undefined && w.hashpack !== null,
+    userAgent: ua,
+  });
+}
 
 /* ------------------------------------------------------------------ */
 /* Shared Hedera pairing via HashConnect v3                             */
@@ -95,6 +131,37 @@ export function getHederaPairing(): { hc: HashConnect; accountId: string } | nul
  * HIP-820 wallet (HashPack mobile, Blade, Kabila…).
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
+  // ACTUAL FIX: Check for HashPack's injected provider FIRST, before loading
+  // the heavy HashConnect library. Inside HashPack's in-app browser,
+  // window.hashpack is already available — no pairing, no QR, no chunk load.
+  // This avoids the ChunkLoadError entirely on mobile.
+  const w = window as unknown as {
+    hashpack?: {
+      getAccounts?: () => Promise<string[]>;
+      accounts?: string[];
+    };
+  };
+  if (isHashPackInAppBrowser() && w.hashpack) {
+    try {
+      // Try to get accounts from the injected provider
+      let accounts: string[] | undefined;
+      if (typeof w.hashpack.getAccounts === "function") {
+        accounts = await w.hashpack.getAccounts();
+      } else if (Array.isArray(w.hashpack.accounts)) {
+        accounts = w.hashpack.accounts;
+      }
+      if (accounts && accounts.length > 0) {
+        const accountId = accounts[0];
+        hcAccountId = accountId;
+        // Mark as connected via injected provider (no HashConnect instance needed)
+        return accountId;
+      }
+    } catch (e) {
+      // Injected provider failed, fall through to HashConnect
+      console.warn("HashPack injected provider failed, falling back to HashConnect:", e);
+    }
+  }
+
   // Dynamic import keeps the heavy wallet SDKs out of the initial bundle.
   // These are client-side only and must not be evaluated during SSR.
   // Wrap in a timeout so a hung chunk load fails fast instead of hanging.
@@ -139,9 +206,22 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   );
   hcInstance = hc;
 
+  // Inside HashPack's in-app browser a QR pairing modal is useless — it
+  // can't be scanned from within the wallet app itself. The pairing
+  // approval happens in-app through the pairingEvent listener above, so
+  // wait for it directly instead of opening the modal.
+  const inHashPackBrowser = isHashPackInAppBrowser();
+
   const pairingPromise = new Promise<string>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error("Pairing timed out after 3 minutes — approve the connection in your wallet app and try again. If no QR code appeared, your browser may be blocking popups.")),
+      () =>
+        reject(
+          new Error(
+            inHashPackBrowser
+              ? "HashPack did not approve the connection — approve the request in HashPack and try again."
+              : "Pairing timed out after 3 minutes — approve the connection in your wallet app and try again. If no QR code appeared, your browser may be blocking popups.",
+          ),
+        ),
       180_000,
     );
     hc.pairingEvent.on((data) => {
@@ -169,17 +249,20 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     await new Promise((r) => setTimeout(r, 500));
   }
 
-  // No auto-pairing happened. Open the QR pairing modal for mobile wallets.
-  // If the modal fails to open, provide a clear error message.
-  try {
-    await hc.openPairingModal("dark");
-  } catch (modalErr) {
-    const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
-    throw new Error(
-      `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`
-    );
+  // No auto-pairing happened. Outside HashPack's browser, open the QR
+  // pairing modal for mobile wallets. Inside HashPack's browser the
+  // approval already happens in-app — just wait for the pairing event.
+  if (!inHashPackBrowser) {
+    try {
+      await hc.openPairingModal("dark");
+    } catch (modalErr) {
+      const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+      throw new Error(
+        `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`
+      );
+    }
   }
-  
+
   hcAccountId = await pairingPromise;
   return hcAccountId;
 }
@@ -354,6 +437,25 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setChainId(null);
     setAdapterName(null);
   }, [adapterName]);
+
+  /* Auto-connect inside HashPack's in-app browser: the wallet is already
+     at hand there, so connect on mount instead of making the user tap
+     through a wallet picker. The 7-day session still requires one
+     explicit signature (handled by the session layer) — authentication
+     is never skipped. Failures surface via wallet.error and the manual
+     "Sign in with wallet" picker stays available as a fallback. */
+  const autoConnectTried = useRef(false);
+  useEffect(() => {
+    if (autoConnectTried.current) return;
+    if (account) return;
+    if (!isHashPackInAppBrowser()) return;
+    autoConnectTried.current = true;
+    void connect("hashpack").catch(() => {
+      // connect() already recorded the specific failure in wallet.error
+      // and rethrows; swallow the rethrow here since the error state is
+      // the user-visible signal.
+    });
+  }, [connect, account]);
 
   const getTxSender = useCallback(async (): Promise<TxSender> => {
     if (!senderGetter.current) throw new Error("Connect a wallet first.");
