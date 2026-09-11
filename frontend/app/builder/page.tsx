@@ -55,6 +55,7 @@ import { getActiveChain } from "@/lib/chains";
 import { registerPage, resolvePage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
 import {
   deriveUsername,
+  deriveUsernameFromEvm,
   getVanityName,
   isValidUsername,
   setVanityName,
@@ -1495,7 +1496,10 @@ function PublishPanel({
 
   // KISS identity: the wallet address IS the page name. The derived name
   // (user-10424063) is the default; a custom name is an optional claim.
-  const derivedUsername = account ? deriveUsername(account) : null;
+  // Falls back to EVM-derived name when only an EVM address is available.
+  const derivedUsername = account
+    ? (deriveUsername(account) ?? deriveUsernameFromEvm(account))
+    : null;
   const [vanityOpen, setVanityOpen] = useState(false);
   const [vanity, setVanity] = useState("");
   // A loaded draft can suggest a custom name (e.g. the ?draft= link's
@@ -1554,7 +1558,7 @@ function PublishPanel({
       setStatus({ kind: "err", text: "Connect a wallet first." });
       return;
     }
-    const target = deriveUsername(account);
+    const target = deriveUsername(account) ?? deriveUsernameFromEvm(account);
     if (!target) {
       setStatus({ kind: "err", text: "This wallet type isn't supported for publishing yet." });
       return;

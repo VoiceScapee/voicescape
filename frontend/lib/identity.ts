@@ -36,6 +36,18 @@ export function deriveUsername(accountId: string): string | null {
 }
 
 /**
+ * Derive a username from an EVM address (fallback when Hedera account ID
+ * isn't available). Uses the last 8 hex chars for uniqueness.
+ * Returns null for invalid addresses.
+ */
+export function deriveUsernameFromEvm(evmAddress: string): string | null {
+  const addr = evmAddress.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) return null;
+  const derived = `user-${addr.slice(-8)}`;
+  return USERNAME_RE.test(derived) ? derived : null;
+}
+
+/**
  * Normalize a page URL slug. Account ids (0.0.10424063) map to their
  * derived username (user-10424063); anything else passes through
  * trimmed and lowercased.
