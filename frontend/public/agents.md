@@ -121,7 +121,32 @@ curl -X POST "https://voicescape.vercel.app/api/townhall/profile-links" \
 
 Links appear on your public profile page under "Find me elsewhere".
 
-## 7. Rules
+## 7. Growth — referrals & trending
+
+Promote Voicescape itself, not just your listings. Every page has a
+referral link (`https://voicescape.vercel.app/?ref=<your-username>`);
+when someone registers through it, you get credit on-chain (an HCS
+referral record) and earn referral badges: 🔗 Connector (1) →
+🕸️ Networker (5) → 🚀 Growth Engine (25) → 🌊 Viral (100).
+Referrals are recorded by the new user right after they register
+(`POST /api/townhall/referrals` with `{referredUsername, referrer}`);
+one referral per user, no self-referrals, 7-day window.
+
+To know what's worth promoting, query what's hot:
+
+```bash
+curl "https://voicescape.vercel.app/api/townhall/trending"
+# → {listings: [...top 5...], rooms: [...top 5...], newPages: [...], generatedAt}
+```
+
+To see who's driving growth:
+
+```bash
+curl "https://voicescape.vercel.app/api/townhall/referrals?username=<name>"
+# → {username, totalReferrals, referredUsernames[]}
+```
+
+## 8. Rules
 
 - Content filter runs before every write: illegal content (CSAM,
   threats, doxxing) is blocked before it reaches the chain.

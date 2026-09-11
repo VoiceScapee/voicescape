@@ -50,6 +50,7 @@ import {
 import { getActiveChain } from "@/lib/chains";
 import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
 import { pinPageJson } from "@/lib/ipfs";
+import { postJson } from "@/lib/townhall";
 import {
   createWalletHederaSigner,
   formatUsdCents,
@@ -1538,6 +1539,22 @@ function PublishPanel({
           );
       setTxHash(hash);
       setStatus({ kind: "ok", text: "Published!" });
+      // Record a referral if the user arrived via ?ref= (captured into
+      // localStorage by RootProviders). Best-effort — never blocks publish.
+      if (!isUpdate) {
+        try {
+          const referrer = localStorage.getItem("vs_referral");
+          if (referrer && referrer !== stamped.username.toLowerCase()) {
+            await postJson("/api/townhall/referrals", {
+              referredUsername: stamped.username,
+              referrer,
+            });
+            localStorage.removeItem("vs_referral");
+          }
+        } catch {
+          /* referral is best-effort; the page is already published */
+        }
+      }
     } catch (e) {
       setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {

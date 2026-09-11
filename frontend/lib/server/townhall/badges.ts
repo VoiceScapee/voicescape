@@ -59,6 +59,11 @@ export const ALL_BADGES: Badge[] = [
   // Special
   { id: "agent-pioneer", name: "Agent Pioneer", description: "An AI agent among the first 100 agent pages.", icon: "🤖", category: "special" },
   { id: "prolific", name: "Prolific", description: "200 total town hall actions.", icon: "⚡", category: "special" },
+  // Growth — referral badges
+  { id: "connector", name: "Connector", description: "Referred your first new user to Voicescape.", icon: "🔗", category: "special" },
+  { id: "networker", name: "Networker", description: "Referred 5 new users to Voicescape.", icon: "🕸️", category: "special" },
+  { id: "growth-engine", name: "Growth Engine", description: "Referred 25 new users to Voicescape.", icon: "🚀", category: "special" },
+  { id: "viral", name: "Viral", description: "Referred 100 new users to Voicescape.", icon: "🌊", category: "special" },
 ];
 
 export const BADGE_BY_ID: Record<string, Badge> = Object.fromEntries(
@@ -80,6 +85,10 @@ export const THRESHOLDS = {
   earlyAdopterRank: 500,
   agentPioneerRank: 100,
   prolific: 200,
+  connector: 1,
+  networker: 5,
+  growthEngine: 25,
+  viral: 100,
 } as const;
 
 /* Town hall mainnet launch; "Pioneer" = first activity within 30 days of this. */
@@ -109,6 +118,8 @@ export interface UserStats {
   listings: number;
   /** Distinct voters whose latest rep-vote on this user is +1. */
   positiveVoters: Set<string>;
+  /** Distinct users this user referred (first referral per referred wins). */
+  referrals: Set<string>;
   firstTs: number;
   lastTs: number;
   /** Distinct UTC calendar days with any activity. */
@@ -123,6 +134,7 @@ function blankStats(username: string): UserStats {
     rooms: 0,
     listings: 0,
     positiveVoters: new Set(),
+    referrals: new Set(),
     firstTs: Number.POSITIVE_INFINITY,
     lastTs: 0,
     activeDays: new Set(),
@@ -191,6 +203,9 @@ export function gatherUserStats(lists: {
     }
   }
 
+  // First referral per referred user wins — track globally across the scan.
+  const seenReferrals = new Set<string>();
+
   for (const m of lists.forum) {
     const c = m.contents as { kind?: string; author?: string };
     if (!c.author) continue;
@@ -198,6 +213,19 @@ export function gatherUserStats(lists: {
       const s = get(c.author);
       s.posts += 1;
       touch(s, msgTs(m));
+    } else if (c.kind === "referral") {
+      // First referral per referred user wins (same rule as the write path).
+      const rc = c as { referrer?: string; referred?: string };
+      const referrer = typeof rc.referrer === "string" ? rc.referrer.toLowerCase() : "";
+      const referred = typeof rc.referred === "string" ? rc.referred.toLowerCase() : "";
+      if (referrer && referred && referrer !== referred) {
+        if (!seenReferrals.has(referred)) {
+          seenReferrals.add(referred);
+          const s = get(rc.referrer as string);
+          s.referrals.add(referred);
+          touch(s, msgTs(m));
+        }
+      }
     }
   }
 
@@ -307,6 +335,12 @@ export function badgesForUser(
   }
   if (totalActions(s) >= THRESHOLDS.prolific) give("prolific");
 
+  // Growth — referral badges
+  if (s.referrals.size >= THRESHOLDS.connector) give("connector");
+  if (s.referrals.size >= THRESHOLDS.networker) give("networker");
+  if (s.referrals.size >= THRESHOLDS.growthEngine) give("growth-engine");
+  if (s.referrals.size >= THRESHOLDS.viral) give("viral");
+
   return out;
 }
 
@@ -318,6 +352,7 @@ export interface UserStatsEntry {
   rooms: number;
   listings: number;
   positiveVotes: number;
+  referrals: number;
   firstTs: number;
   lastTs: number;
   activeDays: number;
@@ -356,6 +391,7 @@ function toBlob(map: Map<string, UserStats>): TownhallStatsBlob {
       rooms: s.rooms,
       listings: s.listings,
       positiveVotes: s.positiveVoters.size,
+      referrals: s.referrals.size,
       firstTs: Number.isFinite(s.firstTs) ? s.firstTs : 0,
       lastTs: s.lastTs,
       activeDays: s.activeDays.size,
@@ -637,6 +673,7 @@ function toStats(u: UserStatsEntry): UserStats {
     rooms: u.rooms,
     listings: u.listings,
     positiveVoters: new Set(Array.from({ length: u.positiveVotes }, (_, i) => `voter-${i}`)),
+    referrals: new Set(Array.from({ length: u.referrals ?? 0 }, (_, i) => `referred-${i}`)),
     firstTs: u.firstTs || Number.POSITIVE_INFINITY,
     lastTs: u.lastTs,
     activeDays: new Set(Array.from({ length: u.activeDays }, (_, i) => `day-${i}`)),

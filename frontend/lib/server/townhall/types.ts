@@ -34,7 +34,8 @@ export type TownhallKind =
   | "unban"
   | "appeal"
   | "appeal-resolve"
-  | "profile-links";
+  | "profile-links"
+  | "referral";
 
 /** Forum post. Lives on the forum topic; boards/walls are fields. */
 export interface PostMessage extends TownhallEnvelope {
@@ -286,7 +287,8 @@ export type TownhallMessage =
   | UnbanMessage
   | AppealMessage
   | AppealResolveMessage
-  | ProfileLinksMessage;
+  | ProfileLinksMessage
+  | ReferralMessage;
 
 /** Stored HCS message: decoded payload + consensus metadata. */
 export interface StoredMessage<T = TownhallMessage> {
@@ -396,6 +398,28 @@ export interface ProfileLinksView {
   links: Record<string, string>;
   /** ISO-8601 when the links were last set. */
   ts: string;
+}
+
+/**
+ * Referral record. Lives on the forum topic. One referral per referred
+ * user — the first record wins; later duplicates are rejected server-side.
+ * No dust fee — recording who referred you is a system record, not content.
+ * The author is the REFERRED user (they attest who referred them).
+ */
+export interface ReferralMessage extends TownhallEnvelope {
+  kind: "referral";
+  /** Lowercase username of the referrer. */
+  referrer: string;
+  /** Lowercase username of the referred (newly registered) user. */
+  referred: string;
+}
+
+/** Referral stats for a user, as returned by the public read. */
+export interface ReferralStatsView {
+  username: string;
+  totalReferrals: number;
+  /** Lowercase usernames referred by this user, oldest first. */
+  referredUsernames: string[];
 }
 
 /** An active wallet ban, as returned by the mod ban list. */

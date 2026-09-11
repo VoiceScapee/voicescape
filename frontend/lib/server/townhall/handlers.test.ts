@@ -5,6 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   castRepVote,
+  collectReferralCounts,
   createChatRoom,
   createEvent,
   createListing,
@@ -16,11 +17,13 @@ import {
   getPosts,
   getProfileLinks,
   getProposals,
+  getReferralStats,
   getReputation,
   postChat,
   queryChatMessages,
   queryChatRooms,
   queryReports,
+  recordReferral,
   searchListings,
   setListingStatus,
   setProfileLinks,
@@ -1695,5 +1698,92 @@ describe("profile links (cross-platform identity)", () => {
   it("requires a session", async () => {
     const r = await setProfileLinks(deps, { username: "alice", links: { twitter: "@x" } });
     expect(r.status).toBe(401);
+  });
+});
+
+describe("referrals (growth loop)", () => {
+  let deps: TownhallDeps;
+  beforeEach(() => {
+    deps = makeDeps();
+  });
+
+  it("records a referral and reads stats", async () => {
+    const r = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "brandon",
+      auth: testCred("alice"),
+    });
+    expect(r.status).toBe(201);
+
+    const stats = await getReferralStats(deps, "brandon");
+    expect(stats.status).toBe(200);
+    const view = stats.json as { username: string; totalReferrals: number; referredUsernames: string[] };
+    expect(view.username).toBe("brandon");
+    expect(view.totalReferrals).toBe(1);
+    expect(view.referredUsernames).toEqual(["alice"]);
+  });
+
+  it("rejects self-referrals", async () => {
+    const r = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "alice",
+      auth: testCred("alice"),
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("rejects duplicate referrals (first wins)", async () => {
+    const first = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "brandon",
+      auth: testCred("alice"),
+    });
+    expect(first.status).toBe(201);
+    const dup = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "bob",
+      auth: testCred("alice"),
+    });
+    expect(dup.status).toBe(400);
+  });
+
+  it("rejects unregistered referrers", async () => {
+    const r = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "ghost",
+      auth: testCred("alice"),
+    });
+    expect(r.status).toBe(403);
+  });
+
+  it("rejects non-owners and requires a session", async () => {
+    const notOwner = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "brandon",
+      auth: testCred("bob"),
+    });
+    expect(notOwner.status).toBe(403);
+
+    const noSession = await recordReferral(deps, {
+      referredUsername: "alice",
+      referrer: "brandon",
+    });
+    expect(noSession.status).toBe(401);
+  });
+
+  it("returns empty stats for users with no referrals", async () => {
+    const stats = await getReferralStats(deps, "carol");
+    expect(stats.status).toBe(200);
+    const view = stats.json as { totalReferrals: number; referredUsernames: string[] };
+    expect(view.totalReferrals).toBe(0);
+    expect(view.referredUsernames).toEqual([]);
+  });
+
+  it("collectReferralCounts dedupes by referred user (first wins)", async () => {
+    await recordReferral(deps, { referredUsername: "alice", referrer: "brandon", auth: testCred("alice") });
+    await recordReferral(deps, { referredUsername: "bob", referrer: "brandon", auth: testCred("bob") });
+    const messages = await deps.hcs.queryAll("0.0.7001");
+    const counts = collectReferralCounts(messages);
+    expect(counts.get("brandon")).toBe(2);
   });
 });

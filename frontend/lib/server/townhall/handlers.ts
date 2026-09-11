@@ -23,8 +23,9 @@ import type { SalesPort } from "./sales";
 import { defaultSalesPort } from "./sales";
 import { canonicalAddress } from "../../session-message";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
-import { getTopicId, type TopicDomain } from "./topics";
+import { getTopicId, mirrorBaseUrl, type TopicDomain } from "./topics";
 import { checkContent } from "./content-filter";
+import { ethers } from "ethers";
 import {
   collectAppealEvents,
   collectEnforcementEvents,
@@ -66,6 +67,8 @@ import type {
   ProposalMessage,
   ProposalView,
   ProposalVoteMessage,
+  ReferralMessage,
+  ReferralStatsView,
   ReportMessage,
   ReportView,
   RepVoteMessage,
@@ -1929,4 +1932,379 @@ export async function getProfileLinks(
     latest = { username: name, links: c.links, ts: c.ts };
   }
   return ok(latest ?? { username: name, links: {}, ts: "" });
+}
+
+/* ------------------------------------------------------------------ */
+/* Referrals — growth loop                                            */
+/* ------------------------------------------------------------------ */
+
+export interface RecordReferralBody extends AuthBody {
+  /** The referred user's own username (must own this page). */
+  referredUsername?: unknown;
+  /** The referrer's username (?ref= value). */
+  referrer?: unknown;
+}
+
+const REFERRAL_USERNAME_RE = /^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/;
+/** Referrals must be recorded within 7 days of page registration. */
+const REFERRAL_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** keccak256("PageRegistered(string,address,string,uint8,address,string)") — topics[0]. */
+const PAGE_REGISTERED_TOPIC0 = ethers.id(
+  "PageRegistered(string,address,string,uint8,address,string)",
+);
+
+/**
+ * Unix-ms consensus timestamp of the most recent PageRegistered event for
+ * a username, via the free mirror node. Null when unknown (contract not
+ * configured, mirror down, or no event found) — callers fail open.
+ */
+async function pageRegisteredAt(username: string): Promise<number | null> {
+  const contract = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS?.trim();
+  if (!contract) return null;
+  const topic1 = ethers.id(username.toLowerCase());
+  const url =
+    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
+    new URLSearchParams({
+      order: "desc",
+      limit: "1",
+      topic0: PAGE_REGISTERED_TOPIC0,
+      topic1,
+    });
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { logs?: { timestamp?: string }[] };
+    const ts = data.logs?.[0]?.timestamp;
+    if (!ts) return null;
+    const ms = Math.floor(Number(ts) * 1000);
+    return Number.isFinite(ms) && ms > 0 ? ms : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Scan the forum topic for an existing referral record naming this
+ * referred user. First referral wins — later attempts are rejected.
+ */
+async function findExistingReferral(
+  deps: TownhallDeps,
+  topic: string,
+  referred: string,
+): Promise<ReferralMessage | null> {
+  const messages = await deps.hcs.queryAll(topic);
+  for (const m of messages) {
+    if (m.contents.kind !== "referral") continue;
+    const c = m.contents as ReferralMessage;
+    if (c.referred === referred) return c;
+  }
+  return null;
+}
+
+/**
+ * Record who referred you. Called by the REFERRED user right after they
+ * register their page (the client captures ?ref= into localStorage and
+ * POSTs after successful on-chain registration).
+ *
+ * Auth: the signing wallet must own the referred username — you attest
+ * your own referrer, nobody can claim credit for someone else's signup.
+ * No dust fee — this is a system record, not user content. Per-wallet
+ * daily quota still applies to bound operator-subsidized writes.
+ *
+ * Rules: referrer must be a registered username, referrer ≠ referred,
+ * one referral per referred user (first wins), and the referred page
+ * must have been registered within the last 7 days (mirror-node
+ * PageRegistered event; fail-open when the mirror is unreachable).
+ *
+ * 201 → {seq}. Errors: 400 bad input / self-referral / duplicate /
+ * too-old registration, 401 no session, 403 not the page owner /
+ * referrer not registered, 429 quota exceeded.
+ */
+export async function recordReferral(
+  deps: TownhallDeps,
+  body: RecordReferralBody,
+): Promise<HandlerResult> {
+  const own = await requirePageOwner(deps, body, body.referredUsername, "referredUsername");
+  if (!own.ok) return own.result;
+  const referred = own.username.toLowerCase();
+  const restricted = await requireNotRestricted(deps, own.session.address);
+  if (restricted) return restricted;
+
+  const rawReferrer = typeof body.referrer === "string" ? body.referrer.trim().toLowerCase() : "";
+  if (!rawReferrer || !REFERRAL_USERNAME_RE.test(rawReferrer)) {
+    return err(400, "referrer must be a valid Voicescape username");
+  }
+  if (rawReferrer === referred) {
+    return err(400, "you cannot refer yourself");
+  }
+  let referrerRegistered = false;
+  try {
+    referrerRegistered = await deps.registry.isRegistered(rawReferrer);
+  } catch {
+    return err(503, "registry unavailable — try again in a moment");
+  }
+  if (!referrerRegistered) {
+    return err(403, `referrer "${rawReferrer}" is not a registered Voicescape page`);
+  }
+
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+
+  const existing = await findExistingReferral(deps, topic, referred);
+  if (existing) {
+    return err(400, "a referral has already been recorded for this page");
+  }
+
+  // 7-day window: the referred page must be newly registered. Fail open
+  // when the mirror node is unreachable (don't block growth on infra).
+  const registeredAt = await pageRegisteredAt(referred);
+  if (registeredAt !== null && Date.now() - registeredAt > REFERRAL_WINDOW_MS) {
+    return err(400, "referral window expired — referrals must be recorded within 7 days of page registration");
+  }
+
+  const msg: ReferralMessage = {
+    v: 1,
+    kind: "referral",
+    ts: new Date().toISOString(),
+    author: own.username,
+    referrer: rawReferrer,
+    referred,
+  };
+  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
+  const seq = await deps.hcs.submit(topic, msg);
+  return ok({ seq }, 201);
+}
+
+/**
+ * Public referral stats for a user. Session-less read — anyone (including
+ * external AI agents) can see who's driving growth.
+ * 200 → {username, totalReferrals, referredUsernames[]} (oldest first).
+ */
+export async function getReferralStats(
+  deps: TownhallDeps,
+  username: string,
+): Promise<HandlerResult> {
+  const topic = topicOr503("forum");
+  if (typeof topic !== "string") return topic;
+  const name = username.trim().toLowerCase();
+  if (!name) return err(400, "username is required");
+  const messages = await deps.hcs.queryAll(topic);
+  const referred: { username: string; ts: string }[] = [];
+  for (const m of messages) {
+    if (m.contents.kind !== "referral") continue;
+    const c = m.contents as ReferralMessage;
+    if (c.referrer !== name) continue;
+    referred.push({ username: c.referred, ts: c.ts });
+  }
+  referred.sort((a, b) => a.ts.localeCompare(b.ts));
+  const view: ReferralStatsView = {
+    username: name,
+    totalReferrals: referred.length,
+    referredUsernames: referred.map((r) => r.username),
+  };
+  return ok(view);
+}
+
+/**
+ * Collect every referral record (for badge derivation). Returns
+ * referrer → count of referred users. Dedupe by referred user: first
+ * record wins, matching the write-path rule.
+ */
+export function collectReferralCounts(messages: StoredMessage[]): Map<string, number> {
+  const seenReferred = new Set<string>();
+  const counts = new Map<string, number>();
+  const sorted = [...messages].sort((a, b) => a.seq - b.seq);
+  for (const m of sorted) {
+    if (m.contents.kind !== "referral") continue;
+    const c = m.contents as ReferralMessage;
+    if (!c.referrer || !c.referred) continue;
+    if (seenReferred.has(c.referred)) continue;
+    seenReferred.add(c.referred);
+    const key = c.referrer.toLowerCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/* ------------------------------------------------------------------ */
+/* Trending — what to promote                                         */
+/* ------------------------------------------------------------------ */
+
+export interface TrendingListing {
+  id: string;
+  title: string;
+  priceUsdCents: number;
+  sellerUsername: string | null;
+  ts: string;
+  url: string;
+}
+
+export interface TrendingRoom {
+  id: string;
+  title: string;
+  description: string;
+  /** Chat messages in the last 24h — the "heat" signal. */
+  recentMessages: number;
+}
+
+export interface TrendingPage {
+  username: string;
+  /** ISO-8601 registration time from the PageRegistered event. */
+  registeredAt: string;
+}
+
+export interface TrendingView {
+  listings: TrendingListing[];
+  rooms: TrendingRoom[];
+  newPages: TrendingPage[];
+  generatedAt: string;
+}
+
+const TRENDING_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let trendingCache: { view: TrendingView; at: number } | null = null;
+/** Test helper: reset the in-memory trending cache. */
+export function clearTrendingCache(): void {
+  trendingCache = null;
+}
+
+/**
+ * What's hot on Voicescape right now — built for AI agents deciding what
+ * to promote externally. Public, no auth. Cached 5 minutes.
+ *
+ * 200 → {listings: top 5 recent active listings, rooms: top 5 rooms by
+ * 24h message volume, newPages: up to 5 pages registered in the last
+ * 7 days (from on-chain PageRegistered events), generatedAt}.
+ * Fail-open: any data source that errors is skipped, not fatal.
+ */
+export async function getTrending(
+  deps: TownhallDeps,
+  siteUrl: string,
+): Promise<HandlerResult> {
+  if (trendingCache && Date.now() - trendingCache.at < TRENDING_CACHE_TTL_MS) {
+    return ok(trendingCache.view);
+  }
+  const view: TrendingView = {
+    listings: [],
+    rooms: [],
+    newPages: [],
+    generatedAt: new Date().toISOString(),
+  };
+
+  // 1. Trending listings: 5 most recent ACTIVE listings.
+  try {
+    const marketTopic = getTopicId("market");
+    if (marketTopic) {
+      const messages = await deps.hcs.queryAll(marketTopic);
+      const latest = new Map<string, { msg: ListingMessage; seq: number }>();
+      for (const m of messages) {
+        if (m.contents.kind !== "listing") continue;
+        const c = m.contents as ListingMessage;
+        const prev = latest.get(c.id);
+        if (!prev || m.seq > prev.seq) {
+          latest.set(c.id, { msg: c, seq: m.seq });
+        }
+      }
+      const active = [...latest.values()]
+        .map((e) => e.msg)
+        .filter((l) => l.status === "active")
+        .sort((a, b) => b.ts.localeCompare(a.ts))
+        .slice(0, 5);
+      view.listings = active.map((l) => ({
+        id: l.id,
+        title: l.title,
+        priceUsdCents: l.priceUsdCents,
+        sellerUsername: l.sellerUsername,
+        ts: l.ts,
+        url: `${siteUrl.replace(/\/$/, "")}/townhall/marketplace?listing=${encodeURIComponent(l.id)}`,
+      }));
+    }
+  } catch {
+    /* fail-open */
+  }
+
+  // 2. Active rooms: top 5 by chat messages in the last 24h.
+  try {
+    const chatTopic = getTopicId("chat");
+    if (chatTopic) {
+      const messages = await deps.hcs.queryAll(chatTopic);
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const counts = new Map<string, number>();
+      const meta = new Map<string, { title: string; description: string }>();
+      for (const m of messages) {
+        const c = m.contents as { kind?: string; room?: string; id?: string; title?: string; description?: string; ts?: string };
+        if (c.kind === "chatroom-create" && c.id) {
+          meta.set(c.id, { title: c.title ?? c.id, description: c.description ?? "" });
+        } else if (c.kind === "chat" && c.room) {
+          const ts = Date.parse(c.ts ?? "");
+          if (Number.isFinite(ts) && ts >= cutoff) {
+            counts.set(c.room, (counts.get(c.room) ?? 0) + 1);
+          }
+        }
+      }
+      const ranked = [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+      view.rooms = ranked.map(([id, recentMessages]) => {
+        const info = meta.get(id);
+        return {
+          id,
+          title: info?.title ?? (id === "lobby" ? "🏠 Lobby" : `#${id}`),
+          description: info?.description ?? "",
+          recentMessages,
+        };
+      });
+    }
+  } catch {
+    /* fail-open */
+  }
+
+  // 3. New pages: up to 5 PageRegistered events from the last 7 days.
+  try {
+    const contract = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS?.trim();
+    if (contract) {
+      const url =
+        `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
+        new URLSearchParams({ order: "desc", limit: "100", topic0: PAGE_REGISTERED_TOPIC0 });
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = (await res.json()) as {
+          logs?: { topics?: string[]; timestamp?: string; data?: string }[];
+        };
+        const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const seen = new Set<string>();
+        for (const log of data.logs ?? []) {
+          if (view.newPages.length >= 5) break;
+          const tsRaw = log.timestamp;
+          if (!tsRaw) continue;
+          const ms = Math.floor(Number(tsRaw) * 1000);
+          if (!Number.isFinite(ms) || ms < cutoff) continue;
+          // topic1 = keccak256(username); decode via the event ABI when possible.
+          // Fall back to skipping undecodable logs.
+          try {
+            const iface = new ethers.Interface([
+              "event PageRegistered(string indexed username, address indexed owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
+            ]);
+            const parsed = iface.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
+            const username = String(parsed.username ?? "").toLowerCase();
+            if (!username || seen.has(username)) continue;
+            seen.add(username);
+            view.newPages.push({
+              username,
+              registeredAt: new Date(ms).toISOString(),
+            });
+          } catch {
+            /* undecodable log — skip */
+          }
+        }
+      }
+    }
+  } catch {
+    /* fail-open */
+  }
+
+  trendingCache = { view, at: Date.now() };
+  return ok(view);
 }

@@ -32,8 +32,28 @@ function useServiceWorker() {
   }, []);
 }
 
+/**
+ * Captures ?ref=<username> from the URL into localStorage so the referral
+ * survives the signup flow (landing page → wallet connect → builder →
+ * registration). The builder reads it back after successful on-chain
+ * registration and records the referral server-side.
+ */
+function useReferralCapture() {
+  React.useEffect(() => {
+    try {
+      const ref = new URLSearchParams(window.location.search).get("ref");
+      if (ref && /^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/i.test(ref.trim())) {
+        localStorage.setItem("vs_referral", ref.trim().toLowerCase());
+      }
+    } catch {
+      /* storage unavailable — referral is best-effort */
+    }
+  }, []);
+}
+
 export function RootProviders({ children }: { children: React.ReactNode }) {
   useServiceWorker();
+  useReferralCapture();
   return (
     <WalletProvider>
       <SessionProvider>{children}</SessionProvider>

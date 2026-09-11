@@ -39,6 +39,7 @@ function statsFor(username: string, patch: Partial<UserStats>): UserStats {
     rooms: 0,
     listings: 0,
     positiveVoters: new Set<string>(),
+    referrals: new Set<string>(),
     firstTs: TOWNHALL_LAUNCH_TS,
     lastTs: TOWNHALL_LAUNCH_TS,
     activeDays: new Set<string>(),
@@ -47,10 +48,10 @@ function statsFor(username: string, patch: Partial<UserStats>): UserStats {
 }
 
 describe("badge catalog", () => {
-  it("defines 15 badges with unique ids and valid categories", () => {
-    expect(ALL_BADGES).toHaveLength(15);
+  it("defines 19 badges with unique ids and valid categories", () => {
+    expect(ALL_BADGES).toHaveLength(19);
     const ids = ALL_BADGES.map((b) => b.id);
-    expect(new Set(ids).size).toBe(15);
+    expect(new Set(ids).size).toBe(19);
     for (const b of ALL_BADGES) {
       expect(["activity", "quality", "milestone", "special"]).toContain(b.category);
       expect(b.name.length).toBeGreaterThan(0);
@@ -266,6 +267,7 @@ describe("scoreFromEntry", () => {
       rooms: 1,
       listings: 1,
       positiveVotes: 1,
+      referrals: 0,
       firstTs: 1,
       lastTs: 1,
       activeDays: 1,
@@ -273,5 +275,50 @@ describe("scoreFromEntry", () => {
     expect(score).toBe(
       SCORE_WEIGHTS.chat + SCORE_WEIGHTS.post + SCORE_WEIGHTS.room + SCORE_WEIGHTS.listing + SCORE_WEIGHTS.positiveVote,
     );
+  });
+});
+
+describe("referral badges", () => {
+  it("awards connector at 1 referral, networker at 5", () => {
+    const one = statsFor("alice", { referrals: new Set(["bob"]) });
+    expect(badgesForUser(one, EMPTY_ENRICHMENT, null).map((b) => b.id)).toContain("connector");
+    expect(badgesForUser(one, EMPTY_ENRICHMENT, null).map((b) => b.id)).not.toContain("networker");
+
+    const five = statsFor("alice", { referrals: new Set(["a", "b", "c", "d", "e"]) });
+    const ids = badgesForUser(five, EMPTY_ENRICHMENT, null).map((b) => b.id);
+    expect(ids).toContain("connector");
+    expect(ids).toContain("networker");
+    expect(ids).not.toContain("growth-engine");
+  });
+
+  it("awards growth-engine at 25 and viral at 100", () => {
+    const mk = (n: number) =>
+      statsFor("alice", { referrals: new Set(Array.from({ length: n }, (_, i) => `u${i}`)) });
+    const ids25 = badgesForUser(mk(25), EMPTY_ENRICHMENT, null).map((b) => b.id);
+    expect(ids25).toContain("growth-engine");
+    expect(ids25).not.toContain("viral");
+    const ids100 = badgesForUser(mk(100), EMPTY_ENRICHMENT, null).map((b) => b.id);
+    expect(ids100).toContain("viral");
+  });
+
+  it("counts referrals from forum HCS messages, first per referred wins", () => {
+    const lists = {
+      forum: [
+        msg("referral", "alice", { referrer: "brandon", referred: "alice" }),
+        msg("referral", "bob", { referrer: "brandon", referred: "bob" }),
+        // Duplicate for alice — ignored (first wins).
+        msg("referral", "carol", { referrer: "carol", referred: "alice" }),
+        // Self-referral — ignored.
+        msg("referral", "dave", { referrer: "dave", referred: "dave" }),
+      ],
+      chat: [],
+      votes: [],
+      market: [],
+    };
+    const stats = gatherUserStats(lists);
+    expect(stats.get("brandon")?.referrals).toEqual(new Set(["alice", "bob"]));
+    expect(stats.get("carol")?.referrals.size ?? 0).toBe(0);
+    const ids = badgesForUser(stats.get("brandon") ?? null, EMPTY_ENRICHMENT, null).map((b) => b.id);
+    expect(ids).toContain("connector");
   });
 });
