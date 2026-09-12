@@ -34,7 +34,32 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
     }
     const url = new URL(req.url);
     const since = parseInt(url.searchParams.get("since") || "0", 10);
-    const messages = await queryChatMessages(defaultDeps(), room, Number.isFinite(since) ? since : 0);
+    // Bypass the HCS cache — query the mirror node directly to ensure
+    // fresh data. The cache was returning stale empty results.
+    const { getTopicId, mirrorBaseUrl } = await import("@/lib/server/townhall/topics");
+    const topic = getTopicId("chat");
+    if (!topic) return NextResponse.json({ messages: [] });
+    const mirrorUrl = `${mirrorBaseUrl()}/api/v1/topics/${topic}/messages?order=asc&limit=100${Number.isFinite(since) && since > 0 ? `&sequencenumber=gt:${since}` : ""}`;
+    const res = await fetch(mirrorUrl);
+    if (!res.ok) throw new Error(`Mirror node query failed: ${res.status}`);
+    const data = (await res.json()) as { messages?: Array<{ sequence_number: number; message: string }> };
+    const messages = [];
+    for (const m of data.messages ?? []) {
+      try {
+        const parsed = JSON.parse(Buffer.from(m.message, "base64").toString("utf8"));
+        if (parsed.v === 1 && parsed.kind === "chat" && parsed.room === room) {
+          messages.push({
+            seq: m.sequence_number,
+            room: parsed.room,
+            author: parsed.author,
+            body: parsed.body,
+            ts: parsed.ts,
+          });
+        }
+      } catch {
+        // skip malformed
+      }
+    }
     return NextResponse.json({ messages });
   } catch (e) {
     console.error("[chat GET] error:", e instanceof Error ? e.message : String(e));
