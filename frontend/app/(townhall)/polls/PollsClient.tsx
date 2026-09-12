@@ -16,13 +16,12 @@ interface ProposalStreamEvent {
 }
 
 function isProposalStreamEvent(m: unknown): m is ProposalStreamEvent {
-  return (
-    !!m &&
-    typeof m === "object" &&
-    typeof (m as ProposalStreamEvent).seq === "number" &&
-    ((m as ProposalStreamEvent).kind === "proposal" ||
-      (m as ProposalStreamEvent).kind === "proposal-vote")
-  );
+  // Accepts SSE stream events ({seq, kind}) AND polling fallback proposal
+  // objects ({id, ...}) — the onEvents handler ignores the data and reloads.
+  if (!m || typeof m !== "object") return false;
+  const o = m as Record<string, unknown>;
+  if (typeof o.seq === "number" && (o.kind === "proposal" || o.kind === "proposal-vote")) return true;
+  return typeof o.id === "string";
 }
 
 /**
@@ -289,6 +288,7 @@ export default function PollsClient() {
     "/api/townhall/proposals/stream",
     () => load(true),
     isProposalStreamEvent,
+    { dataKey: "proposals" },
   );
 
   const open = proposals.filter((p) => p.closesAt > Date.now());

@@ -37,7 +37,7 @@ export function useStreamEvents<T>(
   url: string | null,
   onEvents: (events: T[]) => void,
   isValid: (m: unknown) => m is T,
-  opts?: { headers?: HeadersInit },
+  opts?: { headers?: HeadersInit; dataKey?: string },
 ): StreamConn {
   const [conn, setConn] = useState<StreamConn>("connecting");
   const onEventsRef = useRef(onEvents);
@@ -46,6 +46,8 @@ export function useStreamEvents<T>(
   isValidRef.current = isValid;
   const headersRef = useRef<HeadersInit | undefined>(opts?.headers);
   headersRef.current = opts?.headers;
+  const dataKeyRef = useRef(opts?.dataKey ?? "messages");
+  dataKeyRef.current = opts?.dataKey ?? "messages";
 
   useEffect(() => {
     if (!url) {
@@ -68,12 +70,19 @@ export function useStreamEvents<T>(
       const ctrl = new AbortController();
       const killer = setTimeout(() => ctrl.abort(), 4500);
       try {
-        const res = await fetch(url, {
-          headers: { accept: "text/event-stream", ...(headersRef.current ?? {}) },
+        // Polling fallback uses the JSON endpoint (URL without /stream),
+        // not the SSE endpoint. The SSE endpoint keeps connections open
+        // indefinitely, which breaks fetch-based polling (abort loses data).
+        const pollUrl = url.replace(/\/stream(\?.*)?$/, "$1");
+        const res = await fetch(pollUrl, {
+          headers: { accept: "application/json", ...(headersRef.current ?? {}) },
           signal: ctrl.signal,
         });
-        const text = await res.text();
-        handle(parseSseLines(text, isValidRef.current));
+        if (!res.ok) throw new Error(`Poll failed: ${res.status}`);
+        const data = (await res.json()) as Record<string, unknown>;
+        const key = dataKeyRef.current;
+        const messages = Array.isArray(data[key]) ? (data[key] as unknown[]) : [];
+        handle(messages.filter(isValidRef.current));
       } catch {
         // Try again on the next tick.
       } finally {

@@ -43,7 +43,7 @@ export default function MarketplaceClient() {
     });
   }, []);
 
-  useStreamEvents<Listing>("/api/townhall/listings/stream", mergeListings, isListingView);
+  useStreamEvents<Listing>("/api/townhall/listings/stream", mergeListings, isListingView, { dataKey: "listings" });
 
   const shown = listings.filter(
     (l) => filter === "all" || l.goodsType === filter,

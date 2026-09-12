@@ -124,6 +124,7 @@ export default function BoardClient({ board }: { board: string }) {
     streamUrl,
     (events) => mergePosts(events.map(normalizePost)),
     isPostView,
+    { dataKey: "posts" },
   );
 
   const threads = useMemo(() => buildThreads(posts), [posts]);
