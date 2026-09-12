@@ -196,6 +196,12 @@ export interface MirrorPort {
   verifyDustFee(dustFeeTxId: string, expectedSender?: string): Promise<DustFeeResult>;
   /** The fee the server expects (tinybars) + where it goes. */
   feeInfo(): { dustFeeTinybars: number; treasury: string | null };
+  /**
+   * Resolve a wallet address to a Hedera account id.
+   * 0.0.x passes through; 0x… is resolved via the mirror node.
+   * Null when malformed or unresolvable.
+   */
+  resolveAccountId(address: string): Promise<string | null>;
 }
 
 export class RealMirrorPort implements MirrorPort {

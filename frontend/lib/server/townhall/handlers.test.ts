@@ -91,6 +91,12 @@ function makeDeps(opts: { feeOk?: boolean; purchases?: [string, string][] } = {}
         ? { ok: false, reason: "underpaid", receivedTinybars: 0 }
         : { ok: true, reason: "ok", receivedTinybars: 1000 },
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
+    resolveAccountId: async (address: string) => {
+      // Test mock: long-zero 0x...0eff -> 0.0.10424063, else pass through 0.0.x
+      if (/^0x0*9f0eff$/i.test(address)) return "0.0.10424063";
+      if (/^0\.0\.\d+$/.test(address)) return address;
+      return null;
+    },
   };
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() in OWNERS,

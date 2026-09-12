@@ -39,6 +39,7 @@ function makeDeps(feeTinybars: number): TownhallDeps {
   const mirror: MirrorPort = {
     verifyDustFee: async () => ({ ok: true, reason: "ok", receivedTinybars: feeTinybars }),
     feeInfo: () => ({ dustFeeTinybars: feeTinybars, treasury: "0.0.999" }),
+    resolveAccountId: async (address: string) => (/^0\.0\.\d+$/.test(address) ? address : null),
   };
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() === "brandon",

@@ -67,6 +67,7 @@ function makeDeps(): TownhallDeps {
   const mirror: MirrorPort = {
     verifyDustFee: async () => ({ ok: true, reason: "ok", receivedTinybars: 1000 }),
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
+    resolveAccountId: async (address: string) => (/^0\.0\.\d+$/.test(address) ? address : null),
   };
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() in OWNERS,

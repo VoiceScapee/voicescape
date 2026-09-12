@@ -315,8 +315,26 @@ async function requirePageOwner(
   if (!owner) {
     return { ok: false, result: err(403, `username "${name}" is not registered in the Voicescape registry`) };
   }
-  const ownerCanonical = canonicalAddress(owner);
-  if (!ownerCanonical || ownerCanonical !== s.session.address) {
+  // Resolve both addresses to Hedera account IDs via mirror node.
+  // This handles long-zero (0x0000...0eff) vs public-key alias (0x30C6...)
+  // forms of the same account — both resolve to 0.0.10424063.
+  let ownerId: string | null = null;
+  let sessionId: string | null = null;
+  try {
+    [ownerId, sessionId] = await Promise.all([
+      deps.mirror.resolveAccountId(owner),
+      deps.mirror.resolveAccountId(s.session.address),
+    ]);
+  } catch {
+    // Fall through to canonical comparison on mirror failure
+  }
+  const ownerMatch = ownerId && sessionId
+    ? ownerId === sessionId
+    : (() => {
+        const ownerCanonical = canonicalAddress(owner);
+        return ownerCanonical && ownerCanonical === s.session.address;
+      })();
+  if (!ownerMatch) {
     return {
       ok: false,
       result: err(403, `this wallet does not own the "${name}" page — sign in with the page owner's wallet`),
