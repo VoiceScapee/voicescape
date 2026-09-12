@@ -43,7 +43,8 @@ function TipBox({
   username: string;
   onClose: () => void;
 }) {
-  const { account, getTxSender } = useWallet();
+  const { account, connect, getTxSender } = useWallet();
+  const { session } = useSession();
   const [usd, setUsd] = useState("5");
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +67,18 @@ function TipBox({
 
   const tip = async () => {
     setError(null);
-    if (!account) {
+    // KISS: If the wallet state was lost (page reload) but the user has a
+    // valid session, auto-reconnect with the session's wallet instead of
+    // making them manually reconnect.
+    let activeAccount = account;
+    if (!activeAccount && session?.adapterId) {
+      try {
+        activeAccount = await connect(session.adapterId as "hashpack" | "blade" | "walletconnect" | "metamask");
+      } catch {
+        // connect() already sets wallet.error; fall through to the message below
+      }
+    }
+    if (!activeAccount) {
       setError("Connect a wallet to tip.");
       return;
     }
