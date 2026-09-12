@@ -3,24 +3,23 @@ import { NextResponse } from "next/server";
 /**
  * GET /api/activity/recent
  *
- * Returns recent on-chain activity (tips) from the VoicescapeTips contract.
- * Queries Hedera Mirror Node for TipSent events, newest first.
+ * Returns recent on-chain tips from the VoicescapeTips contract.
+ * Queries Hedera Mirror Node for TipSent event logs, newest first.
+ * Only verified TipSent events are returned (not marketplace purchases).
  *
  * Response: { tips: [{ txHash, from, to, amountHbar, timestamp }] }
  */
+
+// TipSent(string,address,address,uint256,uint256) event signature
+const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
+
+// VoicescapeTips contract
+const CONTRACT_ID = "0.0.10854060";
+
 export async function GET() {
   try {
-    const tipsAddress = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-    if (!tipsAddress) {
-      return NextResponse.json({ tips: [], error: "Tips contract not configured" });
-    }
-
-    // Convert EVM address to Hedera ID format for Mirror Node
-    // The contract is 0.0.10854060
-    const contractId = "0.0.10854060";
-
-    // Query Mirror Node for contract results (which include logs)
-    const url = `https://mainnet.mirrornode.hedera.com/api/v1/contracts/${contractId}/results?order=desc&limit=20`;
+    // Query Mirror Node for contract logs (includes event data)
+    const url = `https://mainnet.mirrornode.hedera.com/api/v1/contracts/${CONTRACT_ID}/results/logs?order=desc&limit=20`;
 
     const res = await fetch(url, {
       headers: { "Accept": "application/json" },
@@ -32,23 +31,54 @@ export async function GET() {
     }
 
     const data = await res.json();
-    const results = data.results || [];
+    const logs = data.logs || [];
 
-    // Filter for payable calls (tips have amount > 0)
-    // The list includes amount, from, to, timestamp directly
     const tips = [];
-    for (const r of results.slice(0, 10)) {
-      if (!r.amount || r.amount === 0) continue;
-      if (r.error_message) continue; // Skip failed
+    for (const log of logs) {
+      // Only TipSent events (filters out PurchaseCompleted and others)
+      if (!log.topics || log.topics[0]?.toLowerCase() !== TIPSENT_TOPIC) continue;
 
-      const amountHbar = r.amount / 100_000_000;
+      // Topics: [signature, usernameHash, from, toOwner]
+      // Data: amount (uint256), fee (uint256)
+      const from = log.topics[2] ? "0x" + log.topics[2].slice(-40) : null;
+      const toOwner = log.topics[3] ? "0x" + log.topics[3].slice(-40) : null;
+
+      // Decode amount from data (first 32 bytes)
+      let amountHbar = "0";
+      if (log.data && log.data.length >= 66) {
+        try {
+          const amountWei = BigInt("0x" + log.data.slice(2, 66));
+          amountHbar = (Number(amountWei) / 100_000_000).toFixed(4);
+        } catch {
+          continue;
+        }
+      }
+
+      if (!from || !toOwner) continue;
+
+      // Get the Hedera transaction ID for HashScan links
+      // (HashScan URLs need 0.0.x-timestamp-nonce format, not the 0x hash)
+      let txId = log.transaction_hash; // fallback
+      try {
+        const txRes = await fetch(
+          `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
+          { headers: { "Accept": "application/json" } }
+        );
+        if (txRes.ok) {
+          const txData = await txRes.json();
+          const tx = txData.transactions?.[0];
+          if (tx?.transaction_id) txId = tx.transaction_id;
+        }
+      } catch {
+        // Use hash as fallback
+      }
 
       tips.push({
-        txHash: r.hash,
-        from: r.from,
-        to: r.to,
-        amountHbar: amountHbar.toFixed(4),
-        timestamp: r.timestamp,
+        txHash: txId,
+        from,
+        to: toOwner,
+        amountHbar,
+        timestamp: log.timestamp,
       });
 
       if (tips.length >= 5) break;
