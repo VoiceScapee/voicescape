@@ -262,6 +262,12 @@ export function founderWallets(env: Record<string, string | undefined> = process
     .filter(Boolean);
   const treasury = (env.NEXT_PUBLIC_TREASURY_ADDRESS ?? "").trim().toLowerCase();
   if (treasury && !list.includes(treasury)) list.push(treasury);
+  // Treasury 0.0.10424063 also has EVM alias 0x30C63DC43608B6764A6b8b53960553AEbF306817.
+  // Sessions may store either format; accept both.
+  const treasuryEvm = "0x30c63dc43608b6764a6b8b53960553aebf306817";
+  if ((treasury === "0.0.10424063" || list.includes("0.0.10424063")) && !list.includes(treasuryEvm)) {
+    list.push(treasuryEvm);
+  }
   return list;
 }
 
