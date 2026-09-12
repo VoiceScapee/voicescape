@@ -29,7 +29,7 @@ import {
   Hbar,
   TransactionId,
   TransferTransaction,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 import { getHederaPairing } from "./wallet";
 
 /* ------------------------------------------------------------------ */

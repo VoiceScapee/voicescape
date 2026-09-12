@@ -5,7 +5,7 @@
  *  - EVM (MetaMask on Hedera): ethers v6 against the chain's JSON-RPC.
  *    Reads go through a public JsonRpcProvider; writes use the wallet signer.
  *  - Hedera (HashPack / Blade / WalletConnect via HashConnect): the same
- *    Solidity contracts are called through @hashgraph/sdk
+ *    Solidity contracts are called through @hiero-ledger/sdk
  *    ContractExecuteTransaction / ContractCallQuery, signed in the wallet
  *    via hashconnect.sendTransaction(). Contract addresses are the EVM
  *    addresses from the Hardhat deploy, converted with
@@ -24,7 +24,7 @@ import {
   ContractId,
   Hbar,
   TransactionId,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
 
@@ -154,7 +154,7 @@ export function createEvmTxSender(
 }
 
 /* ------------------------------------------------------------------ */
-/* Hedera implementation (@hashgraph/sdk + HashConnect)                 */
+/* Hedera implementation (@hiero-ledger/sdk + HashConnect)                 */
 /* ------------------------------------------------------------------ */
 
 const HEDERA_WRITE_GAS = 600_000;
@@ -221,10 +221,6 @@ export function createHederaTxSender(
     tx.freezeWith(networkClient);
     const txId = tx.transactionId?.toString() ?? "";
     // DAppConnector signs AND executes via the wallet (HIP-820).
-    // Use the SDK's toBytes() directly instead of the wallet-connect helper:
-    // the helper is built against @hiero-ledger/sdk while this app uses
-    // @hashgraph/sdk — serialize with our own SDK to avoid version skew
-    // dropping fields like the payable amount.
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
     const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
     await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({

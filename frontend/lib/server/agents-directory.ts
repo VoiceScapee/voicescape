@@ -24,7 +24,7 @@
  */
 
 import { ethers } from "ethers";
-import { ContractId } from "@hashgraph/sdk";
+import { ContractId } from "@hiero-ledger/sdk";
 import { getActiveChain } from "../chains";
 import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
 import { defaultHcsPort } from "./townhall/hcs";

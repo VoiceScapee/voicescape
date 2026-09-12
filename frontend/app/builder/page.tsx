@@ -70,7 +70,7 @@ import {
   probeX402,
   type X402Rail,
 } from "@/lib/x402";
-import { AccountId } from "@hashgraph/sdk";
+import { AccountId } from "@hiero-ledger/sdk";
 import { summarizeChanges, type AiDraft } from "./vibecode-utils";
 import "./builder.css";
 
@@ -1202,7 +1202,7 @@ function VibecodeChat({
           signerAccountId: `hedera:${network}:${pairing.accountId}`,
           transactionBody: txB64,
         });
-        const { Transaction } = await import("@hashgraph/sdk");
+        const { Transaction } = await import("@hiero-ledger/sdk");
         if (result instanceof Transaction) {
           return result;
         }

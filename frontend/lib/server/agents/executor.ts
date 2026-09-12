@@ -34,7 +34,7 @@ import {
   TopicMessageSubmitTransaction,
   TransactionId,
   TransferTransaction,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 import {
   buildHcs10CreateInboundTopicTx,
   buildHcs10CreateOutboundTopicTx,

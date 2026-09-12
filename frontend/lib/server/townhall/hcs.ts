@@ -1,7 +1,7 @@
 /**
  * Voicescape Social Town Hall — HCS submit + query.
  *
- * Submit goes through @hashgraph/sdk with the server operator
+ * Submit goes through @hiero-ledger/sdk with the server operator
  * (TOWNHALL_OPERATOR_ID / TOWNHALL_OPERATOR_KEY — server-only, never in the
  * browser). Reads go through the free mirror node REST API.
  *
@@ -14,7 +14,7 @@ import {
   PrivateKey,
   TopicId,
   TopicMessageSubmitTransaction,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 import { mirrorBaseUrl, townhallNetwork } from "./topics";
 import type { StoredMessage, TownhallMessage } from "./types";
 import { globalHcsCache, type HcsCache } from "./hcs-cache";

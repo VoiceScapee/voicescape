@@ -25,7 +25,7 @@ import {
   type X402Rail,
 } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
-import { AccountId } from "@hashgraph/sdk";
+import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
 
 type LoadState =
@@ -259,7 +259,7 @@ function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: 
           signerAccountId: `hedera:${network}:${pairing.accountId}`,
           transactionBody: txB64,
         });
-        const { Transaction } = await import("@hashgraph/sdk");
+        const { Transaction } = await import("@hiero-ledger/sdk");
         if (result instanceof Transaction) {
           return result;
         }

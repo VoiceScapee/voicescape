@@ -42,7 +42,7 @@ import {
   Transaction,
   TransactionId,
   TransferTransaction,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 
 /* ------------------------------------------------------------------ */
 /* Small helpers (browser-safe, no Buffer)                             */
