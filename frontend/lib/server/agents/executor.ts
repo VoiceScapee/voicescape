@@ -35,10 +35,6 @@ import {
   TransactionId,
   TransferTransaction,
 } from "@hiero-ledger/sdk";
-import {
-  buildHcs10CreateInboundTopicTx,
-  buildHcs10CreateOutboundTopicTx,
-} from "@hashgraphonline/standards-sdk";
 import { checkContent } from "../townhall/content-filter";
 
 /** Max HBAR per single agent operation — prevents accidents, not a spending cap. */
@@ -276,12 +272,17 @@ export function buildBuyTransaction(
 }
 
 /* ------------------------------------------------------------------ */
-/* HCS-10 topic transactions (official @hashgraphonline/standards-sdk) */
+/* HCS-10 topic transactions (built directly with @hiero-ledger/sdk) */
 /* ------------------------------------------------------------------ */
 
 /**
  * Build unsigned HCS-10 inbound + outbound topic creation transactions
- * (RETURN_BYTES) using the official standards SDK builders.
+ * (RETURN_BYTES) using @hiero-ledger/sdk directly.
+ *
+ * HCS-10 memo format (per the HCS-10 spec):
+ * - Inbound topic:  hcs-10:0:{ttl}:0:{accountId}  (receives connection requests)
+ * - Outbound topic: hcs-10:0:{ttl}:1              (records connection activity)
+ * ttl 0 = no topic expiry (agent topics stay alive).
  *
  * The agent signs both with its own key, submits them, then uses the
  * resulting topic ids to build the HCS-10 registry registration
@@ -298,9 +299,13 @@ export function buildHcs10TopicTransactions(ctx: BuildContext): {
   if (!/^0\.0\.\d+$/.test(ctx.payerAccountId)) {
     throw new Error("payerAccountId must be a 0.0.x account id");
   }
-  // ttl 0 = no topic expiry (agent topics stay alive).
-  const inboundTx = buildHcs10CreateInboundTopicTx({ accountId: ctx.payerAccountId, ttl: 0 });
-  const outboundTx = buildHcs10CreateOutboundTopicTx({ ttl: 0 });
+  // Built directly with @hiero-ledger/sdk: the standards-sdk builders
+  // return old-SDK (@hashgraph/sdk v2) transaction objects whose
+  // freezeWith() is incompatible with hiero v3 clients.
+  const inboundTx = new TopicCreateTransaction()
+    .setTopicMemo(`hcs-10:0:0:0:${ctx.payerAccountId}`);
+  const outboundTx = new TopicCreateTransaction()
+    .setTopicMemo("hcs-10:0:0:1");
 
   const inboundFrozen = freezeForPayer(inboundTx, ctx);
   const outboundFrozen = freezeForPayer(outboundTx, ctx);
