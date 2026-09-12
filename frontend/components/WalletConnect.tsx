@@ -307,6 +307,27 @@ export function WalletConnect() {
           >
             {chain.label}
           </div>
+          <div
+            style={{
+              padding: "8px 12px",
+              borderTop: "1px solid var(--vs-border)",
+              fontSize: 12,
+              color: "var(--vs-muted)",
+            }}
+          >
+            New to wallets?{" "}
+            <a
+              href="https://www.hashpack.app"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "var(--vs-accent)", textDecoration: "underline" }}
+            >
+              Get HashPack (free)
+            </a>
+            <div style={{ marginTop: 4, fontSize: 11 }}>
+              A wallet lets you create pages and receive tips.
+            </div>
+          </div>
         </div>
       )}
       {(error || signInError) && (
