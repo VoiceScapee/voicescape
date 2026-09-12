@@ -52,18 +52,19 @@ export default function LandingPage() {
           </p>
           <div style={{ marginTop: 28, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <Link
-              href="/explore"
+              href="/builder"
               className="vs-btn vs-btn-primary"
               style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
             >
-              Explore Blockpages
+              <T k="landing.openBuilder" />
+              <IconArrowRight size={18} />
             </Link>
             <Link
-              href="/builder"
+              href="/explore"
               className="vs-btn vs-btn-ghost"
               style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
             >
-              <T k="nav.builder" />
+              Explore Blockpages
             </Link>
           </div>
         </section>
@@ -105,12 +106,6 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-          <div style={{ textAlign: "center", marginTop: 40 }}>
-            <Link href="/builder" className="vs-btn vs-btn-primary">
-              <T k="landing.openBuilder" />
-              <IconArrowRight size={18} />
-            </Link>
-          </div>
         </section>
 
         {/* Features */}
@@ -145,58 +140,17 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* How tipping works */}
+        {/* 2% fee — compact strip */}
         <section style={{ background: "var(--vs-bg2)", borderTop: "1px solid var(--vs-border)", borderBottom: "1px solid var(--vs-border)" }}>
-          <div className="vs-section">
+          <div className="vs-section" style={{ textAlign: "center", paddingTop: 40, paddingBottom: 40 }}>
             <p className="vs-label"><T k="landing.feeLabel" /></p>
-            <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 24px" }}>
+            <p style={{ fontSize: "clamp(1.2rem, 3.5vw, 1.6rem)", fontWeight: 700, margin: "12px 0 8px" }}>
               <T k="landing.feeTitle1" /> <span className="vs-gradient-text"><T k="landing.feeTitle2" /></span> <T k="landing.feeTitle3" />
-            </h2>
-            <ol style={{ lineHeight: 2, paddingLeft: 20, margin: 0, fontSize: 16 }}>
-              <li><T k="landing.feeS1a" /> <strong><T k="landing.feeS1b" /></strong>.</li>
-              <li>
-                <T k="landing.feeS2a" /> <strong><T k="landing.feeS2b" /></strong>{" "}
-                <code className="vs-mono" style={{ color: "var(--vs-cyan)", fontSize: 15 }}>
-                  tipPage(username)
-                </code>
-                .
-              </li>
-              <li><T k="landing.feeS3a" /> <strong><T k="landing.feeS3b" /></strong><T k="landing.feeS3c" /></li>
-              <li><strong><T k="landing.feeS4a" /></strong> <T k="landing.feeS4b" /></li>
-            </ol>
-            <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", fontSize: 16, marginBottom: 0 }}>
+            </p>
+            <p style={{ lineHeight: 1.7, color: "var(--vs-muted)", fontSize: 15, margin: 0, maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
               <T k="landing.feeNote" />
             </p>
           </div>
-        </section>
-
-        {/* Track your transactions */}
-        <section className="vs-section">
-          <p className="vs-label"><T k="landing.trackLabel" /></p>
-          <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 24px" }}>
-            <T k="landing.trackTitle1" /> <span className="vs-gradient-text"><T k="landing.trackTitle2" /></span>
-          </h2>
-          <ol style={{ lineHeight: 2, paddingLeft: 20, margin: 0, fontSize: 16 }}>
-            <li><T k="landing.trackS1" /></li>
-            <li>
-              <T k="landing.trackS2a" />{" "}
-              <a
-                href="https://hashscan.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="vs-mono"
-                style={{ color: "var(--vs-cyan)", fontSize: 15 }}
-              >
-                hashscan.io
-              </a>{" "}
-              <T k="landing.trackS2b" />
-            </li>
-            <li><T k="landing.trackS3" /></li>
-            <li><T k="landing.trackS4" /></li>
-          </ol>
-          <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", fontSize: 16, marginBottom: 0 }}>
-            <T k="landing.trackNote" />
-          </p>
         </section>
 
         {/* Closing CTA */}
@@ -204,8 +158,6 @@ export default function LandingPage() {
           className="vs-section"
           style={{
             textAlign: "center",
-            background: "var(--vs-bg2)",
-            borderTop: "1px solid var(--vs-border)",
           }}
         >
           <h2

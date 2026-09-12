@@ -1,14 +1,53 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Lattice from "./Lattice";
 import { IconArrowRight } from "./icons";
 import { T } from "./T";
 
+const ENTERED_KEY = "vs_splash_entered";
+
+function hasEntered(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return sessionStorage.getItem(ENTERED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Opening screen: lattice canvas, blurred gradient orbs, the official
- * Voicescape banner, staggered hero copy and an Enter CTA that
- * smooth-scrolls to the landing content.
+ * Voicescape banner, staggered hero copy and an Enter CTA.
+ *
+ * Once the user presses Enter, the splash unmounts entirely (so it can't
+ * reappear on scroll-up) and is skipped for the rest of the session.
  */
 export default function Splash() {
+  const [entered, setEntered] = useState(false);
+
+  // Skip the splash if the user already entered this session.
+  // Done in an effect (not render) to keep SSR and first paint identical.
+  useEffect(() => {
+    if (hasEntered()) setEntered(true);
+  }, []);
+
+  if (entered) return null;
+
+  const handleEnter = () => {
+    try {
+      sessionStorage.setItem(ENTERED_KEY, "1");
+    } catch {
+      // sessionStorage unavailable — splash just shows again next load
+    }
+    setEntered(true);
+    // Splash unmounts on the next paint; then glide to the content.
+    requestAnimationFrame(() => {
+      document.getElementById("enter")?.scrollIntoView({ behavior: "smooth" });
+    });
+  };
+
   const stagger = (i: number): React.CSSProperties => ({
     animationDelay: `${i * 0.14}s`,
   });
@@ -113,10 +152,15 @@ export default function Splash() {
           <T k="splash.sub" />
         </p>
         <div className="vs-anim-fade-up" style={stagger(3)}>
-          <a href="#enter" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
+          <button
+            type="button"
+            onClick={handleEnter}
+            className="vs-btn vs-btn-primary"
+            style={{ fontSize: 18, padding: "15px 36px", cursor: "pointer" }}
+          >
             <T k="splash.enter" />
             <IconArrowRight size={20} />
-          </a>
+          </button>
         </div>
         <div className="vs-anim-fade-up" style={stagger(4)}>
           <span className="vs-chip vs-anim-pulse-glow">
