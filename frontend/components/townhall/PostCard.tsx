@@ -14,6 +14,9 @@ import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import { timeAgo, type TownhallPost } from "@/lib/townhall";
 import { IconTip, IconClose, IconCheck } from "@/components/icons";
+import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
+import { WalletTimeoutError } from "@/lib/tx";
+import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import ReputationBadge from "./Reputation";
 import ModHideButton from "./ModHideButton";
 import ReportButton from "./ReportButton";
@@ -25,12 +28,38 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
   const [usd, setUsd] = useState(5);
   const [price, setPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [waitingLong, setWaitingLong] = useState(false);
   const [txId, setTxId] = useState<string | null>(null);
+  const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Set once the wallet approves: the hook polls the mirror node until the
+  // transaction reaches consensus, so the UI reacts to the real outcome.
+  const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const confirmStatus = useConfirmedTransaction(confirmTxId);
+  // Finality clock: wallet approval → consensus, shown on the receipt.
+  const [approvedAt, setApprovedAt] = useState<number | null>(null);
+  const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
+  const chain = getActiveChain();
 
   useEffect(() => {
     getHbarUsdPrice().then(setPrice).catch(() => setPrice(null));
   }, []);
+
+  // Mirror-node verdict landed — move to the matching end state.
+  useEffect(() => {
+    if (!confirmTxId) return;
+    if (confirmStatus === "confirmed") {
+      setFinalizedAt(new Date());
+      setTxId(confirmTxId);
+    } else if (confirmStatus === "failed") {
+      setError("The transaction failed on-chain. No tip was sent.");
+    } else if (confirmStatus === "timeout") {
+      // Submitted but not yet visible (mirror lag). Money may have moved —
+      // never claim failure; show the honest "submitted" state.
+      setSubmittedTxId(confirmTxId);
+    }
+  }, [confirmStatus, confirmTxId]);
 
   const tip = async () => {
     setError(null);
@@ -46,6 +75,10 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     // contract reverts for unregistered pages — pre-check the registry
     // first so the user never signs a transaction that cannot succeed.
     setBusy(true);
+    setWaitingLong(false);
+    // HashPack sometimes goes silent after the user approves — reassure
+    // after 15s so users don't abandon the page.
+    const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
     try {
       const registered = await resolvePage(author, getActiveChain());
       if (!registered) {
@@ -53,13 +86,42 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         return;
       }
       const sender = await getTxSender();
+      // Snapshot the breakdown for the success receipt — these amounts are
+      // baked into the transaction, so they hold for every outcome path.
+      const hbarAmt = usd / price;
+      setReceiptLines([
+        { label: "You sent", value: `$${usd} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
+        { label: `@${author} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
+        { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+      ]);
       const id = await tipPage(author, usdToWei(usd, price), sender);
-      setTxId(id);
+      // Approved — start the finality clock and confirm the real on-chain
+      // outcome reactively.
+      setApprovedAt(Date.now());
+      setConfirmTxId(id);
     } catch (e) {
-      setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+      if (e instanceof WalletTimeoutError) {
+        // Wallet went silent after approval — don't guess; confirm on-chain.
+        setApprovedAt(Date.now());
+        setConfirmTxId(e.txId);
+      } else {
+        setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     } finally {
+      clearTimeout(waitingNote);
       setBusy(false);
+      setWaitingLong(false);
     }
+  };
+
+  const reset = () => {
+    setTxId(null);
+    setSubmittedTxId(null);
+    setConfirmTxId(null);
+    setApprovedAt(null);
+    setFinalizedAt(null);
+    setReceiptLines([]);
+    setError(null);
   };
 
   return (
@@ -82,13 +144,41 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
           </button>
         </div>
         {txId ? (
+          <TxReceipt
+            title="Tip confirmed"
+            approvedAt={approvedAt}
+            finalizedAt={finalizedAt}
+            txId={txId}
+            explorerBase={chain.blockExplorer}
+            lines={receiptLines}
+            nextStep={`It's live on @${author}'s page — they'll see your tip right away.`}
+            onAgain={reset}
+            onDone={onClose}
+          />
+        ) : submittedTxId ? (
           <div className="th-tip-done">
             <IconCheck size={28} />
-            <p>Tip sent — 98% to @{author}, 2% to the treasury, enforced on-chain.</p>
-            <p className="vs-mono th-tx">{txId}</p>
-            <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={onClose}>
-              Done
-            </button>
+            <p>
+              Tip of ${usd} submitted to @{author}. It&apos;s still being confirmed on-chain —
+              check HashScan in a minute to see it land.
+            </p>
+            <p className="vs-mono th-tx">{submittedTxId}</p>
+            <a
+              className="th-identity-link"
+              href={`${chain.blockExplorer}/transaction/${submittedTxId}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View on HashScan
+            </a>
+            <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+              <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={reset}>
+                Tip again
+              </button>
+              <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={onClose}>
+                Done
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -111,10 +201,26 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
               type="button"
               className="vs-btn vs-btn-primary th-btn-block"
               onClick={tip}
-              disabled={busy}
+              disabled={busy || confirmStatus === "confirming"}
             >
-              <IconTip size={18} /> {busy ? "Tipping…" : `Tip $${usd}`}
+              <IconTip size={18} />{" "}
+              {confirmStatus === "confirming"
+                ? "Confirming on Hedera…"
+                : busy
+                  ? "Tipping…"
+                  : `Tip $${usd}`}
             </button>
+            {busy && waitingLong && (
+              <p className="th-muted" role="status">
+                Still working — if you already approved in your wallet, the network is confirming.
+                This can take up to ~90 seconds; please keep this page open.
+              </p>
+            )}
+            {confirmStatus === "confirming" && (
+              <div style={{ marginTop: 4 }}>
+                <TxConfirming sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)." />
+              </div>
+            )}
             {error && <p className="th-error">{error}</p>}
           </>
         )}
@@ -151,6 +257,16 @@ export default function PostCard({
         <span className="th-post-ts" title={new Date(post.ts).toLocaleString()}>
           {timeAgo(post.ts)}
         </span>
+        {(post as { pending?: boolean }).pending && (
+          <span className="th-muted" title="Sent to Hedera — waiting for network confirmation">
+            {" "}◌ confirming…
+          </span>
+        )}
+        {(post as { unconfirmed?: boolean }).unconfirmed && (
+          <span className="th-muted" title="Not confirmed on-chain yet — the message may still arrive">
+            {" "}⚠ not yet confirmed — pull to refresh
+          </span>
+        )}
       </div>
       <p className="th-post-body">{post.body}</p>
       <div className="th-post-actions">

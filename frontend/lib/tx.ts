@@ -63,6 +63,24 @@ export interface ResolveResult {
 /** Zero address — what human pages register as their operator. */
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/**
+ * Thrown when the wallet goes silent after the user approved (the 90s
+ * timeout). Carries the transaction id we generated ourselves, so the UI
+ * can switch to a live on-chain "confirming…" state instead of an error —
+ * the transaction may well have executed.
+ */
+export class WalletTimeoutError extends Error {
+  readonly txId: string;
+  constructor(txId: string) {
+    super(
+      "Your wallet didn't respond in time. The transaction may still have gone through — " +
+        "we're checking on-chain now instead of guessing.",
+    );
+    this.name = "WalletTimeoutError";
+    this.txId = txId;
+  }
+}
+
 export interface TxSender {
   /** "evm" for MetaMask, "hedera" for Hedera wallets. */
   readonly kind: "evm" | "hedera";
@@ -290,11 +308,10 @@ export function createHederaTxSender(
           throw new Error("The transaction failed on-chain. No payment was sent.");
         }
         // Unknown: not visible on the mirror node yet. The user may have
-        // approved in their wallet — never claim failure. Tell them to check.
-        throw new Error(
-          "Your wallet didn't respond in time. The transaction may still have gone through — " +
-          "check your wallet history or the explorer before trying again.",
-        );
+        // approved in their wallet — never claim failure. Throw the tx id
+        // along so the UI can confirm on-chain reactively instead of
+        // showing a dead-end error.
+        throw new WalletTimeoutError(txId);
       }
       throw e;
     }

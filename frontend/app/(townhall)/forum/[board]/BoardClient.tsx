@@ -6,8 +6,15 @@ import { PresenceDot } from "@/components/townhall/Presence";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
+import { pollTransactionStatus } from "@/lib/tx-confirm";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
 import { IconClose } from "@/components/icons";
+
+/**
+ * A client-side optimistic entry: shown immediately with a "confirming…"
+ * indicator, replaced by the real post once it arrives over the stream.
+ */
+type PendingPost = TownhallPost & { pending?: boolean; unconfirmed?: boolean };
 
 interface ThreadNode {
   post: TownhallPost;
@@ -88,6 +95,8 @@ export default function BoardClient({ board }: { board: string }) {
   const [body, setBody] = useState("");
   const [replyTo, setReplyTo] = useState<TownhallPost | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  // Transient "what's next" note after on-chain confirmation lands.
+  const [justPosted, setJustPosted] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,9 +124,27 @@ export default function BoardClient({ board }: { board: string }) {
       const seen = new Set(prev.map((p) => p.seq));
       const fresh = incoming.filter((p) => !seen.has(p.seq));
       if (fresh.length === 0) return prev;
-      return [...fresh, ...prev].slice(0, 300);
+      // When a real (positive-seq) copy of my optimistic post arrives,
+      // drop the pending temp-seq copy (matched by author+body — the temp
+      // seq never dedupes by seq alone).
+      const confirmedKeys = new Set(
+        fresh
+          .filter((p) => p.seq > 0 && p.author === me)
+          .map((p) => `${p.author}::${p.body}`),
+      );
+      const prevFiltered =
+        confirmedKeys.size > 0
+          ? prev.filter(
+              (p) =>
+                !(
+                  (p as PendingPost).pending &&
+                  confirmedKeys.has(`${p.author}::${p.body}`)
+                ),
+            )
+          : prev;
+      return [...fresh, ...prevFiltered].slice(0, 300);
     });
-  }, []);
+  }, [me]);
 
   const streamUrl = `/api/townhall/posts/stream?board=${encodeURIComponent(board)}`;
   const streamConn = useStreamEvents<TownhallPost>(
@@ -156,6 +183,24 @@ export default function BoardClient({ board }: { board: string }) {
     const hcsTxId = await hcs.submit("forum", message);
     if (!hcsTxId) return; // User cancelled or error
 
+    // Optimistic: show it NOW with a "confirming…" indicator and clear the
+    // composer — no frozen "posting" state while the network works.
+    const tempSeq = -Date.now();
+    const optimisticPost: PendingPost = {
+      seq: tempSeq,
+      board,
+      wall: undefined,
+      author: me,
+      body: text,
+      replyTo: replySeq,
+      ts: Date.now(),
+      pending: true,
+    };
+    setBody("");
+    setReplyTo(null);
+    setPostError(null);
+    mergePosts([optimisticPost]);
+
     try {
       // Notify the server (it verifies the HCS tx via mirror node)
       await postJson("/api/townhall/posts", {
@@ -165,20 +210,38 @@ export default function BoardClient({ board }: { board: string }) {
         author: me,
         hcsTxId,
       });
-      setBody("");
-      setReplyTo(null);
-      // Optimistic: show it now with a temp seq; the stream dedupes when the real copy arrives.
-      const tempSeq = -Date.now();
-      mergePosts([
-        { seq: tempSeq, board, wall: undefined, author: me, body: text, replyTo: replySeq, ts: Date.now() },
-      ]);
     } catch (e) {
       // Server verification failed - the HCS tx is still on-chain, but the
-      // server didn't accept it (e.g., content filter). Show the error.
+      // server didn't accept it (e.g., content filter). Drop the optimistic
+      // entry and show the error.
+      setPosts((prev) => prev.filter((p) => p.seq !== tempSeq));
       const msg = e instanceof Error ? e.message : String(e);
       console.error("Post verification failed:", e);
       setPostError(`Post not published: ${msg}. Your HCS transaction is on-chain, but the server rejected it.`);
+      return;
     }
+
+    // Server accepted it. Confirm the HCS message on-chain in the
+    // background: the stream usually delivers the real copy first (dedupe
+    // above swaps it in); on failure the entry is removed with an error; on
+    // timeout the entry stays, honestly flagged "not yet confirmed".
+    void pollTransactionStatus(hcsTxId, { timeoutMs: 50_000 }).then((outcome) => {
+      if (outcome === "confirmed") {
+        load();
+        // Tell the user what's next: the post is live in the thread now.
+        setJustPosted(true);
+        setTimeout(() => setJustPosted(false), 8000);
+      } else if (outcome === "failed") {
+        setPosts((prev) => prev.filter((p) => p.seq !== tempSeq));
+        setPostError("The transaction failed on-chain — your post was not published.");
+      } else {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.seq === tempSeq ? { ...p, pending: false, unconfirmed: true } : p,
+          ),
+        );
+      }
+    });
   };
 
   return (
@@ -240,6 +303,12 @@ export default function BoardClient({ board }: { board: string }) {
         {hcs.phase.kind === "error" && (
           <p className="th-error">Failed to submit: {hcs.phase.message}</p>
         )}
+        {hcs.phase.kind === "submitting" && hcs.waitingLong && (
+          <p className="th-muted" role="status" style={{ marginTop: 8 }}>
+            Still working — if you already approved in your wallet, the network is confirming.
+            This can take up to ~90 seconds; please keep this page open.
+          </p>
+        )}
       </div>
 
       {loading && <p className="th-muted">Loading threads…</p>}
@@ -255,6 +324,11 @@ export default function BoardClient({ board }: { board: string }) {
         <p className="th-muted">No posts yet — start the conversation.</p>
       )}
       <div className="th-post-list">
+        {justPosted && (
+          <p className="th-note" role="status" style={{ marginBottom: 8 }}>
+            ✓ Posted — your post is live in the thread.
+          </p>
+        )}
         {threads.map((t) => (
           <Thread key={t.post.seq} node={t} depth={0} onReply={onReply} onHidden={load} />
         ))}

@@ -9,11 +9,13 @@ import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
-import { verifyTipOnChain } from "@/lib/verify-tx";
+import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
+import { WalletTimeoutError } from "@/lib/tx";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
 import OnChainLiveBadge from "@/components/OnChainLiveBadge";
+import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import ProfileLinks from "@/components/townhall/ProfileLinks";
 import ReferralCard from "@/components/townhall/ReferralCard";
 import ReportButton from "@/components/townhall/ReportButton";
@@ -54,8 +56,44 @@ function TipBox({
   const [txHash, setTxHash] = useState<string | null>(null);
   const [submittedHash, setSubmittedHash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [verifying, setVerifying] = useState(false);
+  // True once the wallet has been open >15s — show the reassurance note so
+  // the user doesn't abandon the page while HashPack is slow or silent.
+  const [waitingLong, setWaitingLong] = useState(false);
+  // Set once the wallet approves: the hook polls the mirror node until the
+  // transaction reaches consensus, so the UI reacts to the real outcome
+  // instead of sitting frozen on "Tipping…".
+  const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const confirmStatus = useConfirmedTransaction(confirmTxId);
+  // Finality clock: wallet approval → consensus, shown on the receipt.
+  const [approvedAt, setApprovedAt] = useState<number | null>(null);
+  const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
   const chain = getActiveChain();
+
+  // Mirror-node verdict landed — move to the matching end state.
+  useEffect(() => {
+    if (!confirmTxId) return;
+    if (confirmStatus === "confirmed") {
+      setFinalizedAt(new Date());
+      setTxHash(confirmTxId);
+    } else if (confirmStatus === "failed") {
+      setError("The transaction failed on-chain. No tip was sent — check the explorer for details.");
+    } else if (confirmStatus === "timeout") {
+      // Submitted but not yet visible (mirror lag). Money may have moved —
+      // never claim failure; show the honest "submitted" state.
+      setSubmittedHash(confirmTxId);
+    }
+  }, [confirmStatus, confirmTxId]);
+
+  const resetTip = () => {
+    setTxHash(null);
+    setSubmittedHash(null);
+    setConfirmTxId(null);
+    setApprovedAt(null);
+    setFinalizedAt(null);
+    setReceiptLines([]);
+    setError(null);
+  };
 
   useEffect(() => {
     getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
@@ -92,6 +130,12 @@ function TipBox({
       return;
     }
     setBusy(true);
+    setWaitingLong(false);
+    // HashPack sometimes goes silent after the user approves (the tx still
+    // lands on-chain; the wallet layer recovers via the mirror node after a
+    // 90s timeout). Without a progress hint the UI looks frozen on
+    // "Tipping…" — reassure after 15s so users don't abandon the page.
+    const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
     try {
       if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
       // Guardrail: never prompt a wallet signature for a doomed tip. The
@@ -101,28 +145,32 @@ function TipBox({
       if (!registered) throw new Error(`@${username} isn't registered on-chain — the tip would fail.`);
       const wei = usdToWei(usdNum, hbarPrice);
       const sender = await getTxSender();
+      // Snapshot the breakdown for the success receipt — these amounts are
+      // baked into the transaction, so they hold for every outcome path.
+      const hbarAmt = usdNum / hbarPrice;
+      setReceiptLines([
+        { label: "You sent", value: `$${usdNum.toFixed(2)} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
+        { label: `${username} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
+        { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+      ]);
       const hash = await tipPage(username, wei, sender);
-      // Verify on-chain before showing "confirmed" — query the contract
-      // result to ensure the payable amount was received and TipSent emitted.
-      // The wallet response alone is not proof (it only confirms submission).
-      setVerifying(true);
-      const result = await verifyTipOnChain(hash);
-      setVerifying(false);
-      if (result.status === "confirmed") {
-        setTxHash(hash);
-      } else if (result.status === "failed") {
-        throw new Error("The transaction failed on-chain. No tip was sent — check the explorer link for details.");
-      } else {
-        // "unknown": submitted but not yet visible on the mirror node
-        // (EVM hash propagation lag, or mirror delay). Money may have moved —
-        // never claim failure. Show an honest "submitted" state.
-        setSubmittedHash(hash);
-      }
+      // Approved — start the finality clock. The hook now confirms the real
+      // on-chain outcome; the UI reacts (success / failed / submitted)
+      // instead of freezing.
+      setApprovedAt(Date.now());
+      setConfirmTxId(hash);
     } catch (e) {
-      setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+      if (e instanceof WalletTimeoutError) {
+        // Wallet went silent after approval — don't guess. Confirm on-chain.
+        setApprovedAt(Date.now());
+        setConfirmTxId(e.txId);
+      } else {
+        setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
     } finally {
+      clearTimeout(waitingNote);
       setBusy(false);
-      setVerifying(false);
+      setWaitingLong(false);
     }
   };
 
@@ -138,29 +186,17 @@ function TipBox({
     >
       <div className="pv-tip-card">
         {txHash ? (
-          <div className="pv-tip-confirm">
-            <span className="pv-tip-confirm-icon" aria-hidden="true">
-              <IconCheck size={30} />
-            </span>
-            <h3>Tip confirmed</h3>
-            <p>
-              ${usdValid ? usdNum.toFixed(2) : "?"} ({railDisplay}) sent to {username}
-              {" — 98% to the creator, 2% to the treasury (enforced on-chain)."}
-            </p>
-            <span className="pv-tx-hash vs-mono">{txHash}</span>
-            <br />
-            <a
-              className="pv-tx-link"
-              href={`${chain.blockExplorer}/transaction/${txHash}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View on explorer <IconExternal size={14} />
-            </a>
-            <button type="button" className="pv-tip-again" onClick={() => setTxHash(null)}>
-              Tip again
-            </button>
-          </div>
+          <TxReceipt
+            title="Tip confirmed"
+            approvedAt={approvedAt}
+            finalizedAt={finalizedAt}
+            txId={txHash}
+            explorerBase={chain.blockExplorer}
+            lines={receiptLines}
+            nextStep={`It's live on @${username}'s page — they'll see your tip right away.`}
+            onAgain={resetTip}
+            onDone={onClose}
+          />
         ) : submittedHash ? (
           <div className="pv-tip-confirm">
             <span className="pv-tip-confirm-icon" aria-hidden="true">
@@ -181,7 +217,7 @@ function TipBox({
             >
               View on explorer <IconExternal size={14} />
             </a>
-            <button type="button" className="pv-tip-again" onClick={() => setSubmittedHash(null)}>
+            <button type="button" className="pv-tip-again" onClick={resetTip}>
               Tip again
             </button>
           </div>
@@ -242,10 +278,19 @@ function TipBox({
               </div>
             )}
 
-            <button type="button" className="pv-tip-btn" onClick={tip} disabled={busy || verifying || !hbarPrice}>
+            <button type="button" className="pv-tip-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || !hbarPrice}>
               <IconTip size={20} />
-              {verifying ? "Verifying on-chain…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : `Tip $${usdValid ? usdNum.toFixed(2) : "0.00"}`}
+              {confirmStatus === "confirming" ? "Confirming on Hedera…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : `Tip $${usdValid ? usdNum.toFixed(2) : "0.00"}`}
             </button>
+            {busy && waitingLong && (
+              <p className="pv-fee-note" role="status">
+                Still working — if you already approved in your wallet, the network is confirming.
+                This can take up to ~90 seconds; please keep this page open.
+              </p>
+            )}
+            {confirmStatus === "confirming" && (
+              <TxConfirming sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)." />
+            )}
 
             <p className="pv-fee-note">
               98% to the creator · 2% to the treasury — enforced on-chain

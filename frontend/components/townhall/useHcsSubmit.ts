@@ -21,6 +21,11 @@ export type HcsPhase =
 export interface HcsSubmitFlow {
   phase: HcsPhase;
   /**
+   * True once a submit has been waiting >15s (wallet slow/silent or network
+   * lag). UIs show the reassurance copy so users don't abandon the page.
+   */
+  waitingLong: boolean;
+  /**
    * Submit a message to an HCS topic via the user's wallet.
    * Returns the transaction ID on success, null on failure/cancel.
    */
@@ -35,10 +40,17 @@ let topicsCache: Record<string, string | null> | null = null;
 
 export function useHcsSubmit(): HcsSubmitFlow {
   const [phase, setPhase] = useState<HcsPhase>({ kind: "idle" });
+  const [waitingLong, setWaitingLong] = useState(false);
 
   const submit = useCallback(
     async (topicDomain: string, message: object): Promise<string | null> => {
       setPhase({ kind: "submitting" });
+      setWaitingLong(false);
+      // HashPack sometimes goes silent after the user approves (the message
+      // still lands on-chain; the wallet layer recovers via the mirror node
+      // after a 90s timeout). Without a progress hint the UI looks frozen —
+      // reassure after 15s so users don't abandon the page.
+      const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
       try {
         // Get the wallet pairing
         const pairing = getHederaPairing();
@@ -76,12 +88,18 @@ export function useHcsSubmit(): HcsSubmitFlow {
         }
         setPhase({ kind: "error", message });
         return null;
+      } finally {
+        clearTimeout(waitingNote);
+        setWaitingLong(false);
       }
     },
     [],
   );
 
-  const reset = useCallback(() => setPhase({ kind: "idle" }), []);
+  const reset = useCallback(() => {
+    setPhase({ kind: "idle" });
+    setWaitingLong(false);
+  }, []);
 
-  return { phase, submit, reset };
+  return { phase, waitingLong, submit, reset };
 }

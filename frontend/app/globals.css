@@ -250,6 +250,151 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
+/* Reactive transaction states (confirming animation + success receipt) */
+/* ------------------------------------------------------------------ */
+
+.tx-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 8px;
+  text-align: center;
+}
+
+/* Voicescape sound-wave equalizer — the "alive" processing state. Never a
+   dead spinner: the bars dance while Hedera reaches consensus. */
+.tx-eq {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 46px;
+}
+.tx-eq span {
+  width: 7px;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--vs-cyan), var(--vs-violet));
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.45);
+  transform-origin: bottom;
+  animation: txEq 1.15s ease-in-out infinite;
+}
+.tx-eq span:nth-child(1) { animation-delay: -0.45s; }
+.tx-eq span:nth-child(2) { animation-delay: -0.9s; }
+.tx-eq span:nth-child(3) { animation-delay: -0.15s; }
+.tx-eq span:nth-child(4) { animation-delay: -0.7s; }
+.tx-eq span:nth-child(5) { animation-delay: -1.05s; }
+@keyframes txEq {
+  0%, 100% { transform: scaleY(0.22); opacity: 0.65; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+.tx-confirm-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tx-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vs-cyan);
+  display: inline-block;
+  animation: txPulse 1.6s ease-in-out infinite;
+}
+@keyframes txPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  50% { box-shadow: 0 0 0 9px rgba(52, 211, 153, 0); }
+}
+.tx-confirm-sub {
+  margin: 0;
+  font-size: 13px;
+  max-width: 300px;
+}
+
+/* Success receipt — exact finality proof, breakdown, HashScan, next step. */
+.tx-receipt {
+  text-align: center;
+  padding: 10px 4px 4px;
+}
+.tx-receipt-check {
+  width: 66px;
+  height: 66px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
+  color: #06060e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 34px rgba(16, 185, 129, 0.55);
+  animation: txPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+@keyframes txPop {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.tx-receipt-title {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 800;
+}
+.tx-finality {
+  margin: 0;
+  color: var(--vs-cyan);
+  font-weight: 600;
+  font-size: 14px;
+}
+.tx-rows {
+  margin: 16px 0;
+  border: 1px solid var(--vs-border);
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: left;
+  background: var(--vs-glass);
+}
+.tx-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--vs-border);
+}
+.tx-row:last-child { border-bottom: none; }
+.tx-row > span:first-child { color: var(--vs-muted); }
+.tx-row > span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tx-hashscan {
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.tx-next {
+  color: var(--vs-muted);
+  font-size: 14px;
+  margin: 14px 0 16px;
+}
+.tx-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.tx-txid {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--vs-muted);
+  word-break: break-all;
+}
+
+/* ------------------------------------------------------------------ */
 /* Accessibility                                                       */
 /* ------------------------------------------------------------------ */
 
