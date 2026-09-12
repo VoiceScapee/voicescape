@@ -162,10 +162,21 @@ const HEDERA_QUERY_GAS = 200_000;
 /** On the Hedera EVM, 1 tinybar = 10^10 wei (1 HBAR = 10^8 tinybar = 10^18 wei). */
 const WEI_PER_TINYBAR = 10_000_000_000n;
 
-function hederaContractId(evmAddress: string): ContractId {
+/** Exported for tests — converts an EVM address to a Hedera ContractId. */
+export function hederaContractId(evmAddress: string): ContractId {
   if (!/^0x[0-9a-fA-F]{40}$/.test(evmAddress)) {
     throw new Error(
       `Invalid contract address "${evmAddress}". Deploy the contracts first and set the address in env.`,
+    );
+  }
+  // Never build a transaction against the zero address — that shows up as
+  // "Contract ID: 0.0.0" in HashPack and burns the user's gas on a no-op.
+  // (This happened in production when NEXT_PUBLIC_TIPS_ADDRESS was left as
+  // the 0x000...000 placeholder from .env.example.)
+  if (/^0x0{40}$/i.test(evmAddress)) {
+    throw new Error(
+      `Contract address is the zero address (0x000...000) — a placeholder, not a deployed contract. ` +
+      `Set the real EVM address in env. Refusing to build a transaction to 0.0.0.`,
     );
   }
   return ContractId.fromEvmAddress(0, 0, evmAddress);

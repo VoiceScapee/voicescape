@@ -21,6 +21,9 @@ export { ZERO_ADDRESS };
 export function getRegistryAddress(): string {
   const addr = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
   if (!addr) throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is not set — deploy the contracts and add the address to your env.");
+  if (addr.trim().toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+    throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is the zero address (placeholder) — set it to the real Registry EVM address.");
+  }
   // Ethers needs the 0x EVM address, not the 0.0.x Hedera ID.
   // If the env has the Hedera ID format, use the known mainnet EVM address.
   if (/^0\.0\.\d+$/.test(addr.trim())) {
@@ -36,6 +39,14 @@ export function getRegistryAddress(): string {
 export function getTipsAddress(): string {
   const addr = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
   if (!addr) throw new Error("NEXT_PUBLIC_TIPS_ADDRESS is not set — deploy the contracts and add the address to your env.");
+  if (addr.trim().toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+    throw new Error("NEXT_PUBLIC_TIPS_ADDRESS is the zero address (placeholder) — set it to the real Tips EVM address (0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0).");
+  }
+  // Ethers/SDK needs the 0x EVM address, not the 0.0.x Hedera ID.
+  // Mainnet Tips 0.0.10854060 -> 0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0
+  if (addr.trim() === "0.0.10854060") {
+    return "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
+  }
   return addr;
 }
 
