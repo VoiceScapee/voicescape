@@ -51,6 +51,34 @@ interface WalletSigner {
 }
 
 /**
+ * Check whether an HCS transaction actually executed on-chain via the
+ * mirror node. Recovery path when the wallet goes silent after the user
+ * approves — we generated the txId ourselves, so we can look it up.
+ */
+async function checkHcsTxLanded(
+  txId: string,
+  network: "mainnet" | "testnet" | "previewnet",
+): Promise<"success" | "failed" | "unknown"> {
+  try {
+    const base =
+      network === "mainnet"
+        ? "https://mainnet.mirrornode.hedera.com/api/v1"
+        : network === "testnet"
+          ? "https://testnet.mirrornode.hedera.com/api/v1"
+          : "https://previewnet.mirrornode.hedera.com/api/v1";
+    const res = await fetch(`${base}/transactions/${encodeURIComponent(txId)}`);
+    if (!res.ok) return "unknown";
+    const data = (await res.json()) as { transactions?: Array<{ result?: string }> };
+    const result = data.transactions?.[0]?.result;
+    if (result === "SUCCESS") return "success";
+    if (result) return "failed";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
  * Submit a message to an HCS topic, signed by the user's wallet.
  *
  * @param topicId - The HCS topic ID (e.g. "0.0.12345")
@@ -94,10 +122,40 @@ export async function submitHcsViaWallet(
     const txId = tx.transactionId?.toString() ?? "";
     const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
 
-    await signer.signAndExecuteTransaction({
-      signerAccountId: `hedera:${signer.network}:${accountId.toString()}`,
-      transactionList: txBase64,
-    });
+    // The wallet response sometimes never arrives even though the user
+    // approved and the HCS message was submitted. Without a timeout the UI
+    // hangs on "submitting" forever while the user's money is already
+    // spent — the worst possible UX. Race the wallet call against a
+    // timeout, then check whether the transaction actually landed.
+    const WALLET_TIMEOUT_MS = 90_000;
+    let walletResponded = false;
+    try {
+      await Promise.race([
+        (async () => {
+          await signer.signAndExecuteTransaction({
+            signerAccountId: `hedera:${signer.network}:${accountId.toString()}`,
+            transactionList: txBase64,
+          });
+          walletResponded = true;
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("WALLET_TIMEOUT")), WALLET_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (e) {
+      if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
+        const landed = await checkHcsTxLanded(txId, signer.network);
+        if (landed === "success") return { transactionId: txId };
+        if (landed === "failed") {
+          throw new Error("The transaction failed on-chain. No message was posted.");
+        }
+        throw new Error(
+          "Your wallet didn't respond in time. The message may still have been posted — " +
+          "check the chat before sending again to avoid duplicates.",
+        );
+      }
+      throw e;
+    }
 
     return { transactionId: txId };
   } finally {

@@ -202,6 +202,29 @@ export function createHederaTxSender(
     return { dAppConnector, accountId: AccountId.fromString(accountIdStr) };
   }
 
+  /**
+   * Check whether a transaction ID actually executed on-chain via the
+   * mirror node. Used as a recovery path when the wallet goes silent
+   * after the user approves — we generated the txId ourselves, so we can
+   * look it up directly.
+   * Returns "success" | "failed" | "unknown" (not visible yet).
+   */
+  async function checkTxLanded(txId: string): Promise<"success" | "failed" | "unknown"> {
+    try {
+      const res = await fetch(
+        `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${encodeURIComponent(txId)}`,
+      );
+      if (!res.ok) return "unknown";
+      const data = (await res.json()) as { status?: string; results?: Array<{ status?: string }> };
+      const status = data.results?.[0]?.status ?? data.status;
+      if (status === "0x1") return "success";
+      if (status && status !== "0x1") return "failed";
+      return "unknown";
+    } catch {
+      return "unknown";
+    }
+  }
+
   async function executeWrite(
     evmAddress: string,
     fn: string,
@@ -237,10 +260,44 @@ export function createHederaTxSender(
     // transactionToBase64String(transaction) for this param).
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
     const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
-    await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
-      signerAccountId: `hedera:${network}:${accountId.toString()}`,
-      transactionList: txBase64,
-    });
+    // The wallet response sometimes never arrives even though the user
+    // approved in HashPack and the transaction executed on-chain. Without a
+    // timeout the UI hangs on "Tipping…" forever. Race the wallet call
+    // against a timeout, then check the mirror node for our txId — we
+    // generated it ourselves, so we can verify whether it actually landed.
+    const WALLET_TIMEOUT_MS = 90_000;
+    let walletResponded = false;
+    try {
+      await Promise.race([
+        (async () => {
+          await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
+            signerAccountId: `hedera:${network}:${accountId.toString()}`,
+            transactionList: txBase64,
+          });
+          walletResponded = true;
+        })(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("WALLET_TIMEOUT")), WALLET_TIMEOUT_MS),
+        ),
+      ]);
+    } catch (e) {
+      if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
+        // Wallet went silent — check whether the transaction actually
+        // executed on-chain before giving up.
+        const landed = await checkTxLanded(txId);
+        if (landed === "success") return txId;
+        if (landed === "failed") {
+          throw new Error("The transaction failed on-chain. No payment was sent.");
+        }
+        // Unknown: not visible on the mirror node yet. The user may have
+        // approved in their wallet — never claim failure. Tell them to check.
+        throw new Error(
+          "Your wallet didn't respond in time. The transaction may still have gone through — " +
+          "check your wallet history or the explorer before trying again.",
+        );
+      }
+      throw e;
+    }
     // HashScan deep link format: <network>/transaction/<txId>
     return txId;
   }
