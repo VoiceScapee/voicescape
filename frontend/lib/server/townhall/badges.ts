@@ -19,6 +19,7 @@
 
 import { ethers } from "ethers";
 import { canonicalAddress } from "../../session-message";
+import { isFounderWallet } from "../client-errors";
 import { getKvStore } from "../store";
 import { defaultHcsPort, type HcsPort } from "./hcs";
 import type { StoredMessage } from "./types";
@@ -655,6 +656,18 @@ export interface ComputeBadgesResult {
 }
 
 /**
+ * Founder bypass for the Builder badge: the founder wallet (0.0.10424063)
+ * is treated as having published a blockpage and received a tip, so the
+ * Builder badge (and the Builders room) unlock without on-chain activity.
+ */
+export function applyFounderEnrichment(wallet: string | undefined, enrichment: BadgeEnrichment): void {
+  if (wallet && isFounderWallet(wallet)) {
+    enrichment.ownsPage = true;
+    enrichment.tipsReceived = Math.max(1, enrichment.tipsReceived);
+  }
+}
+
+/**
  * Badges for one user. HCS-derived signals work with just a username;
  * payment/agent/clean-record badges additionally need the wallet.
  */
@@ -680,6 +693,8 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     enrichment.violations = violations;
     enrichment.ownsPage = ownsPage;
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
+    // Founder bypass: the founder wallet always qualifies for the Builder badge.
+    applyFounderEnrichment(wallet, enrichment);
   }
 
   // Rank among all users by first activity (for Early Adopter).

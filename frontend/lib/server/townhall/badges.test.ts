@@ -7,6 +7,7 @@ import {
   SCORE_WEIGHTS,
   THRESHOLDS,
   TOWNHALL_LAUNCH_TS,
+  applyFounderEnrichment,
   badgesForUser,
   gatherUserStats,
   scoreFromEntry,
@@ -185,6 +186,15 @@ describe("badgesForUser", () => {
     expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, ownsPage: true, tipsReceived: 0 }, 600, now).map((b) => b.id)).not.toContain("builder");
     expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, ownsPage: false, tipsReceived: 1 }, 600, now).map((b) => b.id)).not.toContain("builder");
     expect(badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id)).not.toContain("builder");
+  });
+
+  it("grants the founder the builder badge via enrichment bypass", () => {
+    const s = statsFor("founder", { activeDays: new Set(["2026-09-10"]) });
+    const e = { ...EMPTY_ENRICHMENT };
+    applyFounderEnrichment("0.0.10424063", e);
+    expect(e.ownsPage).toBe(true);
+    expect(e.tipsReceived).toBe(1);
+    expect(badgesForUser(s, e, 600, now).map((b) => b.id)).toContain("builder");
   });
 
   it("awards community-helper at 5 voters and crowd-favorite at 10", () => {

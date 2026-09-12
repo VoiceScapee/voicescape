@@ -12,6 +12,7 @@
  */
 
 import { canonicalAddress } from "../session-message";
+import { isFounderWallet } from "./client-errors";
 import { getKvStore } from "./store";
 import { countPaymentsReceived, ownsRegisteredPage } from "./townhall/badges";
 
@@ -36,13 +37,19 @@ export interface BuilderBadgeProgress {
 
 const LOCKED_PROGRESS: BuilderBadgeProgress = { hasPage: false, hasTip: false, complete: false };
 
+/** Founder bypass: the founder wallet (0.0.10424063) always holds the Builder badge. */
+const FOUNDER_PROGRESS: BuilderBadgeProgress = { hasPage: true, hasTip: true, complete: true };
+
 /**
  * Builder-badge progress for a wallet (0x or 0.0.x form). Fail-open:
  * Mirror Node or KV failures return locked progress, never a grant.
+ * The founder wallet bypasses the on-chain checks entirely.
  */
 export async function builderBadgeProgress(walletAddress: string): Promise<BuilderBadgeProgress> {
   const canon = canonicalAddress(walletAddress);
   if (!canon) return LOCKED_PROGRESS;
+  // Founder bypass — grants the badge even before any on-chain activity.
+  if (isFounderWallet(walletAddress)) return FOUNDER_PROGRESS;
   const kv = getKvStore();
   const key = BADGE_CACHE_KEY_PREFIX + canon;
   try {

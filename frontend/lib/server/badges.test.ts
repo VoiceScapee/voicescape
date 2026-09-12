@@ -90,6 +90,42 @@ describe("hasBuilderBadge", () => {
   });
 });
 
+describe("founder bypass", () => {
+  const FOUNDER_ID = "0.0.10424063";
+  const FOUNDER_EVM = "0x00000000000000000000000000000000009f0eff"; // long-zero session form
+
+  it("grants the founder the badge without any on-chain activity", async () => {
+    scenario = { hasPage: false, hasTip: false, fail: false };
+    expect(await hasBuilderBadge(FOUNDER_ID)).toBe(true);
+  });
+
+  it("grants the founder the badge in long-zero EVM form (session address)", async () => {
+    scenario = { hasPage: false, hasTip: false, fail: false };
+    expect(await hasBuilderBadge(FOUNDER_EVM)).toBe(true);
+  });
+
+  it("grants the founder full progress even when the mirror node is down", async () => {
+    scenario = { hasPage: false, hasTip: false, fail: true };
+    expect(await builderBadgeProgress(FOUNDER_ID)).toEqual({
+      hasPage: true,
+      hasTip: true,
+      complete: true,
+    });
+  });
+
+  it("makes no network calls for the founder", async () => {
+    scenario = { hasPage: false, hasTip: false, fail: false };
+    const calls = (fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length;
+    await hasBuilderBadge(FOUNDER_ID);
+    expect((fetch as unknown as { mock: { calls: unknown[] } }).mock.calls.length).toBe(calls);
+  });
+
+  it("does not grant a neighboring account the bypass", async () => {
+    scenario = { hasPage: false, hasTip: false, fail: false };
+    expect(await hasBuilderBadge("0.0.10424064")).toBe(false);
+  });
+});
+
 describe("builderBadgeProgress", () => {
   it("reports 1/2 goals with per-goal flags", async () => {
     scenario = { hasPage: true, hasTip: false, fail: false };
