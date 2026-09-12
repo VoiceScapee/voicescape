@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useWallet } from "@/lib/wallet";
-import { accountToEvmAddress, makeTownhallId, postJson } from "@/lib/townhall";
+import { accountToEvmAddress, makeTownhallId, postJson, usdToHbarDisplay } from "@/lib/townhall";
+import { getHbarUsdPrice } from "@/lib/x402";
 import { getActiveChain } from "@/lib/chains";
 import { resolvePage } from "@/lib/contracts";
 import { checkPayoutBelongsToOwner, mirrorBaseFor } from "@/lib/marketplace-verify";
@@ -22,6 +23,11 @@ export default function SellClient() {
   const [goodsType, setGoodsType] = useState<"physical" | "digital">("physical");
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [hbarPrice, setHbarPrice] = useState<number | null>(null);
+
+  useEffect(() => {
+    getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
+  }, []);
 
   const priceCents = Math.round(Number(price) * 100);
   const valid =
@@ -166,6 +172,17 @@ export default function SellClient() {
               inputMode="decimal"
               placeholder="25.00"
             />
+            {(() => {
+              const n = Number(price);
+              if (!Number.isFinite(n) || n <= 0) return null;
+              // Live HBAR equivalent so the seller sees what the buyer will
+              // actually be charged before listing.
+              return (
+                <p className="th-muted" style={{ marginTop: 6 }} data-testid="sell-price-hbar">
+                  {usdToHbarDisplay(n, hbarPrice)} charged at checkout
+                </p>
+              );
+            })()}
           </div>
           <div>
             <span className="vs-label">Goods type</span>
