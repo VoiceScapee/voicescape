@@ -5,11 +5,23 @@
  * was left as the 0x000...000 placeholder from .env.example, so tip
  * transactions were built against ContractId 0.0.0 (shown as "Contract ID:
  * 0.0.0" in HashPack). Users paid gas but no tip — and no 2% fee — ever
- * reached the Tips contract. The app must now refuse to build such a
- * transaction instead of silently sending to the zero address.
+ * reached the Tips contract.
+ *
+ * Two layers of defense:
+ *  1. get*Address() never throws — safe during Next.js build/static
+ *     generation. Reads degrade gracefully (resolvePage returns null).
+ *  2. require*Address() throws at RUNTIME when a write is attempted with a
+ *     missing/placeholder address, and hederaContractId() (lib/tx.ts)
+ *     refuses the zero address at transaction-construction time.
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { getRegistryAddress, getTipsAddress } from "./contracts";
+import {
+  getRegistryAddress,
+  getTipsAddress,
+  requireRegistryAddress,
+  requireTipsAddress,
+  resolvePage,
+} from "./contracts";
 
 const REAL_TIPS_EVM = "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
 const REAL_REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
@@ -19,15 +31,15 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("getTipsAddress", () => {
-  it("throws on the zero-address placeholder instead of returning 0x000...000", () => {
+describe("getTipsAddress (build-safe, never throws)", () => {
+  it("returns the zero placeholder as-is instead of throwing (write paths validate later)", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", ZERO);
-    expect(() => getTipsAddress()).toThrow(/zero address/i);
+    expect(getTipsAddress()).toBe(ZERO);
   });
 
-  it("throws when unset", () => {
+  it("returns undefined when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
-    expect(() => getTipsAddress()).toThrow(/not set/i);
+    expect(getTipsAddress()).toBeUndefined();
   });
 
   it("returns the real EVM address unchanged", () => {
@@ -39,17 +51,44 @@ describe("getTipsAddress", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "0.0.10854060");
     expect(getTipsAddress()).toBe(REAL_TIPS_EVM);
   });
+
+  it("returns undefined for an unknown Hedera ID", () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "0.0.12345");
+    expect(getTipsAddress()).toBeUndefined();
+  });
 });
 
-describe("getRegistryAddress", () => {
-  it("throws on the zero-address placeholder instead of returning 0x000...000", () => {
-    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
-    expect(() => getRegistryAddress()).toThrow(/zero address/i);
+describe("requireTipsAddress (runtime write guard)", () => {
+  it("throws on the zero-address placeholder", () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", ZERO);
+    expect(() => requireTipsAddress()).toThrow(/zero address/i);
   });
 
   it("throws when unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
+    expect(() => requireTipsAddress()).toThrow(/not set/i);
+  });
+
+  it("returns the real EVM address", () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", REAL_TIPS_EVM);
+    expect(requireTipsAddress()).toBe(REAL_TIPS_EVM);
+  });
+
+  it("converts the known Hedera ID 0.0.10854060 to the EVM address", () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "0.0.10854060");
+    expect(requireTipsAddress()).toBe(REAL_TIPS_EVM);
+  });
+});
+
+describe("getRegistryAddress (build-safe, never throws)", () => {
+  it("returns the zero placeholder as-is instead of throwing", () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
+    expect(getRegistryAddress()).toBe(ZERO);
+  });
+
+  it("returns undefined when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
-    expect(() => getRegistryAddress()).toThrow(/not set/i);
+    expect(getRegistryAddress()).toBeUndefined();
   });
 
   it("returns the real EVM address unchanged", () => {
@@ -60,5 +99,37 @@ describe("getRegistryAddress", () => {
   it("converts the known Hedera ID 0.0.10854058 to the EVM address", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "0.0.10854058");
     expect(getRegistryAddress()).toBe(REAL_REGISTRY_EVM);
+  });
+});
+
+describe("requireRegistryAddress (runtime write guard)", () => {
+  it("throws on the zero-address placeholder", () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
+    expect(() => requireRegistryAddress()).toThrow(/zero address/i);
+  });
+
+  it("throws when unset", () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
+    expect(() => requireRegistryAddress()).toThrow(/not set/i);
+  });
+
+  it("returns the real EVM address", () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", REAL_REGISTRY_EVM);
+    expect(requireRegistryAddress()).toBe(REAL_REGISTRY_EVM);
+  });
+
+  it("converts the known Hedera ID 0.0.10854058 to the EVM address", () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "0.0.10854058");
+    expect(requireRegistryAddress()).toBe(REAL_REGISTRY_EVM);
+  });
+});
+
+describe("resolvePage (read path degrades gracefully)", () => {
+  it("returns null when the registry address is unset (build-safe)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
+    // The null-guard runs before any chain/RPC use, so a stub chain is fine.
+    await expect(
+      resolvePage("someone", { key: "hedera-mainnet" } as never),
+    ).resolves.toBeNull();
   });
 });

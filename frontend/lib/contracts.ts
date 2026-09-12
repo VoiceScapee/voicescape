@@ -18,34 +18,79 @@ import { createReadOnlySender, ZERO_ADDRESS, type ResolveResult, type TxSender }
 export type { ResolveResult } from "./tx";
 export { ZERO_ADDRESS };
 
-export function getRegistryAddress(): string {
-  const addr = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
-  if (!addr) throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is not set — deploy the contracts and add the address to your env.");
-  if (addr.trim().toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
-    throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is the zero address (placeholder) — set it to the real Registry EVM address.");
-  }
+const MAINNET_REGISTRY_ID = "0.0.10854058";
+const MAINNET_REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
+const MAINNET_TIPS_ID = "0.0.10854060";
+const MAINNET_TIPS_EVM = "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
+
+export function getRegistryAddress(): string | undefined {
+  return normalizeContractAddress(
+    process.env.NEXT_PUBLIC_REGISTRY_ADDRESS,
+    MAINNET_REGISTRY_ID,
+    MAINNET_REGISTRY_EVM,
+  );
+}
+
+export function getTipsAddress(): string | undefined {
+  return normalizeContractAddress(
+    process.env.NEXT_PUBLIC_TIPS_ADDRESS,
+    MAINNET_TIPS_ID,
+    MAINNET_TIPS_EVM,
+  );
+}
+
+/**
+ * Normalize a contract address env var without throwing. Returns undefined
+ * when unset or unmappable — read paths degrade gracefully (resolvePage
+ * returns null). Write-time validation lives in require*Address() below
+ * plus hederaContractId() in lib/tx.ts, so a bad value can never silently
+ * become a 0.0.0 transaction at runtime, and it can never fail a build.
+ */
+function normalizeContractAddress(
+  raw: string | undefined,
+  knownHederaId: string,
+  knownEvmAddress: string,
+): string | undefined {
+  const addr = raw?.trim();
+  if (!addr) return undefined;
   // Ethers needs the 0x EVM address, not the 0.0.x Hedera ID.
-  // If the env has the Hedera ID format, use the known mainnet EVM address.
-  if (/^0\.0\.\d+$/.test(addr.trim())) {
-    // Mainnet Registry 0.0.10854058 -> 0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58
-    if (addr.trim() === "0.0.10854058") {
-      return "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
-    }
-    throw new Error(`Registry address ${addr} is a Hedera ID, not an EVM address. Set NEXT_PUBLIC_REGISTRY_ADDRESS to the 0x address.`);
+  if (/^0\.0\.\d+$/.test(addr)) {
+    return addr === knownHederaId ? knownEvmAddress : undefined;
   }
   return addr;
 }
 
-export function getTipsAddress(): string {
-  const addr = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-  if (!addr) throw new Error("NEXT_PUBLIC_TIPS_ADDRESS is not set — deploy the contracts and add the address to your env.");
-  if (addr.trim().toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
-    throw new Error("NEXT_PUBLIC_TIPS_ADDRESS is the zero address (placeholder) — set it to the real Tips EVM address (0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0).");
+/**
+ * Validated address for WRITE paths only. Throws at RUNTIME when a user
+ * actually tries to transact — never at build time, because the write
+ * functions below are only invoked from user actions and API handlers.
+ */
+export function requireRegistryAddress(): string {
+  const addr = getRegistryAddress();
+  if (!addr) {
+    throw new Error(
+      "NEXT_PUBLIC_REGISTRY_ADDRESS is not set (or is a placeholder/unknown format) — deploy the contracts and add the real Registry EVM address to your env.",
+    );
   }
-  // Ethers/SDK needs the 0x EVM address, not the 0.0.x Hedera ID.
-  // Mainnet Tips 0.0.10854060 -> 0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0
-  if (addr.trim() === "0.0.10854060") {
-    return "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
+  if (addr.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+    throw new Error(
+      "NEXT_PUBLIC_REGISTRY_ADDRESS is the zero address (0x000...000 placeholder) — set it to the real Registry EVM address.",
+    );
+  }
+  return addr;
+}
+
+export function requireTipsAddress(): string {
+  const addr = getTipsAddress();
+  if (!addr) {
+    throw new Error(
+      "NEXT_PUBLIC_TIPS_ADDRESS is not set (or is a placeholder/unknown format) — deploy the contracts and add the real Tips EVM address to your env.",
+    );
+  }
+  if (addr.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
+    throw new Error(
+      `NEXT_PUBLIC_TIPS_ADDRESS is the zero address (0x000...000 placeholder) — set it to the real Tips EVM address (${MAINNET_TIPS_EVM}).`,
+    );
   }
   return addr;
 }
@@ -58,7 +103,9 @@ export async function resolvePage(
   username: string,
   chain: ChainConfig,
 ): Promise<ResolveResult | null> {
-  return createReadOnlySender(chain).viewResolve(getRegistryAddress(), username);
+  const addr = getRegistryAddress();
+  if (!addr) return null; // not configured — read path degrades gracefully (build-safe)
+  return createReadOnlySender(chain).viewResolve(addr, username);
 }
 
 /**
@@ -76,7 +123,7 @@ export async function registerPage(
   purpose: string,
   sender: TxSender,
 ): Promise<string> {
-  return sender.sendRegister(getRegistryAddress(), username, ipfsHash, ownerType, operator, purpose);
+  return sender.sendRegister(requireRegistryAddress(), username, ipfsHash, ownerType, operator, purpose);
 }
 
 /**
@@ -87,7 +134,7 @@ export async function updatePage(
   ipfsHash: string,
   sender: TxSender,
 ): Promise<string> {
-  return sender.sendUpdate(getRegistryAddress(), username, ipfsHash);
+  return sender.sendUpdate(requireRegistryAddress(), username, ipfsHash);
 }
 
 /**
@@ -100,7 +147,7 @@ export async function tipPage(
   valueWei: bigint,
   sender: TxSender,
 ): Promise<string> {
-  return sender.sendTip(getTipsAddress(), username, valueWei);
+  return sender.sendTip(requireTipsAddress(), username, valueWei);
 }
 
 /**
@@ -115,5 +162,5 @@ export async function buyListing(
   valueWei: bigint,
   sender: TxSender,
 ): Promise<string> {
-  return sender.sendBuy(getTipsAddress(), seller, listingRef, valueWei);
+  return sender.sendBuy(requireTipsAddress(), seller, listingRef, valueWei);
 }
