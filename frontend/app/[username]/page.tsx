@@ -34,7 +34,7 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; page: VoicescapePage; meta: RegistryMeta };
 
-const TIP_PRESETS_USD = ["1", "5", "10", "25"];
+const TIP_PRESETS_USD = ["0.10", "1", "5", "10", "25"];
 
 function TipBox({
   username,
