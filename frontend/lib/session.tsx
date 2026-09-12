@@ -128,50 +128,71 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const signingRef = useRef(false);
+  /**
+   * Fresh read of the session that never goes stale inside effects. The
+   * account-sync effect below must see the session restored by the mount
+   * effect even though both run in the same commit (state closures would
+   * still hold the initial null).
+   */
+  const sessionRef = useRef<StoredSession | null>(null);
+  const setSessionBoth = useCallback((s: StoredSession | null) => {
+    sessionRef.current = s;
+    setSession(s);
+  }, []);
 
   const account = wallet.account;
   const adapterId = (wallet.adapterName ?? null) as WalletAdapterId | null;
   const signer: SignerInfo | null = adapterId ? (ADAPTER_SIGNERS[adapterId] ?? null) : null;
 
-  /* Restore a persisted session on mount. The session is a bearer token
-     (server-signed, verified on every request), so it stays valid even
-     before the wallet reconnects — that gives the honest 7-day reload.
-     If the user later connects a *different* wallet, the account-sync
-     effect below drops it: a session belongs to exactly one wallet. */
+  /* Restore a persisted session on mount (effect, not render — avoids an
+     SSR hydration mismatch). The session is a bearer token (server-signed,
+     verified on every request), so it stays valid even before the wallet
+     reconnects — that gives the honest 7-day reload. */
+  const restoredRef = useRef(false);
   useEffect(() => {
     const stored = readStored();
     if (stored && stored.chainId === chain.chainId) {
-      setSession(stored);
+      setSessionBoth(stored);
       setStatus("authenticated");
-      return;
+    } else {
+      if (stored) writeStored(null); // stale: wrong chain or expired
+      setSessionBoth(null);
+      setStatus(account ? "connected" : "anonymous");
     }
-    if (stored) writeStored(null); // stale: wrong chain or expired
-    setSession(null);
-    setStatus(account ? "connected" : "anonymous");
+    restoredRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* React to wallet connect / disconnect / account switch. */
+  /* React to wallet connect / disconnect / account switch. Never runs
+     before the restore above, so a page reload can't wipe a valid session
+     before the wallet has had a chance to reconnect — that was the
+     "asked to reconnect on every navigation" bug: the old code deleted
+     the 7-day session whenever wallet.account was momentarily null. */
   useEffect(() => {
+    if (!restoredRef.current) return;
     if (status === "loading" || status === "signing") return;
+    const stored = sessionRef.current;
     if (!account) {
-      setSession(null);
-      writeStored(null);
-      setStatus("anonymous");
+      // No wallet connected (yet). The 7-day session is a bearer token:
+      // it stays valid without a live wallet connection and keeps
+      // authenticating API calls. Keep it — only drop to anonymous when
+      // there is no session at all.
+      setStatus(stored && stored.chainId === chain.chainId ? "authenticated" : "anonymous");
       return;
     }
-    setSession((prev) => {
-      const accountAddr = canonicalAddress(account);
-      if (prev && prev.chainId === chain.chainId && accountAddr && prev.address === accountAddr) {
-        setStatus("authenticated");
-        return prev;
-      }
-      writeStored(null);
-      setStatus("connected");
-      return null;
-    });
+    const accountAddr = canonicalAddress(account);
+    if (stored && stored.chainId === chain.chainId && accountAddr && stored.address === accountAddr) {
+      setStatus("authenticated");
+      return;
+    }
+    // A different wallet connected — the old session belongs to someone
+    // else. (Explicit sign-out clears the session itself, so reaching
+    // here with no stored session just means "connected, not signed in".)
+    writeStored(null);
+    setSessionBoth(null);
+    setStatus("connected");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account]);
+  }, [account, status, chain.chainId]);
 
   const signHederaMessage = useCallback(async (message: string, accountId: string): Promise<string> => {
     const pairing = getHederaPairing();
@@ -300,7 +321,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           adapterId: activeAdapter,
           expiresAtMs,
         });
-        setSession(created);
+        setSessionBoth(created);
         writeStored(created);
         setStatus("authenticated");
         return created;
@@ -309,7 +330,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // User rejection shouldn't look like an app error.
         const rejected = /user (rejected|denied)|rejected the request/i.test(msg);
         setError(rejected ? "Signature request was dismissed in the wallet." : msg);
-        setSession(null);
+        setSessionBoth(null);
         writeStored(null);
         setStatus(account ? "connected" : "anonymous");
         throw e instanceof Error ? e : new Error(msg);
@@ -321,7 +342,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(() => {
-    setSession(null);
+    setSessionBoth(null);
     writeStored(null);
     setError(null);
     void wallet.disconnect();

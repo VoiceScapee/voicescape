@@ -204,8 +204,45 @@ export const IN_APP_PROBE_TIMEOUT_MS = 4_000;
 /* Shared Hedera pairing via DAppConnector                              */
 /* ------------------------------------------------------------------ */
 
-let dAppConnectorInstance: DAppConnector | null = null;
+/**
+ * Module-level DAppConnector singleton — the official recommendation is to
+ * "store this instance (e.g. as a singleton) for reuse throughout your
+ * application". Module scope survives component unmounts/remounts and
+ * Next.js route changes, so the pairing is never rebuilt by navigation.
+ *
+ * The init-promise guard below prevents the double-init race: React
+ * StrictMode double-mounts effects in dev, and the page-load restore can
+ * race the in-app-browser auto-connect — all callers share one connector
+ * and one init instead of building two and double-prompting the wallet.
+ */
+let _connector: DAppConnector | null = null;
+let _connectorPromise: Promise<DAppConnector> | null = null;
+let _initialized = false;
 let hcAccountId: string | null = null;
+/**
+ * Generation counter: every dropConnector() invalidates in-flight builds.
+ * If the page-load restore is still importing the wallet library when the
+ * user taps "connect", the explicit tap wins and the stale restore build
+ * is discarded instead of resurrecting a second connector.
+ */
+let _generation = 0;
+
+/** React-side listeners for wallet-initiated session loss (see below). */
+const pairingLostListeners = new Set<() => void>();
+
+/**
+ * Subscribe to wallet-side session loss. When the user disconnects in
+ * HashPack (or the session expires), the SignClient fires session_delete /
+ * session_expire — the dApp clears its pairing state instantly instead of
+ * showing a connected wallet that fails on the next signature.
+ * Returns an unsubscribe function.
+ */
+export function onPairingLost(cb: () => void): () => void {
+  pairingLostListeners.add(cb);
+  return () => {
+    pairingLostListeners.delete(cb);
+  };
+}
 
 function getPairingProjectId(): string {
   const pid = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID;
@@ -217,16 +254,24 @@ function getPairingProjectId(): string {
   return pid;
 }
 
+/** Drop the singleton (local state only — no wallet calls). */
+function dropConnector(): void {
+  _generation++;
+  _connector = null;
+  _connectorPromise = null;
+  _initialized = false;
+  hcAccountId = null;
+}
+
 async function disconnectHedera(): Promise<void> {
-  if (dAppConnectorInstance) {
+  if (_connector) {
     try {
-      await dAppConnectorInstance.disconnectAll();
+      await _connector.disconnectAll();
     } catch {
-      // Best effort.
+      // Best effort — local state is cleared regardless.
     }
-    dAppConnectorInstance = null;
-    hcAccountId = null;
   }
+  dropConnector();
 }
 
 /**
@@ -235,8 +280,8 @@ async function disconnectHedera(): Promise<void> {
  * token transfers. Returns null when no Hedera wallet is paired.
  */
 export function getHederaPairing(): { hc: DAppConnector; accountId: string } | null {
-  if (!dAppConnectorInstance || !hcAccountId) return null;
-  return { hc: dAppConnectorInstance, accountId: hcAccountId };
+  if (!_connector || !hcAccountId) return null;
+  return { hc: _connector, accountId: hcAccountId };
 }
 
 /**
@@ -317,20 +362,18 @@ async function waitForIframeExtension(
 }
 
 /**
- * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
+ * Build (but do not init) a DAppConnector for the active chain. Shared by
+ * the fresh-pairing flow and the silent page-load restore — one
+ * construction path, one metadata set.
  *
- * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
- * project id, init(), then openModal() for QR-based pairing with any HIP-820
- * wallet (HashPack mobile, Blade, Kabila…). Inside HashPack's in-app browser
- * the pairing happens via the iframe callback instead of a QR modal.
+ * Dynamic import keeps the wallet library out of the initial bundle and
+ * avoids SSR issues (the package touches browser APIs at import time).
+ * NOTE: We deliberately do NOT import @hiero-ledger/sdk here — it creates a
+ * 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
+ * LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
+ * (via ./tx) is only loaded when actually signing a transaction.
  */
-async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // Dynamic import keeps the wallet library out of the initial bundle and
-  // avoids SSR issues (the package touches browser APIs at import time).
-  // NOTE: We deliberately do NOT import @hiero-ledger/sdk here — it creates a
-  // 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
-  // LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
-  // (via ./tx) is only loaded when actually signing a transaction.
+async function buildConnector(): Promise<DAppConnector> {
   const {
     DAppConnector: DAppConnectorClass,
     HederaJsonRpcMethod,
@@ -342,13 +385,12 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     "Wallet library failed to load. Check your connection and try again.",
   );
 
-  await disconnectHedera();
-
+  const chain = getActiveChain();
   const isMainnet = chain.key === "hedera-mainnet";
   // MinimalLedgerId shim: DAppConnector only calls toString() on the ledger id.
   const ledgerId = (isMainnet ? MinimalLedgerId.MAINNET : MinimalLedgerId.TESTNET) as unknown as never;
 
-  const connector = new DAppConnectorClass(
+  return new DAppConnectorClass(
     {
       name: "Voicescape",
       description: "Block pages for humans and AI agents, with on-chain tipping",
@@ -361,7 +403,135 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
     [isMainnet ? HederaChainId.Mainnet : HederaChainId.Testnet],
   );
-  dAppConnectorInstance = connector;
+}
+
+/**
+ * Module singleton with an init-promise guard: concurrent callers (React
+ * StrictMode double-mount, page-load restore racing the in-app-browser
+ * auto-connect) share one connector instead of building two and
+ * double-prompting the wallet.
+ */
+async function getConnector(): Promise<DAppConnector> {
+  if (_connector) return _connector;
+  if (!_connectorPromise) {
+    const gen = _generation;
+    _connectorPromise = buildConnector().then(
+      (c) => {
+        // A dropConnector() while the build was in flight means someone
+        // else (explicit connect tap) superseded this build — discard it
+        // instead of resurrecting a second live connector.
+        if (gen !== _generation) throw new Error("connector build superseded");
+        _connector = c;
+        return c;
+      },
+      (e) => {
+        // Don't cache the failure — a later call retries the build.
+        if (gen === _generation) _connectorPromise = null;
+        throw e;
+      },
+    );
+  }
+  return _connectorPromise;
+}
+
+/**
+ * Wallet-side disconnects propagate to dApp state instantly: when the user
+ * disconnects in HashPack (or the session expires), the SignClient fires
+ * session_delete / session_expire — clear the pairing so the UI stops
+ * showing a connected wallet that would fail on the next signature.
+ * React providers are notified through onPairingLost().
+ */
+function subscribeSessionEvents(connector: DAppConnector): void {
+  const client = connector.walletConnectClient;
+  if (!client) return;
+  const onSessionGone = () => {
+    if (_connector !== connector) return; // stale instance, ignore
+    dropConnector();
+    for (const cb of pairingLostListeners) {
+      try {
+        cb();
+      } catch {
+        /* listener failure must not break other listeners */
+      }
+    }
+  };
+  client.on("session_delete", onSessionGone);
+  client.on("session_expire", onSessionGone);
+}
+
+/**
+ * Init the singleton (once) and wire session events. Returns the connector,
+ * or null when init failed.
+ *
+ * Known HashPack bug (#291): init() throws when the user disconnected in
+ * the extension, leaving a stale session in localStorage. init() also
+ * swallows its own errors internally, so a missing walletConnectClient
+ * afterwards means the same thing. Both are treated as "not connected" —
+ * never fatal.
+ */
+async function ensureInitialized(timeoutMessage: string): Promise<DAppConnector | null> {
+  const connector = await getConnector();
+  if (_initialized) return connector;
+  try {
+    await withTimeout(connector.init({ logger: "error" }), 30_000, timeoutMessage);
+  } catch {
+    dropConnector();
+    return null;
+  }
+  // init() swallows its own errors internally — verify the client actually
+  // came up before proceeding.
+  if (!connector.walletConnectClient) {
+    dropConnector();
+    return null;
+  }
+  subscribeSessionEvents(connector);
+  _initialized = true;
+  return connector;
+}
+
+/**
+ * Silently restore a previously-approved Hedera pairing after a page
+ * reload. WalletConnect's SignClient persists sessions in localStorage, so
+ * init() rehydrates them into `connector.signers` — no re-prompt, no
+ * openModal() needed when a live session exists.
+ *
+ * Returns the account id when a usable pairing was restored, null
+ * otherwise. Never throws: a failed restore just means the user connects
+ * manually (or via the in-app-browser auto-connect).
+ */
+export async function restoreHederaPairing(): Promise<string | null> {
+  try {
+    if (_connector && hcAccountId) return hcAccountId; // already live
+    const connector = await ensureInitialized("Wallet restore timed out.");
+    // The restore may have been superseded by an explicit connect tap
+    // while init was in flight — only adopt the pairing when this
+    // connector is still the live singleton.
+    if (!connector || _connector !== connector) return null;
+    const signer = connector.signers?.[0];
+    const accountId = signer?.getAccountId?.()?.toString?.() ?? null;
+    if (!accountId || !/^0\.0\.\d+$/.test(accountId)) return null;
+    hcAccountId = accountId;
+    return accountId;
+  } catch {
+    // Stale storage / relay unreachable / HashPack #291: not connected.
+    return null;
+  }
+}
+
+/**
+ * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
+ *
+ * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
+ * project id, init(), then openModal() for QR-based pairing with any HIP-820
+ * wallet (HashPack mobile, Blade, Kabila…). Inside HashPack's in-app browser
+ * the pairing happens via the iframe callback instead of a QR modal.
+ */
+async function connectHederaWallet(chain: ChainConfig): Promise<string> {
+  // Explicit user connect = fresh pairing. Drop any existing connector
+  // first (silent restore is for page-load only, never for a tap).
+  await disconnectHedera();
+
+  const connector = await getConnector();
 
   // Set the iframe-session callback BEFORE init() in all flows: init()'s
   // internal checkIframeConnect() may fire a pairing request, and the
@@ -395,14 +565,12 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     }
   };
 
-  await withTimeout(
-    connector.init({ logger: "error" }),
-    30_000,
+  await ensureInitialized(
     "Wallet pairing timed out while starting. The WalletConnect relay may be unreachable — check your connection and try again.",
   );
 
-  // init() swallows its own errors internally — verify the client actually
-  // came up before proceeding.
+  // ensureInitialized() returns null when init failed (HashPack #291,
+  // unreachable relay, stale storage) — surface the actionable error.
   if (!connector.walletConnectClient) {
     throw new Error(
       "Wallet pairing failed to start. The WalletConnect project ID may be invalid or the relay unreachable. Try again or use a different wallet.",
@@ -514,13 +682,13 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
 
 function hederaGetTxSender(chain: ChainConfig): () => Promise<TxSender> {
   return async () => {
-    if (!dAppConnectorInstance || !hcAccountId) {
+    if (!_connector || !hcAccountId) {
       throw new Error("Hedera wallet is not connected.");
     }
     // Dynamic import: ./tx pulls in @hiero-ledger/sdk (~2.3MB). Only load it
     // when actually signing — never on page load or wallet connection.
     const { createHederaTxSender } = await import("./tx");
-    return createHederaTxSender(dAppConnectorInstance, hcAccountId, chain);
+    return createHederaTxSender(_connector, hcAccountId, chain);
   };
 }
 
@@ -637,6 +805,31 @@ const ADAPTERS: Record<WalletAdapterId, WalletAdapter> = {
 /* React context + hook                                                 */
 /* ------------------------------------------------------------------ */
 
+/** localStorage key remembering which adapter last paired (HashPack/Blade/WC). */
+const ADAPTER_STORAGE_KEY = "vs-wallet-adapter-v1";
+
+/**
+ * Which adapter created the current pairing, if known. Read on page load
+ * so a restored pairing shows the right wallet label.
+ */
+export function readStoredAdapterId(): WalletAdapterId | null {
+  try {
+    const raw = window.localStorage.getItem(ADAPTER_STORAGE_KEY);
+    return raw && WALLET_ADAPTERS.some((a) => a.id === raw) ? (raw as WalletAdapterId) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeStoredAdapterId(id: WalletAdapterId | null): void {
+  try {
+    if (id) window.localStorage.setItem(ADAPTER_STORAGE_KEY, id);
+    else window.localStorage.removeItem(ADAPTER_STORAGE_KEY);
+  } catch {
+    /* storage unavailable — the adapter just won't persist */
+  }
+}
+
 const WalletContext = createContext<WalletState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
@@ -658,6 +851,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAccount(result.account);
       setChainId(result.chainId);
       setAdapterName(adapterId);
+      // Remember which adapter paired, so a page reload can restore the
+      // same pairing silently (and show the right wallet label).
+      writeStoredAdapterId(adapterId);
       return result.account;
     } catch (e) {
       senderGetter.current = null;
@@ -686,30 +882,68 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAccount(null);
     setChainId(null);
     setAdapterName(null);
+    writeStoredAdapterId(null);
   }, [adapterName]);
 
-  /* Auto-connect inside a wallet's in-app browser: the wallet is already
-     at hand there, so connect on mount instead of making the user tap
-     through a wallet picker. Uses async detection so HashPack's iOS
-     in-app browser (no sync signal) is covered too; on desktop it
-     resolves false immediately. The 7-day session still requires one
-     explicit signature (handled by the session layer) — authentication
-     is never skipped. Failures surface via wallet.error and the manual
-     "Sign in with wallet" picker stays available as a fallback. */
-  const autoConnectTried = useRef(false);
+  /* Wallet-side session loss (session_delete / session_expire from
+     HashPack): clear React state instantly so the UI stops showing a
+     connected wallet. The 7-day sign-in session (layer b) is untouched —
+     it stays valid for API calls; only the live pairing is gone. */
   useEffect(() => {
-    if (autoConnectTried.current) return;
-    if (account) return;
-    autoConnectTried.current = true;
-    void isHashPackInAppBrowserAsync().then((inApp) => {
-      if (!inApp) return;
-      return connect("hashpack").catch(() => {
-        // connect() already recorded the specific failure in wallet.error
-        // and rethrows; swallow the rethrow here since the error state is
-        // the user-visible signal.
-      });
+    return onPairingLost(() => {
+      senderGetter.current = null;
+      setAccount(null);
+      setChainId(null);
+      setAdapterName(null);
     });
-  }, [connect, account]);
+  }, []);
+
+  /* Boot on mount — restore first, pair only when needed:
+     1. Silently restore a previously-approved pairing. WalletConnect
+        persists sessions in localStorage, so a page reload must NOT force
+        a reconnect: init() rehydrates the session with no user gesture.
+     2. Only when nothing is restorable AND we're inside a wallet's in-app
+        browser (HashPack), pair immediately — the wallet is one tap away
+        there, so auto-connect instead of showing the picker. Everywhere
+        else the manual picker stays the entry point.
+     Runs once per mount. The root provider never remounts on SPA
+     navigation, so this can't loop; the init-promise guard covers
+     StrictMode double-mount in dev. */
+  const bootTried = useRef(false);
+  useEffect(() => {
+    if (bootTried.current) return;
+    if (account) return;
+    bootTried.current = true;
+    (async () => {
+      setIsConnecting(true);
+      try {
+        const restoredAccount = await restoreHederaPairing();
+        const pairing = getHederaPairing();
+        if (restoredAccount && pairing) {
+          const chain = getActiveChain();
+          senderGetter.current = hederaGetTxSender(chain);
+          setAccount(pairing.accountId);
+          setChainId(chain.chainId);
+          setAdapterName(readStoredAdapterId() ?? "hashpack");
+          return;
+        }
+      } catch {
+        /* restore failed — fall through to the flows below */
+      } finally {
+        setIsConnecting(false);
+      }
+      const inApp = await isHashPackInAppBrowserAsync().catch(() => false);
+      if (inApp) {
+        connect("hashpack").catch(() => {
+          // connect() already recorded the specific failure in
+          // wallet.error and rethrows; swallow it here since the error
+          // state is the user-visible signal and the manual picker
+          // remains as a fallback.
+        });
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connect]);
 
   const getTxSender = useCallback(async (): Promise<TxSender> => {
     if (!senderGetter.current) throw new Error("Connect a wallet first.");
