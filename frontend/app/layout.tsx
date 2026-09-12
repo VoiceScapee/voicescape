@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./(townhall)/townhall.css";
 import { RootProviders } from "./providers";
+import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 
 const SITE_TITLE = "Voicescape — Your page, your vibe, on-chain tips";
@@ -47,6 +48,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <RootProviders>{children}</RootProviders>
+        <Analytics />
       </body>
     </html>
   );
