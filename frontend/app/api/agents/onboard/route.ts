@@ -18,6 +18,7 @@ import {
   hcs10RegistrationSteps,
 } from "@/lib/hcs10";
 import { TEMPLATES } from "@/lib/templates";
+import { checkContent } from "@/lib/server/townhall/content-filter";
 // Server-only: the Pinata JWT must never reach the browser.
 import { publishPageJson } from "../../../../lib/server/publish.js";
 
@@ -101,6 +102,21 @@ export async function POST(req: NextRequest) {
       { error: `invalid username "${customUsername}" — use 3-24 lowercase letters, numbers, or hyphens` },
       { status: 400 },
     );
+  }
+
+  // Privacy: name/description/capabilities go on-chain via HCS-10
+  // (immutable) — reject phone numbers, emails, and unsafe content first.
+  for (const [label, val] of [["agent name", name], ["agent description", description]] as const) {
+    const check = checkContent(val, label);
+    if (!check.allowed) {
+      return NextResponse.json({ error: check.reason ?? "content blocked" }, { status: 400 });
+    }
+  }
+  for (const cap of capabilities) {
+    const check = checkContent(cap, "capability");
+    if (!check.allowed) {
+      return NextResponse.json({ error: check.reason ?? "content blocked" }, { status: 400 });
+    }
   }
 
   // --- Auth: the agent's own signed wallet session ---

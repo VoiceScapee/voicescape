@@ -156,9 +156,9 @@ const SLUR_WORDS = [
 ];
 
 /* ------------------------------------------------------------------ */
-/* Personal contact info: email + phone. Blocked because HCS content  */
-/* is immutable — a posted phone number can never be taken back.      */
-/* Users can share contact details via DMs instead.                   */
+/* Personal contact info: email + phone. Blocked everywhere because   */
+/* posted contact details can never be taken back (HCS is immutable,  */
+/* IPFS is immutable). Wallet connection is the only identity.        */
 /* ------------------------------------------------------------------ */
 
 /** Basic email shape. */
@@ -303,15 +303,16 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
   }
 
   // Contact info: HCS content is immutable, so phone numbers and email
-  // addresses are blocked here. Users can share contact details via DMs.
+  // addresses are blocked everywhere on Voicescape — there is no
+  // exception for DMs. Wallet connection is the only identity.
   if (EMAIL_RE.test(text)) {
-    return blocked("posting email addresses is not allowed — share contact details via DM instead");
+    return blocked("posting email addresses is not allowed — contact details are not allowed anywhere on Voicescape");
   }
   const phoneRe = new RegExp(PHONE_RE.source, "g");
   let pm: RegExpExecArray | null;
   while ((pm = phoneRe.exec(text)) !== null) {
     if (digitCount(pm[0]) >= 10) {
-      return blocked("posting phone numbers is not allowed — share contact details via DM instead");
+      return blocked("posting phone numbers is not allowed — contact details are not allowed anywhere on Voicescape");
     }
     if (pm[0].length === 0) phoneRe.lastIndex++;
   }

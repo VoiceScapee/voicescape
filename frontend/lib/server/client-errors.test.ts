@@ -61,6 +61,13 @@ describe("scrubErrorMessage / normalizeErrorMessage", () => {
     expect(scrubErrorMessage("account 0.0.10424063 not found")).toBe("account 0.0.… not found");
     expect(scrubErrorMessage("plain message")).toBe("plain message");
   });
+  test("scrubs email addresses and phone numbers", () => {
+    expect(scrubErrorMessage("contact john@example.com for help")).toBe("contact …@… for help");
+    expect(scrubErrorMessage("call 555-123-4567 now")).toBe("call …phone… now");
+    expect(scrubErrorMessage("call +1 (555) 123-4567 now")).toBe("call …phone… now");
+    // Plain digit runs (order numbers) are left alone
+    expect(scrubErrorMessage("order 12345 shipped")).toBe("order 12345 shipped");
+  });
   test("truncates to 200 chars and collapses whitespace", () => {
     const long = "x".repeat(500);
     expect(normalizeErrorMessage(long)!.length).toBe(MAX_ERROR_MESSAGE_LEN);

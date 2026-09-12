@@ -67,10 +67,11 @@ describe("checkContent", () => {
     expect(checkContent("order number 1234567890123 confirmed").allowed).toBe(true);
   });
 
-  it("blocks phone numbers (immutable HCS — use DMs)", () => {
+  it("blocks phone numbers (no contact details anywhere on Voicescape)", () => {
     const r = checkContent("call me at 555-123-4567", "post body");
     expect(r.allowed).toBe(false);
     expect(r.reason).toContain("phone numbers");
+    expect(r.reason).not.toContain("via DM");
     // International format too.
     expect(checkContent("my number is +1 (555) 123-4567").allowed).toBe(false);
   });
@@ -79,6 +80,7 @@ describe("checkContent", () => {
     const r = checkContent("email me at bob@example.com for details");
     expect(r.allowed).toBe(false);
     expect(r.reason).toContain("email");
+    expect(r.reason).not.toContain("via DM");
   });
 
   it("blocks profanity", () => {

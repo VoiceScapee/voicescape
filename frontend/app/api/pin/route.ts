@@ -6,8 +6,46 @@ import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "@/lib/server/quota";
 import { ipGate } from "@/lib/server/rate-limit";
 import { validateAudioUpload } from "@/lib/server/media-safety";
+import { checkContent } from "@/lib/server/townhall/content-filter";
 
 export const runtime = "nodejs";
+
+/**
+ * Privacy: the upload filename is fully user-controlled and persists in
+ * Pinata metadata. Replace it with a neutral name — PII like
+ * "john-smith-555-1234.mp3" must never reach storage. Only the safe
+ * audio extension is preserved.
+ */
+function safeAudioFilename(raw: unknown): string {
+  const name = typeof raw === "string" ? raw : "";
+  const dot = name.lastIndexOf(".");
+  let ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (!/^[a-z0-9]{2,5}$/.test(ext)) ext = "bin";
+  return `audio-${Date.now()}.${ext}`;
+}
+
+/**
+ * Privacy: blockpage JSON is pinned to IPFS, which is immutable — a phone
+ * number in a bio could never be taken back. Recursively walk every
+ * string value and run it through the content filter. Returns the block
+ * reason when PII/unsafe content is found, null when clean.
+ */
+function pageJsonPiiCheck(value: unknown, seen = new Set<object>()): string | null {
+  if (typeof value === "string") {
+    const check = checkContent(value, "page content");
+    return check.allowed ? null : (check.reason ?? "content blocked");
+  }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return null; // cycle guard
+    seen.add(value);
+    const vals = Array.isArray(value) ? value : Object.values(value);
+    for (const v of vals) {
+      const hit = pageJsonPiiCheck(v, seen);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
 
 /**
  * POST /api/pin — pin to IPFS via Pinata. Two modes:
@@ -87,7 +125,7 @@ export async function POST(req: NextRequest) {
       if (!screen.ok) {
         return NextResponse.json({ error: screen.reason }, { status: 400 });
       }
-      const { cid, provider } = await publishAudioFile(bytes, file.name, file.type);
+      const { cid, provider } = await publishAudioFile(bytes, safeAudioFilename(file.name), file.type);
       return NextResponse.json({ cid, provider });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -132,6 +170,12 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Privacy: the page JSON is immutable on IPFS — reject any PII
+    // (phone/email) in bios, titles, or text blocks before pinning.
+    const piiBlock = pageJsonPiiCheck(body);
+    if (piiBlock) {
+      return NextResponse.json({ error: piiBlock }, { status: 400 });
+    }
     const { cid, provider } = await publishPageJson(body);
     return NextResponse.json({ cid, provider });
   } catch (e) {

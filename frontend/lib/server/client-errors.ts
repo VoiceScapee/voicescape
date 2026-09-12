@@ -57,13 +57,19 @@ export function normalizeErrorPage(raw: unknown): string | null {
 
 /**
  * Scrub values that could identify someone from an error message:
- * EVM addresses and Hedera account IDs. Keeps the message useful
- * ("insufficient balance for 0x…") without storing identifiers.
+ * EVM addresses, Hedera account IDs, email addresses, and phone numbers.
+ * Keeps the message useful ("insufficient balance for 0x…") without
+ * storing identifiers. Privacy rule: no phone/email may ever reach
+ * Voicescape storage, including error telemetry.
  */
 export function scrubErrorMessage(msg: string): string {
   return msg
     .replace(/0x[a-fA-F0-9]{8,}/g, "0x…")
-    .replace(/\b\d{1,10}\.\d{1,10}\.\d{1,10}\b/g, "0.0.…");
+    .replace(/\b\d{1,10}\.\d{1,10}\.\d{1,10}\b/g, "0.0.…")
+    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "…@…")
+    .replace(/\+?\d[\d().\- ]*[().\- ][\d().\- ]*\d/g, (m) =>
+      (m.match(/\d/g) ?? []).length >= 10 ? "…phone…" : m,
+    );
 }
 
 /**

@@ -62,7 +62,13 @@ describe("key helpers", () => {
     expect(normalizeLabel("  My Listing  ")).toBe("My Listing");
     expect(normalizeLabel("")).toBeNull();
     expect(normalizeLabel(null)).toBeNull();
-    expect(normalizeLabel("x".repeat(200))).toHaveLength(120);
+    expect(normalizeLabel("Listing Title Number ".repeat(20))).toHaveLength(120);
+  });
+
+  test("normalizeLabel rejects phone/email (privacy)", () => {
+    expect(normalizeLabel("call me at 555-123-4567")).toBeNull();
+    expect(normalizeLabel("reach me at john@example.com")).toBeNull();
+    expect(normalizeLabel("Cool Art Piece")).toBe("Cool Art Piece");
   });
 
   test("viewKey is namespaced", () => {

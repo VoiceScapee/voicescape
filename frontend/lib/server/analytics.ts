@@ -14,6 +14,7 @@
 import { ethers } from "ethers";
 import { getKvStore, type KvStore } from "./store";
 import { mirrorBaseUrl } from "./townhall/topics";
+import { checkContent } from "./townhall/content-filter";
 
 export const ANALYTICS_VIEW_TTL_MS = 30 * 24 * 3600 * 1000; // 30 days
 export const PAGE_SUBJECT = "page";
@@ -49,11 +50,16 @@ export function normalizeSubject(raw: unknown): string {
   return clean || PAGE_SUBJECT;
 }
 
-/** Optional human label for a subject (listing title, …). Null when unusable. */
+/** Optional human label for a subject (listing title, …). Null when unusable.
+ *  Privacy: runs through the content filter — a modified client could
+ *  otherwise store phone/email in this free-text field. */
 export function normalizeLabel(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const label = raw.trim().replace(/\s+/g, " ").slice(0, 120);
-  return label || null;
+  if (!label) return null;
+  const check = checkContent(label, "label");
+  if (!check.allowed) return null;
+  return label;
 }
 
 export function viewKey(username: string, subject: string, date: string): string {

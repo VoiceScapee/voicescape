@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { getKvStore } from "@/lib/server/store";
 import { defaultDeps } from "@/lib/server/townhall/handlers";
+import { checkContent } from "@/lib/server/townhall/content-filter";
 
 export const runtime = "nodejs";
 
@@ -53,6 +54,12 @@ export async function POST(req: NextRequest) {
   }
   if (!message || message.length > 1000) {
     return NextResponse.json({ error: "Message must be 1-1000 chars" }, { status: 400 });
+  }
+  // Privacy rule: no phone/email/real-name sharing anywhere on Voicescape —
+  // DMs included. Wallet connection is the only identity.
+  const contentCheck = checkContent(message, "DM");
+  if (!contentCheck.allowed) {
+    return NextResponse.json({ error: contentCheck.reason ?? "message blocked" }, { status: 400 });
   }
   if (to === from) {
     return NextResponse.json({ error: "Cannot DM yourself" }, { status: 400 });

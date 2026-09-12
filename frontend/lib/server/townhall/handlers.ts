@@ -1445,6 +1445,10 @@ export async function warnUser(deps: TownhallDeps, body: WarnUserBody): Promise<
   const target = parseEnforcementTarget(body);
   if (!target.ok) return target.result;
   const { wallet, username, reason } = target;
+  // The reason lands in an immutable HCS message — run the safety gate
+  // so a pasted phone number/email can't be published by a moderator.
+  const gate = safetyGate("moderation reason", reason, "moderation warning");
+  if (gate) return gate;
   const topic = topicOr503("forum");
   if (typeof topic !== "string") return topic;
   const msg: WarnMessage = {
@@ -1489,6 +1493,10 @@ export async function timeoutUser(deps: TownhallDeps, body: TimeoutUserBody): Pr
   const target = parseEnforcementTarget(body);
   if (!target.ok) return target.result;
   const { wallet, username, reason } = target;
+  // The reason lands in an immutable HCS message — run the safety gate
+  // so a pasted phone number/email can't be published by a moderator.
+  const gate = safetyGate("moderation reason", reason, "moderation timeout");
+  if (gate) return gate;
   if (
     typeof body.durationMinutes !== "number" ||
     !Number.isFinite(body.durationMinutes) ||
@@ -2300,6 +2308,10 @@ export async function setProfileLinks(
     }
     const val = v.trim();
     if (val.length > 200) return err(400, `link "${key}" too long (max 200 chars)`);
+    // Privacy: values go on-chain in a profile-links HCS message (immutable)
+    // — reject phone numbers/emails in addition to the URL safety check.
+    const contentCheck = checkContent(val, `link "${key}"`);
+    if (!contentCheck.allowed) return err(400, contentCheck.reason ?? "link blocked by safety filter");
     // Link safety: only http(s) URLs, no phishing/scam domains, no
     // credential-embedded or dangerous-scheme URLs.
     const urlCheck = checkUrl(val, `link "${key}"`);
