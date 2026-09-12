@@ -166,13 +166,23 @@ function ModNavLink({ pathname }: { pathname: string }) {
   }, [sessionReady, isAuthenticated]);
   if (!isMod) return null;
   const active = pathname === "/mod";
+  const errorsActive = pathname === "/admin/errors";
   return (
-    <Link
-      href="/mod"
-      className={`th-nav-link${active ? " is-active" : ""}`}
-      aria-current={active ? "page" : undefined}
-    >
-      🛡️ Mod
-    </Link>
+    <>
+      <Link
+        href="/mod"
+        className={`th-nav-link${active ? " is-active" : ""}`}
+        aria-current={active ? "page" : undefined}
+      >
+        🛡️ Mod
+      </Link>
+      <Link
+        href="/admin/errors"
+        className={`th-nav-link${errorsActive ? " is-active" : ""}`}
+        aria-current={errorsActive ? "page" : undefined}
+      >
+        🐛 Errors
+      </Link>
+    </>
   );
 }
