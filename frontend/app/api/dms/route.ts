@@ -2,24 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { getKvStore } from "@/lib/server/store";
 import { defaultDeps } from "@/lib/server/townhall/handlers";
-import { checkContent } from "@/lib/server/townhall/content-filter";
+import { ipGate } from "@/lib/server/rate-limit";
+import { globalQuotaStore, quotaLimitFromEnv } from "@/lib/server/quota";
+import {
+  ADDR_RE,
+  DM_DAILY_LIMIT_FALLBACK,
+  DM_REPORT_DAILY_LIMIT_FALLBACK,
+  getBlocked,
+  getInbox,
+  getThread,
+  reportDm,
+  sendDm,
+  setBlocked,
+} from "@/lib/server/dms";
 
 export const runtime = "nodejs";
 
 /**
  * DM API — direct messages between wallets.
  *
- * POST /api/dms/send — { to, message }
- * GET /api/dms/inbox — list conversations
- * GET /api/dms/thread?with={address} — get messages with someone
+ * POST /api/dms            { to, message }            — send a message
+ * POST /api/dms            { action: "block", address }   — block a user
+ * POST /api/dms            { action: "unblock", address } — unblock a user
+ * POST /api/dms            { action: "report", address, reason } — report a user
+ * GET  /api/dms                                    — list conversations
+ * GET  /api/dms?with={address}                     — get messages with someone
+ * GET  /api/dms?blocks=1                           — list blocked addresses
  *
- * Storage: KV store (Upstash/Valkey/memory fallback).
+ * Storage: KV store (Valkey/Upstash/memory fallback), 30-day TTL.
  * Auth: signed wallet session required.
+ * Rate limits: per-IP gate + per-wallet daily quota (Sybil bound).
  */
-
-function sortAddrs(a: string, b: string): [string, string] {
-  return a.toLowerCase() < b.toLowerCase() ? [a, b] : [b, a];
-}
 
 async function getAddress(req: NextRequest): Promise<string | null> {
   const cred = sessionCredentialFrom(req);
@@ -34,8 +47,18 @@ async function getAddress(req: NextRequest): Promise<string | null> {
   }
 }
 
-/** POST /api/dms/send */
+/** POST /api/dms — send / block / unblock / report */
 export async function POST(req: NextRequest) {
+  // Per-IP rate limit first (Sybil bound #2: one IP can't multiply wallets).
+  const gated = await ipGate(
+    req,
+    "dm",
+    "IP_RATE_LIMIT_DMS",
+    60,
+    "too many DM requests from this network — try again later",
+  );
+  if (gated) return gated;
+
   const from = await getAddress(req);
   if (!from) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -46,97 +69,78 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const to = body.to?.toLowerCase();
-  const message = body.message?.trim();
-
-  if (!to || !/^0x[0-9a-f]{40}$/.test(to)) {
-    return NextResponse.json({ error: "Invalid recipient address" }, { status: 400 });
-  }
-  if (!message || message.length > 1000) {
-    return NextResponse.json({ error: "Message must be 1-1000 chars" }, { status: 400 });
-  }
-  // Privacy rule: no phone/email/real-name sharing anywhere on Voicescape —
-  // DMs included. Wallet connection is the only identity.
-  const contentCheck = checkContent(message, "DM");
-  if (!contentCheck.allowed) {
-    return NextResponse.json({ error: contentCheck.reason ?? "message blocked" }, { status: 400 });
-  }
-  if (to === from) {
-    return NextResponse.json({ error: "Cannot DM yourself" }, { status: 400 });
-  }
-
   const store = getKvStore();
-  const [a1, a2] = sortAddrs(from, to);
-  const threadKey = `dm:thread:${a1}:${a2}`;
+  const quota = globalQuotaStore();
 
-  const msg = {
-    from,
-    to,
-    message,
-    timestamp: Date.now(),
-  };
-
-  // Append to thread
-  let thread: any[] = [];
-  try {
-    const existing = await store.get(threadKey);
-    if (existing) thread = JSON.parse(existing);
-  } catch {}
-  thread.push(msg);
-  // Keep last 100 messages
-  if (thread.length > 100) thread = thread.slice(-100);
-  await store.set(threadKey, JSON.stringify(thread), 30 * 24 * 60 * 60 * 1000); // 30 days
-
-  // Update inbox for both users
-  for (const [user, other] of [[from, to], [to, from]] as const) {
-    const inboxKey = `dm:inbox:${user}`;
-    let inbox: any[] = [];
+  // --- Block / unblock ---
+  if (body.action === "block" || body.action === "unblock") {
+    const addr = String(body.address ?? "").toLowerCase();
+    if (!ADDR_RE.test(addr)) {
+      return NextResponse.json({ error: "Invalid address" }, { status: 400 });
+    }
     try {
-      const existing = await store.get(inboxKey);
-      if (existing) inbox = JSON.parse(existing);
-    } catch {}
-    // Remove existing entry for this conversation
-    inbox = inbox.filter((c) => c.with !== other);
-    // Add to front
-    inbox.unshift({ with: other, lastMessage: message.slice(0, 50), timestamp: msg.timestamp });
-    if (inbox.length > 20) inbox = inbox.slice(0, 20);
-    await store.set(inboxKey, JSON.stringify(inbox), 30 * 24 * 60 * 60 * 1000);
+      const blocked = await setBlocked(store, from, addr, body.action === "block");
+      return NextResponse.json({ ok: true, blocked });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      const status = msg === "invalid-address" ? 400 : msg === "cannot-block-self" ? 400 : 500;
+      return NextResponse.json(
+        { error: msg === "cannot-block-self" ? "Cannot block yourself" : "Invalid address" },
+        { status },
+      );
+    }
   }
 
-  return NextResponse.json({ ok: true, timestamp: msg.timestamp });
+  // --- Report ---
+  if (body.action === "report") {
+    const res = await reportDm(
+      {
+        store,
+        quota,
+        reportLimit: quotaLimitFromEnv("DM_REPORT_DAILY_LIMIT", DM_REPORT_DAILY_LIMIT_FALLBACK),
+      },
+      from,
+      String(body.address ?? ""),
+      String(body.reason ?? ""),
+    );
+    if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+    return NextResponse.json({ ok: true });
+  }
+
+  // --- Send (default) ---
+  const res = await sendDm(
+    {
+      store,
+      quota,
+      dmLimit: quotaLimitFromEnv("DM_DAILY_LIMIT", DM_DAILY_LIMIT_FALLBACK),
+    },
+    from,
+    String(body.to ?? ""),
+    String(body.message ?? ""),
+  );
+  if (!res.ok) return NextResponse.json({ error: res.error }, { status: res.status });
+  return NextResponse.json({ ok: true, timestamp: res.timestamp });
 }
 
-/** GET /api/dms/inbox or /api/dms/thread */
+/** GET /api/dms — inbox, thread, or block list */
 export async function GET(req: NextRequest) {
   const address = await getAddress(req);
   if (!address) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { searchParams } = new URL(req.url);
   const withAddr = searchParams.get("with")?.toLowerCase();
-
   const store = getKvStore();
 
+  if (searchParams.get("blocks") === "1") {
+    return NextResponse.json({ blocked: await getBlocked(store, address) });
+  }
+
   if (withAddr) {
-    // Get thread
-    if (!/^0x[0-9a-f]{40}$/.test(withAddr)) {
+    if (!ADDR_RE.test(withAddr)) {
       return NextResponse.json({ error: "Invalid address" }, { status: 400 });
     }
-    const [a1, a2] = sortAddrs(address, withAddr);
-    const threadKey = `dm:thread:${a1}:${a2}`;
-    let thread: any[] = [];
-    try {
-      const data = await store.get(threadKey);
-      if (data) thread = JSON.parse(data);
-    } catch {}
-    return NextResponse.json({ messages: thread });
-  } else {
-    // Get inbox
-    const inboxKey = `dm:inbox:${address}`;
-    let inbox: any[] = [];
-    try {
-      const data = await store.get(inboxKey);
-      if (data) inbox = JSON.parse(data);
-    } catch {}
-    return NextResponse.json({ conversations: inbox });
+    return NextResponse.json({ messages: await getThread(store, address, withAddr) });
   }
+
+  return NextResponse.json({ conversations: await getInbox(store, address) });
 }
