@@ -358,6 +358,8 @@ export interface ChatRoom {
   creator: string;
   /** ISO-8601; "" for the built-in lobby. */
   createdAt: string;
+  /** True when entering/posting requires the Builder badge. */
+  gated?: boolean;
 }
 
 export interface EventView {

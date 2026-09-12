@@ -12,6 +12,7 @@ interface Room {
   description: string;
   creator: string;
   createdAt: string;
+  gated?: boolean;
 }
 
 /** Derive a URL-safe room slug from a title (matches the server's CHATROOM_ID_RE). */
@@ -215,7 +216,7 @@ export default function ChatRoomsClient() {
 
       {rooms.map((r) => (
         <Link key={r.id} href={`/chat/${encodeURIComponent(r.id)}`} className="th-card th-card-link">
-          <h3>{r.title}</h3>
+          <h3>{r.title}{r.gated && <span title="Requires the Builder badge" style={{ marginLeft: 8 }}>🔒</span>}</h3>
           <p>{r.description}</p>
           <p className="th-muted" style={{ fontSize: 12, margin: "4px 0 0" }}>
             by @{r.creator}

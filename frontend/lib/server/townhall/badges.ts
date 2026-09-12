@@ -56,6 +56,8 @@ export const ALL_BADGES: Badge[] = [
   { id: "pioneer", name: "Pioneer", description: "Active in the town hall's first month.", icon: "🌅", category: "milestone" },
   { id: "settled-in", name: "Settled In", description: "Active on 7 different days.", icon: "🌱", category: "milestone" },
   { id: "early-adopter", name: "Early Adopter", description: "Among the first 500 voices in the town hall.", icon: "🚀", category: "milestone" },
+  // Builder — proven on-platform: published a page AND received a first tip.
+  { id: "builder", name: "Builder", description: "Published a blockpage and received a first tip — unlocks the Builders room.", icon: "🔨", category: "milestone" },
   // Special
   { id: "agent-pioneer", name: "Agent Pioneer", description: "An AI agent among the first 100 agent pages.", icon: "🤖", category: "special" },
   { id: "prolific", name: "Prolific", description: "200 total town hall actions.", icon: "🔥", category: "special" },
@@ -276,6 +278,8 @@ export interface BadgeEnrichment {
   agentRank: number | null;
   /** warn/timeout/ban records against the wallet. */
   violations: number;
+  /** The wallet owns at least one registered blockpage. */
+  ownsPage: boolean;
 }
 
 export const EMPTY_ENRICHMENT: BadgeEnrichment = {
@@ -283,6 +287,7 @@ export const EMPTY_ENRICHMENT: BadgeEnrichment = {
   isAgent: false,
   agentRank: null,
   violations: 0,
+  ownsPage: false,
 };
 
 /**
@@ -328,6 +333,8 @@ export function badgesForUser(
   if (Number.isFinite(s.firstTs) && s.firstTs <= TOWNHALL_LAUNCH_TS + PIONEER_WINDOW_MS) give("pioneer");
   if (s.activeDays.size >= THRESHOLDS.settledInDays) give("settled-in");
   if (pioneerRank !== null && pioneerRank >= 1 && pioneerRank <= THRESHOLDS.earlyAdopterRank) give("early-adopter");
+  // Builder: proven on-platform — published a page AND received a first tip.
+  if (e.ownsPage && e.tipsReceived >= 1) give("builder");
 
   // Special
   if (e.isAgent && e.agentRank !== null && e.agentRank >= 1 && e.agentRank <= THRESHOLDS.agentPioneerRank) {
@@ -522,6 +529,25 @@ export async function countPaymentsReceived(wallet: string): Promise<number> {
   }
 }
 
+/**
+ * True when the wallet owns at least one registered blockpage (any
+ * OwnerType). Mirror-node PageRegistered logs filtered by owner = topic2.
+ * Bounded scan; fail-open → false.
+ */
+export async function ownsRegisteredPage(wallet: string): Promise<boolean> {
+  const contract = registryContract();
+  if (!contract) return false;
+  const url =
+    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
+    new URLSearchParams({ order: "asc", limit: "100", topic0: PAGE_REGISTERED_TOPIC0, topic2: paddedTopic(wallet) });
+  try {
+    const logs = await fetchLogPages(url, 2);
+    return logs.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** True when the wallet owns a page registered as AGENT (OwnerType = 1). */
 export async function isAgentWallet(wallet: string): Promise<boolean> {
   const contract = registryContract();
@@ -641,16 +667,18 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
   const canonWallet = input.wallet ? canonicalAddress(input.wallet) : null;
   const wallet = canonWallet && canonWallet !== "0x" ? input.wallet!.trim() : undefined;
 
-  const enrichment: BadgeEnrichment = { tipsReceived: 0, isAgent: false, agentRank: null, violations: 0 };
+  const enrichment: BadgeEnrichment = { tipsReceived: 0, isAgent: false, agentRank: null, violations: 0, ownsPage: false };
   if (wallet) {
-    const [tips, agent, violations] = await Promise.all([
+    const [tips, agent, violations, ownsPage] = await Promise.all([
       countPaymentsReceived(wallet),
       isAgentWallet(wallet),
       countViolations(hcs, wallet),
+      ownsRegisteredPage(wallet),
     ]);
     enrichment.tipsReceived = tips;
     enrichment.isAgent = agent;
     enrichment.violations = violations;
+    enrichment.ownsPage = ownsPage;
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
   }
 

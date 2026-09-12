@@ -37,12 +37,15 @@ export function useStreamEvents<T>(
   url: string | null,
   onEvents: (events: T[]) => void,
   isValid: (m: unknown) => m is T,
+  opts?: { headers?: HeadersInit },
 ): StreamConn {
   const [conn, setConn] = useState<StreamConn>("connecting");
   const onEventsRef = useRef(onEvents);
   onEventsRef.current = onEvents;
   const isValidRef = useRef(isValid);
   isValidRef.current = isValid;
+  const headersRef = useRef<HeadersInit | undefined>(opts?.headers);
+  headersRef.current = opts?.headers;
 
   useEffect(() => {
     if (!url) {
@@ -66,7 +69,7 @@ export function useStreamEvents<T>(
       const killer = setTimeout(() => ctrl.abort(), 4500);
       try {
         const res = await fetch(url, {
-          headers: { accept: "text/event-stream" },
+          headers: { accept: "text/event-stream", ...(headersRef.current ?? {}) },
           signal: ctrl.signal,
         });
         const text = await res.text();

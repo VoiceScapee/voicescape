@@ -7,7 +7,17 @@ import { PresenceDot } from "@/components/townhall/Presence";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
-import { postJson, timeAgo, type ChatMessage } from "@/lib/townhall";
+import { useSession } from "@/lib/session";
+import { postJson, getJson, timeAgo, type ChatMessage } from "@/lib/townhall";
+
+/** Reserved room id — entering/posting requires the Builder badge. */
+const BUILDERS_ROOM_ID = "builders";
+
+interface BuilderProgress {
+  hasPage: boolean;
+  hasTip: boolean;
+  complete: boolean;
+}
 
 function isChatMessage(m: unknown): m is ChatMessage {
   return (
@@ -20,13 +30,36 @@ function isChatMessage(m: unknown): m is ChatMessage {
 
 export default function ChatRoomClient({ room }: { room: string }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
+  const { session, authHeader } = useSession();
+  const isBuildersRoom = room === BUILDERS_ROOM_ID;
   const hcs = useHcsSubmit();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState("");
   const [verifyError, setVerifyError] = useState<string | null>(null);
+  const [builderBadge, setBuilderBadge] = useState<BuilderProgress | null>(null);
   const seenRef = useRef<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamUrl = `/api/townhall/chat/${encodeURIComponent(room)}/stream`;
+
+  // Builders room: check the signer's badge before connecting the stream.
+  // The stream endpoint itself enforces the same gate (401/403).
+  useEffect(() => {
+    if (!isBuildersRoom || !isAuthenticated || !session?.address) {
+      setBuilderBadge(null);
+      return;
+    }
+    let live = true;
+    getJson<BuilderProgress>(`/api/badges/builder?wallet=${encodeURIComponent(session.address)}`)
+      .then((d) => {
+        if (live) setBuilderBadge(d);
+      })
+      .catch(() => {
+        if (live) setBuilderBadge({ hasPage: false, hasTip: false, complete: false });
+      });
+    return () => {
+      live = false;
+    };
+  }, [isBuildersRoom, isAuthenticated, session?.address]);
 
   const addMessages = useCallback((incoming: ChatMessage[]) => {
     if (incoming.length === 0) return;
@@ -58,7 +91,12 @@ export default function ChatRoomClient({ room }: { room: string }) {
     });
   }, [me]);
 
-  const conn = useStreamEvents<ChatMessage>(streamUrl, addMessages, isChatMessage);
+  const conn = useStreamEvents<ChatMessage>(
+    isBuildersRoom && builderBadge?.complete !== true ? null : streamUrl,
+    addMessages,
+    isChatMessage,
+    { headers: authHeader() },
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -124,6 +162,53 @@ export default function ChatRoomClient({ room }: { room: string }) {
       }
     }
   };
+
+  const builderLocked = isBuildersRoom && builderBadge?.complete !== true;
+
+  if (builderLocked) {
+    const done = (builderBadge?.hasPage ? 1 : 0) + (builderBadge?.hasTip ? 1 : 0);
+    return (
+      <>
+        <div className="th-page-head">
+          <h1>🔨 #builders</h1>
+          <p className="th-muted">
+            {" · "}
+            <Link href="/chat" className="th-identity-link">all rooms</Link>
+          </p>
+        </div>
+        <div style={{ maxWidth: 560, margin: "48px auto", padding: "32px 24px", textAlign: "center", border: "1px solid var(--vs-border)", borderRadius: 12, background: "var(--vs-glass)" }}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+          <h2 style={{ marginBottom: 8 }}>Builders Only</h2>
+          <p className="th-muted" style={{ marginBottom: 20 }}>
+            The Builders room is for wallets that earned the <strong>🔨 Builder badge</strong> — proof
+            you built on Voicescape. No shortcuts, no buying in.
+          </p>
+          <p style={{ fontWeight: 600, marginBottom: 16 }}>{done}/2 goals complete</p>
+          <div style={{ textAlign: "left", display: "inline-block", marginBottom: 24 }}>
+            <div style={{ marginBottom: 8 }}>
+              {builderBadge?.hasPage ? "✅" : "○"} Publish a blockpage
+              {!builderBadge?.hasPage && (
+                <div className="th-muted" style={{ fontSize: 13, marginLeft: 24 }}>
+                  <Link href="/builder" className="th-identity-link">Create your page →</Link>
+                </div>
+              )}
+            </div>
+            <div>
+              {builderBadge?.hasTip ? "✅" : "○"} Receive your first tip
+              {!builderBadge?.hasTip && (
+                <div className="th-muted" style={{ fontSize: 13, marginLeft: 24 }}>
+                  Share your page — someone has to tip you real HBAR.
+                </div>
+              )}
+            </div>
+          </div>
+          {!isAuthenticated && (
+            <p className="th-muted">Sign in with your wallet above to check your progress.</p>
+          )}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

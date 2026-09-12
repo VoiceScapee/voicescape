@@ -49,9 +49,9 @@ function statsFor(username: string, patch: Partial<UserStats>): UserStats {
 
 describe("badge catalog", () => {
   it("defines 19 badges with unique ids and valid categories", () => {
-    expect(ALL_BADGES).toHaveLength(19);
+    expect(ALL_BADGES).toHaveLength(20);
     const ids = ALL_BADGES.map((b) => b.id);
-    expect(new Set(ids).size).toBe(19);
+    expect(new Set(ids).size).toBe(20);
     for (const b of ALL_BADGES) {
       expect(["activity", "quality", "milestone", "special"]).toContain(b.category);
       expect(b.name.length).toBeGreaterThan(0);
@@ -176,6 +176,15 @@ describe("badgesForUser", () => {
     const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
     expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, tipsReceived: 1 }, 600, now).map((b) => b.id)).toContain("tipped");
     expect(badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id)).not.toContain("tipped");
+  });
+
+  it("awards builder only when the wallet owns a page AND got a tip", () => {
+    const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
+    const both = { ...EMPTY_ENRICHMENT, ownsPage: true, tipsReceived: 1 };
+    expect(badgesForUser(s, both, 600, now).map((b) => b.id)).toContain("builder");
+    expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, ownsPage: true, tipsReceived: 0 }, 600, now).map((b) => b.id)).not.toContain("builder");
+    expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, ownsPage: false, tipsReceived: 1 }, 600, now).map((b) => b.id)).not.toContain("builder");
+    expect(badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id)).not.toContain("builder");
   });
 
   it("awards community-helper at 5 voters and crowd-favorite at 10", () => {

@@ -25,6 +25,7 @@ import { defaultSalesPort } from "./sales";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
 import { getTopicId, mirrorBaseUrl, type TopicDomain } from "./topics";
 import { checkContent, checkUrl } from "./content-filter";
+import { BUILDERS_ROOM_ID, BUILDER_UNLOCK_MESSAGE, hasBuilderBadge } from "../badges";
 import { ethers } from "ethers";
 import {
   collectAppealEvents,
@@ -577,6 +578,16 @@ export const LOBBY_ROOM: ChatRoom = {
   createdAt: "",
 };
 
+/** Builders-only room: entering/posting requires the Builder badge. */
+export const BUILDERS_ROOM: ChatRoom = {
+  id: "builders",
+  title: "🔨 Builders",
+  description: "Builders only — publish a blockpage and receive your first tip to unlock.",
+  creator: "voicescape",
+  createdAt: "",
+  gated: true,
+};
+
 /** URL-safe room slug: 3–32 chars, lowercase letters, numbers, hyphens. */
 export const CHATROOM_ID_RE = /^[a-z0-9-]{3,32}$/;
 
@@ -616,7 +627,7 @@ export async function queryChatRooms(deps: TownhallDeps): Promise<HandlerResult>
   const topic = topicOr503("chat");
   if (typeof topic !== "string") return topic;
   const rooms = await collectChatRooms(deps);
-  return ok({ rooms: [LOBBY_ROOM, ...rooms] });
+  return ok({ rooms: [LOBBY_ROOM, BUILDERS_ROOM, ...rooms] });
 }
 
 export interface CreateChatRoomBody extends AuthBody {
@@ -640,6 +651,7 @@ export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBod
   }
   const id = body.id;
   if (id === "lobby") return err(400, 'id "lobby" is reserved');
+  if (id === BUILDERS_ROOM_ID) return err(400, 'id "builders" is reserved');
   if (!isNonEmptyString(body.title)) return err(400, "title is required");
   const title = body.title.trim();
   if (title.length < 3 || title.length > 60) return err(400, "title must be 3–60 chars");
@@ -959,6 +971,11 @@ export async function postChat(deps: TownhallDeps, room: string, body: PostChatB
   const author = own.username;
   const restricted = await requireNotRestricted(deps, own.session.address);
   if (restricted) return restricted;
+  // Builders-only room: the signer must hold the Builder badge.
+  if (room === BUILDERS_ROOM_ID) {
+    const badge = await hasBuilderBadge(own.session.address);
+    if (!badge) return err(403, BUILDER_UNLOCK_MESSAGE);
+  }
   if (!isNonEmptyString(body.body)) return err(400, "body is required");
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
   const gate = safetyGate("chat message", body.body, "chat message");

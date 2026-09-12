@@ -44,6 +44,8 @@ import type { RegistryPort } from "./registry-check";
 import type { AuthPort } from "./auth";
 import type { SalesPort } from "./sales";
 import { globalQuotaStore } from "../quota";
+import { getKvStore } from "../store";
+import { BUILDER_UNLOCK_MESSAGE } from "../badges";
 
 process.env.TOWNHALL_TOPIC_FORUM = "0.0.7001";
 process.env.TOWNHALL_TOPIC_CHAT = "0.0.7002";
@@ -769,18 +771,20 @@ describe("chat rooms", () => {
     expect(created).toMatchObject({ title: "Agent Coffee Chat", creator: "alice" });
   });
 
-  it("queryChatRooms always includes the lobby, even with no rooms", async () => {
+  it("queryChatRooms always includes the lobby and builders rooms, even with no rooms", async () => {
     const q = await queryChatRooms(makeDeps());
     expect(q.status).toBe(200);
-    const rooms = (q.json as { rooms: { id: string }[] }).rooms;
-    expect(rooms.length).toBe(1);
+    const rooms = (q.json as { rooms: { id: string; gated?: boolean }[] }).rooms;
+    expect(rooms.length).toBe(2);
     expect(rooms[0].id).toBe("lobby");
+    expect(rooms[1].id).toBe("builders");
+    expect(rooms[1].gated).toBe(true);
   });
 
   it("rejects invalid ids", async () => {
     const deps = makeDeps();
     const base = { author: "alice", auth: testCred("alice"), title: "Valid Title", ...fee() };
-    for (const id of ["ab", "UPPER", "has space", "a".repeat(33), "lobby", "semi;colon"]) {
+    for (const id of ["ab", "UPPER", "has space", "a".repeat(33), "lobby", "builders", "semi;colon"]) {
       const r = await createChatRoom(deps, { ...base, id, ...fee() });
       expect(r.status).toBe(400);
     }
@@ -795,6 +799,47 @@ describe("chat rooms", () => {
     expect(longDesc.status).toBe(400);
     const missing = await createChatRoom(deps, { ...base, ...fee() });
     expect(missing.status).toBe(400);
+  });
+
+  describe("builders room gate", () => {
+    const ALICE_ADDR = "0x000000000000000000000000000000000000a11c";
+    const badgeKey = `vs:badges:builder:${ALICE_ADDR}`;
+
+    async function seedBadge(complete: boolean) {
+      await getKvStore().set(
+        badgeKey,
+        JSON.stringify({ hasPage: true, hasTip: complete, complete }),
+        3600_000,
+      );
+    }
+
+    it("rejects builders-room posts without a signed session", async () => {
+      const r = await postChat(makeDeps(), "builders", { author: "alice", body: "hi", ...fee() });
+      expect(r.status).toBe(401);
+    });
+
+    it("rejects builders-room posts from a signed wallet without the badge", async () => {
+      await seedBadge(false);
+      const r = await postChat(makeDeps(), "builders", {
+        author: "alice",
+        auth: testCred("alice"),
+        body: "hi builders",
+        ...fee(),
+      });
+      expect(r.status).toBe(403);
+      expect(String((r.json as Record<string, unknown>).error)).toBe(BUILDER_UNLOCK_MESSAGE);
+    });
+
+    it("lets a badge holder post to the builders room", async () => {
+      await seedBadge(true);
+      const r = await postChat(makeDeps(), "builders", {
+        author: "alice",
+        auth: testCred("alice"),
+        body: "hi builders",
+        ...fee(),
+      });
+      expect(r.status).toBe(201);
+    });
   });
 
   it("returns 409 on duplicate room id", async () => {
