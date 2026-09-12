@@ -35,33 +35,12 @@ import type { TxSender } from "./tx";
 // for the same reason + SSR safety.
 
 /**
- * Minimal LedgerId shim — the real SDK LedgerId is just a 1-byte wrapper
- * ([0]=mainnet, [1]=testnet) with a toString() method. DAppConnector only
- * calls toString() on it (via ledgerIdToCAIPChainId), so we avoid pulling
- * the entire 2.3MB SDK into the wallet connection chunk for this one
- * trivial class.
+ * LedgerId comes from the official @hiero-ledger/sdk — loaded via dynamic
+ * import (not a static import) so the 2.3MB SDK stays out of the wallet
+ * connection chunk that Vercel's CDN must serve on mobile (ChunkLoadError).
+ * DAppConnector only calls toString() on the ledger id, and the official
+ * class returns "mainnet"/"testnet"/"previewnet" exactly as needed.
  */
-class MinimalLedgerId {
-  private readonly byte: number;
-  private constructor(byte: number) {
-    this.byte = byte;
-  }
-  toString(): string {
-    return this.byte === 0 ? "mainnet" : this.byte === 1 ? "testnet" : "previewnet";
-  }
-  toBytes(): Uint8Array {
-    return new Uint8Array([this.byte]);
-  }
-  isMainnet(): boolean {
-    return this.byte === 0;
-  }
-  isTestnet(): boolean {
-    return this.byte === 1;
-  }
-  static readonly MAINNET = new MinimalLedgerId(0);
-  static readonly TESTNET = new MinimalLedgerId(1);
-  static readonly PREVIEWNET = new MinimalLedgerId(2);
-}
 
 export interface WalletState {
   account: string | null;
@@ -368,10 +347,11 @@ async function waitForIframeExtension(
  *
  * Dynamic import keeps the wallet library out of the initial bundle and
  * avoids SSR issues (the package touches browser APIs at import time).
- * NOTE: We deliberately do NOT import @hiero-ledger/sdk here — it creates a
- * 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
- * LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
- * (via ./tx) is only loaded when actually signing a transaction.
+ * NOTE: We deliberately do NOT statically import @hiero-ledger/sdk here — it
+ * creates a 2.3MB chunk that Vercel's CDN fails to serve on mobile
+ * (ChunkLoadError). LedgerId is dynamically imported from the official SDK
+ * below; the full SDK (via ./tx) is only loaded when actually signing a
+ * transaction.
  */
 async function buildConnector(): Promise<DAppConnector> {
   const {
@@ -387,8 +367,11 @@ async function buildConnector(): Promise<DAppConnector> {
 
   const chain = getActiveChain();
   const isMainnet = chain.key === "hedera-mainnet";
-  // MinimalLedgerId shim: DAppConnector only calls toString() on the ledger id.
-  const ledgerId = (isMainnet ? MinimalLedgerId.MAINNET : MinimalLedgerId.TESTNET) as unknown as never;
+  // Official SDK LedgerId via dynamic import: keeps the SDK out of the
+  // wallet connection chunk (see NOTE above). DAppConnector only calls
+  // toString() on the ledger id.
+  const { LedgerId } = await import("@hiero-ledger/sdk");
+  const ledgerId = (isMainnet ? LedgerId.MAINNET : LedgerId.TESTNET) as unknown as never;
 
   return new DAppConnectorClass(
     {

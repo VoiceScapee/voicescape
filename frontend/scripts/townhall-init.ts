@@ -16,7 +16,7 @@ import {
   Client,
   PrivateKey,
   TopicCreateTransaction,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 
 const DOMAINS = [
   { domain: "forum", memo: "Voicescape Town Hall — forum (posts, walls, replies)" },

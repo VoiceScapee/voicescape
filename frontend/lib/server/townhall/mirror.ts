@@ -15,6 +15,7 @@
 
 import { dustFeeTinybars, mirrorBaseUrl, treasuryAddress } from "./topics";
 import { getKvStore } from "../store";
+import { fetchMirrorWithRetry } from "./fetch-retry";
 
 export interface DustFeeResult {
   ok: boolean;
@@ -272,7 +273,7 @@ export class RealMirrorPort implements MirrorPort {
     if (!/^0x[0-9a-fA-F]{40}$/.test(a)) return null;
     let res: Response;
     try {
-      res = await fetch(`${mirrorBaseUrl()}/api/v1/accounts/${a.toLowerCase()}`);
+      res = await fetchMirrorWithRetry(`${mirrorBaseUrl()}/api/v1/accounts/${a.toLowerCase()}`);
     } catch {
       return null;
     }
@@ -308,7 +309,7 @@ export class RealMirrorPort implements MirrorPort {
     const url = `${mirrorBaseUrl()}/api/v1/transactions/${encodeURIComponent(dustFeeTxId)}`;
     let res: Response;
     try {
-      res = await fetch(url);
+      res = await fetchMirrorWithRetry(url);
     } catch (e) {
       return { ok: false, reason: `mirror node unreachable: ${e instanceof Error ? e.message : String(e)}`, receivedTinybars: null };
     }

@@ -15,6 +15,7 @@
  */
 
 import { mirrorBaseUrl } from "./topics";
+import { fetchMirrorWithRetry } from "./fetch-retry";
 
 interface MirrorTransaction {
   transaction_id: string;
@@ -97,7 +98,12 @@ export async function verifyHcsTransaction(
 
   try {
     const url = `${mirrorBaseUrl()}/api/v1/transactions/${mirrorTxId}`;
-    const res = await fetch(url);
+    // Indexing-wait: the mirror node can lag a few seconds behind consensus,
+    // so a just-submitted tx may 404 briefly. Poll briefly before giving up.
+    const res = await fetchMirrorWithRetry(url, {
+      indexingWaitAttempts: 3,
+      indexingWaitDelayMs: 1500,
+    });
     if (!res.ok) return null;
 
     const data = (await res.json()) as MirrorTransactionResponse;
@@ -130,7 +136,7 @@ export async function verifyHcsTransaction(
 
     try {
       const msgUrl = `${mirrorBaseUrl()}/api/v1/topics/${expectedTopicId}/messages?timestamp=${consensusTimestamp}`;
-      const msgRes = await fetch(msgUrl);
+      const msgRes = await fetchMirrorWithRetry(msgUrl);
       if (!msgRes.ok) return null;
       const msgData = (await msgRes.json()) as MirrorTopicMessagesResponse;
       const msg = msgData.messages?.[0];

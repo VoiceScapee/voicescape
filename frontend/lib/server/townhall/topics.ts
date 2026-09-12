@@ -28,6 +28,29 @@ export function townhallNetwork(): TownhallNetwork {
   return "testnet";
 }
 
+/**
+ * Fail-loud boot check: TOWNHALL_HCS_NETWORK silently defaults to testnet
+ * when unset or invalid, which breaks every Town Hall write in production.
+ * The default is unchanged — this just makes the misconfiguration loud in
+ * server logs at startup so it can't go unnoticed.
+ */
+if (typeof process !== "undefined" && process.env.TOWNHALL_HCS_NETWORK === undefined) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "[townhall] TOWNHALL_HCS_NETWORK is not set — defaulting to testnet. " +
+      "Set TOWNHALL_HCS_NETWORK=mainnet in production or all Town Hall writes will target testnet.",
+  );
+} else if (typeof process !== "undefined") {
+  const rawCheck = String(process.env.TOWNHALL_HCS_NETWORK).toLowerCase();
+  if (rawCheck !== "mainnet" && rawCheck !== "testnet" && rawCheck !== "previewnet") {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[townhall] TOWNHALL_HCS_NETWORK="${process.env.TOWNHALL_HCS_NETWORK}" is invalid — ` +
+        "defaulting to testnet. Use mainnet, testnet, or previewnet.",
+    );
+  }
+}
+
 /** Hedera mirror node REST base URL for the Town Hall network. */
 export function mirrorBaseUrl(): string {
   switch (townhallNetwork()) {

@@ -346,7 +346,7 @@ export function walletOwnsPage(account: string, owner: string): boolean {
   if (a === o) return true;
   try {
     // Hedera "0.0.x" account ids → their 0x solidity address.
-    const solidity = `0x${AccountId.fromString(account).toSolidityAddress().toLowerCase()}`;
+    const solidity = `0x${AccountId.fromString(account).toEvmAddress().toLowerCase()}`;
     return solidity === o;
   } catch {
     return false;
@@ -356,7 +356,7 @@ export function walletOwnsPage(account: string, owner: string): boolean {
 /** "0.0.x" → 0x solidity address (best effort; returns input on failure). */
 export function accountToEvmAddress(account: string): string {
   try {
-    return `0x${AccountId.fromString(account).toSolidityAddress()}`;
+    return `0x${AccountId.fromString(account).toEvmAddress()}`;
   } catch {
     return account;
   }

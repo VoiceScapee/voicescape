@@ -10,6 +10,7 @@
 
 import { useCallback, useState } from "react";
 import { getHederaPairing } from "@/lib/wallet";
+import { getActiveChain } from "@/lib/chains";
 import { submitHcsViaWallet, getTownhallTopics } from "@/lib/hcs-wallet";
 
 export type HcsPhase =
@@ -54,10 +55,9 @@ export function useHcsSubmit(): HcsSubmitFlow {
           throw new Error(`Topic not configured for ${topicDomain}`);
         }
 
-        // Determine network from the account ID or pairing
-        // For now, assume mainnet if the account looks like mainnet.
-        // TODO: Get network from wallet context.
-        const network = "mainnet" as const;
+        // Network follows the active chain config (NEXT_PUBLIC_CHAIN) so
+        // testnet builds submit to testnet instead of mainnet.
+        const network = getActiveChain().key === "hedera-mainnet" ? "mainnet" : "testnet";
 
         const result = await submitHcsViaWallet(topicId, message, {
           signAndExecuteTransaction: pairing.hc.signAndExecuteTransaction.bind(pairing.hc),
