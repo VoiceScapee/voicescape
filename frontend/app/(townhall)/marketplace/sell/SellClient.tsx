@@ -7,6 +7,9 @@ import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useWallet } from "@/lib/wallet";
 import { accountToEvmAddress, makeTownhallId, postJson } from "@/lib/townhall";
+import { getActiveChain } from "@/lib/chains";
+import { resolvePage } from "@/lib/contracts";
+import { checkPayoutBelongsToOwner, mirrorBaseFor } from "@/lib/marketplace-verify";
 
 export default function SellClient() {
   const router = useRouter();
@@ -18,6 +21,7 @@ export default function SellClient() {
   const [price, setPrice] = useState("");
   const [goodsType, setGoodsType] = useState<"physical" | "digital">("physical");
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const priceCents = Math.round(Number(price) * 100);
   const valid =
@@ -28,6 +32,34 @@ export default function SellClient() {
 
   const submit = async () => {
     if (!valid || !canWrite || !account || !me) return;
+    setVerifyError(null);
+    // Guardrail: only a verified page owner can list. The connected wallet
+    // must own the seller's page on-chain — otherwise the listing would
+    // name a payout the seller can't prove ownership of. (The server
+    // re-checks this authoritatively; the payout is always the connected
+    // wallet — the form accepts no free-text payout address.)
+    try {
+      const chain = getActiveChain();
+      const resolved = await resolvePage(me, chain);
+      const ownerOk = resolved?.owner
+        ? await checkPayoutBelongsToOwner(
+            accountToEvmAddress(account),
+            resolved.owner,
+            mirrorBaseFor(chain.key),
+          )
+        : "unknown";
+      if (ownerOk !== "match") {
+        setVerifyError(
+          ownerOk === "mismatch"
+            ? `Your wallet does not own the "@${me}" page — sign in with the page owner's wallet to list.`
+            : `Could not verify your page ownership on-chain — try again in a moment.`,
+        );
+        return;
+      }
+    } catch {
+      setVerifyError("Could not verify your page ownership on-chain — try again in a moment.");
+      return;
+    }
     const t = title.trim();
     const d = description.trim();
     const id = makeTownhallId(t);
@@ -166,6 +198,9 @@ export default function SellClient() {
           {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your page username (top of the page) — buyers see who you are." : "Sign in with your wallet to list an item."}</p>}
           {hcs.phase.kind === "error" && (
             <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>
+          )}
+          {verifyError && (
+            <p className="th-error" role="alert" style={{ marginTop: 8 }}>{verifyError}</p>
           )}
         </div>
       </div>

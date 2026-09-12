@@ -16,6 +16,7 @@
 import { dustFeeTinybars, mirrorBaseUrl, treasuryAddress } from "./topics";
 import { getKvStore } from "../store";
 import { fetchMirrorWithRetry } from "./fetch-retry";
+import { longZeroToAccountId } from "../../session-message";
 
 export interface DustFeeResult {
   ok: boolean;
@@ -264,13 +265,18 @@ export class RealMirrorPort implements MirrorPort {
 
   /**
    * Resolve a session wallet address to a Hedera account id for payer
-   * comparison. 0.0.x passes through; 0x… is resolved via the mirror node.
+   * comparison. 0.0.x passes through; long-zero 0x… derives locally (the
+   * mirror node rejects long-zero EVM addresses, so it is never queried
+   * for them); other 0x… forms resolve via the mirror node.
    * Null when the address is malformed or unresolvable.
    */
   async resolveAccountId(address: string): Promise<string | null> {
     const a = address.trim();
     if (ACCOUNT_ID_RE.test(a)) return a;
     if (!/^0x[0-9a-fA-F]{40}$/.test(a)) return null;
+    // Long-zero packs the account number — derive without network.
+    const derived = longZeroToAccountId(a);
+    if (derived) return derived;
     let res: Response;
     try {
       res = await fetchMirrorWithRetry(`${mirrorBaseUrl()}/api/v1/accounts/${a.toLowerCase()}`);

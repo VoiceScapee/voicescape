@@ -7,8 +7,9 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { tipPage } from "@/lib/contracts";
+import { tipPage, resolvePage } from "@/lib/contracts";
 import { useWallet } from "@/lib/wallet";
+import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import { timeAgo, type TownhallPost } from "@/lib/townhall";
@@ -41,8 +42,16 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
       setError("HBAR price is still loading — try again in a moment.");
       return;
     }
+    // Guardrail: never prompt a wallet signature for a doomed tip. The
+    // contract reverts for unregistered pages — pre-check the registry
+    // first so the user never signs a transaction that cannot succeed.
     setBusy(true);
     try {
+      const registered = await resolvePage(author, getActiveChain());
+      if (!registered) {
+        setError(`@${author} isn't registered on-chain — the tip would fail.`);
+        return;
+      }
       const sender = await getTxSender();
       const id = await tipPage(author, usdToWei(usd, price), sender);
       setTxId(id);

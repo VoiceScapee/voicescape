@@ -2170,6 +2170,22 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
   if (!looksLikeAddress(payout)) {
     return err(400, "seller must be a valid payout address (0x… or 0.0.x)");
   }
+  // Guardrail: the payout address must be the seller's own connected wallet —
+  // never a free-text third-party address. Unverified sellers cannot receive
+  // money on Voicescape. Compared as Hedera account IDs so long-zero
+  // (0x0000…9f0eff), alias (0x30c6…), and 0.0.x writings of the same account
+  // all match. (The mirror port derives long-zero locally; the real mirror
+  // node rejects long-zero EVM addresses.)
+  const [payoutId, walletId] = await Promise.all([
+    deps.mirror.resolveAccountId(payout),
+    deps.mirror.resolveAccountId(own.session.address),
+  ]).catch(() => [null, null] as const);
+  if (!payoutId || !walletId || payoutId !== walletId) {
+    return err(
+      403,
+      "seller payout address must be your connected wallet address — unverified payout addresses cannot receive money on Voicescape",
+    );
+  }
   if (!isNonEmptyString(body.title)) return err(400, "title is required");
   if (!isNonEmptyString(body.description)) return err(400, "description is required");
   if (typeof body.priceUsdCents !== "number" || !Number.isInteger(body.priceUsdCents) || body.priceUsdCents < 0) {
@@ -2275,6 +2291,85 @@ export async function setListingStatus(
 /* ------------------------------------------------------------------ */
 /* Profile links (cross-platform identity)                            */
 /* ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ */
+/* Buy pre-verification (server half of the purchase guardrail)       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Verify a marketplace listing is safe to buy BEFORE the buyer builds or
+ * signs any transaction. The client calls this in startBuy(); a negative
+ * verdict means no transaction is ever built — zero gas burned on doomed
+ * buys. This generalizes the Bug A (2026-09-12) fix.
+ *
+ * Checks:
+ * 1. The listing exists and is active.
+ * 2. The seller's page username resolves on-chain (registered).
+ * 3. The listing's payout address belongs to the registered owner of the
+ *    seller's page — compared as Hedera account IDs so long-zero,
+ *    alias, and 0.0.x writings of the same account all match.
+ *
+ * On success returns the registry-resolved owner address in its canonical
+ * (alias) EVM form as `sellerAddress` — the buyer MUST pay this address,
+ * never the raw long-zero form from the listing: a contract CALL with
+ * value to the long-zero form does not reach the account (proven on
+ * mainnet 2026-09-12: buyListing reverted TipFailed), while the alias
+ * form works.
+ */
+export async function verifyBuySeller(
+  deps: TownhallDeps,
+  listingId: string,
+): Promise<HandlerResult> {
+  if (!TOWNHALL_ID_RE.test(listingId)) {
+    return err(400, "invalid listing id");
+  }
+  const topic = topicOr503("market");
+  if (typeof topic !== "string") return topic;
+  const messages = await deps.hcs.queryAll(topic);
+  const listing = aggregateListings(messages).get(listingId);
+  if (!listing || listing.contents.status !== "active") {
+    return err(404, `listing "${listingId}" not found or no longer active`);
+  }
+  const { seller, sellerUsername } = listing.contents;
+  if (!sellerUsername || typeof sellerUsername !== "string") {
+    return ok({
+      verified: false,
+      reason: "this listing has no seller page on record — it cannot be verified",
+    });
+  }
+  let owner: string | null;
+  try {
+    owner = await deps.registry.resolveOwner(sellerUsername);
+  } catch {
+    return err(503, "registry unavailable — try again in a moment");
+  }
+  if (!owner) {
+    return ok({
+      verified: false,
+      reason: `the seller's page "@${sellerUsername}" is not registered on-chain`,
+    });
+  }
+  // Form-aware comparison: long-zero derives locally, alias resolves via
+  // mirror. Both must name the same Hedera account.
+  const [sellerId, ownerId] = await Promise.all([
+    deps.mirror.resolveAccountId(String(seller)),
+    deps.mirror.resolveAccountId(owner),
+  ]).catch(() => [null, null] as const);
+  if (!sellerId || !ownerId) {
+    return ok({
+      verified: false,
+      reason: "could not verify the seller on-chain — try again in a moment",
+    });
+  }
+  if (sellerId !== ownerId) {
+    return ok({
+      verified: false,
+      reason:
+        "this listing's payout address does not belong to the seller's registered page — do not buy",
+    });
+  }
+  return ok({ verified: true, sellerAddress: owner });
+}
 
 export interface SetProfileLinksBody extends AuthBody {
   username?: unknown;

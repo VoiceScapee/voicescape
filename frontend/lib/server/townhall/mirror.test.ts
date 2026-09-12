@@ -348,9 +348,11 @@ describe("RealMirrorPort sender resolution", () => {
   it("rejects when the session wallet cannot be resolved to an account", async () => {
     const { RealMirrorPort } = await import("./mirror");
     mockMirror({ txPayer: "0.0.291", accountForEvm: null });
+    // Alias-form (non-long-zero) address: not locally derivable, and the
+    // mirror mock returns 404 for it — genuinely unresolvable.
     const r = await new RealMirrorPort().verifyDustFee(
       "0.0.291@1694000000.000000000",
-      "0x0000000000000000000000000000000000000999",
+      "0x30c63dc43608b6764a6b8b53960553aebf306818",
     );
     expect(r.ok).toBe(false);
     expect(r.reason).toMatch(/could not resolve your wallet/);

@@ -10,7 +10,7 @@ import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
 import { getActiveChain } from "@/lib/chains";
-import { checkPayoutBelongsToOwner, mirrorBaseFor } from "@/lib/marketplace-verify";
+import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/marketplace-verify";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import {
@@ -195,12 +195,36 @@ export default function ListingDetailClient({ id }: { id: string }) {
       if (!account) throw new Error("Connect a wallet to buy.");
       if (!listing) throw new Error("Listing not loaded.");
       if (!sellerAddress) throw new Error("This listing has no seller payout address.");
+      // Defense in depth: never build a transaction on a proven mismatch.
+      // (The button is already disabled for this state; this guards any
+      // other path that could reach startBuy.)
+      if (sellerCheck === "mismatch") {
+        throw new Error(
+          "Blocked: this listing's payout address does not belong to the seller's registered page.",
+        );
+      }
       if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
+      // Server-side buy pre-check BEFORE any transaction is built or signed:
+      // re-verifies the seller against the registry and returns the
+      // canonical (alias-form) owner address to pay. A negative verdict
+      // means no transaction is built — zero gas burned on a doomed buy.
+      // CRITICAL: pay v.sellerAddress, never the raw long-zero form from the
+      // listing — a contract CALL with value to the long-zero form does not
+      // reach the account (mainnet 2026-09-12: buyListing reverted
+      // TipFailed), while the alias form works.
+      const v = await postJson<{
+        verified?: boolean;
+        sellerAddress?: string;
+        reason?: string;
+      }>(`/api/townhall/listings/${encodeURIComponent(listing.id)}/buy-verify`, {});
+      if (!v.verified || !v.sellerAddress) {
+        throw new Error(v.reason ?? "Seller verification failed — cannot build a safe purchase.");
+      }
       const wei = usdToWei(usd, hbarPrice);
       const sender = await getTxSender();
       // One atomic transaction: 98% to the seller, 2% to the treasury.
       // The contract never holds your funds — there is no escrow.
-      const tx = await buyListing(sellerToEvm(sellerAddress), listing.id, wei, sender);
+      const tx = await buyListing(v.sellerAddress, listing.id, wei, sender);
       // Verify on-chain before claiming "complete" — the wallet receipt only
       // proves submission, not success. (Same pattern as the tip flow.)
       setBuy({ kind: "confirming", tx });
@@ -301,11 +325,13 @@ export default function ListingDetailClient({ id }: { id: string }) {
               type="button"
               className="vs-btn vs-btn-primary th-btn-block"
               onClick={startBuy}
-              disabled={sellerCheck === "mismatch"}
+              disabled={isBuyBlocked(sellerCheck)}
               title={
                 sellerCheck === "mismatch"
                   ? "Blocked: the payout address does not belong to the seller's registered page."
-                  : undefined
+                  : sellerCheck === "checking"
+                    ? "Verifying the seller on-chain — the button unlocks when the check completes."
+                    : undefined
               }
             >
               Buy now — {formatUsd(listing.priceUsdCents)}

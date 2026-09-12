@@ -94,6 +94,11 @@ function TipBox({
     setBusy(true);
     try {
       if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
+      // Guardrail: never prompt a wallet signature for a doomed tip. The
+      // contract reverts for unregistered pages — pre-check the registry
+      // first so the user never signs a transaction that cannot succeed.
+      const registered = await resolvePage(username, getActiveChain());
+      if (!registered) throw new Error(`@${username} isn't registered on-chain — the tip would fail.`);
       const wei = usdToWei(usdNum, hbarPrice);
       const sender = await getTxSender();
       const hash = await tipPage(username, wei, sender);

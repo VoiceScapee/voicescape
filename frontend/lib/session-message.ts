@@ -213,6 +213,37 @@ export function isHederaAccountId(address: string): boolean {
   return /^0\.0\.\d+$/.test(address);
 }
 
+/**
+ * Derive "0.0.<num>" from a long-zero EVM address, or null when the address
+ * is not long-zero form.
+ *
+ * A Hedera account's long-zero EVM address packs shard (4 bytes) | realm
+ * (8 bytes) | num (8 bytes), zero-padded. For the overwhelmingly common
+ * 0.0.x case the first 24 hex chars are zeros and the account number is the
+ * last 16 hex chars. This derives locally — no network needed.
+ *
+ * IMPORTANT: an account whose wallet key is ECDSA has an *alias* EVM address
+ * (0x30c6…) as its canonical on-chain address; the long-zero form is NOT its
+ * EVM address. The Hedera mirror node REJECTS long-zero EVM addresses
+ * ("Invalid parameter: idOrAliasOrEvmAddress" — proven 2026-09-12), and, as
+ * the failed 2026-09-12 buyListing proved on mainnet, a contract CALL with
+ * value to the long-zero form does NOT reach the account (TipFailed), while
+ * the alias form works. So: use this only to *identify* which account a
+ * long-zero address names — never as a payment destination.
+ */
+export function longZeroToAccountId(evmAddress: string): string | null {
+  const m = /^0x([0-9a-fA-F]{40})$/.exec(evmAddress.trim());
+  if (!m) return null;
+  const hex = m[1].toLowerCase();
+  // shard (8 hex) + realm (16 hex) must be zero; num is the last 16 hex.
+  if (!/^0{24}$/.test(hex.slice(0, 24))) return null;
+  try {
+    return `0.0.${BigInt("0x" + hex.slice(24)).toString()}`;
+  } catch {
+    return null;
+  }
+}
+
 /** Client-side EVM signature check: recovered address must match. */
 export function verifyEvmSignature(message: string, signature: string, expectedAddress: string): boolean {
   try {

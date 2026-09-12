@@ -36,6 +36,7 @@ import {
   submitReport,
   getModStatus,
   voteProposal,
+  verifyBuySeller,
   type TownhallDeps,
 } from "./handlers";
 import type { MirrorPort } from "./mirror";
@@ -94,10 +95,15 @@ function makeDeps(opts: { feeOk?: boolean; purchases?: [string, string][] } = {}
         : { ok: true, reason: "ok", receivedTinybars: 1000 },
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
     resolveAccountId: async (address: string) => {
-      // Test mock: long-zero 0x...0eff -> 0.0.10424063, else pass through 0.0.x
+      // Test mock: long-zero 0x...9f0eff -> 0.0.10424063, else pass through 0.0.x
+      // The platform owner's REAL ECDSA alias (0x30c6…) also names
+      // 0.0.10424063 — the real port resolves it via the mirror node.
       // For test 0x addresses (e.g., alice's 0x...a11c), derive a fake 0.0.x
       // from the last 4 hex digits for payer matching.
       if (/^0x0*9f0eff$/i.test(address)) return "0.0.10424063";
+      if (address.toLowerCase() === "0x30c63dc43608b6764a6b8b53960553aebf306817") {
+        return "0.0.10424063";
+      }
       if (/^0\.0\.\d+$/.test(address)) return address;
       const m = /^0x0*([0-9a-f]+)$/i.exec(address);
       if (m) {
@@ -1148,6 +1154,122 @@ describe("listing payout address vs page identity", () => {
       ...fee(),
     });
     expect(r.status).toBe(403);
+  });
+
+  it("rejects a payout address that is not the seller's own wallet (403)", async () => {
+    // alice signs in, but names bob's payout address — unverified sellers
+    // can never receive money on Voicescape.
+    const r = await createListing(makeDeps(), {
+      seller: OWNERS.bob,
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      id: "payout-thirdparty-1",
+      title: "T",
+      description: "D",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ...fee(),
+    });
+    expect(r.status).toBe(403);
+    expect((r.json as { error: string }).error).toMatch(/connected wallet/i);
+  });
+
+  it("accepts a payout in a different address form of the same wallet", async () => {
+    // The platform owner's session address is the ECDSA alias form while
+    // the listing names the long-zero form — both are 0.0.10424063.
+    const r = await createListing(makeDeps(), {
+      seller: "0x00000000000000000000000000000000009f0eff",
+      sellerUsername: "owner",
+      auth: testCred("owner"),
+      id: "payout-form-ok-1",
+      title: "T",
+      description: "D",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ...fee(),
+    });
+    expect(r.status).toBe(201);
+  });
+});
+
+describe("verifyBuySeller (buy pre-check)", () => {
+  const LONG_ZERO = "0x00000000000000000000000000000000009f0eff";
+
+  function seedRawListing(
+    deps: TownhallDeps,
+    id: string,
+    opts: { seller: string; sellerUsername: string; status?: "active" | "sold" },
+  ) {
+    seedHcs(deps, T.market, {
+      v: 1,
+      kind: "listing",
+      ts: new Date().toISOString(),
+      author: opts.sellerUsername,
+      id,
+      seller: opts.seller,
+      sellerUsername: opts.sellerUsername,
+      title: "T",
+      description: "D",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ipfsHash: null,
+      status: opts.status ?? "active",
+    });
+  }
+
+  it("verifies a listing whose payout belongs to the registered seller page", async () => {
+    const deps = makeDeps();
+    // owner = alias form on-chain; listing payout = long-zero form.
+    await writeListing(deps, "owner", "buy-ok-1", { seller: LONG_ZERO });
+    const r = await verifyBuySeller(deps, "buy-ok-1");
+    expect(r.status).toBe(200);
+    const json = r.json as { verified: boolean; sellerAddress?: string; reason?: string };
+    expect(json.verified).toBe(true);
+    // The buyer must pay the canonical (alias-form) owner address — never
+    // the long-zero form, which the contract cannot pay (mainnet 2026-09-12).
+    expect(json.sellerAddress).toBe(OWNERS.owner);
+  });
+
+  it("rejects a buy when the payout does not belong to the seller page", async () => {
+    const deps = makeDeps();
+    // alice's page, but bob's payout address — seeded raw to simulate a
+    // listing that predates the createListing payout guard.
+    seedRawListing(deps, "buy-bad-1", { seller: OWNERS.bob, sellerUsername: "alice" });
+    const r = await verifyBuySeller(deps, "buy-bad-1");
+    expect(r.status).toBe(200);
+    const json = r.json as { verified: boolean; reason?: string };
+    expect(json.verified).toBe(false);
+    expect(json.reason).toMatch(/does not belong/i);
+  });
+
+  it("rejects a buy when the seller page is not registered", async () => {
+    const deps = makeDeps();
+    seedRawListing(deps, "buy-nopage-1", { seller: OWNERS.alice, sellerUsername: "ghost-user" });
+    const r = await verifyBuySeller(deps, "buy-nopage-1");
+    const json = r.json as { verified: boolean; reason?: string };
+    expect(json.verified).toBe(false);
+    expect(json.reason).toMatch(/not registered/i);
+  });
+
+  it("404s an unknown listing id", async () => {
+    const r = await verifyBuySeller(makeDeps(), "no-such-listing");
+    expect(r.status).toBe(404);
+  });
+
+  it("404s a sold listing", async () => {
+    const deps = makeDeps();
+    seedRawListing(deps, "buy-sold-1", {
+      seller: OWNERS.alice,
+      sellerUsername: "alice",
+      status: "sold",
+    });
+    const r = await verifyBuySeller(deps, "buy-sold-1");
+    expect(r.status).toBe(404);
+  });
+
+  it("400s a malformed listing id", async () => {
+    const r = await verifyBuySeller(makeDeps(), "BAD ID!!");
+    expect(r.status).toBe(400);
   });
 });
 
