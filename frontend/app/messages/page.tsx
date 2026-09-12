@@ -105,7 +105,7 @@ export default function DMsPage() {
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "32px 18px" }}>
         <h1 style={{ marginBottom: 24 }}>💬 Messages</h1>
 
-        <div style={{ display: "grid", gridTemplateColumns: "280px 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 280px) minmax(0, 1fr)", gap: 16 }} className="dm-grid">
           {/* Inbox */}
           <div
             style={{
@@ -166,14 +166,13 @@ export default function DMsPage() {
             {!selected ? (
               <div style={{ padding: 32, textAlign: "center", color: "var(--vs-muted)" }}>
                 <p style={{ marginBottom: 16 }}>Select a conversation or start a new one.</p>
-                <form onSubmit={sendMessage} style={{ display: "flex", gap: 8, maxWidth: 400, margin: "0 auto" }}>
+                <form onSubmit={sendMessage} style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400, margin: "0 auto" }}>
                   <input
                     type="text"
                     value={newRecipient}
                     onChange={(e) => setNewRecipient(e.target.value)}
                     placeholder="Recipient address (0x…)"
                     style={{
-                      flex: 1,
                       padding: "10px 14px",
                       borderRadius: 8,
                       border: "1px solid var(--vs-border)",
@@ -182,6 +181,28 @@ export default function DMsPage() {
                       fontSize: 13,
                     }}
                   />
+                  <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Type your message…"
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      border: "1px solid var(--vs-border)",
+                      background: "var(--vs-bg)",
+                      color: "inherit",
+                      fontSize: 13,
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newRecipient.trim() || !newMessage.trim()}
+                    className="vs-btn vs-btn-primary"
+                    style={{ padding: "10px 14px", fontSize: 14 }}
+                  >
+                    Send message
+                  </button>
                 </form>
               </div>
             ) : (
@@ -239,6 +260,13 @@ export default function DMsPage() {
           </div>
         </div>
       </div>
+      <style jsx>{`
+        @media (max-width: 640px) {
+          .dm-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
     </main>
   );
 }
