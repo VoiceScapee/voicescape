@@ -9,10 +9,6 @@ import {
   type TownhallDeps,
 } from "@/lib/server/townhall/handlers";
 import {
-  resolveAgentKeyAuth,
-  AGENT_KEY_HEADER,
-} from "@/lib/server/agents/links";
-import {
   buildBuyTransaction,
   buildPostTransaction,
   buildTipTransaction,
@@ -30,9 +26,8 @@ export const runtime = "nodejs";
  * This is Voicescape's Hedera Agent Kit integration (RETURN_BYTES mode):
  * an AI agent sends a natural-language instruction, the server parses it
  * into a Hedera operation, builds the transaction, and returns the
- * UNSIGNED bytes. The agent signs with its own Hedera key and submits —
- * the funds come from the agent's own wallet. The server never touches
- * private keys and never signs on anyone's behalf.
+ * UNSIGNED bytes. The human signs via their wallet — the server never
+ * touches private keys and never signs on the user's behalf.
  *
  * Body: { instruction: string, agentId: string }
  *   - instruction: e.g. "tip 5 HBAR to @brandon", "post 'hello' to the forum",
@@ -44,12 +39,8 @@ export const runtime = "nodejs";
  *   - unsignedTxBytes: base64-encoded frozen transaction. Deserialize with
  *     Transaction.fromBytes(), sign with the wallet, submit.
  *
- * Auth: signed wallet session (x-vs-session header) OR an agent API key
- * (x-vs-agent-key header), issued when a human links their agent at
- * POST /api/agents/link. With a key, the linked agent is the payer and
- * agentId must name the linked agent page. 401 without either.
- * Rate limit: 10/hour per wallet + 30/hour per agent key + per-IP flood
- * gate. 429 when exceeded.
+ * Auth: signed wallet session (x-vs-session header). 401 without.
+ * Rate limit: 10/hour per wallet + per-IP flood gate. 429 when exceeded.
  * Safety: 100 HBAR max per operation, content filter on posts, agent must
  * be registered. All executions are logged to the HCS audit topic
  * (best-effort).
@@ -85,107 +76,61 @@ export async function POST(req: NextRequest) {
 
   const deps = defaultDeps();
 
-  // --- Auth: agent API key OR signed wallet session ---
-  //
-  // Agent-key path (the connected-agent flow): the agent sends the key
-  // issued at link time as x-vs-agent-key. The key resolves to the linked
-  // identity — the agent transacts from its OWN Hedera wallet (the payer),
-  // and the requested agentId must name the linked agent page. The
-  // per-key quota is enforced inside resolveAgentKeyAuth.
-  //
-  // Session path (unchanged): a human signs in with their wallet and acts
-  // through an agent page their wallet owns.
-  let agentName: string;
-  let payerAccountId: string;
-  let auditWallet: string;
+  // --- Auth: signed wallet session ---
+  const cred = sessionCredentialFrom(req);
+  if (!cred) {
+    return NextResponse.json(
+      { error: "missing session: sign in with your wallet" },
+      { status: 401 },
+    );
+  }
+  const verified = await deps.auth.verifySession(cred);
+  if (!verified.ok) {
+    return NextResponse.json({ error: verified.error }, { status: 401 });
+  }
+  const session = verified.session;
 
-  const agentKeyHeader = req.headers.get(AGENT_KEY_HEADER);
-  if (agentKeyHeader) {
-    const keyAuth = await resolveAgentKeyAuth(req.headers, getKvStore());
-    if (!keyAuth.ok) {
-      return NextResponse.json({ error: keyAuth.error }, { status: keyAuth.status });
-    }
-    const requested = agentId.trim().toLowerCase().replace(/^@+/, "");
-    if (requested !== keyAuth.identity.username.toLowerCase()) {
-      return NextResponse.json(
-        {
-          error: `this agent key is linked to "${keyAuth.identity.username}" — agentId must match the linked agent`,
-        },
-        { status: 403 },
-      );
-    }
-    agentName = keyAuth.identity.username;
-    payerAccountId = keyAuth.identity.agentAccountId;
-    auditWallet = `agent-key:${keyAuth.identity.keyId}`;
-  } else {
-    const cred = sessionCredentialFrom(req);
-    if (!cred) {
-      return NextResponse.json(
-        { error: "missing session: sign in with your wallet, or send an agent API key" },
-        { status: 401 },
-      );
-    }
-    const verified = await deps.auth.verifySession(cred);
-    if (!verified.ok) {
-      return NextResponse.json({ error: verified.error }, { status: 401 });
-    }
-    const session = verified.session;
+  // --- Agent registration: agentId must be a page owned by the session wallet ---
+  const agentName = agentId.trim().toLowerCase().replace(/^@+/, "");
+  let agentOwner: string | null;
+  try {
+    agentOwner = await deps.registry.resolveOwner(agentName);
+  } catch {
+    return NextResponse.json(
+      { error: "registry unavailable — try again in a moment" },
+      { status: 503 },
+    );
+  }
+  if (!agentOwner) {
+    return NextResponse.json(
+      { error: `agent "${agentName}" is not registered on Voicescape` },
+      { status: 403 },
+    );
+  }
+  if (canonicalAddress(agentOwner) !== session.address) {
+    return NextResponse.json(
+      { error: "this wallet does not own the agent page — sign in with the agent owner's wallet" },
+      { status: 403 },
+    );
+  }
 
-    // --- Agent registration: agentId must be a page owned by the session wallet ---
-    agentName = agentId.trim().toLowerCase().replace(/^@+/, "");
-    let agentOwner: string | null;
-    try {
-      agentOwner = await deps.registry.resolveOwner(agentName);
-    } catch {
-      return NextResponse.json(
-        { error: "registry unavailable — try again in a moment" },
-        { status: 503 },
-      );
-    }
-    if (!agentOwner) {
-      return NextResponse.json(
-        { error: `agent "${agentName}" is not registered on Voicescape` },
-        { status: 403 },
-      );
-    }
-    if (canonicalAddress(agentOwner) !== session.address) {
-      return NextResponse.json(
-        { error: "this wallet does not own the agent page — sign in with the agent owner's wallet" },
-        { status: 403 },
-      );
-    }
-
-    // --- Per-wallet rate limit: 10/hour ---
-    const store = getKvStore();
-    const rateKey = `agent-execute:${session.address}`;
-    let used: number;
-    try {
-      used = await store.incr(rateKey, EXECUTE_RATE_WINDOW_MS);
-    } catch {
-      return NextResponse.json(
-        { error: "rate limiter unavailable — try again in a moment" },
-        { status: 503 },
-      );
-    }
-    if (used > EXECUTE_RATE_LIMIT) {
-      return NextResponse.json(
-        { error: `rate limit exceeded: ${EXECUTE_RATE_LIMIT} agent executions per hour` },
-        { status: 429 },
-      );
-    }
-
-    // Session address is a canonical 0x address; derive the 0.0.x payer id.
-    // For Hedera sessions the address IS the 0.0.x id in the token; canonical
-    // 0x form is used for registry comparisons. We need the 0.0.x form here.
-    const resolved = await resolvePayerAccountId(deps, session.address);
-    if (!resolved) {
-      return NextResponse.json(
-        { error: "could not resolve your Hedera account id" },
-        { status: 400 },
-      );
-    }
-    payerAccountId = resolved;
-    auditWallet = session.address;
+  // --- Per-wallet rate limit: 10/hour ---
+  const store = getKvStore();
+  const rateKey = `agent-execute:${session.address}`;
+  let used: number;
+  try {
+    used = await store.incr(rateKey, EXECUTE_RATE_WINDOW_MS);
+  } catch {
+    return NextResponse.json(
+      { error: "rate limiter unavailable — try again in a moment" },
+      { status: 503 },
+    );
+  }
+  if (used > EXECUTE_RATE_LIMIT) {
+    return NextResponse.json(
+      { error: `rate limit exceeded: ${EXECUTE_RATE_LIMIT} agent executions per hour` },
+      { status: 429 },
+    );
   }
 
   // --- Parse the instruction ---
@@ -197,6 +142,17 @@ export async function POST(req: NextRequest) {
 
   // --- Build the unsigned transaction ---
   const network = townhallNetwork() === "mainnet" ? "mainnet" : "testnet";
+  // Session address is a canonical 0x address; derive the 0.0.x payer id.
+  // For Hedera sessions the address IS the 0.0.x id in the token; canonical
+  // 0x form is used for registry comparisons. We need the 0.0.x form here.
+  const payerAccountId = await resolvePayerAccountId(deps, session.address);
+  if (!payerAccountId) {
+    return NextResponse.json(
+      { error: "could not resolve your Hedera account id" },
+      { status: 400 },
+    );
+  }
+
   const ctx: BuildContext = { payerAccountId, network };
   try {
     let built;
@@ -240,7 +196,7 @@ export async function POST(req: NextRequest) {
     // --- Audit log (best-effort, never blocks the response) ---
     void logAudit(deps, {
       agent: agentName,
-      wallet: auditWallet,
+      wallet: session.address,
       instruction: instruction.slice(0, 200),
       description: built.description,
       transactionId: built.transactionId,

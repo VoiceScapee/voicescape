@@ -66,13 +66,6 @@ export default function Navbar({ right }: NavbarProps) {
           >
             Explore
           </Link>
-          <Link
-            href="/agents/api"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            API
-          </Link>
           <InstallAppButton />
           <LanguageSelector />
           {right}
