@@ -210,23 +210,19 @@ export function createHederaTxSender(
       }
       tx.setPayableAmount(Hbar.fromTinybars(tinybars.toString()));
     }
-    // Freeze the tx body so the wallet can sign it (HIP-820). Do NOT use
-    // freezeWithSigner here: the DAppSigner's populateTransaction only sets
-    // the transaction id — it never sets node account ids — so freeze()
-    // throws "`nodeAccountId` must be set or `client` must be provided with
-    // `freezeWith`". Instead set the tx id from the wallet account and freeze
-    // with the public network client, which fills in the node account ids.
-    // freezeWith signs nothing; HashPack signs via signAndExecuteTransaction.
-    tx.setTransactionId(TransactionId.generate(accountId));
-    tx.freezeWith(networkClient);
-    const txId = tx.transactionId?.toString() ?? "";
-    // DAppConnector signs AND executes via the wallet (HIP-820).
-    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
-    const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
-    await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
-      signerAccountId: `hedera:${network}:${accountId.toString()}`,
-      transactionList: txBase64,
-    });
+    // KISS: Use the official Hedera DAppSigner pattern. The DAppConnector's
+    // getSigner() returns a signer bound to the connected account. Calling
+    // tx.executeWithSigner(signer) lets the wallet handle the full transaction
+    // lifecycle (freeze, sign, execute) natively via HIP-820, instead of
+    // manually serializing and calling signAndExecuteTransaction.
+    // This is the Hedera-native way — no custom serialization.
+    const signer = liveConnector.getSigner(accountId);
+    if (!signer) {
+      throw new Error("Wallet signer not available — reconnect your wallet and try again.");
+    }
+    const response = await tx.executeWithSigner(signer);
+    // The response contains the transaction ID. Format for HashScan.
+    const txId = response.transactionId?.toString() ?? "";
     // HashScan deep link format: <network>/transaction/<txId>
     return txId;
   }
