@@ -41,7 +41,7 @@ describe("isOnboarded / markOnboarded", () => {
 
 describe("saveOnboardDraft / consumeOnboardDraft", () => {
   const draft: OnboardDraft = {
-    templateId: "neon-nights",
+    templateId: "business-card",
     displayName: "Brandon",
     bio: "Cable tech by day.",
     heroTitle: "Welcome!",

@@ -185,16 +185,16 @@ describe("getErrorAggregates", () => {
 describe("founder gate", () => {
   const env = {
     FOUNDER_WALLETS: "0.0.10424063, 0xABCdef1234567890",
-    NEXT_PUBLIC_TREASURY_ADDRESS: "0.0.99999999",
   };
-  test("founderWallets merges env list + treasury fallback", () => {
-    expect(founderWallets(env)).toEqual(["0.0.10424063", "0xabcdef1234567890", "0.0.99999999"]);
-    expect(founderWallets({})).toEqual([]);
+  test("founderWallets always includes the founder + env extras", () => {
+    expect(founderWallets(env)).toEqual(["0.0.10424063", "0xabcdef1234567890"]);
+    expect(founderWallets({})).toEqual(["0.0.10424063"]);
   });
   test("isFounderWallet is case-insensitive", () => {
     expect(isFounderWallet("0.0.10424063", env)).toBe(true);
-    expect(isFounderWallet("0.0.99999999", env)).toBe(true); // treasury fallback
     expect(isFounderWallet("0xABCDEF1234567890", env)).toBe(true);
+    // Long-zero EVM form of the founder account resolves too.
+    expect(isFounderWallet("0x00000000000000000000000000000000009f0eff", env)).toBe(true);
     expect(isFounderWallet("0.0.1", env)).toBe(false);
     expect(isFounderWallet(null, env)).toBe(false);
   });

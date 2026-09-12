@@ -14,8 +14,7 @@
  *
  * The admin endpoint (GET /api/admin/errors) is founder-gated: the
  * request must carry a valid wallet session whose address is in the
- * founder wallet set (FOUNDER_WALLETS env, falling back to the public
- * NEXT_PUBLIC_TREASURY_ADDRESS).
+ * founder wallet set (0.0.10424063 always, plus FOUNDER_WALLETS env).
  */
 import type { KvStore } from "./store";
 import { getKvStore } from "./store";
@@ -250,9 +249,9 @@ export async function getErrorAggregates(
 /* ------------------------------------------------------------------ */
 
 /**
- * Wallet addresses allowed to view the error dashboard. Configured via
- * FOUNDER_WALLETS (comma-separated); falls back to the public treasury
- * address, which is the founder's wallet. Comparison is case-insensitive.
+ * Wallet addresses allowed to view the error dashboard. The founder
+ * (0.0.10424063) is always included; FOUNDER_WALLETS (comma-separated)
+ * can add more. Comparison is case-insensitive.
  * Kept here (server-only) so the list never ships to the browser.
  */
 export function founderWallets(env: Record<string, string | undefined> = process.env): string[] {
