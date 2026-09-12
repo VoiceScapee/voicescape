@@ -324,7 +324,7 @@ describe("warn/timeout/ban write-path enforcement", () => {
   it("expired timeout does not block (integration)", async () => {
     const deps = makeDeps();
     // Inject an already-expired timeout record directly on the forum topic.
-    await deps.hcs.submit("0.0.7001", {
+    (deps.hcs as MemoryHcsClient).seed("0.0.7001", {
       v: 1,
       kind: "timeout",
       ts: new Date(Date.now() - 7200000).toISOString(),

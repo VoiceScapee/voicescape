@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
 }
 
 /**
- * POST /api/townhall/posts {board?,wall?,body,replyTo?,dustFeeTxId,author}
- * Dust fee required. 201 → {seq}. 402 → {error,dustFeeTinybars,treasury}.
+ * POST /api/townhall/posts {board?,wall?,body,replyTo?,hcsTxId,author}
+ * User-signed HCS: client submits via wallet first, sends hcsTxId. 201 → {verified}.
  */
 export async function POST(req: NextRequest) {
   // Per-IP flood bound in front of the per-wallet quotas and dust fees.

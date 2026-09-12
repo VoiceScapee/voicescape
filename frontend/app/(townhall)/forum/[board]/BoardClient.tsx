@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PostCard from "@/components/townhall/PostCard";
-import DustFeeGate from "@/components/townhall/DustFeeGate";
 import { PresenceDot } from "@/components/townhall/Presence";
-import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
 import { IconClose } from "@/components/icons";
@@ -80,7 +80,7 @@ function Thread({
 
 export default function BoardClient({ board }: { board: string }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
-  const dust = useDustFee();
+  const hcs = useHcsSubmit();
   const [posts, setPosts] = useState<TownhallPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,28 +135,45 @@ export default function BoardClient({ board }: { board: string }) {
 
   const submit = async () => {
     const text = body.trim();
-    if (!text || !canWrite) return;
+    if (!text || !canWrite || !me) return;
     const replySeq = replyTo?.seq ?? null;
-    let sentSeq: number | null = null;
-    const ok = await dust.execute(async (dustFeeTxId) => {
-      const res = await postJson<{ seq: number }>("/api/townhall/posts", {
+
+    // Construct the HCS message (user signs this in their wallet)
+    const message = {
+      v: 1,
+      kind: "post",
+      ts: new Date().toISOString(),
+      author: me,
+      board,
+      wall: null,
+      body: text,
+      replyTo: replySeq,
+    };
+
+    // Submit to HCS via the user's wallet (they pay the fee, it's transparent)
+    const hcsTxId = await hcs.submit("forum", message);
+    if (!hcsTxId) return; // User cancelled or error
+
+    try {
+      // Notify the server (it verifies the HCS tx via mirror node)
+      await postJson("/api/townhall/posts", {
         board,
         body: text,
         replyTo: replySeq,
         author: me,
-        dustFeeTxId,
+        hcsTxId,
       });
-      sentSeq = res.seq;
-    });
-    if (ok) {
       setBody("");
       setReplyTo(null);
-      // Optimistic: show it now; the stream dedupes when the real copy arrives.
-      if (sentSeq != null && me) {
-        mergePosts([
-          { seq: sentSeq, board, wall: undefined, author: me, body: text, replyTo: replySeq, ts: Date.now() },
-        ]);
-      }
+      // Optimistic: show it now with a temp seq; the stream dedupes when the real copy arrives.
+      const tempSeq = -Date.now();
+      mergePosts([
+        { seq: tempSeq, board, wall: undefined, author: me, body: text, replyTo: replySeq, ts: Date.now() },
+      ]);
+    } catch (e) {
+      // Server verification failed - the HCS tx is still on-chain, but the
+      // server didn't accept it (e.g., content filter). Show the error.
+      console.error("Post verification failed:", e);
     }
   };
 
@@ -202,13 +219,15 @@ export default function BoardClient({ board }: { board: string }) {
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
             onClick={submit}
-            disabled={!body.trim() || !canWrite || dust.phase.kind === "working" || dust.phase.kind === "paying"}
+            disabled={!body.trim() || !canWrite || hcs.phase.kind === "submitting"}
           >
-            {dust.phase.kind === "working" || dust.phase.kind === "paying" ? "Posting…" : "Post"}
+            {hcs.phase.kind === "submitting" ? "Sign in wallet…" : "Post"}
           </button>
           {!canWrite && <span className="th-muted">{isAuthenticated ? "You need a page username to post." : "Sign in with your wallet to post."}</span>}
         </div>
-        <DustFeeGate flow={dust} actionLabel="post" />
+        {hcs.phase.kind === "error" && (
+          <p className="th-error">Failed to submit: {hcs.phase.message}</p>
+        )}
       </div>
 
       {loading && <p className="th-muted">Loading threads…</p>}

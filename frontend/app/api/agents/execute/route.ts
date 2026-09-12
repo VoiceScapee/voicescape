@@ -238,7 +238,12 @@ async function resolvePayerAccountId(
   }
 }
 
-/** Best-effort audit log to the HCS votes topic (used as the audit trail). */
+/** Best-effort audit log to the HCS votes topic (used as the audit trail).
+ *
+ * NOTE: In the user-signed architecture, the server cannot submit to HCS
+ * (no operator key). Agent execution audit logs are skipped. If HCS audit
+ * logging is needed, the client must sign the log entry via their wallet.
+ */
 async function logAudit(
   deps: TownhallDeps,
   entry: {
@@ -250,11 +255,7 @@ async function logAudit(
     txType: string;
   },
 ): Promise<void> {
-  const topicId = getTopicId("votes");
-  if (!topicId) return;
-  await deps.hcs.submit(topicId, {
-    kind: "agent-execution",
-    ...entry,
-    timestamp: new Date().toISOString(),
-  });
+  // No-op: server cannot submit to HCS without an operator key.
+  // The agent execution itself is the auditable event (signed by the user).
+  return;
 }

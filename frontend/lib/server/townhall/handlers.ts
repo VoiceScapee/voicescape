@@ -163,107 +163,39 @@ function operatorSubmitCostTinybars(): number {
   return 100_000;
 }
 
-async function requireDustFee(
+/**
+ * Verify a user-signed HCS transaction for a Town Hall write.
+ *
+ * In the user-signed architecture, the client submits the HCS message
+ * directly via their wallet (paying the HCS fee themselves). The server
+ * verifies via the mirror node that the transaction:
+ * 1. Exists and was successful
+ * 2. Is a CONSENSUSSUBMITMESSAGE to the expected topic
+ * 3. Was paid for by the authenticated user's account
+ *
+ * Returns null on success, or a HandlerResult error on failure.
+ */
+async function verifyUserHcsTx(
   deps: TownhallDeps,
   session: VerifiedSession,
-  dustFeeTxId: unknown,
+  hcsTxId: unknown,
+  topic: string,
 ): Promise<HandlerResult | null> {
-  const { dustFeeTinybars, treasury } = deps.mirror.feeInfo();
-  // The treasury owner doesn't pay the dust fee to themselves — Hedera
-  // rejects self-transfers (ACCOUNT_REPEATED_IN_ACCOUNT_AMOUNTS).
-  // isOwnerAddress matches the owner's ECDSA-derived EVM address as well
-  // as the 0.0.x/long-zero forms (canonicalAddress alone can't match the
-  // ECDSA form).
-  if (isOwnerAddress(session.address)) {
-    return null; // Owner posts free
+  if (!hcsTxId || typeof hcsTxId !== "string" || !hcsTxId.trim()) {
+    return err(400, "hcsTxId is required: submit the message via your wallet first");
   }
-  // Economics guard BEFORE fee verification: the dust fee goes to the
-  // treasury while the OPERATOR's key pays the HCS submit fee. They are
-  // enforced as separate accounts (conservative: if they're the same
-  // pocket the platform still never loses). A zero or below-cost fee
-  // passes nothing and the operator would still pay the submit — so
-  // misconfiguration fails LOUD (503), never silently.
-  const costFloor = operatorSubmitCostTinybars() * 2;
-  if (dustFeeTinybars === 0) {
-    console.error(
-      "[townhall] ECONOMICS: DUST_FEE_TINYBARS is 0 — town hall writes DISABLED. " +
-        "The operator's key would pay every HCS submit fee out of pocket.",
-    );
+  // Resolve the session address to a 0.0.x account ID for payer comparison.
+  // Handles long-zero (0x0000...0eff) vs public-key alias (0x30C6...) forms.
+  const payerId = await deps.mirror.resolveAccountId(session.address);
+  if (!payerId) {
+    return err(400, "could not resolve your wallet to a Hedera account");
+  }
+  const verified = await deps.hcs.verifyTx(hcsTxId.trim(), topic, payerId);
+  if (!verified) {
     return err(
-      503,
-      "town hall writes are disabled: dust fee is not configured — the operator cannot subsidize writes",
-      { dustFeeTinybars, treasury },
+      400,
+      "HCS transaction verification failed: ensure you submitted to the correct topic from your connected wallet",
     );
-  }
-  if (dustFeeTinybars < costFloor) {
-    console.error(
-      `[townhall] ECONOMICS: dust fee ${dustFeeTinybars} tinybars is below the operator ` +
-        `cost floor ${costFloor} tinybars — town hall writes DISABLED. Raise DUST_FEE_TINYBARS.`,
-    );
-    return err(
-      503,
-      `dust fee (${dustFeeTinybars} tinybars) is below the operator cost floor (${costFloor} tinybars) — raise DUST_FEE_TINYBARS`,
-      { dustFeeTinybars, treasury },
-    );
-  }
-  if (!dustFeeTxId || typeof dustFeeTxId !== "string") {
-    return err(402, "dust fee required: send a small HBAR transfer to the treasury first", {
-      dustFeeTinybars,
-      treasury,
-    });
-  }
-  // Normalize: the same payment must not look like two different tx ids
-  // just because of surrounding whitespace.
-  const feeTxId = dustFeeTxId.trim();
-  if (!feeTxId) {
-    return err(402, "dust fee required: send a small HBAR transfer to the treasury first", {
-      dustFeeTinybars,
-      treasury,
-    });
-  }
-  // Replay protection: one fee payment buys exactly one write. The tx id
-  // is RESERVED atomically here — before the awaited verification —
-  // so two concurrent requests presenting the same tx id cannot both
-  // pass: the second sees the reservation and is rejected. The
-  // reservation is released if verification fails (the fee stays
-  // retryable) and becomes a permanent consumed record on success.
-  // The store's SET … NX makes this atomic across instances too.
-  let reserved: boolean;
-  try {
-    reserved = await reserveDustFeeTx(feeTxId);
-  } catch (e) {
-    // The replay store is unreachable: fail CLOSED (503), never treat an
-    // unchecked fee as valid.
-    console.error(`[townhall] replay store unreachable: ${e instanceof Error ? e.message : String(e)}`);
-    return err(503, "temporarily unavailable — please retry in a moment", { dustFeeTinybars, treasury });
-  }
-  if (!reserved) {
-    return err(402, "dust fee already used: each fee payment covers a single write — pay a fresh fee", {
-      dustFeeTinybars,
-      treasury,
-    });
-  }
-  // Sender binding: the fee must have been paid by the wallet that signed
-  // the session. verifyDustFee resolves 0x… sessions to their 0.0.x
-  // account id via the mirror node before comparing to the tx's payer.
-  let res;
-  try {
-    res = await deps.mirror.verifyDustFee(feeTxId, session.address);
-  } catch {
-    await releaseDustFeeTx(feeTxId).catch(() => {});
-    return err(502, "dust fee verification failed — try again", { dustFeeTinybars, treasury });
-  }
-  if (!res.ok) {
-    await releaseDustFeeTx(feeTxId).catch(() => {});
-    return err(402, `dust fee invalid: ${res.reason}`, { dustFeeTinybars, treasury });
-  }
-  try {
-    await consumeDustFeeTx(feeTxId);
-  } catch (e) {
-    // The fee verified but could not be recorded as consumed: fail CLOSED
-    // (503) rather than risk the same fee paying for a second write.
-    console.error(`[townhall] replay store unreachable on consume: ${e instanceof Error ? e.message : String(e)}`);
-    return err(503, "temporarily unavailable — please retry in a moment", { dustFeeTinybars, treasury });
   }
   return null;
 }
@@ -533,14 +465,15 @@ export interface CreatePostBody extends AuthBody {
   wall?: unknown;
   body?: unknown;
   replyTo?: unknown;
-  dustFeeTxId?: unknown;
+  /** User-signed HCS submit transaction ID (replaces dustFeeTxId). */
+  hcsTxId?: unknown;
   author?: unknown;
 }
 
 export async function createPost(deps: TownhallDeps, body: CreatePostBody): Promise<HandlerResult> {
   const actor = await requireModActor(deps, body, body.author);
   if (!actor.ok) return actor.result;
-  // Restricted wallets (timed out / banned) are stopped BEFORE the dust fee — they are never charged.
+  // Restricted wallets (timed out / banned) are stopped before verification.
   const restricted = await requireNotRestricted(deps, actor.session.address);
   if (restricted) return restricted;
   const author = actor.name;
@@ -565,22 +498,25 @@ export async function createPost(deps: TownhallDeps, body: CreatePostBody): Prom
   }
   const gate = safetyGate("post body", body.body, "forum post");
   if (gate) return gate;
-  const fee = await requireDustFee(deps, actor.session, body.dustFeeTxId);
-  if (fee) return fee;
   const topic = topicOr503("forum");
   if (typeof topic !== "string") return topic;
-  const msg: PostMessage = {
-    v: 1,
-    kind: "post",
-    ts: new Date().toISOString(),
-    author,
-    board,
-    wall,
-    body: body.body,
-    replyTo,
-  };
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Verify the user-signed HCS transaction. The user pays the HCS fee
+  // directly from their wallet — no dust fee, no operator key.
+  if (!body.hcsTxId || typeof body.hcsTxId !== "string") {
+    return err(400, "hcsTxId is required: submit the message via your wallet first");
+  }
+  // Resolve the session address to a 0.0.x account ID for payer comparison.
+  const payerId = await deps.mirror.resolveAccountId(actor.session.address);
+  if (!payerId) {
+    return err(400, "could not resolve your wallet to a Hedera account");
+  }
+  const verified = await deps.hcs.verifyTx(body.hcsTxId, topic, payerId);
+  if (!verified) {
+    return err(400, "HCS transaction verification failed: ensure you submitted to the correct topic from your wallet");
+  }
+  // The message is on-chain, submitted and paid for by the user.
+  // The server validated the content above; the HCS tx is the proof.
+  return ok({ verified: true, topic, txId: body.hcsTxId }, 201);
 }
 
 /* ------------------------------------------------------------------ */
@@ -637,7 +573,8 @@ export interface CreateChatRoomBody extends AuthBody {
   id?: unknown;
   title?: unknown;
   description?: unknown;
-  dustFeeTxId?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBody): Promise<HandlerResult> {
@@ -662,23 +599,14 @@ export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBod
     const gateDesc = safetyGate("room description", description, "chatroom");
     if (gateDesc) return gateDesc;
   }
-  const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
-  if (fee) return fee;
   const topic = topicOr503("chat");
   if (typeof topic !== "string") return topic;
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
   // First create wins — an id that already exists is a conflict.
   const existing = await collectChatRooms(deps);
   if (existing.some((r) => r.id === id)) return err(409, `room "${id}" already exists`);
-  const msg: ChatRoomMessage = {
-    v: 1,
-    kind: "chatroom-create",
-    ts: new Date().toISOString(),
-    author,
-    id,
-    title,
-    description,
-  };
-  await deps.hcs.submit(topic, msg);
+  // Message verified on-chain via user's wallet. Return the room ID.
   return ok({ roomId: id }, 201);
 }
 
@@ -704,6 +632,8 @@ export interface CastRepVoteBody extends AuthBody {
   target?: unknown;
   voter?: unknown;
   value?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 export async function castRepVote(deps: TownhallDeps, body: CastRepVoteBody): Promise<HandlerResult> {
@@ -746,19 +676,13 @@ export async function castRepVote(deps: TownhallDeps, body: CastRepVoteBody): Pr
   }
   const topic = topicOr503("votes");
   if (typeof topic !== "string") return topic;
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The voter pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(own.session);
   if (quota) return quota;
-  const msg: RepVoteMessage = {
-    v: 1,
-    kind: "rep-vote",
-    ts: new Date().toISOString(),
-    author: voter,
-    target,
-    voter,
-    value: body.value,
-  };
-  await deps.hcs.submit(topic, msg);
+  // Message verified on-chain via user's wallet.
   const messages = await deps.hcs.queryAll(topic);
   const tally = aggregateRepVotes(messages, target, voter);
   return ok({ up: tally.up, down: tally.down, score: tally.score, myVote: tally.myVote });
@@ -826,7 +750,7 @@ export interface CreateProposalBody extends AuthBody {
   title?: unknown;
   body?: unknown;
   closesAt?: unknown;
-  dustFeeTxId?: unknown;
+  hcsTxId?: unknown;
 }
 
 export async function createProposal(deps: TownhallDeps, body: CreateProposalBody): Promise<HandlerResult> {
@@ -845,28 +769,20 @@ export async function createProposal(deps: TownhallDeps, body: CreateProposalBod
   if (gateTitle) return gateTitle;
   const gateBody = safetyGate("proposal body", body.body, "proposal");
   if (gateBody) return gateBody;
-  const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
-  if (fee) return fee;
   const topic = topicOr503("governance");
   if (typeof topic !== "string") return topic;
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
   const id = makeId(body.title);
-  const msg: ProposalMessage = {
-    v: 1,
-    kind: "proposal",
-    ts: new Date().toISOString(),
-    author,
-    id,
-    title: body.title.trim(),
-    body: body.body,
-    closesAt: new Date(body.closesAt).toISOString(),
-  };
-  await deps.hcs.submit(topic, msg);
+  // Message verified on-chain via user's wallet.
   return ok({ id }, 201);
 }
 
 export interface VoteProposalBody extends AuthBody {
   voter?: unknown;
   choice?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 export async function voteProposal(
@@ -885,19 +801,13 @@ export async function voteProposal(
   if (restricted) return restricted;
   const topic = topicOr503("governance");
   if (typeof topic !== "string") return topic;
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The voter pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(own.session);
   if (quota) return quota;
-  const msg: ProposalVoteMessage = {
-    v: 1,
-    kind: "proposal-vote",
-    ts: new Date().toISOString(),
-    author: voter,
-    proposal: proposalId,
-    voter,
-    choice: body.choice,
-  };
-  await deps.hcs.submit(topic, msg);
+  // Message verified on-chain via user's wallet.
   const messages = await deps.hcs.queryAll(topic);
   const tally = countProposalVotes(messages, proposalId);
   return ok(tally);
@@ -942,7 +852,7 @@ export async function queryChatMessages(
 export interface PostChatBody extends AuthBody {
   author?: unknown;
   body?: unknown;
-  dustFeeTxId?: unknown;
+  hcsTxId?: unknown;
 }
 
 export async function postChat(deps: TownhallDeps, room: string, body: PostChatBody): Promise<HandlerResult> {
@@ -955,20 +865,12 @@ export async function postChat(deps: TownhallDeps, room: string, body: PostChatB
   if (body.body.length > MAX_BODY) return err(400, `body too long (max ${MAX_BODY} chars)`);
   const gate = safetyGate("chat message", body.body, "chat message");
   if (gate) return gate;
-  const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
-  if (fee) return fee;
   const topic = topicOr503("chat");
   if (typeof topic !== "string") return topic;
-  const msg: ChatMessage = {
-    v: 1,
-    kind: "chat",
-    ts: new Date().toISOString(),
-    author,
-    room,
-    body: body.body,
-  };
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true }, 201);
 }
 
 /* ------------------------------------------------------------------ */
@@ -984,6 +886,8 @@ export interface SubmitModActionBody extends AuthBody {
   /** Post → board name; chat → room name. null = global scope. */
   board?: unknown;
   wall?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
@@ -1043,12 +947,14 @@ export async function submitModAction(
     return err(404, `${targetKind === "chat" ? "chat message" : "post"} #${targetSeq} not found`);
   }
 
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
-  // Checked after all validation, before the operator-paid HCS submit.
+  // The moderator pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, actor.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(actor.session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1065,6 +971,8 @@ export interface SubmitReportBody extends AuthBody {
   targetId?: unknown;
   /** Reporter's explanation, 10–500 chars. */
   reason?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 type ReportTargetKind = "post" | "chat" | "listing" | "profile";
@@ -1076,8 +984,9 @@ function reportTopicDomain(kind: ReportTargetKind): TopicDomain {
 /**
  * File a safety report against a post, chat message, or listing.
  *
- * Auth: signed wallet session only — no page ownership required and no
- * dust fee, so reporting stays free and frictionless. The report is
+ * Auth: signed wallet session only — no page ownership required. The reporter
+ * submits the HCS message from their own wallet (fractions of a cent), so
+ * reporting stays frictionless. The report is
  * appended as kind "report" to the SAME HCS topic as its target, so
  * moderators can correlate reports with targets in a single read.
  *
@@ -1160,22 +1069,14 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
     }
   }
 
-  const msg: ReportMessage = {
-    v: 1,
-    kind: "report",
-    ts: new Date().toISOString(),
-    author: reporter,
-    targetKind,
-    targetSeq,
-    targetId,
-    reason,
-    reporter,
-  };
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The reporter pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, s.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(s.session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
 
 export interface QueryReportsBody extends AuthBody {
@@ -1249,6 +1150,8 @@ export interface BanUserBody extends AuthBody {
   reason?: unknown;
   /** Optional unix ms when the ban lifts; omit for permanent. */
   expiresAt?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
@@ -1276,19 +1179,25 @@ function parseEnforcementTarget(body: {
 }
 
 /**
- * Publish an enforcement record to the forum topic with the mod free-write
- * quota applied (no dust fee for moderators).
+ * Publish an enforcement record to the forum topic with the mod write
+ * quota applied. The moderator submits the HCS message from their own
+ * wallet — no dust fee, no operator key.
  */
 async function submitEnforcement(
   deps: TownhallDeps,
   topic: string,
   session: VerifiedSession,
+  hcsTxId: unknown,
   msg: WarnMessage | TimeoutMessage | BanMessage | UnbanMessage | AppealResolveMessage,
 ): Promise<HandlerResult> {
+  // The moderator pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, session, hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq, wallet: msg.wallet }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, wallet: msg.wallet }, 201);
 }
 
 /**
@@ -1297,7 +1206,7 @@ async function submitEnforcement(
  * effect on the next write — the forum topic cache is invalidated by the
  * submit, and the 30s query cache means at most seconds of staleness.
  *
- * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * 201 → {verified: true, wallet}. Errors: 400 bad input, 401 no session, 403 not a
  * moderator, 409 wallet already banned.
  */
 export async function banUser(deps: TownhallDeps, body: BanUserBody): Promise<HandlerResult> {
@@ -1331,13 +1240,15 @@ export async function banUser(deps: TownhallDeps, body: BanUserBody): Promise<Ha
     bannedBy: mod.name,
     expiresAt,
   };
-  return submitEnforcement(deps, topic, mod.session, msg);
+  return submitEnforcement(deps, topic, mod.session, body.hcsTxId, msg);
 }
 
 export interface UnbanUserBody extends AuthBody {
   username?: unknown;
   /** Wallet to unban: Hedera account id (0.0.x) or EVM 0x address. */
   wallet?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
@@ -1345,7 +1256,7 @@ export interface UnbanUserBody extends AuthBody {
  * "unban" on the forum topic; latest-wins semantics mean the restriction
  * stops applying immediately.
  *
- * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * 201 → {verified: true, wallet}. Errors: 400 bad input, 401 no session, 403 not a
  * moderator, 404 wallet is not currently restricted.
  */
 /**
@@ -1379,7 +1290,7 @@ export async function unbanUser(deps: TownhallDeps, body: UnbanUserBody): Promis
     wallet,
     unbannedBy: mod.name,
   };
-  return submitEnforcement(deps, topic, mod.session, msg);
+  return submitEnforcement(deps, topic, mod.session, body.hcsTxId, msg);
 }
 
 export interface WarnUserBody extends AuthBody {
@@ -1390,13 +1301,15 @@ export interface WarnUserBody extends AuthBody {
   targetUsername?: unknown;
   /** Reason shown to the warned user, 10–200 chars. */
   reason?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
  * Issue a formal warning. Mod-only. No write restriction — a logged,
  * visible notice and the first rung of the escalation ladder.
  *
- * 201 → {seq, wallet}. Errors: 400 bad input, 401 no session, 403 not a
+ * 201 → {verified: true, wallet}. Errors: 400 bad input, 401 no session, 403 not a
  * moderator.
  */
 export async function warnUser(deps: TownhallDeps, body: WarnUserBody): Promise<HandlerResult> {
@@ -1417,7 +1330,7 @@ export async function warnUser(deps: TownhallDeps, body: WarnUserBody): Promise<
     reason,
     warnedBy: mod.name,
   };
-  return submitEnforcement(deps, topic, mod.session, msg);
+  return submitEnforcement(deps, topic, mod.session, body.hcsTxId, msg);
 }
 
 export interface TimeoutUserBody extends AuthBody {
@@ -1430,13 +1343,15 @@ export interface TimeoutUserBody extends AuthBody {
   reason?: unknown;
   /** Timeout length in minutes: 1–43200 (30 days max; longer → temp ban). */
   durationMinutes?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
  * Time a wallet out: no writes until expiresAt. Mod-only. Auto-expires;
  * a later unban or appeal resolution (lifted) clears it early.
  *
- * 201 → {seq, wallet, expiresAt}. Errors: 400 bad input, 401 no session,
+ * 201 → {verified: true, wallet, expiresAt}. Errors: 400 bad input, 401 no session,
  * 403 not a moderator, 409 wallet already restricted.
  */
 export async function timeoutUser(deps: TownhallDeps, body: TimeoutUserBody): Promise<HandlerResult> {
@@ -1472,7 +1387,7 @@ export async function timeoutUser(deps: TownhallDeps, body: TimeoutUserBody): Pr
     durationMinutes,
     expiresAt: Date.now() + durationMinutes * 60000,
   };
-  const res = await submitEnforcement(deps, topic, mod.session, msg);
+  const res = await submitEnforcement(deps, topic, mod.session, body.hcsTxId, msg);
   if (res.status === 201) {
     return ok({ ...(res.json as Record<string, unknown>), expiresAt: msg.expiresAt }, 201);
   }
@@ -1659,18 +1574,21 @@ export async function suggestEnforcementAction(
 export interface SubmitAppealBody extends AuthBody {
   /** Appellant's case, 20–500 chars. Not content-filtered. */
   reason?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
  * Appeal a timeout or ban. The restricted user files this themselves —
- * no page ownership, no dust fee, no restriction check (a banned user
- * must always be able to be heard). One pending appeal per wallet.
+ * no page ownership, no restriction check (a banned user must always be
+ * heard); the appellant pays the HCS fee from their own wallet. One
+ * pending appeal per wallet.
  *
  * The appeal lands on the forum topic as kind "appeal". Like reports,
  * the reason is NOT run through the content filter: an appellant
  * describing the offending content must not be blocked for quoting it.
  *
- * 201 → {seq}. Errors: 400 bad input / no active restriction, 401 no
+ * 201 → {verified: true}. Errors: 400 bad input / no active restriction, 401 no
  * session, 409 appeal already pending, 429 daily quota exceeded.
  */
 export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): Promise<HandlerResult> {
@@ -1707,19 +1625,14 @@ export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): 
   if (hasPendingAppeal(appeals, resolutions, wallet)) {
     return err(409, "an appeal is already pending for this wallet");
   }
-  const msg: AppealMessage = {
-    v: 1,
-    kind: "appeal",
-    ts: new Date().toISOString(),
-    author: s.session.address,
-    wallet,
-    reason,
-  };
-  // Free path (no dust fee): bound by the per-wallet daily quota like reports.
+  // The appellant pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, s.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Bound by the per-wallet daily quota like reports.
   const quota = await requireTownhallWriteQuota(s.session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
 
 export interface QueryAppealsBody extends AuthBody {
@@ -1744,6 +1657,8 @@ export interface ResolveAppealBody extends AuthBody {
   action?: unknown;
   /** Optional moderator note, max 200 chars. */
   note?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 /**
@@ -1797,7 +1712,7 @@ export async function resolveAppeal(deps: TownhallDeps, body: ResolveAppealBody)
     action: body.action,
     note,
   };
-  return submitEnforcement(deps, topic, mod.session, msg);
+  return submitEnforcement(deps, topic, mod.session, body.hcsTxId, msg);
 }
 
 export interface ModStatusBody extends AuthBody {
@@ -1854,6 +1769,8 @@ export interface CreateEventBody extends AuthBody {
   title?: unknown;
   description?: unknown;
   startsAt?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Promise<HandlerResult> {
@@ -1871,24 +1788,16 @@ export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Pr
   if (gateTitle) return gateTitle;
   const gateDesc = safetyGate("event description", body.description, "event");
   if (gateDesc) return gateDesc;
-  // Free path (no dust fee, mods only): bound operator-subsidized writes.
-  const quota = await requireTownhallWriteQuota(actor.session);
-  if (quota) return quota;
   const topic = topicOr503("governance");
   if (typeof topic !== "string") return topic;
   const id = makeId(body.title);
-  const msg: EventMessage = {
-    v: 1,
-    kind: "event",
-    ts: new Date().toISOString(),
-    author,
-    id,
-    title: body.title.trim(),
-    description: body.description,
-    startsAt: new Date(body.startsAt).toISOString(),
-    room: `event-${id}`,
-  };
-  await deps.hcs.submit(topic, msg);
+  // The moderator pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, actor.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
+  const quota = await requireTownhallWriteQuota(actor.session);
+  if (quota) return quota;
+  // Message verified on-chain via user's wallet.
   return ok({ id }, 201);
 }
 
@@ -2033,7 +1942,7 @@ export interface CreateListingBody extends AuthBody {
   priceUsdCents?: unknown;
   goodsType?: unknown;
   ipfsHash?: unknown;
-  dustFeeTxId?: unknown;
+  hcsTxId?: unknown;
 }
 
 /** True for an EVM address or a Hedera 0.0.x account id. */
@@ -2046,7 +1955,6 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
   // `seller` stays the direct-sale payout address — never an identity.
   const own = await requirePageOwner(deps, body, body.sellerUsername, "sellerUsername");
   if (!own.ok) return own.result;
-  const sellerUsername = own.username;
   const restricted = await requireNotRestricted(deps, own.session.address);
   if (restricted) return restricted;
   const payout = typeof body.seller === "string" ? body.seller.trim() : "";
@@ -2061,38 +1969,25 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
   if (body.goodsType !== "physical" && body.goodsType !== "digital") {
     return err(400, 'goodsType must be "physical" or "digital"');
   }
-  const ipfsHash = typeof body.ipfsHash === "string" && body.ipfsHash.trim() ? body.ipfsHash.trim() : null;
   const gateTitle = safetyGate("listing title", body.title.trim(), "marketplace listing");
   if (gateTitle) return gateTitle;
   const gateDesc = safetyGate("listing description", body.description, "marketplace listing");
   if (gateDesc) return gateDesc;
-  const fee = await requireDustFee(deps, own.session, body.dustFeeTxId);
-  if (fee) return fee;
   const topic = topicOr503("market");
   if (typeof topic !== "string") return topic;
   const id = makeId(body.title);
-  const msg: ListingMessage = {
-    v: 1,
-    kind: "listing",
-    ts: new Date().toISOString(),
-    author: sellerUsername,
-    id,
-    seller: payout,
-    sellerUsername,
-    title: body.title.trim(),
-    description: body.description,
-    priceUsdCents: body.priceUsdCents,
-    goodsType: body.goodsType,
-    ipfsHash,
-    status: "active",
-  };
-  await deps.hcs.submit(topic, msg);
+  // The seller pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Message verified on-chain via user's wallet.
   return ok({ id }, 201);
 }
 
 export interface SetListingStatusBody extends AuthBody {
   sellerUsername?: unknown;
   status?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 export async function setListingStatus(
@@ -2118,17 +2013,13 @@ export async function setListingStatus(
   if (!storedSeller || storedSeller.toLowerCase() !== own.username.toLowerCase()) {
     return err(403, "only the seller may change the listing status");
   }
-  const updated: ListingMessage = {
-    ...latest.contents,
-    sellerUsername: storedSeller,
-    ts: new Date().toISOString(),
-    author: own.username,
-    status: body.status,
-  };
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The seller pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(own.session);
   if (quota) return quota;
-  await deps.hcs.submit(topic, updated);
+  // Message verified on-chain via user's wallet.
   return ok({});
 }
 
@@ -2139,6 +2030,8 @@ export async function setListingStatus(
 export interface SetProfileLinksBody extends AuthBody {
   username?: unknown;
   links?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 const PROFILE_LINK_KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
@@ -2149,12 +2042,13 @@ const PROFILE_LINK_KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
  * kind "profile-links"; latest message per username wins.
  *
  * Auth: the signing wallet must own the claimed username (page owner).
- * No dust fee — declaring identity is free. Links are NOT run through
+ * The signer pays the HCS fee from their wallet — no dust fee, no
+ * operator key. Links are NOT run through
  * the content filter (they're short platform handles/URLs, validated by
  * shape), but values are length-bounded and key names are restricted to
  * safe slugs.
  *
- * 201 → {seq}. Errors: 400 bad input, 401 no session, 403 not the page
+ * 201 → {verified: true}. Errors: 400 bad input, 401 no session, 403 not the page
  * owner, 429 daily quota exceeded.
  */
 export async function setProfileLinks(
@@ -2187,19 +2081,14 @@ export async function setProfileLinks(
 
   const topic = topicOr503("forum");
   if (typeof topic !== "string") return topic;
-  const msg: ProfileLinksMessage = {
-    v: 1,
-    kind: "profile-links",
-    ts: new Date().toISOString(),
-    author: own.username,
-    username: own.username.toLowerCase(),
-    links,
-  };
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The signer pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(own.session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
 
 /**
@@ -2235,6 +2124,8 @@ export interface RecordReferralBody extends AuthBody {
   referredUsername?: unknown;
   /** The referrer's username (?ref= value). */
   referrer?: unknown;
+  /** User-signed HCS submit transaction ID. */
+  hcsTxId?: unknown;
 }
 
 const REFERRAL_USERNAME_RE = /^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/;
@@ -2301,15 +2192,16 @@ async function findExistingReferral(
  *
  * Auth: the signing wallet must own the referred username — you attest
  * your own referrer, nobody can claim credit for someone else's signup.
- * No dust fee — this is a system record, not user content. Per-wallet
- * daily quota still applies to bound operator-subsidized writes.
+ * The referred user pays the HCS fee from their wallet — no dust fee,
+ * no operator key. Per-wallet
+ * daily quota still applies to bound user-signed writes.
  *
  * Rules: referrer must be a registered username, referrer ≠ referred,
  * one referral per referred user (first wins), and the referred page
  * must have been registered within the last 7 days (mirror-node
  * PageRegistered event; fail-open when the mirror is unreachable).
  *
- * 201 → {seq}. Errors: 400 bad input / self-referral / duplicate /
+ * 201 → {verified: true}. Errors: 400 bad input / self-referral / duplicate /
  * too-old registration, 401 no session, 403 not the page owner /
  * referrer not registered, 429 quota exceeded.
  */
@@ -2355,19 +2247,14 @@ export async function recordReferral(
     return err(400, "referral window expired — referrals must be recorded within 7 days of page registration");
   }
 
-  const msg: ReferralMessage = {
-    v: 1,
-    kind: "referral",
-    ts: new Date().toISOString(),
-    author: own.username,
-    referrer: rawReferrer,
-    referred,
-  };
-  // Free path (no dust fee): bound operator-subsidized writes per wallet.
+  // The referred user pays the HCS fee from their wallet — no dust fee, no operator key.
+  const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic);
+  if (verified) return verified;
+  // Spam prevention: bound user-signed writes per wallet.
   const quota = await requireTownhallWriteQuota(own.session);
   if (quota) return quota;
-  const seq = await deps.hcs.submit(topic, msg);
-  return ok({ seq }, 201);
+  // Message verified on-chain via user's wallet.
+  return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
 
 /**

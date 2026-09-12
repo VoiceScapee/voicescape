@@ -34,7 +34,7 @@ function makeMsg(seq: number, topic: string): StoredMessage<TownhallMessage> {
 class CountingPort implements HcsPort {
   queryCalls = 0;
   queryAllCalls = 0;
-  submitCalls = 0;
+  verifyCalls = 0;
   private mem = new MemoryHcsClient();
 
   seed(topicId: string): void {
@@ -48,9 +48,9 @@ class CountingPort implements HcsPort {
     });
   }
 
-  async submit(topicId: string, message: object): Promise<number> {
-    this.submitCalls++;
-    return this.mem.submit(topicId, message);
+  async verifyTx(txId: string, expectedTopicId: string, expectedPayer: string) {
+    this.verifyCalls++;
+    return this.mem.verifyTx(txId, expectedTopicId, expectedPayer);
   }
 
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
@@ -158,34 +158,13 @@ describe("CachedHcsClient", () => {
     expect(inner.queryCalls).toBe(2);
   });
 
-  it("submit invalidates the topic's cache", async () => {
+  it("verifyTx is not cached (always fresh)", async () => {
     const inner = new CountingPort();
-    inner.seed("0.0.1");
     const cached = new CachedHcsClient(inner, createMemoryHcsCache());
-    await cached.query("0.0.1");
-    await cached.queryAll("0.0.1");
-    expect(inner.queryCalls).toBe(1);
-    expect(inner.queryAllCalls).toBe(1);
-    await cached.submit("0.0.1", { v: 1, kind: "chat" });
-    expect(inner.submitCalls).toBe(1);
-    await cached.query("0.0.1");
-    await cached.queryAll("0.0.1");
-    expect(inner.queryCalls).toBe(2);
-    expect(inner.queryAllCalls).toBe(2);
-  });
-
-  it("submit does not invalidate other topics", async () => {
-    const inner = new CountingPort();
-    inner.seed("0.0.1");
-    inner.seed("0.0.2");
-    const cached = new CachedHcsClient(inner, createMemoryHcsCache());
-    await cached.query("0.0.1");
-    await cached.query("0.0.2");
-    await cached.submit("0.0.1", { v: 1, kind: "chat" });
-    await cached.query("0.0.2");
-    expect(inner.queryCalls).toBe(2); // 0.0.1 and 0.0.2 each once
-    await cached.query("0.0.1");
-    expect(inner.queryCalls).toBe(3); // 0.0.1 refetched after invalidation
+    await cached.verifyTx("0.0.123@1234567890.123456789", "0.0.1", "0.0.123");
+    await cached.verifyTx("0.0.123@1234567890.123456789", "0.0.1", "0.0.123");
+    // Each verifyTx goes to the inner port (no caching for verification)
+    expect(inner.verifyCalls).toBe(2);
   });
 
   it("expired TTL causes a refetch", async () => {

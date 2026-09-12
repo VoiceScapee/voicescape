@@ -3,6 +3,7 @@
  * stubbed mirror node + registry). No network.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { MemoryHcsClient } from "./hcs";
 import {
   castRepVote,
   collectReferralCounts,
@@ -37,7 +38,6 @@ import {
   voteProposal,
   type TownhallDeps,
 } from "./handlers";
-import { MemoryHcsClient } from "./hcs";
 import type { MirrorPort } from "./mirror";
 import { clearConsumedDustFees } from "./mirror";
 import type { RegistryPort } from "./registry-check";
@@ -93,8 +93,16 @@ function makeDeps(opts: { feeOk?: boolean; purchases?: [string, string][] } = {}
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
     resolveAccountId: async (address: string) => {
       // Test mock: long-zero 0x...0eff -> 0.0.10424063, else pass through 0.0.x
+      // For test 0x addresses (e.g., alice's 0x...a11c), derive a fake 0.0.x
+      // from the last 4 hex digits for payer matching.
       if (/^0x0*9f0eff$/i.test(address)) return "0.0.10424063";
       if (/^0\.0\.\d+$/.test(address)) return address;
+      const m = /^0x0*([0-9a-f]+)$/i.exec(address);
+      if (m) {
+        // Use the last up to 6 hex digits as the account number
+        const num = parseInt(m[1].slice(-6), 16) % 1000000;
+        return `0.0.${num}`;
+      }
       return null;
     },
   };
@@ -138,7 +146,7 @@ let feeCounter = 0;
  *  tests must not share one tx id across successful writes. */
 function fee() {
   feeCounter += 1;
-  return { dustFeeTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
+  return { hcsTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
 }
 
 describe("getBoards", () => {
@@ -214,8 +222,8 @@ describe("dust-fee enforcement (402)", () => {
       return { ok: true, reason: "ok", receivedTinybars: 1000 };
     };
     const txId = "0.0.123@1694000000.000000999";
-    const p1 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "one", dustFeeTxId: txId });
-    const p2 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "two", dustFeeTxId: txId });
+    const p1 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "one", hcsTxId: txId });
+    const p2 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "two", hcsTxId: txId });
     // Wait until the winner's verification is in flight, then give the loser
     // a chance to reach the reservation.
     for (let i = 0; i < 200 && verifyCalls === 0; i++) await new Promise((r) => setTimeout(r, 5));
@@ -243,7 +251,7 @@ describe("dust-fee enforcement (402)", () => {
   it("a failed fee verification releases the tx id for retry", async () => {
     const deps = makeDeps({ feeOk: false });
     const txId = "0.0.123@1694000000.000000998";
-    const body = { author: "alice", auth: testCred("alice"), body: "x", dustFeeTxId: txId };
+    const body = { author: "alice", auth: testCred("alice"), body: "x", hcsTxId: txId };
     expect((await createPost(deps, body)).status).toBe(402);
     // Same tx id after the fee problem is fixed: must not read "already used".
     (deps.mirror as MirrorPort).verifyDustFee = async () => ({
@@ -849,7 +857,7 @@ describe("dust-fee replay protection", () => {
       author: "alice",
       auth: testCred("alice"),
       body: b,
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     const first = await createPost(deps, body("first"));
     expect(first.status).toBe(201);
@@ -865,14 +873,14 @@ describe("dust-fee replay protection", () => {
       author: "alice",
       auth: testCred("alice"),
       body: "hello",
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     expect(p.status).toBe(201);
     const c = await postChat(deps, "lobby", {
       author: "alice",
       auth: testCred("alice"),
       body: "hello again",
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     expect(c.status).toBe(402);
     expect((c.json as { error: string }).error).toMatch(/already used/);
@@ -885,7 +893,7 @@ describe("dust-fee replay protection", () => {
       author: "alice",
       auth: testCred("alice"),
       body: "hello",
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     const first = await createPost(deps, body());
     expect(first.status).toBe(402);
@@ -917,7 +925,7 @@ describe("dust-fee replay protection", () => {
       author: "alice",
       auth: testCred("alice"),
       body: b,
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     const p1 = createPost(deps, body("first"));
     const p2 = createPost(deps, body("second"));
@@ -937,7 +945,7 @@ describe("dust-fee replay protection", () => {
       author: "alice",
       auth: testCred("alice"),
       body: b,
-      dustFeeTxId: txId,
+      hcsTxId: txId,
     });
     const first = await createPost(deps, mkBody("first", "0.0.123@1694000000.555555555 "));
     expect(first.status).toBe(201);
@@ -957,7 +965,20 @@ describe("mod-actions", () => {
       ...fee(),
     });
     expect(r.status).toBe(201);
-    return (r.json as { seq: number }).seq;
+    // In the user-signed architecture, the server verifies but doesn't submit.
+    // Seed HCS manually to simulate the user's wallet submit (for query tests).
+    const hcs = deps.hcs as MemoryHcsClient;
+    const seq = hcs.seed("0.0.7001", {
+      v: 1,
+      kind: "post",
+      ts: new Date().toISOString(),
+      author,
+      board: "general",
+      wall: null,
+      body,
+      replyTo: null,
+    });
+    return seq;
   }
 
   it("rejects mod-actions without a session (401)", async () => {
@@ -1113,7 +1134,7 @@ describe("mod-actions", () => {
     const seq = await postOnBoard(deps, "alice", "still here");
     // Forge a mod-action directly into HCS from a non-mod (bypasses the
     // route, as an attacker with the operator key could).
-    await deps.hcs.submit("0.0.7001", {
+    (deps.hcs as MemoryHcsClient).seed("0.0.7001", {
       v: 1,
       kind: "mod-action",
       ts: new Date().toISOString(),
@@ -1484,7 +1505,7 @@ describe("safety reports", () => {
     const seq = await seedPost(deps);
     const chat = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hi", ...fee() });
     const chatSeq = (chat.json as { seq: number }).seq;
-    // No dustFeeTxId supplied — reports are free.
+    // No hcsTxId supplied — reports are free.
     const r1 = await submitReport(deps, {
       auth: testCred("bob"),
       reporter: "bob",
@@ -1839,7 +1860,7 @@ describe("audit: enforcement + safety gates on all write paths", () => {
 
   /** Permanently ban a wallet by writing a ban record to the forum topic. */
   async function banWallet(deps: TownhallDeps, wallet: string) {
-    await deps.hcs.submit(FORUM, {
+    (deps.hcs as MemoryHcsClient).seed(FORUM, {
       v: 1,
       kind: "ban",
       ts: new Date().toISOString(),

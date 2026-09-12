@@ -1,23 +1,18 @@
 /**
- * Voicescape Social Town Hall — HCS submit + query.
+ * Voicescape Social Town Hall — HCS query + verification.
  *
- * Submit goes through @hiero-ledger/sdk with the server operator
- * (TOWNHALL_OPERATOR_ID / TOWNHALL_OPERATOR_KEY — server-only, never in the
- * browser). Reads go through the free mirror node REST API.
+ * In the user-signed architecture, clients submit HCS messages directly via
+ * their wallet. The server NEVER submits — it only queries (via the free
+ * mirror node REST API) and verifies user-submitted transactions.
  *
  * The `HcsPort` interface is the seam tests mock; the real client is
  * `RealHcsClient` via `defaultHcsPort()`.
  */
 
-import {
-  Client,
-  PrivateKey,
-  TopicId,
-  TopicMessageSubmitTransaction,
-} from "@hiero-ledger/sdk";
 import { mirrorBaseUrl, townhallNetwork } from "./topics";
 import type { StoredMessage, TownhallMessage } from "./types";
 import { globalHcsCache, type HcsCache } from "./hcs-cache";
+import { verifyHcsTransaction, type VerifiedHcsTx } from "./hcs-verify";
 
 export interface QueryOpts {
   /** Only messages with seq greater than this. */
@@ -27,8 +22,11 @@ export interface QueryOpts {
 }
 
 export interface HcsPort {
-  /** Submit a message; resolves to the consensus sequence number. */
-  submit(topicId: string, message: object): Promise<number>;
+  /**
+   * Verify a user-submitted HCS transaction.
+   * Returns the verified details, or null if verification fails.
+   */
+  verifyTx(txId: string, expectedTopicId: string, expectedPayer: string): Promise<VerifiedHcsTx | null>;
   /** Query decoded messages in ascending seq order. */
   query<T = TownhallMessage>(topicId: string, opts?: QueryOpts): Promise<StoredMessage<T>[]>;
   /** Query everything (paginated), ascending seq order. */
@@ -46,23 +44,10 @@ interface MirrorMessagesResponse {
   links?: { next?: string | null };
 }
 
-function hcsClient(): Client {
-  const operatorId = process.env.TOWNHALL_OPERATOR_ID;
-  const operatorKey = process.env.TOWNHALL_OPERATOR_KEY;
-  if (!operatorId || !operatorKey) {
-    throw new Error(
-      "TOWNHALL_OPERATOR_ID / TOWNHALL_OPERATOR_KEY are not set — the Town Hall server cannot submit HCS messages.",
-    );
-  }
-  const network = townhallNetwork();
-  const client =
-    network === "mainnet"
-      ? Client.forMainnet()
-      : network === "previewnet"
-        ? Client.forPreviewnet()
-        : Client.forTestnet();
-  client.setOperator(operatorId, PrivateKey.fromString(operatorKey));
-  return client;
+function hcsNetwork(): string {
+  // Network is still needed for mirror node URL selection.
+  // The client-side submit uses the wallet's network.
+  return townhallNetwork();
 }
 
 export function isValidEnvelope(raw: unknown): raw is TownhallMessage {
@@ -88,18 +73,12 @@ function decodeMirrorMessage(topicId: string, m: MirrorMessage): StoredMessage |
 }
 
 export class RealHcsClient implements HcsPort {
-  async submit(topicId: string, message: object): Promise<number> {
-    const client = hcsClient();
-    try {
-      const tx = await new TopicMessageSubmitTransaction()
-        .setTopicId(TopicId.fromString(topicId))
-        .setMessage(JSON.stringify(message))
-        .execute(client);
-      const receipt = await tx.getReceipt(client);
-      return Number(receipt.topicSequenceNumber ?? 0);
-    } finally {
-      client.close();
-    }
+  async verifyTx(
+    txId: string,
+    expectedTopicId: string,
+    expectedPayer: string,
+  ): Promise<VerifiedHcsTx | null> {
+    return verifyHcsTransaction(txId, expectedTopicId, expectedPayer);
   }
 
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
@@ -137,18 +116,34 @@ export class RealHcsClient implements HcsPort {
 /** In-memory HcsPort for tests and local dev without a network. */
 export class MemoryHcsClient implements HcsPort {
   private store = new Map<string, StoredMessage[]>();
+  private verifiedTxs = new Map<string, VerifiedHcsTx>();
 
-  async submit(topicId: string, message: object): Promise<number> {
-    const list = this.store.get(topicId) ?? [];
-    const seq = list.length + 1;
-    list.push({
-      seq,
-      topic: topicId,
-      consensusTimestamp: new Date().toISOString(),
-      contents: message as TownhallMessage,
-    });
-    this.store.set(topicId, list);
-    return seq;
+  async verifyTx(
+    txId: string,
+    expectedTopicId: string,
+    expectedPayer: string,
+  ): Promise<VerifiedHcsTx | null> {
+    // In tests, txIds are synthetic. Accept any txId that was previously
+    // "submitted" via the test helper, or any well-formed txId.
+    const key = `${txId}:${expectedTopicId}:${expectedPayer}`;
+    if (this.verifiedTxs.has(key)) {
+      return this.verifiedTxs.get(key)!;
+    }
+    // Accept well-formed txIds for the expected payer (test convenience).
+    if (/^0\.0\.\d+[@-]\d+[.-]\d+$/.test(txId)) {
+      const verified: VerifiedHcsTx = {
+        topicId: expectedTopicId,
+        payer: expectedPayer,
+      };
+      this.verifiedTxs.set(key, verified);
+      return verified;
+    }
+    return null;
+  }
+
+  /** Test helper: pre-register a verified tx. */
+  __verifyTx(txId: string, topicId: string, payer: string): void {
+    this.verifiedTxs.set(`${txId}:${topicId}:${payer}`, { topicId, payer });
   }
 
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
@@ -191,8 +186,7 @@ export interface CachedHcsClientOpts {
  *
  * `query()` results are cached per (topic, afterSeq, limit) for a short TTL
  * (chat/stream polls repeat the same query every few seconds), and
- * `queryAll()` history for a longer TTL. `submit()` invalidates the whole
- * topic's cache, so a write is immediately visible to subsequent reads.
+ * `queryAll()` history for a longer TTL.
  * All cache failures are fail-open: a missed/failed cache is just a plain
  * uncached call to the wrapped port.
  */
@@ -209,10 +203,13 @@ export class CachedHcsClient implements HcsPort {
     this.queryAllTtlSeconds = opts.queryAllTtlSeconds ?? 30;
   }
 
-  async submit(topicId: string, message: object): Promise<number> {
-    const seq = await this.inner.submit(topicId, message);
-    await this.cache.invalidateTopic(topicId);
-    return seq;
+  async verifyTx(
+    txId: string,
+    expectedTopicId: string,
+    expectedPayer: string,
+  ): Promise<VerifiedHcsTx | null> {
+    // Verification is not cached — each tx is verified fresh.
+    return this.inner.verifyTx(txId, expectedTopicId, expectedPayer);
   }
 
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
