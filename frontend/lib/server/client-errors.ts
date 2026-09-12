@@ -262,11 +262,15 @@ export function founderWallets(env: Record<string, string | undefined> = process
     .filter(Boolean);
   const treasury = (env.NEXT_PUBLIC_TREASURY_ADDRESS ?? "").trim().toLowerCase();
   if (treasury && !list.includes(treasury)) list.push(treasury);
-  // Treasury 0.0.10424063 also has EVM alias 0x30C63DC43608B6764A6b8b53960553AEbF306817.
-  // Sessions may store either format; accept both.
-  const treasuryEvm = "0x30c63dc43608b6764a6b8b53960553aebf306817";
-  if ((treasury === "0.0.10424063" || list.includes("0.0.10424063")) && !list.includes(treasuryEvm)) {
-    list.push(treasuryEvm);
+  // Treasury 0.0.10424063: sessions store the canonical long-zero EVM form
+  // (0x000...9f0eff), not the public-key alias. Accept all three forms.
+  const treasuryForms = [
+    "0.0.10424063",
+    "0x00000000000000000000000000000000009f0eff",
+    "0x30c63dc43608b6764a6b8b53960553aebf306817",
+  ];
+  for (const form of treasuryForms) {
+    if (!list.includes(form)) list.push(form);
   }
   return list;
 }
