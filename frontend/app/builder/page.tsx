@@ -1653,7 +1653,22 @@ function PublishPanel({
         setStatus({ kind: "info", text: `Registering /${name} on-chain…` });
         return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
       };
-      const hash = await publishName(target);
+      // HashPack sometimes goes silent after the user approves (the tx still
+      // lands on-chain; the wallet layer recovers via the mirror node after a
+      // 90s timeout). Without a progress hint the UI looks frozen on
+      // "Registering…" — reassure after 15s so users don't abandon the page.
+      const waitingNote = setTimeout(() => {
+        setStatus({
+          kind: "info",
+          text: "Still working — if you already approved in your wallet, the network is confirming. This can take up to ~90 seconds; please keep this page open.",
+        });
+      }, 15000);
+      let hash: string;
+      try {
+        hash = await publishName(target);
+      } finally {
+        clearTimeout(waitingNote);
+      }
       setTxHash(hash);
       setVanityName(account, target);
       // KISS: verify the name actually resolves on-chain before redirecting.

@@ -9,8 +9,17 @@ import { NextResponse } from "next/server";
  */
 
 const REGISTRY_ID = "0.0.10854058";
-// PageRegistered(string,address,string,uint8,address,string) — also covers PageUpdated
-const PAGEREGISTERED_TOPIC = "0xa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f3";
+// Both registry events carry the username as the first topic — new pages emit
+// PageRegistered, re-publishes emit PageUpdated. The hashes are verified by
+// lib/registry-topics.test.ts against the canonical event signatures
+// (a wrong hash here silently hides pages from Explore).
+// PageRegistered(string,address,string,uint8,address,string)
+export const PAGEREGISTERED_TOPIC =
+  "0xa327fd868734b8d16f5a1b2685a76b5cce3891a78c46bc724e7eb68ddd7917eb";
+// PageUpdated(string,address,string,uint8,address,string)
+export const PAGEUPDATED_TOPIC =
+  "0xa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f3";
+const PAGE_TOPICS = new Set([PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC]);
 
 const FEATURED_PAGES = [
   {
@@ -58,8 +67,8 @@ export async function GET() {
     if (!logsRes.ok) throw new Error("Mirror Node unavailable");
 
     const logsData = await logsRes.json();
-    const logs = (logsData.logs || []).filter(
-      (l: any) => l.topics?.[0]?.toLowerCase() === PAGEREGISTERED_TOPIC
+    const logs = (logsData.logs || []).filter((l: any) =>
+      PAGE_TOPICS.has(l.topics?.[0]?.toLowerCase()),
     );
 
     const seen = new Set<string>();
