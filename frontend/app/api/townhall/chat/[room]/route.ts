@@ -16,25 +16,30 @@ export const runtime = "nodejs";
  * endpoint returns immediately with JSON.
  */
 export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
-  const room = params.room;
-  // Builders room gating (same as stream endpoint).
-  if (room === BUILDERS_ROOM_ID) {
-    const cred = sessionCredentialFrom(req);
-    const verified = typeof cred === "string" ? verifySessionToken(cred) : null;
-    if (!verified || !verified.ok) {
-      return NextResponse.json(
-        { error: verified && !verified.ok ? verified.error : "missing session: sign in with your wallet" },
-        { status: 401 },
-      );
+  try {
+    const room = params.room;
+    // Builders room gating (same as stream endpoint).
+    if (room === BUILDERS_ROOM_ID) {
+      const cred = sessionCredentialFrom(req);
+      const verified = typeof cred === "string" ? verifySessionToken(cred) : null;
+      if (!verified || !verified.ok) {
+        return NextResponse.json(
+          { error: verified && !verified.ok ? verified.error : "missing session: sign in with your wallet" },
+          { status: 401 },
+        );
+      }
+      if (!(await hasBuilderBadge(verified.session.address))) {
+        return NextResponse.json({ error: BUILDER_UNLOCK_MESSAGE }, { status: 403 });
+      }
     }
-    if (!(await hasBuilderBadge(verified.session.address))) {
-      return NextResponse.json({ error: BUILDER_UNLOCK_MESSAGE }, { status: 403 });
-    }
+    const url = new URL(req.url);
+    const since = parseInt(url.searchParams.get("since") || "0", 10);
+    const messages = await queryChatMessages(defaultDeps(), room, Number.isFinite(since) ? since : 0);
+    return NextResponse.json({ messages });
+  } catch (e) {
+    console.error("[chat GET] error:", e instanceof Error ? e.message : String(e));
+    return NextResponse.json({ error: "Failed to load messages" }, { status: 500 });
   }
-  const url = new URL(req.url);
-  const since = parseInt(url.searchParams.get("since") || "0", 10);
-  const messages = await queryChatMessages(defaultDeps(), room, Number.isFinite(since) ? since : 0);
-  return NextResponse.json({ messages });
 }
 
 /**
