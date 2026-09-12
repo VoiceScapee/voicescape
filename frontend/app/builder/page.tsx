@@ -969,11 +969,34 @@ function TemplatePicker({
   activeId: string;
   onPick: (t: Template) => void;
 }) {
+  const [category, setCategory] = useState<"business" | "personal">("personal");
+  const filtered = TEMPLATES.filter((t) => t.category === category);
   return (
     <div>
       <div className="vb-panel-title">Template</div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ display: "block", fontSize: 13, marginBottom: 6, color: "var(--vs-muted)" }}>
+          Page type
+        </label>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as "business" | "personal")}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--vs-border)",
+            background: "var(--vs-glass)",
+            color: "var(--vs-text)",
+            fontSize: 14,
+          }}
+        >
+          <option value="personal">Personal</option>
+          <option value="business">Business</option>
+        </select>
+      </div>
       <div className="vb-template-grid">
-        {TEMPLATES.map((t) => (
+        {filtered.map((t) => (
           <button
             key={t.id}
             type="button"

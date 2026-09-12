@@ -9,7 +9,7 @@ import { NextResponse } from "next/server";
 const FEATURED_PAGES = [
   {
     username: "user-10424063",
-    displayName: "Brandon's Blockpage",
+    displayName: "Voicescape Founder",
     description: "Founder's blockpage — the first on Voicescape.",
     featured: true,
   },

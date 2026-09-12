@@ -4,6 +4,7 @@ export interface Template {
   id: string;
   name: string;
   description: string;
+  category: "business" | "personal";
   page: VoicescapePage;
 }
 
@@ -22,77 +23,10 @@ function base(username: string): Omit<VoicescapePage, "theme"> {
 
 export const TEMPLATES: Template[] = [
   {
-    id: "retro-myspace",
-    name: "Throwback",
-    description: "Old-school profile page with a sparkly, cluttered early-2000s vibe.",
-    page: {
-      ...base("retro-fan"),
-      theme: {
-        background: "#0e1e5b",
-        foreground: "#f4f6ff",
-        accent: "#ffcc33",
-        fontFamily: "'Comic Sans MS', 'Chalkboard SE', 'Segoe Print', cursive",
-      },
-      blocks: [
-        ...base("retro-fan").blocks,
-        {
-          type: "top8",
-          title: "Top 8",
-          friends: [
-            { name: "Tom", avatarEmoji: "🙂", url: "https://example.com/tom" },
-            { name: "xX_scene_queen_Xx", avatarEmoji: "💖" },
-            { name: "RawrMeansILoveYou", avatarEmoji: "🐉" },
-            { name: "DJ Neon", avatarEmoji: "🎧" },
-            { name: "glitter.exe", avatarEmoji: "✨" },
-          ],
-        },
-        { type: "guestbook", entries: [{ name: "Tom", message: "Thanks for the add!", date: "2006-01-01" }] },
-        { type: "music", title: "My music", tracks: [] },
-      ],
-    },
-  },
-  {
-    id: "neon-nights",
-    name: "Neon Nights",
-    description: "Glowing cyan and magenta neon on a near-black canvas.",
-    page: {
-      ...base("neon-rider"),
-      theme: {
-        background: "#06060f",
-        foreground: "#e6f7ff",
-        accent: "#22d3ee",
-        fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
-      },
-      blocks: [
-        ...base("neon-rider").blocks,
-        { type: "gallery", images: ["🌃", "🛸", "💾"] },
-      ],
-    },
-  },
-  {
-    id: "minimal",
-    name: "Minimal",
-    description: "Clean, quiet, typographic. Less is everything.",
-    page: {
-      ...base("minimalist"),
-      theme: {
-        background: "#faf9f7",
-        foreground: "#16161a",
-        accent: "#7c3aed",
-        fontFamily: "Georgia, 'Times New Roman', serif",
-      },
-      blocks: [
-        { type: "hero", title: "minimalist", subtitle: "less, but better", avatarEmoji: "○" },
-        { type: "bio", text: "Designer of quiet things." },
-        { type: "links", items: [{ label: "Portfolio", url: "https://example.com" }] },
-        { type: "tipJar" },
-      ],
-    },
-  },
-  {
     id: "business-card",
     name: "Business Card",
     description: "A crisp digital card: who you are, what you do, where to find you.",
+    category: "business",
     page: {
       ...base("pro-networker"),
       theme: {
@@ -132,30 +66,10 @@ export const TEMPLATES: Template[] = [
     },
   },
   {
-    id: "brutalist",
-    name: "Brutalist",
-    description: "Raw, loud, unapologetic. Big type, hard edges.",
-    page: {
-      ...base("brutalist"),
-      theme: {
-        background: "#ffd400",
-        foreground: "#000000",
-        accent: "#ff0000",
-        fontFamily: "Impact, 'Arial Black', 'Helvetica Neue', sans-serif",
-      },
-      blocks: [
-        { type: "hero", title: "BRUTALIST", subtitle: "NO ROUNDED CORNERS WERE HARMED", avatarEmoji: "🧱" },
-        { type: "bio", text: "RAW HTML ENERGY. THIS PAGE LOADS FAST AND HITS HARD." },
-        { type: "links", items: [{ label: "MANIFESTO", url: "https://example.com" }] },
-        { type: "tipJar", message: "FUND THE BRUTALISM." },
-        { type: "gallery", images: ["🧱", "🚧", "⚠️", "🔨"] },
-      ],
-    },
-  },
-  {
     id: "agent-personal",
     name: "Agent Personal",
     description: "For AI agents: purpose, operator disclosure, capabilities, friends, activity feed. Always renders with the AGENT PAGE badge.",
+    category: "personal",
     page: {
       version: 1,
       username: "agent-personal",
@@ -194,6 +108,7 @@ export const TEMPLATES: Template[] = [
     id: "agent-storefront",
     name: "Agent Storefront",
     description: "For AI agents selling pay-per-call services. Service listings settle via x402. Always renders with the AGENT PAGE badge.",
+    category: "business",
     page: {
       version: 1,
       username: "agent-storefront",
@@ -242,6 +157,7 @@ export const TEMPLATES: Template[] = [
     id: "restaurant",
     name: "Restaurant",
     description: "Menu, hours, reservations, and reviews — your restaurant on-chain.",
+    category: "business",
     page: {
       ...base("bella-cucina"),
       theme: {
@@ -284,6 +200,7 @@ export const TEMPLATES: Template[] = [
     id: "movie-theater",
     name: "Movie Theater",
     description: "Now showing, showtimes, tickets, and concessions — cinema on-chain.",
+    category: "business",
     page: {
       ...base("starlight-cinema"),
       theme: {
@@ -329,6 +246,7 @@ export const TEMPLATES: Template[] = [
     id: "retail-shop",
     name: "Retail Shop",
     description: "Showcase products, share your story, and connect with shoppers.",
+    category: "business",
     page: {
       ...base("corner-boutique"),
       theme: {
@@ -374,6 +292,7 @@ export const TEMPLATES: Template[] = [
     id: "salon",
     name: "Salon & Barbershop",
     description: "Services, stylists, online booking, and reviews for your salon.",
+    category: "business",
     page: {
       ...base("luxe-cuts"),
       theme: {
@@ -418,6 +337,7 @@ export const TEMPLATES: Template[] = [
     id: "gym",
     name: "Gym & Fitness",
     description: "Class schedules, memberships, trainers, and member reviews.",
+    category: "business",
     page: {
       ...base("iron-pulse"),
       theme: {
@@ -463,6 +383,7 @@ export const TEMPLATES: Template[] = [
     id: "coffee-shop",
     name: "Coffee Shop",
     description: "Menu, hours, community vibes, and a tip jar for your favorite baristas.",
+    category: "business",
     page: {
       ...base("daily-grind"),
       theme: {
@@ -497,6 +418,7 @@ export const TEMPLATES: Template[] = [
     id: "real-estate",
     name: "Real Estate",
     description: "Listings, agent bio, viewing bookings, and client reviews.",
+    category: "business",
     page: {
       ...base("prime-properties"),
       theme: {
@@ -541,6 +463,7 @@ export const TEMPLATES: Template[] = [
     id: "auto-repair",
     name: "Auto Repair",
     description: "Services, pricing, appointment booking, and verified customer reviews.",
+    category: "business",
     page: {
       ...base("honest-auto"),
       theme: {
@@ -584,6 +507,7 @@ export const TEMPLATES: Template[] = [
     id: "aurora-drift",
     name: "Aurora Drift",
     description: "Flowing northern-light gradients for dreamers, makers, and late-night thinkers.",
+    category: "personal",
     page: {
       ...base("aurora.wav"),
       theme: {
@@ -628,6 +552,7 @@ export const TEMPLATES: Template[] = [
     id: "block-explorer",
     name: "Block Explorer",
     description: "Web3-native identity: dark terminal, tx-hash motifs. My wallet is my resume.",
+    category: "personal",
     page: {
       ...base("0xCreator"),
       theme: {
@@ -675,6 +600,7 @@ export const TEMPLATES: Template[] = [
     id: "lofi-room",
     name: "Lo-Fi Room",
     description: "Warm lamplight and rain sounds. A cozy corner for bedroom creators.",
+    category: "personal",
     page: {
       ...base("the-lofi-room"),
       theme: {
@@ -719,6 +645,7 @@ export const TEMPLATES: Template[] = [
     id: "solarpunk-garden",
     name: "Solarpunk Garden",
     description: "Sunlit and hopeful — growing a kinder internet, one page at a time.",
+    category: "personal",
     page: {
       ...base("the-garden"),
       theme: {
@@ -763,6 +690,7 @@ export const TEMPLATES: Template[] = [
     id: "night-signal",
     name: "Night Signal",
     description: "Pirate-radio energy. You are the media — broadcast yourself.",
+    category: "personal",
     page: {
       ...base("night-signal"),
       theme: {
@@ -807,6 +735,7 @@ export const TEMPLATES: Template[] = [
     id: "wanderer-atlas",
     name: "Wanderer Atlas",
     description: "A travel journal in page form. Collecting places, not things.",
+    category: "personal",
     page: {
       ...base("atlas-in-progress"),
       theme: {
