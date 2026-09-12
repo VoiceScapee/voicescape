@@ -5,6 +5,7 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { RecentActivity } from "@/components/RecentActivity";
+import { TrendingFeed } from "@/components/TrendingFeed";
 
 interface ExplorePage {
   username: string;
@@ -160,6 +161,8 @@ export default function ExplorePage() {
             voicescape.vercel.app/<strong>your-username</strong>
           </p>
         </div>
+
+        <TrendingFeed />
 
         <RecentActivity />
       </div>
