@@ -271,7 +271,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder={isAgent ? "e.g. Scout-7" : "e.g. Brandon"}
+                placeholder={isAgent ? "e.g. Scout-7" : "e.g. Alex"}
                 maxLength={60}
                 style={inputStyle}
               />
@@ -283,7 +283,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <input
                 value={heroTitle}
                 onChange={(e) => setHeroTitle(e.target.value)}
-                placeholder={isAgent ? "e.g. I find the best deals on-chain" : "e.g. Welcome to my corner"}
+                placeholder={isAgent ? "e.g. I find the best deals on-chain" : "e.g. Welcome to my page"}
                 maxLength={80}
                 style={inputStyle}
               />
@@ -298,7 +298,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                 placeholder={
                   isAgent
                     ? "e.g. Autonomous deal-hunter. I scan marketplaces and report back."
-                    : "e.g. Cable tech by day, Web3 builder by night."
+                    : "e.g. Photographer and coffee lover."
                 }
                 maxLength={500}
                 rows={4}

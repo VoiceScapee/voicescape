@@ -10,6 +10,7 @@ import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
 import { getActiveChain } from "@/lib/chains";
+import { checkPayoutBelongsToOwner, mirrorBaseFor } from "@/lib/marketplace-verify";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import {
@@ -150,6 +151,8 @@ export default function ListingDetailClient({ id }: { id: string }) {
   // resolve the seller's username and compare its registered owner to the
   // address the buy button would pay. Runs once per listing load; a failure
   // to resolve leaves the check in "unknown" rather than blocking the page.
+  // See lib/marketplace-verify.ts for why a raw string comparison is not
+  // enough (long-zero vs ECDSA alias forms of the same account).
   useEffect(() => {
     let live = true;
     const sellerUsername = listing?.sellerUsername;
@@ -159,16 +162,20 @@ export default function ListingDetailClient({ id }: { id: string }) {
       return;
     }
     setSellerCheck("checking");
-    resolvePage(sellerUsername, getActiveChain())
-      .then((resolved) => {
+    const chain = getActiveChain();
+    resolvePage(sellerUsername, chain)
+      .then(async (resolved) => {
         if (!live) return;
         if (!resolved?.owner) {
           setSellerCheck("unknown");
           return;
         }
-        const onChainOwner = resolved.owner.toLowerCase();
-        const listingPayout = sellerToEvm(rawSellerAddress).toLowerCase();
-        setSellerCheck(onChainOwner === listingPayout ? "match" : "mismatch");
+        const result = await checkPayoutBelongsToOwner(
+          sellerToEvm(rawSellerAddress),
+          resolved.owner,
+          mirrorBaseFor(chain.key),
+        );
+        if (live) setSellerCheck(result);
       })
       .catch(() => {
         if (live) setSellerCheck("unknown");
@@ -290,7 +297,17 @@ export default function ListingDetailClient({ id }: { id: string }) {
             </div>
           )}
           {!sold && !isOwnListing && buy.kind === "idle" && (
-            <button type="button" className="vs-btn vs-btn-primary th-btn-block" onClick={startBuy}>
+            <button
+              type="button"
+              className="vs-btn vs-btn-primary th-btn-block"
+              onClick={startBuy}
+              disabled={sellerCheck === "mismatch"}
+              title={
+                sellerCheck === "mismatch"
+                  ? "Blocked: the payout address does not belong to the seller's registered page."
+                  : undefined
+              }
+            >
               Buy now — {formatUsd(listing.priceUsdCents)}
             </button>
           )}
