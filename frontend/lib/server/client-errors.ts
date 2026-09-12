@@ -262,17 +262,30 @@ export function founderWallets(env: Record<string, string | undefined> = process
     .filter(Boolean);
   const treasury = (env.NEXT_PUBLIC_TREASURY_ADDRESS ?? "").trim().toLowerCase();
   if (treasury && !list.includes(treasury)) list.push(treasury);
-  // Treasury 0.0.10424063: sessions store the canonical long-zero EVM form
-  // (0x000...9f0eff), not the public-key alias. Accept all three forms.
-  const treasuryForms = [
-    "0.0.10424063",
-    "0x00000000000000000000000000000000009f0eff",
-    "0x30c63dc43608b6764a6b8b53960553aebf306817",
-  ];
-  for (const form of treasuryForms) {
-    if (!list.includes(form)) list.push(form);
-  }
   return list;
+}
+
+/**
+ * Normalize a session address to Hedera ID format for founder comparison.
+ * Sessions store the canonical long-zero EVM form (0x000...9f0eff);
+ * this converts it back to 0.0.10424063.
+ */
+function normalizeToHederaId(address: string): string {
+  const lower = address.trim().toLowerCase();
+  // Long-zero EVM form: 0x00000000000000000000000000000000009f0eff -> 0.0.10424063
+  const m = /^0x0*([0-9a-f]+)$/.exec(lower);
+  if (m) {
+    try {
+      const num = BigInt("0x" + m[1]);
+      // Only convert if it fits in the Hedera account range (small numbers)
+      if (num < BigInt("0xffffffff")) {
+        return `0.0.${num.toString()}`;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return lower;
 }
 
 /** True when the (session-verified) wallet address belongs to a founder. */
@@ -281,7 +294,8 @@ export function isFounderWallet(
   env: Record<string, string | undefined> = process.env,
 ): boolean {
   if (!address) return false;
-  return founderWallets(env).includes(address.trim().toLowerCase());
+  const normalized = normalizeToHederaId(address);
+  return founderWallets(env).includes(normalized);
 }
 
 export interface ClientErrorAdminDeps {
