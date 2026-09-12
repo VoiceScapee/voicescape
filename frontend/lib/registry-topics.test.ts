@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { id } from "ethers";
-import { PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC } from "@/app/api/explore/pages/route";
+import { PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC } from "@/lib/registry-topics";
 
 /**
  * Regression test for the 2026-09-12 Explore bug: PAGEREGISTERED_TOPIC held

@@ -13,6 +13,7 @@ import { verifyTipOnChain } from "@/lib/verify-tx";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
+import OnChainLiveBadge from "@/components/OnChainLiveBadge";
 import ProfileLinks from "@/components/townhall/ProfileLinks";
 import ReferralCard from "@/components/townhall/ReferralCard";
 import ReportButton from "@/components/townhall/ReportButton";
@@ -554,6 +555,7 @@ function PublicPageInner({ username }: { username: string }) {
 
   return (
     <>
+      <OnChainLiveBadge owner={state.meta.owner} />
       <PageRenderer
         page={state.page}
         meta={state.meta}

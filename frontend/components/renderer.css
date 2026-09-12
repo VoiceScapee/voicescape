@@ -1408,3 +1408,69 @@ a.pv-friend:hover {
 .pv-pay-status.is-ok {
   color: #4ade80;
 }
+
+/* Pulsing on-chain verification badge (public blockpages) */
+.pv-chain-badge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 860px;
+  margin: 14px auto 0;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(52, 211, 153, 0.28);
+  background: rgba(16, 185, 129, 0.08);
+  font-size: 13px;
+  color: var(--vs-text, #f2f2f7);
+}
+.pv-chain-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #34d399;
+  flex-shrink: 0;
+}
+.pv-chain-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid rgba(52, 211, 153, 0.55);
+  animation: pvChainPulse 1.8s ease-out infinite;
+}
+@keyframes pvChainPulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+.pv-chain-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  min-width: 0;
+}
+.pv-chain-text strong {
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.pv-chain-sub {
+  color: var(--vs-muted, #9a9ab0);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pv-chain-verify {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--vs-cyan, #34d399);
+  text-decoration: none;
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.pv-chain-verify:hover {
+  background: rgba(52, 211, 153, 0.14);
+}
