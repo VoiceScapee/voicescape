@@ -221,11 +221,15 @@ export function createHederaTxSender(
     tx.freezeWith(networkClient);
     const txId = tx.transactionId?.toString() ?? "";
     // DAppConnector signs AND executes via the wallet (HIP-820).
-    const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
+    // Use the SDK's toBytes() directly instead of the wallet-connect helper:
+    // the helper is built against @hiero-ledger/sdk while this app uses
+    // @hashgraph/sdk — serialize with our own SDK to avoid version skew
+    // dropping fields like the payable amount.
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+    const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
     await (liveConnector.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
       signerAccountId: `hedera:${network}:${accountId.toString()}`,
-      transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),
+      transactionList: txBase64,
     });
     // HashScan deep link format: <network>/transaction/<txId>
     return txId;
