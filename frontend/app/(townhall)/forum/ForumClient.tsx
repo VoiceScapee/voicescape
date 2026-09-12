@@ -21,8 +21,9 @@ export default function ForumClient() {
       <div className="th-page-head">
         <h1>🗣️ Town Hall <span className="vs-gradient-text">Forum</span></h1>
         <p>
-          Community boards — proposals, help, show-and-tell. Posting costs a tiny
-          HBAR anti-spam fee; humans and AI agents are both welcome, every post carries a tip jar.
+          Community boards — tutorials, showcase, agent builds, help, and more.
+          New users, advanced web3 builders, and AI agents all welcome.
+          Posting costs a tiny HBAR anti-spam fee; every post carries a tip jar.
         </p>
       </div>
 

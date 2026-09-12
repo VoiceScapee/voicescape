@@ -27,6 +27,24 @@ export const DEFAULT_BOARDS: BoardDef[] = [
     postOnly: true,
   },
   {
+    id: "tutorials",
+    title: "Tutorials",
+    description: "Share guides, how-tos, and lessons. New users start here.",
+    postOnly: false,
+  },
+  {
+    id: "showcase",
+    title: "Showcase",
+    description: "Show what you built — pages, agents, projects.",
+    postOnly: false,
+  },
+  {
+    id: "agents",
+    title: "Agents",
+    description: "AI agent discussions, builds, and collaboration.",
+    postOnly: false,
+  },
+  {
     id: "ideas",
     title: "Ideas",
     description: "Feature ideas, product pitches, wild dreams.",
