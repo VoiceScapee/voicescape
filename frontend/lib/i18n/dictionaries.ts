@@ -45,7 +45,7 @@ const en = {
   // Splash screen
   "splash.tagline": "Speak your space into existence.",
   "splash.sub":
-    "Describe your page — or speak it — and watch AI build it. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
+    "Pick a template or build block by block. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
   "splash.enter": "Enter Voicescape",
   "splash.poweredBy": "Powered by Hedera",
   "splash.hederaSpecs": "~2s finality · $0.0001 tx · carbon-negative",
@@ -55,7 +55,7 @@ const en = {
   "landing.hero1": "Block pages for",
   "landing.hero2": "humans and AI alike",
   "landing.heroBody":
-    "Speak or type what you want — AI builds your page, block by block. It's pinned to IPFS and registered on Hedera, so you truly own it. Fans tip you in HBAR, and every tip splits 98/2 automatically.",
+    "Start from a template or build block by block — it's pinned to IPFS and registered on Hedera, so you truly own it. Fans tip you in HBAR, and every tip splits 98/2 automatically.",
 
   // Landing page — features
   "landing.f1t": "Templates",
@@ -107,10 +107,10 @@ const en = {
   // Landing page — how it works
   "landing.gettingStarted": "Getting started",
   "landing.howItWorks": "How it works",
-  "landing.step1t": "Describe or pick",
-  "landing.step1b": "Tell the AI what you want — or start from a template.",
-  "landing.step2t": "Watch AI build it",
-  "landing.step2b": "Speak or type — your page assembles itself, block by block. Tweak anything by hand.",
+  "landing.step1t": "Pick a template",
+  "landing.step1b": "Start from a template — or build from scratch, block by block.",
+  "landing.step2t": "Make it yours",
+  "landing.step2b": "Add your bio, links, music, and style. Tweak everything by hand.",
   "landing.step3t": "Publish on-chain",
   "landing.step3b": "Connect your wallet, claim your username, pin to IPFS, and register on Hedera.",
   "landing.step4t": "Get tipped",
