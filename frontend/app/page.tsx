@@ -50,6 +50,22 @@ export default function LandingPage() {
           <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", maxWidth: 680, margin: "0 auto", fontSize: 17 }}>
             <T k="landing.heroBody" />
           </p>
+          <div style={{ marginTop: 28, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link
+              href="/explore"
+              className="vs-btn vs-btn-primary"
+              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+            >
+              Explore Blockpages
+            </Link>
+            <Link
+              href="/builder"
+              className="vs-btn vs-btn-ghost"
+              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+            >
+              <T k="nav.builder" />
+            </Link>
+          </div>
         </section>
 
         {/* How it works — the 4-step value prop, right up top */}
