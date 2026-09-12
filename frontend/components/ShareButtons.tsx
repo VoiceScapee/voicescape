@@ -1,41 +1,73 @@
 "use client";
 
 import { useState } from "react";
+import {
+  buildFacebookShareUrl,
+  buildPageShareUrl,
+  buildShareText,
+  buildXShareUrl,
+} from "@/lib/share";
 
 /**
- * Share buttons for blockpages — X, Facebook, and copy link.
- * Simple URL-based sharing, no API keys needed.
+ * Share buttons for blockpages.
+ *
+ * - On phones (navigator.share available): the native share sheet — the
+ *   proven mobile pattern. One tap opens the OS sheet with Facebook, X,
+ *   WhatsApp, SMS, and every other app on the device.
+ * - Everywhere: direct X / Facebook share links + copy link as fallback.
+ *
+ * Every shared URL carries ?ref=<username> so the sharer earns referral
+ * credit when someone joins Voicescape through the link.
  */
 export function ShareButtons({ username }: { username: string }) {
   const [copied, setCopied] = useState(false);
+  const [shared, setShared] = useState(false);
 
-  const getUrl = () => {
+  const getPageUrl = () => {
     if (typeof window === "undefined") return "";
-    return `${window.location.origin}/${username}`;
+    return buildPageShareUrl(window.location.origin, username);
   };
 
-  const shareText = `Check out ${username}'s blockpage on Voicescape`;
+  const canNativeShare =
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function";
+
+  const nativeShare = async () => {
+    try {
+      await navigator.share({
+        title: `${username} on Voicescape`,
+        text: buildShareText(username),
+        url: getPageUrl(),
+      });
+      setShared(true);
+      setTimeout(() => setShared(false), 2000);
+    } catch {
+      // User dismissed the sheet — not an error.
+    }
+  };
+
+  const openSharePopup = (url: string) => {
+    window.open(url, "_blank", "noopener,width=550,height=420");
+  };
 
   const shareX = () => {
-    const url = encodeURIComponent(getUrl());
-    const text = encodeURIComponent(shareText);
-    window.open(`https://twitter.com/intent/tweet?url=${url}&text=${text}`, "_blank", "width=550,height=420");
+    openSharePopup(buildXShareUrl(getPageUrl(), buildShareText(username)));
   };
 
   const shareFacebook = () => {
-    const url = encodeURIComponent(getUrl());
-    window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank", "width=550,height=420");
+    openSharePopup(buildFacebookShareUrl(getPageUrl()));
   };
 
   const copyLink = async () => {
+    const link = getPageUrl();
     try {
-      await navigator.clipboard.writeText(getUrl());
+      await navigator.clipboard.writeText(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Fallback for older browsers
       const input = document.createElement("input");
-      input.value = getUrl();
+      input.value = link;
       document.body.appendChild(input);
       input.select();
       document.execCommand("copy");
@@ -60,6 +92,11 @@ export function ShareButtons({ username }: { username: string }) {
 
   return (
     <div style={{ display: "flex", gap: 8, justifyContent: "center", margin: "16px 0", flexWrap: "wrap" }}>
+      {canNativeShare && (
+        <button type="button" onClick={nativeShare} style={btnStyle} aria-label="Share">
+          {shared ? "✓ Shared!" : "📤 Share"}
+        </button>
+      )}
       <button type="button" onClick={shareX} style={btnStyle} aria-label="Share on X">
         𝕏 Share
       </button>
