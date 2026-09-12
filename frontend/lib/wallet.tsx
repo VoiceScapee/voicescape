@@ -248,7 +248,27 @@ function accountIdFromSession(session: { namespaces?: Record<string, { accounts?
   if (!accounts || accounts.length === 0) return null;
   // Format: "hedera:<network>:<accountId>" → take the last part
   const parts = accounts[0].split(":");
-  return parts[parts.length - 1] || null;
+  const raw = parts[parts.length - 1] || null;
+  if (!raw) return null;
+  // KISS: Normalize to 0.0.x form. Some wallets return the EVM address
+  // (long-zero 0x0000... or alias) instead of the account ID. Convert
+  // long-zero back to 0.0.x so the UI always shows the familiar form.
+  // Long-zero: 0x00000000000000000000000000000000009f0eff → 0.0.10424063
+  if (/^0x[0-9a-fA-F]{40}$/.test(raw)) {
+    // Check if it's a long-zero address (first 32 chars are zeros)
+    if (raw.slice(0, 34) === "0x00000000000000000000000000000000") {
+      try {
+        const num = BigInt(raw).toString(10);
+        return `0.0.${num}`;
+      } catch {
+        return raw; // Fallback: return as-is if conversion fails
+      }
+    }
+    // It's an alias address (not long-zero) — return as-is, the caller
+    // can handle it. We don't try to reverse-resolve aliases here.
+    return raw;
+  }
+  return raw;
 }
 
 /**

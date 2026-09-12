@@ -8,7 +8,7 @@ import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schem
 import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
-import { WalletProvider, getHederaPairing, useWallet } from "@/lib/wallet";
+import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
@@ -533,9 +533,7 @@ export default function PublicPage({ params }: { params: { username: string } })
   const { username } = params;
   // KISS identity: /0.0.10424063 resolves to the wallet's derived page
   // (user-10424063) so users can share either form.
-  return (
-    <WalletProvider>
-      <PublicPageInner username={normalizeUsername(username)} />
-    </WalletProvider>
-  );
+  // KISS: No nested WalletProvider — the root layout already provides it.
+  // A nested provider causes split wallet state (the wrong-account bug).
+  return <PublicPageInner username={normalizeUsername(username)} />;
 }
