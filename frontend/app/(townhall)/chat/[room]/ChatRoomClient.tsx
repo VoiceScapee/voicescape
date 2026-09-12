@@ -23,6 +23,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
   const hcs = useHcsSubmit();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState("");
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const seenRef = useRef<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamUrl = `/api/townhall/chat/${encodeURIComponent(room)}/stream`;
@@ -33,11 +34,29 @@ export default function ChatRoomClient({ room }: { room: string }) {
       const fresh = incoming.filter((m) => !seenRef.current.has(m.seq));
       if (fresh.length === 0) return prev;
       fresh.forEach((m) => seenRef.current.add(m.seq));
-      return [...prev, ...fresh]
+      // When a real (positive-seq) message arrives from me, drop any pending
+      // optimistic copy with the same room+body — the temp negative seq
+      // never dedupes by seq alone.
+      const confirmedKeys = new Set(
+        fresh
+          .filter((m) => m.seq > 0 && m.author === me)
+          .map((m) => `${m.room}::${m.body}`),
+      );
+      const prevFiltered =
+        confirmedKeys.size > 0
+          ? prev.filter(
+              (m) =>
+                !(
+                  (m as unknown as { pending?: boolean }).pending &&
+                  confirmedKeys.has(`${m.room}::${m.body}`)
+                ),
+            )
+          : prev;
+      return [...prevFiltered, ...fresh]
         .sort((a, b) => a.seq - b.seq)
         .slice(-300);
     });
-  }, []);
+  }, [me]);
 
   const conn = useStreamEvents<ChatMessage>(streamUrl, addMessages, isChatMessage);
 
@@ -59,24 +78,51 @@ export default function ChatRoomClient({ room }: { room: string }) {
       body: text,
     });
     if (!hcsTxId) return; // User cancelled or error — phase shows the error
-    try {
-      await postJson(streamUrl.replace(/\/stream$/, ""), {
-        author: me,
-        body: text,
-        hcsTxId,
-      });
-    } catch (e) {
-      // Server verification failed — the HCS tx is still on-chain, but the
-      // server didn't accept it (e.g., content filter). Show the error.
-      console.error("Chat verification failed:", e);
-      return;
-    }
     setBody("");
-    // Optimistic: show it now with a temp seq; the stream dedupes when the real copy arrives.
+    setVerifyError(null);
+    // Optimistic: show it NOW, before server verification. The HCS tx is
+    // already on-chain (user paid + signed), so the message WILL appear once
+    // the mirror node indexes it. The stream dedupes when the real copy arrives.
     const tempSeq = -Date.now();
-    addMessages([
-      { seq: tempSeq, room, author: me, body: text, ts: new Date().toISOString() } as unknown as ChatMessage,
-    ]);
+    const optimisticMsg = {
+      seq: tempSeq,
+      room,
+      author: me,
+      body: text,
+      ts: new Date().toISOString(),
+      pending: true,
+    } as unknown as ChatMessage;
+    addMessages([optimisticMsg]);
+    // Notify the server with retries: the mirror node can lag several seconds
+    // behind consensus, so the first verification attempt may 404. The txId
+    // reservation is released on failure, so retrying is safe.
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await postJson(streamUrl.replace(/\/stream$/, ""), {
+          author: me,
+          body: text,
+          hcsTxId,
+        });
+        // Verified — the pending flag will clear when the stream delivers
+        // the real message (dedupe replaces it). Nothing more to do.
+        return;
+      } catch (e) {
+        const isLast = attempt === maxAttempts;
+        console.error(`Chat verification attempt ${attempt}/${maxAttempts} failed:`, e);
+        if (isLast) {
+          // The HCS tx is still on-chain — the message will appear once the
+          // mirror node indexes it. Mark it so the user knows it's pending.
+          // (The optimistic message stays visible with its pending state.)
+          setVerifyError(
+            "Sent to Hedera, but confirmation is delayed — your message will appear shortly.",
+          );
+          return;
+        }
+        // Backoff before retry: 2s, 4s
+        await new Promise((r) => setTimeout(r, attempt * 2000));
+      }
+    }
   };
 
   return (
@@ -106,6 +152,9 @@ export default function ChatRoomClient({ room }: { room: string }) {
                 @{m.author}
               </Link>
               <span className="th-post-ts">{timeAgo(m.ts)}</span>
+              {(m as unknown as { pending?: boolean }).pending && (
+                <span className="th-muted" title="Sent to Hedera — waiting for network confirmation"> ◌ sending…</span>
+              )}
               {m.author !== me && <ReportButton targetKind="chat" targetSeq={m.seq} />}
             </div>
             <p className="th-chat-body">{m.body}</p>
@@ -142,6 +191,9 @@ export default function ChatRoomClient({ room }: { room: string }) {
         {!canWrite && <p className="th-muted" style={{ marginTop: 8 }}>{isAuthenticated ? "You need a page username to chat." : "Sign in with your wallet to chat."}</p>}
         {hcs.phase.kind === "error" && (
           <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>
+        )}
+        {verifyError && (
+          <p className="th-muted" style={{ marginTop: 8 }}>◌ {verifyError}</p>
         )}
       </div>
     </>

@@ -98,11 +98,12 @@ export async function verifyHcsTransaction(
 
   try {
     const url = `${mirrorBaseUrl()}/api/v1/transactions/${mirrorTxId}`;
-    // Indexing-wait: the mirror node can lag a few seconds behind consensus,
-    // so a just-submitted tx may 404 briefly. Poll briefly before giving up.
+    // Indexing-wait: the mirror node can lag several seconds behind consensus
+    // (3-10s+ under load), so a just-submitted tx may 404 for a while. Poll
+    // patiently before giving up — the user already paid for this tx.
     const res = await fetchMirrorWithRetry(url, {
-      indexingWaitAttempts: 3,
-      indexingWaitDelayMs: 1500,
+      indexingWaitAttempts: 5,
+      indexingWaitDelayMs: 2000,
     });
     if (!res.ok) return null;
 
