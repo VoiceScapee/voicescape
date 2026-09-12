@@ -24,7 +24,7 @@ export const BUILDER_UNLOCK_MESSAGE =
   "The Builders room is for Builder badge holders — publish a blockpage and receive your first tip to unlock it.";
 
 const BADGE_CACHE_KEY_PREFIX = "vs:badges:builder:";
-const BADGE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour — badge status changes slowly
+const BADGE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes — badge status can change when a tip lands
 
 export interface BuilderBadgeProgress {
   /** Wallet owns at least one registered blockpage. */
@@ -44,26 +44,34 @@ const FOUNDER_PROGRESS: BuilderBadgeProgress = { hasPage: true, hasTip: true, co
  * Builder-badge progress for a wallet (0x or 0.0.x form). Fail-open:
  * Mirror Node or KV failures return locked progress, never a grant.
  * The founder wallet bypasses the on-chain checks entirely.
+ *
+ * @param force when true, bypasses the cache and recomputes from the
+ *   Mirror Node (used by the manual "recheck" button).
  */
-export async function builderBadgeProgress(walletAddress: string): Promise<BuilderBadgeProgress> {
+export async function builderBadgeProgress(
+  walletAddress: string,
+  force = false,
+): Promise<BuilderBadgeProgress> {
   const canon = canonicalAddress(walletAddress);
   if (!canon) return LOCKED_PROGRESS;
   // Founder bypass — grants the badge even before any on-chain activity.
   if (isFounderWallet(walletAddress)) return FOUNDER_PROGRESS;
   const kv = getKvStore();
   const key = BADGE_CACHE_KEY_PREFIX + canon;
-  try {
-    const raw = await kv.get(key);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<BuilderBadgeProgress>;
-      return {
-        hasPage: parsed.hasPage === true,
-        hasTip: parsed.hasTip === true,
-        complete: parsed.hasPage === true && parsed.hasTip === true,
-      };
+  if (!force) {
+    try {
+      const raw = await kv.get(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<BuilderBadgeProgress>;
+        return {
+          hasPage: parsed.hasPage === true,
+          hasTip: parsed.hasTip === true,
+          complete: parsed.hasPage === true && parsed.hasTip === true,
+        };
+      }
+    } catch {
+      /* cache miss / corrupt / backend down → recompute */
     }
-  } catch {
-    /* cache miss / corrupt / backend down → recompute */
   }
   const [hasPage, tips] = await Promise.all([
     ownsRegisteredPage(canon),

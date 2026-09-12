@@ -5,7 +5,9 @@
  * without a wallet via a public read-only sender; writes need a sender from
  * the connected wallet (useWallet().getTxSender()).
  *
- * Contract addresses come from env (set after `npx hardhat run scripts/deploy.js`).
+ * Contract addresses come from env (set after `npx hardhat run scripts/deploy.js`),
+ * with hardcoded Hedera mainnet addresses as fallback — Voicescape is
+ * mainnet-only, so the fallback is always correct.
  *
  * Registry ABI matches the Phase B VoicescapeRegistry interface:
  *   registerPage(string username, string ipfsHash, uint8 ownerType, address operator, string purpose)
@@ -40,11 +42,14 @@ export function getTipsAddress(): string | undefined {
 }
 
 /**
- * Normalize a contract address env var without throwing. Returns undefined
- * when unset or unmappable — read paths degrade gracefully (resolvePage
- * returns null). Write-time validation lives in require*Address() below
- * plus hederaContractId() in lib/tx.ts, so a bad value can never silently
- * become a 0.0.0 transaction at runtime, and it can never fail a build.
+ * Normalize a contract address env var without throwing. Falls back to the
+ * hardcoded mainnet address when unset — Voicescape is mainnet-only, so the
+ * known mainnet address is always correct. Returns undefined only when the
+ * env var is set to an unmappable/unknown format (not mainnet, not EVM).
+ * Read paths degrade gracefully (resolvePage returns null). Write-time
+ * validation lives in require*Address() below plus hederaContractId() in
+ * lib/tx.ts, so a bad value can never silently become a 0.0.0 transaction
+ * at runtime, and it can never fail a build.
  */
 function normalizeContractAddress(
   raw: string | undefined,
@@ -52,7 +57,7 @@ function normalizeContractAddress(
   knownEvmAddress: string,
 ): string | undefined {
   const addr = raw?.trim();
-  if (!addr) return undefined;
+  if (!addr) return knownEvmAddress; // unset → mainnet default
   // Ethers needs the 0x EVM address, not the 0.0.x Hedera ID.
   if (/^0\.0\.\d+$/.test(addr)) {
     return addr === knownHederaId ? knownEvmAddress : undefined;
@@ -64,17 +69,18 @@ function normalizeContractAddress(
  * Validated address for WRITE paths only. Throws at RUNTIME when a user
  * actually tries to transact — never at build time, because the write
  * functions below are only invoked from user actions and API handlers.
+ * Error messages are user-facing: no env var names, no deployer jargon.
  */
 export function requireRegistryAddress(): string {
   const addr = getRegistryAddress();
   if (!addr) {
     throw new Error(
-      "NEXT_PUBLIC_REGISTRY_ADDRESS is not set (or is a placeholder/unknown format) — deploy the contracts and add the real Registry EVM address to your env.",
+      "Publishing is temporarily unavailable — please try again later.",
     );
   }
   if (addr.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
     throw new Error(
-      "NEXT_PUBLIC_REGISTRY_ADDRESS is the zero address (0x000...000 placeholder) — set it to the real Registry EVM address.",
+      "Publishing is temporarily unavailable — please try again later.",
     );
   }
   return addr;
@@ -84,12 +90,12 @@ export function requireTipsAddress(): string {
   const addr = getTipsAddress();
   if (!addr) {
     throw new Error(
-      "NEXT_PUBLIC_TIPS_ADDRESS is not set (or is a placeholder/unknown format) — deploy the contracts and add the real Tips EVM address to your env.",
+      "Tipping is temporarily unavailable — please try again later.",
     );
   }
   if (addr.toLowerCase() === ZERO_ADDRESS.toLowerCase()) {
     throw new Error(
-      `NEXT_PUBLIC_TIPS_ADDRESS is the zero address (0x000...000 placeholder) — set it to the real Tips EVM address (${MAINNET_TIPS_EVM}).`,
+      "Tipping is temporarily unavailable — please try again later.",
     );
   }
   return addr;

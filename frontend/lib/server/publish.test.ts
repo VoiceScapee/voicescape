@@ -50,7 +50,7 @@ describe("publishPageJson size cap", () => {
   });
 
   it("passes the size check for a small page (fails later on the missing PINATA_JWT, not on size)", async () => {
-    await expect(publishPageJson(SMALL_PAGE)).rejects.toThrow(/PINATA_JWT is not set/);
+    await expect(publishPageJson(SMALL_PAGE)).rejects.toThrow(/PINATA_UNAVAILABLE/);
   });
 
   it("a page just under the configured cap passes the size check", async () => {
@@ -59,6 +59,6 @@ describe("publishPageJson size cap", () => {
     const bytes = Buffer.byteLength(JSON.stringify(page), "utf8");
     expect(bytes).toBeLessThan(100);
     process.env.PIN_MAX_PAGE_JSON_BYTES = "100";
-    await expect(publishPageJson(page)).rejects.toThrow(/PINATA_JWT is not set/);
+    await expect(publishPageJson(page)).rejects.toThrow(/PINATA_UNAVAILABLE/);
   });
 });

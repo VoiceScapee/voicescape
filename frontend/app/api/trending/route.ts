@@ -14,10 +14,12 @@ const REGISTRY_ID = "0.0.10854058";
 
 export async function GET() {
   try {
-    // Get TipSent logs from last 7 days (limit 100)
+    // Get TipSent logs from last 7 days (limit 100).
+    // Mirror Node timestamp format: seconds.nanoseconds (e.g. 1234567890.000000000)
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60;
     const logsUrl =
       `https://mainnet.mirrornode.hedera.com/api/v1/contracts/${TIPS_CONTRACT}/results/logs` +
-      `?order=desc&limit=100`;
+      `?order=desc&limit=100&timestamp=gte:${sevenDaysAgo}.000000000`;
 
     const logsRes = await fetch(logsUrl, {
       headers: { Accept: "application/json" },

@@ -8,6 +8,7 @@ import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
+import { verifyPurchaseOnChain } from "@/lib/verify-tx";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
@@ -25,7 +26,9 @@ import {
 type BuyPhase =
   | { kind: "idle" }
   | { kind: "buying" }
+  | { kind: "confirming"; tx: string }
   | { kind: "done"; tx: string }
+  | { kind: "submitted"; tx: string }
   | { kind: "error"; message: string };
 
 /** Normalize a listing payout address to a 0x EVM address for the contract call. */
@@ -191,14 +194,33 @@ export default function ListingDetailClient({ id }: { id: string }) {
       // One atomic transaction: 98% to the seller, 2% to the treasury.
       // The contract never holds your funds — there is no escrow.
       const tx = await buyListing(sellerToEvm(sellerAddress), listing.id, wei, sender);
-      recordPurchase({
-        listingId: listing.id,
-        note: listing.title,
-        tx,
-        amountHbar: usdToHbarDisplay(usd, hbarPrice),
-        seller: sellerAddress,
-      });
-      setBuy({ kind: "done", tx });
+      // Verify on-chain before claiming "complete" — the wallet receipt only
+      // proves submission, not success. (Same pattern as the tip flow.)
+      setBuy({ kind: "confirming", tx });
+      const result = await verifyPurchaseOnChain(tx);
+      if (result.status === "confirmed") {
+        recordPurchase({
+          listingId: listing.id,
+          note: listing.title,
+          tx,
+          amountHbar: usdToHbarDisplay(usd, hbarPrice),
+          seller: sellerAddress,
+        });
+        setBuy({ kind: "done", tx });
+      } else if (result.status === "failed") {
+        setBuy({ kind: "error", message: "The payment failed on-chain. No funds were transferred — check the explorer for details." });
+      } else {
+        // Submitted but not yet visible (mirror lag). Don't claim success
+        // or failure — show an honest "sent, confirming" state.
+        recordPurchase({
+          listingId: listing.id,
+          note: listing.title,
+          tx,
+          amountHbar: usdToHbarDisplay(usd, hbarPrice),
+          seller: sellerAddress,
+        });
+        setBuy({ kind: "submitted", tx });
+      }
     } catch (e) {
       setBuy({ kind: "error", message: e instanceof Error ? e.message : String(e) });
     }
@@ -308,6 +330,24 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
           {buy.kind === "buying" && (
             <p className="th-muted" role="status">Sending the payment — approve in your wallet…</p>
+          )}
+
+          {buy.kind === "confirming" && (
+            <p className="th-muted" role="status">Payment sent — confirming on-chain…</p>
+          )}
+
+          {buy.kind === "submitted" && (
+            <div className="th-dust" role="status">
+              <div className="th-dust-title">Payment sent — confirming…</div>
+              <p>
+                Your payment (tx <span className="vs-mono">{buy.tx.slice(0, 24)}…</span>) was
+                submitted and is being confirmed on-chain. Check the explorer in a minute
+                to see it land. Arrange delivery with the seller directly.
+              </p>
+              <Link href="/marketplace/purchases" className="vs-btn vs-btn-primary th-btn-sm">
+                View my purchases →
+              </Link>
+            </div>
           )}
 
           {buy.kind === "done" && (

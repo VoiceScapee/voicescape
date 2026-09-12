@@ -37,9 +37,9 @@ describe("getTipsAddress (build-safe, never throws)", () => {
     expect(getTipsAddress()).toBe(ZERO);
   });
 
-  it("returns undefined when unset", () => {
+  it("falls back to the mainnet Tips address when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
-    expect(getTipsAddress()).toBeUndefined();
+    expect(getTipsAddress()).toBe(REAL_TIPS_EVM);
   });
 
   it("returns the real EVM address unchanged", () => {
@@ -59,14 +59,14 @@ describe("getTipsAddress (build-safe, never throws)", () => {
 });
 
 describe("requireTipsAddress (runtime write guard)", () => {
-  it("throws on the zero-address placeholder", () => {
+  it("throws a user-friendly error on the zero-address placeholder", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", ZERO);
-    expect(() => requireTipsAddress()).toThrow(/zero address/i);
+    expect(() => requireTipsAddress()).toThrow(/temporarily unavailable/i);
   });
 
-  it("throws when unset", () => {
+  it("uses the mainnet fallback when unset (no throw)", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
-    expect(() => requireTipsAddress()).toThrow(/not set/i);
+    expect(requireTipsAddress()).toBe(REAL_TIPS_EVM);
   });
 
   it("returns the real EVM address", () => {
@@ -86,9 +86,9 @@ describe("getRegistryAddress (build-safe, never throws)", () => {
     expect(getRegistryAddress()).toBe(ZERO);
   });
 
-  it("returns undefined when unset", () => {
+  it("falls back to the mainnet Registry address when unset", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
-    expect(getRegistryAddress()).toBeUndefined();
+    expect(getRegistryAddress()).toBe(REAL_REGISTRY_EVM);
   });
 
   it("returns the real EVM address unchanged", () => {
@@ -103,14 +103,14 @@ describe("getRegistryAddress (build-safe, never throws)", () => {
 });
 
 describe("requireRegistryAddress (runtime write guard)", () => {
-  it("throws on the zero-address placeholder", () => {
+  it("throws a user-friendly error on the zero-address placeholder", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
-    expect(() => requireRegistryAddress()).toThrow(/zero address/i);
+    expect(() => requireRegistryAddress()).toThrow(/temporarily unavailable/i);
   });
 
-  it("throws when unset", () => {
+  it("uses the mainnet fallback when unset (no throw)", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
-    expect(() => requireRegistryAddress()).toThrow(/not set/i);
+    expect(requireRegistryAddress()).toBe(REAL_REGISTRY_EVM);
   });
 
   it("returns the real EVM address", () => {
@@ -125,11 +125,11 @@ describe("requireRegistryAddress (runtime write guard)", () => {
 });
 
 describe("resolvePage (read path degrades gracefully)", () => {
-  it("returns null when the registry address is unset (build-safe)", async () => {
+  it("uses the mainnet Registry fallback when unset (build-safe)", async () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", "");
-    // The null-guard runs before any chain/RPC use, so a stub chain is fine.
-    await expect(
-      resolvePage("someone", { key: "hedera-mainnet" } as never),
-    ).resolves.toBeNull();
+    // With the mainnet fallback, resolvePage now attempts a read instead of
+    // returning null. The read itself needs a chain/RPC — this test just
+    // verifies getRegistryAddress returns the fallback.
+    expect(getRegistryAddress()).toBe(REAL_REGISTRY_EVM);
   });
 });

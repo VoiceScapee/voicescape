@@ -28,6 +28,7 @@ export default function CommentWall({
   const [posts, setPosts] = useState<TownhallPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
   const [body, setBody] = useState("");
 
   const load = useCallback(async () => {
@@ -75,7 +76,9 @@ export default function CommentWall({
     } catch (e) {
       // Server verification failed — the HCS tx is still on-chain, but the
       // server didn't accept it (e.g., content filter). Show the error.
+      const msg = e instanceof Error ? e.message : String(e);
       console.error("Comment verification failed:", e);
+      setPostError(`Comment not published: ${msg}. Your transaction is on-chain, but the server rejected it.`);
       return;
     }
     setBody("");
@@ -108,6 +111,14 @@ export default function CommentWall({
         </div>
         {hcs.phase.kind === "error" && (
           <p className="th-error">Failed to submit: {hcs.phase.message}</p>
+        )}
+        {postError && (
+          <p className="th-error" role="alert" style={{ marginTop: 8 }}>
+            {postError}{" "}
+            <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setPostError(null)}>
+              Dismiss
+            </button>
+          </p>
         )}
       </div>
 

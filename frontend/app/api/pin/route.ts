@@ -129,12 +129,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ cid, provider });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      const status = message.includes("PINATA_JWT is not set")
-        ? 500
+      const pinataDown = message.includes("PINATA_UNAVAILABLE");
+      if (pinataDown) {
+        console.error("[pin] Pinata unavailable (audio): publishing service misconfigured or down");
+      }
+      const status = pinataDown
+        ? 503
         : message.includes("too large") || message.includes("non-audio")
           ? 400
           : 502;
-      return NextResponse.json({ error: message }, { status });
+      // User-facing copy: no env var names, no config URLs. The draft is
+      // safe in the builder's local state — the user can retry later.
+      const userMessage = pinataDown
+        ? "Publishing is temporarily unavailable — your work is saved, please try again later."
+        : message;
+      return NextResponse.json({ error: userMessage }, { status });
     }
   }
 
@@ -180,11 +189,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ cid, provider });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    const status = message.includes("PINATA_JWT is not set")
-      ? 500
+    const pinataDown = message.includes("PINATA_UNAVAILABLE");
+    if (pinataDown) {
+      console.error("[pin] Pinata unavailable (page JSON): publishing service misconfigured or down");
+    }
+    const status = pinataDown
+      ? 503
       : message.includes("page JSON too large")
         ? 413
         : 502;
-    return NextResponse.json({ error: message }, { status });
+    // User-facing copy: no env var names, no config URLs. The draft is
+    // safe in the builder's local state — the user can retry later.
+    const userMessage = pinataDown
+      ? "Publishing is temporarily unavailable — your work is saved, please try again later."
+      : message;
+    return NextResponse.json({ error: userMessage }, { status });
   }
 }

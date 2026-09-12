@@ -217,7 +217,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
         <p className={`th-chat-status ${conn === "live" ? "is-live" : conn === "polling" ? "is-retry" : ""}`}>
           {conn === "live" && "● live"}
           {conn === "connecting" && "○ connecting…"}
-          {conn === "polling" && "◌ reconnecting — polling every 5s"}
+          {conn === "polling" && "● live (polling)"}
           {conn === "error" && "✕ connection failed"}
           {" · "}
           <PresenceDot scope={`chat:${room}`} />

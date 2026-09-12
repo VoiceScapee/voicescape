@@ -1687,6 +1687,9 @@ function PublishPanel({
       try {
         const referrer = localStorage.getItem("vs_referral");
         if (referrer && referrer !== target.toLowerCase()) {
+          // Tell the user about the second signature prompt before it fires —
+          // otherwise "Published!" + an unexplained wallet popup reads as suspicious.
+          setStatus({ kind: "info", text: "Published! Recording your referral — one more signature in your wallet…" });
           const hcsTxId = await hcs.submit("forum", {
             v: 1,
             kind: "referral",
@@ -1703,9 +1706,11 @@ function PublishPanel({
             });
           }
           localStorage.removeItem("vs_referral");
+          setStatus({ kind: "ok", text: "Published!" });
         }
       } catch {
         /* referral is best-effort; the page is already published */
+        setStatus({ kind: "ok", text: "Published!" });
       }
       if (confirmed) {
         // Redirect to the live page only once it provably resolves.

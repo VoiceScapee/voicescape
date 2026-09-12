@@ -115,7 +115,7 @@ const en = {
   "landing.step3b": "Connect your wallet, claim your username, pin to IPFS, and register on Hedera.",
   "landing.step4t": "Get tipped",
   "landing.step4b": "Share your link: /your-name. Tips split 98/2 automatically.",
-  "landing.openBuilder": "Create your free page",
+  "landing.openBuilder": "Create your page — free to build, a little HBAR for network fees",
   "landing.footerTagline": "Powered by Hedera · pages on IPFS, identity on-chain, vibes on you",
 
   // Landing page — Hedera stack strip
@@ -128,7 +128,7 @@ const en = {
   "landing.stack3t": "Smart Contract Tips",
   "landing.stack3b": "Every tip splits 98/2 on-chain. No middleman, no trust needed.",
   "landing.stack4t": "Fast & Cheap",
-  "landing.stack4b": "~2 second finality. Fees around $0.0001.",
+  "landing.stack4b": "~2 second finality. Simple transfers from $0.0001; contract tips cost a few cents.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Paying the dust fee…",
@@ -235,7 +235,7 @@ const es: Record<I18nKey, string> = {
   "landing.step3b": "Conecta tu billetera, reclama tu nombre de usuario, fija en IPFS y registra en Hedera.",
   "landing.step4t": "Recibe propinas",
   "landing.step4b": "Comparte tu enlace: /tu-nombre. Las propinas se dividen 98/2 automáticamente.",
-  "landing.openBuilder": "Abrir el constructor",
+  "landing.openBuilder": "Crea tu página — gratis de construir, un poco de HBAR para las tarifas de red",
   "landing.footerTagline": "Con la tecnología de Hedera · páginas en IPFS, identidad en la cadena, la vibra la pones tú",
 
   // Landing page — Hedera stack strip
@@ -248,7 +248,7 @@ const es: Record<I18nKey, string> = {
   "landing.stack3t": "Propinas con contrato inteligente",
   "landing.stack3b": "Cada propina se divide 98/2 en la cadena. Sin intermediarios.",
   "landing.stack4t": "Rápido y barato",
-  "landing.stack4b": "Finalidad en ~2 segundos. Comisiones de alrededor de $0.0001.",
+  "landing.stack4b": "Finalidad en ~2 segundos. Transferencias simples desde $0.0001; las propinas de contrato cuestan unos centavos.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Pagando la comisión anti-spam…",
@@ -352,7 +352,7 @@ const zh: Record<I18nKey, string> = {
   "landing.step3b": "连接钱包、领取用户名、固定到 IPFS 并在 Hedera 上注册。",
   "landing.step4t": "获得打赏",
   "landing.step4b": "分享您的链接：/您的名字。打赏自动按 98/2 分成。",
-  "landing.openBuilder": "打开构建器",
+  "landing.openBuilder": "创建您的页面——构建免费,网络费用需少量 HBAR",
   "landing.footerTagline": "由 Hedera 驱动 · 页面存于 IPFS，身份在于链上，风格由您定义",
 
   // Landing page — Hedera stack strip
@@ -365,7 +365,7 @@ const zh: Record<I18nKey, string> = {
   "landing.stack3t": "智能合约打赏",
   "landing.stack3b": "每笔打赏在链上按 98/2 自动分配。无需中间人。",
   "landing.stack4t": "快速且低廉",
-  "landing.stack4b": "约 2 秒确认。费用约为 $0.0001。",
+  "landing.stack4b": "约 2 秒确认。简单转账费用低至 $0.0001;合约打赏费用为几美分。",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "正在支付防垃圾费用…",
@@ -469,7 +469,7 @@ const hi: Record<I18nKey, string> = {
   "landing.step3b": "वॉलेट कनेक्ट करें, यूज़रनेम लें, IPFS पर पिन करें और Hedera पर रजिस्टर करें।",
   "landing.step4t": "टिप पाएं",
   "landing.step4b": "अपना लिंक शेयर करें: /आपका-नाम। टिप्स अपने आप 98/2 में बंट जाते हैं।",
-  "landing.openBuilder": "बिल्डर खोलें",
+  "landing.openBuilder": "अपना पेज बनाएं — बनाना मुफ्त, नेटवर्क फीस के लिए थोड़ा HBAR",
   "landing.footerTagline": "Hedera द्वारा संचालित · पेज IPFS पर, पहचान ऑन-चेन, अंदाज़ आपका",
 
   // Landing page — Hedera stack strip
@@ -482,7 +482,7 @@ const hi: Record<I18nKey, string> = {
   "landing.stack3t": "स्मार्ट कॉन्ट्रैक्ट टिप्स",
   "landing.stack3b": "हर टिप ऑन-चेन 98/2 में बंटती है। कोई बिचौलिया नहीं।",
   "landing.stack4t": "तेज़ और सस्ता",
-  "landing.stack4b": "~2 सेकंड में फाइनलिटी। फीस लगभग $0.0001।",
+  "landing.stack4b": "~2 सेकंड में फाइनलिटी। साधारण ट्रांसफर $0.0001 से; कॉन्ट्रैक्ट टिप्स में कुछ सेंट लगते हैं।",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "एंटी-स्पैम फीस का भुगतान हो रहा है…",
@@ -586,7 +586,7 @@ const ar: Record<I18nKey, string> = {
   "landing.step3b": "اربط محفظتك، واحجز اسم المستخدم، وثبّت على IPFS، وسجّل على Hedera.",
   "landing.step4t": "احصل على إكراميات",
   "landing.step4b": "شارك رابطك: /اسمك. تُقسَّم الإكراميات 98/2 تلقائيًا.",
-  "landing.openBuilder": "افتح البنّاء",
+  "landing.openBuilder": "أنشئ صفحتك — البناء مجاني, ورسوم الشبكة تحتاج القليل من HBAR",
   "landing.footerTagline": "مدعوم بتقنية Hedera · الصفحات على IPFS، والهوية على السلسلة، والأجواء من عندك",
 
   // Landing page — Hedera stack strip
@@ -599,7 +599,7 @@ const ar: Record<I18nKey, string> = {
   "landing.stack3t": "إكراميات بالعقود الذكية",
   "landing.stack3b": "كل إكرامية تُقسّم 98/2 على السلسلة. بدون وسيط.",
   "landing.stack4t": "سريع ورخيص",
-  "landing.stack4b": "نهائية خلال ثانيتين تقريبًا. رسوم حوالي $0.0001.",
+  "landing.stack4b": "نهائية خلال ثانيتين تقريبًا. التحويلات البسيطة من $0.0001; إكراميات العقود تكلف بضعة سنتات.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "جارٍ دفع رسوم مكافحة السبام…",
@@ -703,7 +703,7 @@ const pt: Record<I18nKey, string> = {
   "landing.step3b": "Conecte sua carteira, reivindique seu nome de usuário, fixe no IPFS e registre na Hedera.",
   "landing.step4t": "Receba gorjetas",
   "landing.step4b": "Compartilhe seu link: /seu-nome. As gorjetas se dividem 98/2 automaticamente.",
-  "landing.openBuilder": "Abrir o construtor",
+  "landing.openBuilder": "Crie sua página — grátis para construir, um pouco de HBAR para taxas de rede",
   "landing.footerTagline": "Com tecnologia Hedera · páginas no IPFS, identidade on-chain, a vibe é com você",
 
   // Landing page — Hedera stack strip
@@ -716,7 +716,7 @@ const pt: Record<I18nKey, string> = {
   "landing.stack3t": "Gorjetas via contrato",
   "landing.stack3b": "Cada gorjeta é dividida 98/2 on-chain. Sem intermediários.",
   "landing.stack4t": "Rápido e barato",
-  "landing.stack4b": "Finalidade em ~2 segundos. Taxas em torno de $0.0001.",
+  "landing.stack4b": "Finalidade em ~2 segundos. Transferências simples a partir de $0.0001; gorjetas de contrato custam alguns centavos.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Pagando a taxa anti-spam…",
@@ -821,7 +821,7 @@ const fr: Record<I18nKey, string> = {
   "landing.step3b": "Connectez votre portefeuille, réclamez votre pseudo, épinglez sur IPFS et enregistrez sur Hedera.",
   "landing.step4t": "Recevez des pourboires",
   "landing.step4b": "Partagez votre lien : /votre-nom. Les pourboires se partagent 98/2 automatiquement.",
-  "landing.openBuilder": "Ouvrir le constructeur",
+  "landing.openBuilder": "Créez votre page — gratuit à construire, un peu de HBAR pour les frais réseau",
   "landing.footerTagline": "Propulsé par Hedera · pages sur IPFS, identité on-chain, l'ambiance c'est vous",
 
   // Landing page — Hedera stack strip
@@ -834,7 +834,7 @@ const fr: Record<I18nKey, string> = {
   "landing.stack3t": "Pourboires via contrat",
   "landing.stack3b": "Chaque pourboire est partagé 98/2 on-chain. Sans intermédiaire.",
   "landing.stack4t": "Rapide et pas cher",
-  "landing.stack4b": "Finalité en ~2 secondes. Frais d'environ $0,0001.",
+  "landing.stack4b": "Finalité en ~2 secondes. Transferts simples dès $0,0001 ; les pourboires de contrat coûtent quelques centimes.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Paiement des frais anti-spam…",

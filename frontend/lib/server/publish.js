@@ -193,10 +193,10 @@ export async function publishPageJson(pageObj) {
 
   const pinataJwt = process.env[ENV.PINATA_JWT];
   if (!pinataJwt) {
-    throw new Error(
-      "Cannot publish: PINATA_JWT is not set. " +
-        "Create a key at https://app.pinata.cloud and set the environment variable.",
-    );
+    // User-facing copy is set by the /api/pin route — this marker is
+    // matched there to return human guidance instead of config jargon.
+    // Server logs get the full detail via console.error in the route.
+    throw new Error("PINATA_UNAVAILABLE");
   }
 
   return pinViaPinata(page, pinataJwt);
@@ -285,10 +285,7 @@ export async function publishAudioFile(data, filename, contentType) {
   }
   const pinataJwt = process.env[ENV.PINATA_JWT];
   if (!pinataJwt) {
-    throw new Error(
-      "Cannot publish audio: PINATA_JWT is not set. " +
-        "Create a key at https://app.pinata.cloud and set the environment variable.",
-    );
+    throw new Error("PINATA_UNAVAILABLE");
   }
   return pinFileViaPinata(data, filename, contentType, pinataJwt);
 }

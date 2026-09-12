@@ -9,6 +9,7 @@ import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { verifyTipOnChain } from "@/lib/verify-tx";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
@@ -50,6 +51,7 @@ function TipBox({
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
+  const [submittedHash, setSubmittedHash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const chain = getActiveChain();
@@ -98,12 +100,18 @@ function TipBox({
       // result to ensure the payable amount was received and TipSent emitted.
       // The wallet response alone is not proof (it only confirms submission).
       setVerifying(true);
-      const verified = await verifyTipOnChain(hash);
+      const result = await verifyTipOnChain(hash);
       setVerifying(false);
-      if (!verified) {
-        throw new Error("Transaction submitted but on-chain verification failed. Check the explorer link.");
+      if (result.status === "confirmed") {
+        setTxHash(hash);
+      } else if (result.status === "failed") {
+        throw new Error("The transaction failed on-chain. No tip was sent — check the explorer link for details.");
+      } else {
+        // "unknown": submitted but not yet visible on the mirror node
+        // (EVM hash propagation lag, or mirror delay). Money may have moved —
+        // never claim failure. Show an honest "submitted" state.
+        setSubmittedHash(hash);
       }
-      setTxHash(hash);
     } catch (e) {
       setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
@@ -111,44 +119,6 @@ function TipBox({
       setVerifying(false);
     }
   };
-
-  // Poll the Hedera Mirror Node contract-results endpoint until the tip
-  // is confirmed on-chain with a nonzero amount and TipSent event.
-  // Returns true if verified, false after timeout.
-  async function verifyTipOnChain(txId: string): Promise<boolean> {
-    // Mirror node uses dashes: 0.0.x-1234567890-123456789
-    // The txId from the SDK is already in this format.
-    const url = `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${txId}`;
-    // TipSent(string,address,address,uint256,uint256) topic0
-    const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
-    for (let attempt = 0; attempt < 12; attempt++) {
-      try {
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          const r = data.results?.[0] ?? data;
-          // status 0x1 = SUCCESS
-          const amount = BigInt(r.amount ?? "0");
-          const logs = r.logs ?? [];
-          const hasTipSent = logs.some((log: any) =>
-            (log.topics ?? []).some((t: string) => t.toLowerCase() === TIPSENT_TOPIC.toLowerCase())
-          );
-          if (r.status === "0x1" && amount > 0n && hasTipSent) {
-            return true;
-          }
-          // If the result exists but failed, don't keep polling
-          if (r.status && r.status !== "0x1") {
-            return false;
-          }
-        }
-      } catch {
-        // Network error — retry
-      }
-      // Wait 2.5s between attempts (up to ~30s total)
-      await new Promise((resolve) => setTimeout(resolve, 2500));
-    }
-    return false;
-  }
 
   return (
     <div
@@ -182,6 +152,30 @@ function TipBox({
               View on explorer <IconExternal size={14} />
             </a>
             <button type="button" className="pv-tip-again" onClick={() => setTxHash(null)}>
+              Tip again
+            </button>
+          </div>
+        ) : submittedHash ? (
+          <div className="pv-tip-confirm">
+            <span className="pv-tip-confirm-icon" aria-hidden="true">
+              <IconCheck size={30} />
+            </span>
+            <h3>Tip submitted</h3>
+            <p>
+              Your tip of ${usdValid ? usdNum.toFixed(2) : "?"} ({railDisplay}) was sent to {username}.
+              It&apos;s still being confirmed on-chain — check the explorer in a minute to see it land.
+            </p>
+            <span className="pv-tx-hash vs-mono">{submittedHash}</span>
+            <br />
+            <a
+              className="pv-tx-link"
+              href={`${chain.blockExplorer}/transaction/${submittedHash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View on explorer <IconExternal size={14} />
+            </a>
+            <button type="button" className="pv-tip-again" onClick={() => setSubmittedHash(null)}>
               Tip again
             </button>
           </div>

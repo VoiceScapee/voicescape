@@ -84,6 +84,7 @@ export default function BoardClient({ board }: { board: string }) {
   const [posts, setPosts] = useState<TownhallPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [replyTo, setReplyTo] = useState<TownhallPost | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
@@ -173,7 +174,9 @@ export default function BoardClient({ board }: { board: string }) {
     } catch (e) {
       // Server verification failed - the HCS tx is still on-chain, but the
       // server didn't accept it (e.g., content filter). Show the error.
+      const msg = e instanceof Error ? e.message : String(e);
       console.error("Post verification failed:", e);
+      setPostError(`Post not published: ${msg}. Your HCS transaction is on-chain, but the server rejected it.`);
     }
   };
 
@@ -225,6 +228,14 @@ export default function BoardClient({ board }: { board: string }) {
           </button>
           {!canWrite && <span className="th-muted">{isAuthenticated ? "You need a page username to post." : "Sign in with your wallet to post."}</span>}
         </div>
+        {postError && (
+          <p className="th-error" role="alert" style={{ marginTop: 8 }}>
+            {postError}{" "}
+            <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setPostError(null)}>
+              Dismiss
+            </button>
+          </p>
+        )}
         {hcs.phase.kind === "error" && (
           <p className="th-error">Failed to submit: {hcs.phase.message}</p>
         )}
