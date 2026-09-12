@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
+import { WalletConnect } from "@/components/WalletConnect";
 
 interface ErrorAggregate {
   page: string;
@@ -96,7 +97,12 @@ export default function AdminErrorsPage() {
       {!sessionReady ? (
         <p className="th-muted">Loading…</p>
       ) : !isAuthenticated ? (
-        <p className="th-muted">Sign in with your wallet (top right) to view error reports.</p>
+        <div className="vs-card" style={{ padding: 20, textAlign: "center" }}>
+          <p className="th-muted" style={{ marginBottom: 16 }}>
+            Sign in with your wallet to view error reports.
+          </p>
+          <WalletConnect />
+        </div>
       ) : loading ? (
         <p className="th-muted">Loading reports…</p>
       ) : error ? (
