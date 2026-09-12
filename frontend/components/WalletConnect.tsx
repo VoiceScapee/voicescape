@@ -8,6 +8,8 @@
  * cycle-free: this component imports from both, neither imports it.
  */
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { deriveUsername } from "@/lib/identity";
 import {
   isHashPackInAppBrowser,
   useWallet,
@@ -109,8 +111,18 @@ export function WalletConnect() {
 
   // Authenticated: address chip + sign out.
   if (isAuthenticated && account) {
+    const myUsername = deriveUsername(account);
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        {myUsername && (
+          <Link
+            href={`/${myUsername}`}
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "6px 14px", fontSize: 13, textDecoration: "none" }}
+          >
+            My Page
+          </Link>
+        )}
         <span
           className="vs-mono"
           title={account}
@@ -168,8 +180,18 @@ export function WalletConnect() {
 
   // Connected but not signed in: prompt for the signature.
   if (account) {
+    const myUsername = deriveUsername(account);
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {myUsername && (
+          <Link
+            href={`/${myUsername}`}
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "6px 14px", fontSize: 13, textDecoration: "none" }}
+          >
+            My Page
+          </Link>
+        )}
         <span
           className="vs-mono"
           title={account}
