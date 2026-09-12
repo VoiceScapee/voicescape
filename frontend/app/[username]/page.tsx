@@ -16,6 +16,7 @@ import ProfileLinks from "@/components/townhall/ProfileLinks";
 import ReferralCard from "@/components/townhall/ReferralCard";
 import ReportButton from "@/components/townhall/ReportButton";
 import { IconBolt, IconCheck, IconClose, IconExternal, IconTip } from "@/components/icons";
+import { ShareButtons } from "@/components/ShareButtons";
 import {
   createWalletHederaSigner,
   formatUsdCents,
@@ -571,6 +572,7 @@ function PublicPageInner({ username }: { username: string }) {
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>
+        <ShareButtons username={username} />
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />
         <ReferralCard username={username} />
