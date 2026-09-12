@@ -8,6 +8,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { useSession } from "@/lib/session";
+import { useWriteGate } from "./useTownhall";
+import { useHcsSubmit } from "./useHcsSubmit";
 
 type Status = "clean" | "warned" | "timed-out" | "temp-banned" | "banned";
 
@@ -39,6 +41,8 @@ export default function RestrictionBanner() {
   const [appealBusy, setAppealBusy] = useState(false);
   const [appealError, setAppealError] = useState<string | null>(null);
   const [appealDone, setAppealDone] = useState(false);
+  const hcs = useHcsSubmit();
+  const { username: myUsername } = useWriteGate();
 
   let session: ReturnType<typeof useSession> | null = null;
   try {
@@ -84,10 +88,22 @@ export default function RestrictionBanner() {
     setAppealBusy(true);
     setAppealError(null);
     try {
+      const reasonText = text.slice(0, 500);
+      // User signs the appeal via their wallet first (transparent on-chain).
+      const appellant = myUsername ?? session.session?.address ?? "anonymous";
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "appeal",
+        ts: new Date().toISOString(),
+        author: appellant,
+        wallet: session.session?.address ?? "",
+        reason: reasonText,
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
       const res = await fetch("/api/townhall/appeals", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...session.authHeader() },
-        body: JSON.stringify({ reason: text.slice(0, 500) }),
+        body: JSON.stringify({ reason: reasonText, appellant, hcsTxId }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
@@ -192,6 +208,11 @@ export default function RestrictionBanner() {
                 {appealError && (
                   <p className="th-error" style={{ marginTop: 8 }}>
                     {appealError}
+                  </p>
+                )}
+                {hcs.phase.kind === "error" && (
+                  <p className="th-error" style={{ marginTop: 8 }}>
+                    Failed to submit: {hcs.phase.message}
                   </p>
                 )}
                 <div className="th-chip-row" style={{ justifyContent: "flex-end" }}>

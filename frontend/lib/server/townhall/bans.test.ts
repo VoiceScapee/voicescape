@@ -67,7 +67,15 @@ function makeDeps(): TownhallDeps {
   const mirror: MirrorPort = {
     verifyDustFee: async () => ({ ok: true, reason: "ok", receivedTinybars: 1000 }),
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
-    resolveAccountId: async (address: string) => (/^0\.0\.\d+$/.test(address) ? address : null),
+    resolveAccountId: async (address: string) => {
+      if (/^0\.0\.\d+$/.test(address)) return address;
+      const m = /^0x0*([0-9a-f]+)$/i.exec(address);
+      if (m) {
+        const num = parseInt(m[1].slice(-6), 16) % 1000000;
+        return `0.0.${num}`;
+      }
+      return null;
+    },
   };
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() in OWNERS,
@@ -91,9 +99,17 @@ function makeDeps(): TownhallDeps {
 }
 
 let feeCounter = 0;
+/** Fresh user-signed HCS tx id per call (the mock verifier accepts well-formed ids). */
 function fee() {
   feeCounter += 1;
-  return { dustFeeTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
+  return { hcsTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
+}
+
+const FORUM = "0.0.7001";
+
+/** Seed an enforcement message to the forum topic (simulates the mod's wallet submit). */
+function seedEnforcement(deps: TownhallDeps, contents: object): void {
+  (deps.hcs as MemoryHcsClient).seed(FORUM, contents);
 }
 
 beforeEach(async () => {
@@ -279,16 +295,25 @@ const MOD = { username: "brandon", auth: testCred("brandon") };
 describe("warn/timeout/ban write-path enforcement", () => {
   it("warn does not block writes", async () => {
     const deps = makeDeps();
-    const w = await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, watch it" });
+    const w = await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, watch it", ...fee() });
     expect(w.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, watch it", warnedBy: "brandon",
+    });
     const r = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hello", ...fee() });
     expect(r.status).toBe(201);
   });
 
   it("timeout blocks writes with 403 and remaining time", async () => {
     const deps = makeDeps();
-    const t = await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "spamming the chat", durationMinutes: 60 });
+    const t = await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "spamming the chat", durationMinutes: 60, expiresAt: Date.now() + 60 * 60000, ...fee() });
     expect(t.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "spamming the chat",
+      timedOutBy: "brandon", durationMinutes: 60, expiresAt: Date.now() + 3600000,
+    });
     const r = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hello", ...fee() });
     expect(r.status).toBe(403);
     expect((r.json as { error: string }).error).toMatch(/timed out/);
@@ -301,9 +326,14 @@ describe("warn/timeout/ban write-path enforcement", () => {
   it("temp ban blocks with 403", async () => {
     const deps = makeDeps();
     const b = await banUser(deps, {
-      ...MOD, wallet: OWNERS.alice, reason: "repeated abuse", expiresAt: Date.now() + 7 * 86400000,
+      ...MOD, wallet: OWNERS.alice, reason: "repeated abuse", expiresAt: Date.now() + 7 * 86400000, ...fee(),
     });
     expect(b.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "repeated abuse",
+      bannedBy: "brandon", expiresAt: Date.now() + 7 * 86400000,
+    });
     const r = await createPost(deps, { ...MOD, author: "alice", auth: testCred("alice"), body: "post", ...fee() });
     expect(r.status).toBe(403);
     expect((r.json as { error: string }).error).toMatch(/temporarily banned/);
@@ -311,12 +341,21 @@ describe("warn/timeout/ban write-path enforcement", () => {
 
   it("permanent ban blocks and unban restores", async () => {
     const deps = makeDeps();
-    expect((await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "severe violation here" })).status).toBe(201);
+    expect((await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "severe violation here", ...fee() })).status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "severe violation here",
+      bannedBy: "brandon", expiresAt: null,
+    });
     expect(
       (await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "x", ...fee() })).status,
     ).toBe(403);
-    const u = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice });
+    const u = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice, ...fee() });
     expect(u.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "unban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, unbannedBy: "brandon",
+    });
     const r = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "back", ...fee() });
     expect(r.status).toBe(201);
   });
@@ -354,8 +393,13 @@ describe("warn/timeout/ban write-path enforcement", () => {
 
   it("double-ban is rejected with 409", async () => {
     const deps = makeDeps();
-    expect((await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first ban reason" })).status).toBe(201);
-    const again = await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "second ban reason" });
+    expect((await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first ban reason", ...fee() })).status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first ban reason",
+      bannedBy: "brandon", expiresAt: null,
+    });
+    const again = await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "second ban reason", ...fee() });
     expect(again.status).toBe(409);
   });
 
@@ -367,8 +411,18 @@ describe("warn/timeout/ban write-path enforcement", () => {
 
   it("listBans returns bans and timeouts, mod-only", async () => {
     const deps = makeDeps();
-    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "banned for test" });
-    await timeoutUser(deps, { ...MOD, wallet: OWNERS.bob, reason: "timed out test", durationMinutes: 30 });
+    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "banned for test", ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "banned for test",
+      bannedBy: "brandon", expiresAt: null,
+    });
+    await timeoutUser(deps, { ...MOD, wallet: OWNERS.bob, reason: "timed out test", durationMinutes: 30, expiresAt: Date.now() + 30 * 60000, ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.bob, username: null, reason: "timed out test",
+      timedOutBy: "brandon", durationMinutes: 30, expiresAt: Date.now() + 1800000,
+    });
     const q = await listBans(deps, { ...MOD });
     expect(q.status).toBe(200);
     const { bans, timeouts } = q.json as { bans: unknown[]; timeouts: unknown[] };
@@ -398,32 +452,60 @@ describe("appeals", () => {
 
   it("banned user can appeal; second appeal is 409; clean user gets 400", async () => {
     const deps = makeDeps();
-    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "appeal test ban" });
-    const a1 = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON });
+    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "appeal test ban", ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "appeal test ban",
+      bannedBy: "brandon", expiresAt: null,
+    });
+    const a1 = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON, ...fee() });
     expect(a1.status).toBe(201);
-    const a2 = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON });
+    seedEnforcement(deps, {
+      v: 1, kind: "appeal", ts: ts(), author: "alice",
+      wallet: OWNERS.alice, reason: APPEAL_REASON,
+    });
+    const a2 = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON, ...fee() });
     expect(a2.status).toBe(409);
     // Clean user has nothing to appeal.
-    const clean = await submitAppeal(deps, { auth: testCred("bob"), reason: APPEAL_REASON });
+    const clean = await submitAppeal(deps, { auth: testCred("bob"), reason: APPEAL_REASON, ...fee() });
     expect(clean.status).toBe(400);
     // Short reason rejected.
     const deps2 = makeDeps();
-    await banUser(deps2, { ...MOD, wallet: OWNERS.alice, reason: "appeal test ban 2" });
-    const short = await submitAppeal(deps2, { auth: testCred("alice"), reason: "too short" });
+    await banUser(deps2, { ...MOD, wallet: OWNERS.alice, reason: "appeal test ban 2", ...fee() });
+    seedEnforcement(deps2, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "appeal test ban 2",
+      bannedBy: "brandon", expiresAt: null,
+    });
+    const short = await submitAppeal(deps2, { auth: testCred("alice"), reason: "too short", ...fee() });
     expect(short.status).toBe(400);
   });
 
   it("timed-out user can appeal too", async () => {
     const deps = makeDeps();
-    await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "timeout appeal", durationMinutes: 60 });
-    const a = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON });
+    await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "timeout appeal", durationMinutes: 60, expiresAt: Date.now() + 60 * 60000, ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "timeout appeal",
+      timedOutBy: "brandon", durationMinutes: 60, expiresAt: Date.now() + 3600000,
+    });
+    const a = await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON, ...fee() });
     expect(a.status).toBe(201);
   });
 
   it("mod appeal queue lists pending; resolve lifted restores writes", async () => {
     const deps = makeDeps();
-    await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "timeout for appeal", durationMinutes: 60 });
-    await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON });
+    await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "timeout for appeal", durationMinutes: 60, expiresAt: Date.now() + 60 * 60000, ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "timeout for appeal",
+      timedOutBy: "brandon", durationMinutes: 60, expiresAt: Date.now() + 3600000,
+    });
+    await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON, ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "appeal", ts: ts(), author: "alice",
+      wallet: OWNERS.alice, reason: APPEAL_REASON,
+    });
     const q = await queryAppeals(deps, { ...MOD });
     expect(q.status).toBe(200);
     const { appeals } = q.json as { appeals: { wallet: string; restriction: { status: string } | null }[] };
@@ -433,8 +515,12 @@ describe("appeals", () => {
     const denied = await queryAppeals(deps, { username: "alice", auth: testCred("alice") });
     expect(denied.status).toBe(403);
 
-    const res = await resolveAppeal(deps, { ...MOD, wallet: OWNERS.alice, action: "lifted", note: "mistake, sorry" });
+    const res = await resolveAppeal(deps, { ...MOD, wallet: OWNERS.alice, action: "lifted", note: "mistake, sorry", ...fee() });
     expect(res.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "appeal-resolve", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, resolvedBy: "brandon", action: "lifted", note: "mistake, sorry",
+    });
     // Restriction cleared — writes work again.
     const r = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "appeal won", ...fee() });
     expect(r.status).toBe(201);
@@ -445,10 +531,23 @@ describe("appeals", () => {
 
   it("resolve upheld keeps the restriction", async () => {
     const deps = makeDeps();
-    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "upheld appeal ban" });
-    await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON });
-    const res = await resolveAppeal(deps, { ...MOD, wallet: OWNERS.alice, action: "upheld" });
+    await banUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "upheld appeal ban", ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "ban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "upheld appeal ban",
+      bannedBy: "brandon", expiresAt: null,
+    });
+    await submitAppeal(deps, { auth: testCred("alice"), reason: APPEAL_REASON, ...fee() });
+    seedEnforcement(deps, {
+      v: 1, kind: "appeal", ts: ts(), author: "alice",
+      wallet: OWNERS.alice, reason: APPEAL_REASON,
+    });
+    const res = await resolveAppeal(deps, { ...MOD, wallet: OWNERS.alice, action: "upheld", ...fee() });
     expect(res.status).toBe(201);
+    seedEnforcement(deps, {
+      v: 1, kind: "appeal-resolve", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, resolvedBy: "brandon", action: "upheld", note: null,
+    });
     const r = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "still banned", ...fee() });
     expect(r.status).toBe(403);
   });

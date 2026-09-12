@@ -9,6 +9,8 @@
  */
 import { useState } from "react";
 import { useSession } from "@/lib/session";
+import { useWriteGate } from "./useTownhall";
+import { useHcsSubmit } from "./useHcsSubmit";
 
 export type ReportTargetKind = "post" | "chat" | "listing" | "profile";
 
@@ -37,6 +39,7 @@ export default function ReportButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
+  const hcs = useHcsSubmit();
 
   let session: ReturnType<typeof useSession> | null = null;
   try {
@@ -45,6 +48,7 @@ export default function ReportButton({
     session = null;
   }
   const signedIn = !!session && session.isAuthenticated;
+  const { username: myUsername } = useWriteGate();
 
   const openModal = () => {
     setOpen(true);
@@ -62,14 +66,37 @@ export default function ReportButton({
     setBusy(true);
     setError(null);
     try {
+      const reasonText = `[${reason}] ${detailText}`.slice(0, 500);
+      // User signs the report via their wallet first (transparent on-chain).
+      // Reports go to the forum topic for post/chat/profile, market for listings.
+      const topicDomain = targetKind === "listing" ? "market" : "forum";
+      const reporterName = myUsername ?? session.session?.address ?? "anonymous";
+      // Normalize the profile target the same way the server does so the
+      // on-chain message matches the POST body exactly.
+      const normalizedTargetId =
+        targetKind === "profile" && targetId ? targetId.trim().replace(/^@+/, "").toLowerCase() : (targetId ?? null);
+      const hcsTxId = await hcs.submit(topicDomain, {
+        v: 1,
+        kind: "report",
+        ts: new Date().toISOString(),
+        author: reporterName,
+        targetKind,
+        targetSeq: targetSeq ?? null,
+        targetId: normalizedTargetId,
+        reason: reasonText,
+        reporter: reporterName,
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
       const res = await fetch("/api/townhall/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...session.authHeader() },
         body: JSON.stringify({
           targetKind,
           ...(targetSeq !== undefined ? { targetSeq } : {}),
-          ...(targetId ? { targetId } : {}),
-          reason: `[${reason}] ${detailText}`.slice(0, 500),
+          ...(normalizedTargetId ? { targetId: normalizedTargetId } : {}),
+          reason: reasonText,
+          reporter: reporterName,
+          hcsTxId,
         }),
       });
       const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -167,6 +194,11 @@ export default function ReportButton({
                     {error}
                   </p>
                 )}
+                {hcs.phase.kind === "error" && (
+                  <p className="th-error" style={{ marginTop: 8 }}>
+                    Failed to submit: {hcs.phase.message}
+                  </p>
+                )}
                 <div className="th-chip-row" style={{ justifyContent: "flex-end" }}>
                   <button type="button" className="vs-btn th-btn-sm" onClick={() => setOpen(false)}>
                     Cancel
@@ -175,9 +207,9 @@ export default function ReportButton({
                     type="button"
                     className="vs-btn vs-btn-primary th-btn-sm"
                     onClick={submit}
-                    disabled={busy}
+                    disabled={busy || hcs.phase.kind === "submitting"}
                   >
-                    {busy ? "Sending…" : "Submit report"}
+                    {busy || hcs.phase.kind === "submitting" ? "Sign in wallet…" : "Submit report"}
                   </button>
                 </div>
               </>

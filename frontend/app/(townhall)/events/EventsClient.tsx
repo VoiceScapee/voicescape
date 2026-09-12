@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useWriteGate } from "@/components/townhall/useTownhall";
-import { getJson, postJson, timeAgo, type TownhallEvent } from "@/lib/townhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
+import { getJson, postJson, timeAgo, makeTownhallId, type TownhallEvent } from "@/lib/townhall";
 
 function formatStart(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {
@@ -16,12 +17,26 @@ function formatStart(ts: number): string {
 }
 
 /**
+ * The REST API passes startsAt through from the HCS message, which carries
+ * an ISO-8601 string; the client type is epoch ms. Normalize once at the
+ * boundary so sorting and filtering behave.
+ */
+function normalizeEvent(e: TownhallEvent): TownhallEvent {
+  const s = (e as unknown as { startsAt: unknown }).startsAt;
+  return {
+    ...e,
+    startsAt: typeof s === "string" ? Date.parse(s) : typeof s === "number" ? s : 0,
+  };
+}
+
+/**
  * Event creation is moderator-only and enforced server-side; the form is
  * shown anyway so mods can use it, and anyone else gets the server's
  * rejection explained plainly.
  */
 function NewEventForm({ onCreated }: { onCreated: () => void }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
+  const hcs = useHcsSubmit();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startsAt, setStartsAt] = useState("");
@@ -31,16 +46,36 @@ function NewEventForm({ onCreated }: { onCreated: () => void }) {
 
   const submit = async () => {
     setError(null);
-    if (!title.trim() || !startsAt || !canWrite) return;
+    if (!title.trim() || !startsAt || !canWrite || !me) return;
     const ts = new Date(startsAt).getTime();
     if (!Number.isFinite(ts)) return;
+    const t = title.trim();
+    const d = description.trim();
+    const startsIso = new Date(ts).toISOString();
+    const id = makeTownhallId(t);
     setBusy(true);
     try {
+      // Submit the event via the user's wallet, then notify the server
+      // (it verifies the HCS tx via mirror node).
+      const hcsTxId = await hcs.submit("governance", {
+        v: 1,
+        kind: "event",
+        ts: new Date().toISOString(),
+        author: me,
+        id,
+        title: t,
+        description: d,
+        startsAt: startsIso,
+        room: `event-${id}`,
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
       await postJson("/api/townhall/events", {
         author: me,
-        title: title.trim(),
-        description: description.trim(),
-        startsAt: ts,
+        id,
+        title: t,
+        description: d,
+        startsAt: startsIso,
+        hcsTxId,
       });
       setTitle("");
       setDescription("");
@@ -129,7 +164,7 @@ export default function EventsClient() {
     setError(null);
     try {
       const data = await getJson<{ events?: TownhallEvent[] }>("/api/townhall/events");
-      const list = Array.isArray(data.events) ? data.events : [];
+      const list = Array.isArray(data.events) ? data.events.map(normalizeEvent) : [];
       list.sort((a, b) => a.startsAt - b.startsAt);
       setEvents(list);
     } catch (e) {

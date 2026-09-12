@@ -5,6 +5,7 @@ import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "@/lib/server/quota";
 import { ipGate } from "@/lib/server/rate-limit";
+import { validateAudioUpload } from "@/lib/server/media-safety";
 
 export const runtime = "nodejs";
 
@@ -79,6 +80,13 @@ export async function POST(req: NextRequest) {
     }
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      // Defense-in-depth: verify the actual bytes are audio (magic bytes),
+      // not just the client-declared Content-Type. A disguised executable
+      // or image can't pass this check.
+      const screen = validateAudioUpload(bytes, file.type);
+      if (!screen.ok) {
+        return NextResponse.json({ error: screen.reason }, { status: 400 });
+      }
       const { cid, provider } = await publishAudioFile(bytes, file.name, file.type);
       return NextResponse.json({ cid, provider });
     } catch (e) {

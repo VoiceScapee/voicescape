@@ -191,6 +191,26 @@ export async function postJson<T>(
 }
 
 /* ------------------------------------------------------------------ */
+/* Client-side id generation (user-signed HCS architecture)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * URL-safe id + short random suffix, matching the server's makeId.
+ * The client generates the id, includes it in the HCS message AND the POST
+ * body — the server uses the body id so the returned id matches the
+ * on-chain message.
+ */
+export function makeTownhallId(title: string): string {
+  const slug =
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 50) || "item";
+  return `${slug}-${Date.now().toString(36)}`;
+}
+
+/* ------------------------------------------------------------------ */
 /* Dust-fee payment (HBAR transfer to the treasury, wallet-signed)     */
 /* ------------------------------------------------------------------ */
 

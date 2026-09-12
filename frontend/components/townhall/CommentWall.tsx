@@ -4,7 +4,7 @@
  * <CommentWall username> — the guestbook on a user's block page.
  *
  * Reads posts with wall=<username>; the composer posts with the viewer's
- * page username as author (dust-fee flow applies). Moderation goes through
+ * page username as author (user-signed HCS flow applies). Moderation goes through
  * the server: the Hide button on each comment (visible only to authorized
  * moderators — global mods or the wall owner) posts a mod-action to
  * /api/townhall/mod-actions, and hidden comments are filtered out of reads
@@ -12,8 +12,8 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import PostCard from "./PostCard";
-import DustFeeGate from "./DustFeeGate";
-import { useDustFee, useWriteGate } from "./useTownhall";
+import { useWriteGate } from "./useTownhall";
+import { useHcsSubmit } from "./useHcsSubmit";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
 
 export default function CommentWall({
@@ -24,7 +24,7 @@ export default function CommentWall({
   owner: string;
 }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
-  const dust = useDustFee();
+  const hcs = useHcsSubmit();
   const [posts, setPosts] = useState<TownhallPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -51,23 +51,35 @@ export default function CommentWall({
 
   const submit = async () => {
     const text = body.trim();
-    if (!text) return;
-    if (!canWrite) {
-      dust.reset();
-      return;
-    }
-    const ok = await dust.execute(async (dustFeeTxId) => {
-      await postJson<{ seq: number }>("/api/townhall/posts", {
+    if (!text || !canWrite || !me) return;
+    // Submit the comment via the user's wallet, then notify the server
+    // (it verifies the HCS tx via mirror node).
+    const hcsTxId = await hcs.submit("forum", {
+      v: 1,
+      kind: "post",
+      ts: new Date().toISOString(),
+      author: me,
+      board: "general",
+      wall: username,
+      body: text,
+      replyTo: null,
+    });
+    if (!hcsTxId) return; // User cancelled or error — phase shows the error
+    try {
+      await postJson("/api/townhall/posts", {
         wall: username,
         body: text,
         author: me,
-        dustFeeTxId,
+        hcsTxId,
       });
-    });
-    if (ok) {
-      setBody("");
-      load();
+    } catch (e) {
+      // Server verification failed — the HCS tx is still on-chain, but the
+      // server didn't accept it (e.g., content filter). Show the error.
+      console.error("Comment verification failed:", e);
+      return;
     }
+    setBody("");
+    load();
   };
 
   return (
@@ -88,13 +100,15 @@ export default function CommentWall({
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
             onClick={submit}
-            disabled={dust.phase.kind === "working" || dust.phase.kind === "paying" || !body.trim()}
+            disabled={hcs.phase.kind === "submitting" || !body.trim()}
           >
-            {dust.phase.kind === "working" || dust.phase.kind === "paying" ? "Posting…" : "Post comment"}
+            {hcs.phase.kind === "submitting" ? "Sign in wallet…" : "Post comment"}
           </button>
           {!canWrite && <span className="th-muted">{isAuthenticated ? "You need a page username to comment." : "Sign in with your wallet to comment."}</span>}
         </div>
-        <DustFeeGate flow={dust} actionLabel="comment" />
+        {hcs.phase.kind === "error" && (
+          <p className="th-error">Failed to submit: {hcs.phase.message}</p>
+        )}
       </div>
 
       {loading && <p className="th-muted">Loading comments…</p>}

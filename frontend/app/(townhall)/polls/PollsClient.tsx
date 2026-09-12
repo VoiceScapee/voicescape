@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import DustFeeGate from "@/components/townhall/DustFeeGate";
 import { PresenceDot } from "@/components/townhall/Presence";
-import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
-import { getJson, postJson, type Proposal } from "@/lib/townhall";
+import { getJson, postJson, makeTownhallId, type Proposal } from "@/lib/townhall";
 
 /** Stream event: a new proposal or vote — the client refetches tallies. */
 interface ProposalStreamEvent {
@@ -23,6 +23,19 @@ function isProposalStreamEvent(m: unknown): m is ProposalStreamEvent {
     ((m as ProposalStreamEvent).kind === "proposal" ||
       (m as ProposalStreamEvent).kind === "proposal-vote")
   );
+}
+
+/**
+ * The REST API passes closesAt through from the HCS message, which carries
+ * an ISO-8601 string; the client type is epoch ms. Normalize once at the
+ * boundary so countdowns and sorting behave.
+ */
+function normalizeProposal(p: Proposal): Proposal {
+  const c = (p as unknown as { closesAt: unknown }).closesAt;
+  return {
+    ...p,
+    closesAt: typeof c === "string" ? Date.parse(c) : typeof c === "number" ? c : 0,
+  };
 }
 
 function useCountdown(closesAt: number): string {
@@ -46,6 +59,7 @@ function useCountdown(closesAt: number): string {
 
 function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () => void }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
+  const hcs = useHcsSubmit();
   const countdown = useCountdown(proposal.closesAt);
   const closed = proposal.closesAt <= Date.now();
   const [busy, setBusy] = useState<string | null>(null);
@@ -54,15 +68,28 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
 
   const vote = async (choice: "yes" | "no" | "abstain") => {
     setError(null);
-    if (!canWrite) {
+    if (!canWrite || !me) {
       setError(isAuthenticated ? "Set your page username (top of the page) to vote." : "Sign in with your wallet to vote.");
       return;
     }
     setBusy(choice);
     try {
+      // Submit the vote via the user's wallet, then notify the server
+      // (it verifies the HCS tx via mirror node).
+      const hcsTxId = await hcs.submit("governance", {
+        v: 1,
+        kind: "proposal-vote",
+        ts: new Date().toISOString(),
+        author: me,
+        proposal: proposal.id,
+        voter: me,
+        choice,
+      });
+      if (!hcsTxId) return; // User cancelled or error
       await postJson(`/api/townhall/proposals/${encodeURIComponent(proposal.id)}/vote`, {
         voter: me,
         choice,
+        hcsTxId,
       });
       onVoted();
     } catch (e) {
@@ -110,38 +137,60 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
         <p className="th-muted">Voting closed.</p>
       )}
       {error && <p className="th-error">{error}</p>}
+      {hcs.phase.kind === "error" && <p className="th-error">Failed to submit: {hcs.phase.message}</p>}
     </div>
   );
 }
 
 function NewProposalForm({ onCreated }: { onCreated: () => void }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
-  const dust = useDustFee();
+  const hcs = useHcsSubmit();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [closesAt, setClosesAt] = useState("");
   const [open, setOpen] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!title.trim() || !body.trim() || !closesAt || !canWrite) return;
+    setSubmitError(null);
+    if (!title.trim() || !body.trim() || !closesAt || !canWrite || !me) return;
     const ts = new Date(closesAt).getTime();
     if (!Number.isFinite(ts) || ts <= Date.now()) return;
-    const ok = await dust.execute(async (dustFeeTxId) => {
+    const t = title.trim();
+    const b = body.trim();
+    const closesIso = new Date(ts).toISOString();
+    const id = makeTownhallId(t);
+    // Submit the proposal via the user's wallet, then notify the server
+    // (it verifies the HCS tx via mirror node).
+    const hcsTxId = await hcs.submit("governance", {
+      v: 1,
+      kind: "proposal",
+      ts: new Date().toISOString(),
+      author: me,
+      id,
+      title: t,
+      body: b,
+      closesAt: closesIso,
+    });
+    if (!hcsTxId) return; // User cancelled or error — phase shows the error
+    try {
       await postJson("/api/townhall/proposals", {
         author: me,
-        title: title.trim(),
-        body: body.trim(),
-        closesAt: ts,
-        dustFeeTxId,
+        id,
+        title: t,
+        body: b,
+        closesAt: closesIso,
+        hcsTxId,
       });
-    });
-    if (ok) {
-      setTitle("");
-      setBody("");
-      setClosesAt("");
-      setOpen(false);
-      onCreated();
+    } catch (e) {
+      setSubmitError(e instanceof Error ? e.message : String(e));
+      return;
     }
+    setTitle("");
+    setBody("");
+    setClosesAt("");
+    setOpen(false);
+    onCreated();
   };
 
   if (!open) {
@@ -193,16 +242,19 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
             onClick={submit}
-            disabled={!title.trim() || !body.trim() || !closesAt || !canWrite || dust.phase.kind === "working" || dust.phase.kind === "paying"}
+            disabled={!title.trim() || !body.trim() || !closesAt || !canWrite || hcs.phase.kind === "submitting"}
           >
-            {dust.phase.kind === "working" || dust.phase.kind === "paying" ? "Publishing…" : "Publish proposal"}
+            {hcs.phase.kind === "submitting" ? "Sign in wallet…" : "Publish proposal"}
           </button>
           <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setOpen(false)}>
             Cancel
           </button>
         </div>
         {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your page username (top of the page) to propose." : "Sign in with your wallet to propose."}</p>}
-        <DustFeeGate flow={dust} actionLabel="proposal" />
+        {hcs.phase.kind === "error" && (
+          <p className="th-error">Failed to submit: {hcs.phase.message}</p>
+        )}
+        {submitError && <p className="th-error">{submitError}</p>}
       </div>
     </div>
   );
@@ -218,7 +270,7 @@ export default function PollsClient() {
     setError(null);
     try {
       const data = await getJson<{ proposals?: Proposal[] }>("/api/townhall/proposals");
-      const list = Array.isArray(data.proposals) ? data.proposals : [];
+      const list = Array.isArray(data.proposals) ? data.proposals.map(normalizeProposal) : [];
       list.sort((a, b) => b.closesAt - a.closesAt);
       setProposals(list);
     } catch (e) {
@@ -246,7 +298,7 @@ export default function PollsClient() {
     <>
       <div className="th-page-head">
         <h1>🏛️ <span className="vs-gradient-text">Polls</span></h1>
-        <p>Advisory community polls — signaling only, no on-chain execution. Publishing a poll costs the dust fee; voting is free. <PresenceDot scope="polls" /></p>
+        <p>Advisory community polls — signaling only, no on-chain execution. You sign proposals and votes in your wallet — transparent and on-chain. <PresenceDot scope="polls" /></p>
       </div>
 
       <div className="th-section">

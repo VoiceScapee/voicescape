@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/auth-client";
 import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 
 type Tab = "reports" | "warnings" | "restrictions" | "appeals";
 
@@ -224,13 +225,13 @@ export default function ModDashboardPage() {
         />
       )}
       {tab === "warnings" && (
-        <WarningsList warnings={warnings} onLifted={() => void load()} />
+        <WarningsList warnings={warnings} modIdentity={modIdentity} onLifted={() => void load()} />
       )}
       {tab === "restrictions" && (
-        <RestrictionsList bans={bans} timeouts={timeouts} onLifted={() => void load()} />
+        <RestrictionsList bans={bans} timeouts={timeouts} modIdentity={modIdentity} onLifted={() => void load()} />
       )}
       {tab === "appeals" && (
-        <AppealsList appeals={appeals} onResolved={() => void load()} />
+        <AppealsList appeals={appeals} modIdentity={modIdentity} onResolved={() => void load()} />
       )}
     </div>
   );
@@ -299,6 +300,7 @@ function ReportActions({
   modIdentity: { username: string };
   onActed: () => void;
 }) {
+  const hcs = useHcsSubmit();
   const [target, setTarget] = useState<{ username: string | null; wallet: string | null } | null>(null);
   const [resolving, setResolving] = useState(false);
   const [mode, setMode] = useState<"warn" | "timeout" | "ban" | null>(null);
@@ -344,21 +346,46 @@ function ReportActions({
     setError(null);
     try {
       const base = { ...modIdentity, wallet: target.wallet, targetUsername: target.username, reason: r };
+      // Mod signs the enforcement action via their wallet first (transparent on-chain).
+      const ts = new Date().toISOString();
       if (mode === "warn") {
-        await authed(`/api/townhall/moderation/warn`, { method: "POST", body: JSON.stringify(base) });
+        const hcsTxId = await hcs.submit("forum", {
+          v: 1, kind: "warn", ts, author: modIdentity.username,
+          wallet: target.wallet, username: target.username,
+          reason: r, warnedBy: modIdentity.username,
+        });
+        if (!hcsTxId) return;
+        await authed(`/api/townhall/moderation/warn`, { method: "POST", body: JSON.stringify({ ...base, hcsTxId }) });
         setDone(`⚠️ Warned ${target.username ?? target.wallet}.`);
       } else if (mode === "timeout") {
+        const durationMinutes = Math.max(1, Math.floor(durationMin));
+        const expiresAt = Date.now() + durationMinutes * 60000;
+        const hcsTxId = await hcs.submit("forum", {
+          v: 1, kind: "timeout", ts, author: modIdentity.username,
+          wallet: target.wallet, username: target.username,
+          reason: r, timedOutBy: modIdentity.username,
+          durationMinutes, expiresAt,
+        });
+        if (!hcsTxId) return;
         await authed(`/api/townhall/moderation/timeout`, {
           method: "POST",
-          body: JSON.stringify({ ...base, durationMinutes: Math.max(1, Math.floor(durationMin)) }),
+          body: JSON.stringify({ ...base, durationMinutes, expiresAt, hcsTxId }),
         });
         setDone(`⏱️ Timed out ${target.username ?? target.wallet} for ${durationMin} minutes.`);
       } else {
+        const expiresAt = banTemp ? Date.now() + Math.max(1, banHours) * 3600_000 : null;
+        const hcsTxId = await hcs.submit("forum", {
+          v: 1, kind: "ban", ts, author: modIdentity.username,
+          wallet: target.wallet, username: target.username,
+          reason: r, bannedBy: modIdentity.username, expiresAt,
+        });
+        if (!hcsTxId) return;
         await authed(`/api/townhall/bans`, {
           method: "POST",
           body: JSON.stringify({
             ...base,
-            ...(banTemp ? { expiresAt: Date.now() + Math.max(1, banHours) * 3600_000 } : {}),
+            ...(banTemp ? { expiresAt } : {}),
+            hcsTxId,
           }),
         });
         setDone(`🚫 Banned ${target.username ?? target.wallet}${banTemp ? ` for ${banHours}h` : " permanently"}.`);
@@ -378,12 +405,26 @@ function ReportActions({
     setBusy(true);
     setError(null);
     try {
+      // Mod signs the hide action via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "mod-action",
+        ts: new Date().toISOString(),
+        author: modIdentity.username,
+        targetKind: report.targetKind,
+        board: null,
+        wall: null,
+        targetSeq: report.targetSeq,
+        action: "hide",
+      });
+      if (!hcsTxId) return;
       await authed(`/api/townhall/mod-actions`, {
         method: "POST",
         body: JSON.stringify({
           ...modIdentity,
           targetKind: report.targetKind,
           targetSeq: report.targetSeq,
+          hcsTxId,
         }),
       });
       setDone(`🙈 Hidden ${targetLabel(report)}.`);
@@ -497,7 +538,8 @@ function ReportActions({
 /* Warnings                                                            */
 /* ------------------------------------------------------------------ */
 
-function WarningsList({ warnings, onLifted }: { warnings: Warn[]; onLifted: () => void }) {
+function WarningsList({ warnings, modIdentity, onLifted }: { warnings: Warn[]; modIdentity: { username: string }; onLifted: () => void }) {
+  const hcs = useHcsSubmit();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -506,7 +548,17 @@ function WarningsList({ warnings, onLifted }: { warnings: Warn[]; onLifted: () =
     setBusy(wallet);
     setError(null);
     try {
-      await authed(`/api/townhall/bans`, { method: "DELETE", body: JSON.stringify({ wallet }) });
+      // Mod signs the unban via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "unban",
+        ts: new Date().toISOString(),
+        author: modIdentity.username,
+        wallet,
+        unbannedBy: modIdentity.username,
+      });
+      if (!hcsTxId) return;
+      await authed(`/api/townhall/bans`, { method: "DELETE", body: JSON.stringify({ ...modIdentity, wallet, hcsTxId }) });
       onLifted();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -547,12 +599,15 @@ function WarningsList({ warnings, onLifted }: { warnings: Warn[]; onLifted: () =
 function RestrictionsList({
   bans,
   timeouts,
+  modIdentity,
   onLifted,
 }: {
   bans: Ban[];
   timeouts: Timeout[];
+  modIdentity: { username: string };
   onLifted: () => void;
 }) {
+  const hcs = useHcsSubmit();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -561,7 +616,17 @@ function RestrictionsList({
     setBusy(wallet);
     setError(null);
     try {
-      await authed(`/api/townhall/bans`, { method: "DELETE", body: JSON.stringify({ wallet }) });
+      // Mod signs the unban via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "unban",
+        ts: new Date().toISOString(),
+        author: modIdentity.username,
+        wallet,
+        unbannedBy: modIdentity.username,
+      });
+      if (!hcsTxId) return;
+      await authed(`/api/townhall/bans`, { method: "DELETE", body: JSON.stringify({ ...modIdentity, wallet, hcsTxId }) });
       onLifted();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -611,7 +676,8 @@ function RestrictionsList({
 /* Appeals                                                             */
 /* ------------------------------------------------------------------ */
 
-function AppealsList({ appeals, onResolved }: { appeals: Appeal[]; onResolved: () => void }) {
+function AppealsList({ appeals, modIdentity, onResolved }: { appeals: Appeal[]; modIdentity: { username: string }; onResolved: () => void }) {
+  const hcs = useHcsSubmit();
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -622,9 +688,22 @@ function AppealsList({ appeals, onResolved }: { appeals: Appeal[]; onResolved: (
     setBusy(wallet);
     setError(null);
     try {
+      const noteText = note.trim().slice(0, 200) || null;
+      // Mod signs the appeal resolution via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "appeal-resolve",
+        ts: new Date().toISOString(),
+        author: modIdentity.username,
+        wallet,
+        resolvedBy: modIdentity.username,
+        action,
+        note: noteText,
+      });
+      if (!hcsTxId) return;
       await authed(`/api/townhall/appeals/resolve`, {
         method: "POST",
-        body: JSON.stringify({ wallet, action, ...(note.trim() ? { note: note.trim().slice(0, 200) } : {}) }),
+        body: JSON.stringify({ ...modIdentity, wallet, action, ...(noteText ? { note: noteText } : {}), hcsTxId }),
       });
       setNote("");
       onResolved();

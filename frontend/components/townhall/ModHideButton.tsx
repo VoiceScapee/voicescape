@@ -12,6 +12,7 @@
  */
 import { useEffect, useState } from "react";
 import { useWriteGate } from "./useTownhall";
+import { useHcsSubmit } from "./useHcsSubmit";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
 
 export default function ModHideButton({
@@ -22,6 +23,7 @@ export default function ModHideButton({
   onHidden: () => void;
 }) {
   const { username: me, isAuthenticated, sessionReady } = useWriteGate();
+  const hcs = useHcsSubmit();
   const [allowed, setAllowed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,12 +62,26 @@ export default function ModHideButton({
     setBusy(true);
     setError(null);
     try {
+      // Mod signs the hide action via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "mod-action",
+        ts: new Date().toISOString(),
+        author: me,
+        targetKind: "post",
+        board: post.board,
+        wall: post.wall ?? null,
+        targetSeq: post.seq,
+        action: "hide",
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
       await postJson<{ seq: number }>("/api/townhall/mod-actions", {
         author: me,
         targetKind: "post",
         targetSeq: post.seq,
         board: post.board,
         wall: post.wall ?? null,
+        hcsTxId,
       });
       onHidden();
     } catch (e) {
@@ -75,18 +91,21 @@ export default function ModHideButton({
     }
   };
 
+  const submitting = busy || hcs.phase.kind === "submitting";
+
   return (
     <span className="th-modhide">
       <button
         type="button"
         className="th-action is-danger"
         onClick={hide}
-        disabled={busy}
+        disabled={submitting}
         title="Hide this post (moderator)"
       >
-        {busy ? "Hiding…" : "Hide"}
+        {submitting ? "Sign in wallet…" : "Hide"}
       </button>
       {error && <span className="th-error">{error}</span>}
+      {hcs.phase.kind === "error" && <span className="th-error">Failed to submit: {hcs.phase.message}</span>}
     </span>
   );
 }

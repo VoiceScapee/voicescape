@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getJson, postJson, type ReputationInfo } from "@/lib/townhall";
 import { useWriteGate } from "./useTownhall";
+import { useHcsSubmit } from "./useHcsSubmit";
 
 function badgeLabel(score: number): { text: string; tone: "good" | "bad" | "neutral" } {
   if (score >= 10) return { text: `+${score} trusted`, tone: "good" };
@@ -73,6 +74,7 @@ export default function ReputationBadge({
 export function VoteControls({ target }: { target: string }) {
   const { username, canWrite, isAuthenticated } = useWriteGate();
   const { info, failed, reload } = useReputation(target, username);
+  const hcs = useHcsSubmit();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -83,9 +85,21 @@ export function VoteControls({ target }: { target: string }) {
       return;
     }
     if (info?.myVote === value) return; // already voted this way
+    if (!username) return;
     setBusy(true);
     try {
-      await postJson("/api/townhall/reputation", { target, voter: username, value });
+      // User signs the rep-vote via their wallet first (transparent on-chain).
+      const hcsTxId = await hcs.submit("forum", {
+        v: 1,
+        kind: "rep-vote",
+        ts: new Date().toISOString(),
+        author: username,
+        target,
+        voter: username,
+        value,
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
+      await postJson("/api/townhall/reputation", { target, voter: username, value, hcsTxId });
       await reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -96,13 +110,15 @@ export function VoteControls({ target }: { target: string }) {
 
   if (failed) return null;
 
+  const submitting = busy || hcs.phase.kind === "submitting";
+
   return (
     <div className="th-votes">
       <button
         type="button"
         className={`th-vote${info?.myVote === 1 ? " is-active" : ""}`}
         onClick={() => vote(1)}
-        disabled={busy}
+        disabled={submitting}
         aria-label={`Upvote ${target}`}
         aria-pressed={info?.myVote === 1}
       >
@@ -112,13 +128,14 @@ export function VoteControls({ target }: { target: string }) {
         type="button"
         className={`th-vote${info?.myVote === -1 ? " is-active" : ""}`}
         onClick={() => vote(-1)}
-        disabled={busy}
+        disabled={submitting}
         aria-label={`Downvote ${target}`}
         aria-pressed={info?.myVote === -1}
       >
         ▼ {info ? info.down : "…"}
       </button>
       {error && <span className="th-error">{error}</span>}
+      {hcs.phase.kind === "error" && <span className="th-error">Failed to submit: {hcs.phase.message}</span>}
     </div>
   );
 }

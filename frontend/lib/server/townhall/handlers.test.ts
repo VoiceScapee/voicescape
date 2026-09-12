@@ -39,7 +39,7 @@ import {
   type TownhallDeps,
 } from "./handlers";
 import type { MirrorPort } from "./mirror";
-import { clearConsumedDustFees } from "./mirror";
+import { clearConsumedDustFees, clearConsumedHcsTxIds } from "./mirror";
 import type { RegistryPort } from "./registry-check";
 import type { AuthPort } from "./auth";
 import type { SalesPort } from "./sales";
@@ -149,117 +149,376 @@ function fee() {
   return { hcsTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
 }
 
+/**
+ * Write-then-seed helpers: in the user-signed architecture the server
+ * verifies the HCS tx but doesn't submit — tests seed HCS manually to
+ * simulate the user's wallet submit, so query paths see the messages.
+ */
+function seedHcs(deps: TownhallDeps, topic: string, contents: object): number {
+  return (deps.hcs as MemoryHcsClient).seed(topic, contents);
+}
+
+const T = {
+  forum: process.env.TOWNHALL_TOPIC_FORUM!,
+  chat: process.env.TOWNHALL_TOPIC_CHAT!,
+  votes: process.env.TOWNHALL_TOPIC_VOTES!,
+  governance: process.env.TOWNHALL_TOPIC_GOV!,
+  market: process.env.TOWNHALL_TOPIC_MARKET!,
+};
+
+async function writePost(
+  deps: TownhallDeps,
+  author: string,
+  body: string,
+  extra: { board?: string; wall?: string | null; replyTo?: number | null } = {},
+): Promise<number> {
+  const r = await createPost(deps, {
+    author,
+    auth: testCred(author),
+    body,
+    ...fee(),
+    ...(extra.board ? { board: extra.board } : {}),
+    ...(extra.wall ? { wall: extra.wall } : {}),
+    ...(extra.replyTo != null ? { replyTo: extra.replyTo } : {}),
+  });
+  expect(r.status).toBe(201);
+  return seedHcs(deps, T.forum, {
+    v: 1,
+    kind: "post",
+    ts: new Date().toISOString(),
+    author,
+    board: extra.board ?? "general",
+    wall: extra.wall ?? null,
+    body,
+    replyTo: extra.replyTo ?? null,
+  });
+}
+
+async function writeChatMsg(deps: TownhallDeps, author: string, room: string, body: string): Promise<number> {
+  const r = await postChat(deps, room, { author, auth: testCred(author), body, ...fee() });
+  expect(r.status).toBe(201);
+  return seedHcs(deps, T.chat, {
+    v: 1,
+    kind: "chat",
+    ts: new Date().toISOString(),
+    author,
+    room,
+    body,
+  });
+}
+
+async function writeChatRoom(
+  deps: TownhallDeps,
+  author: string,
+  id: string,
+  title: string,
+  description = "",
+): Promise<void> {
+  const r = await createChatRoom(deps, { author, auth: testCred(author), id, title, description, ...fee() });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.chat, {
+    v: 1,
+    kind: "chatroom-create",
+    ts: new Date().toISOString(),
+    author,
+    id,
+    title,
+    description,
+  });
+}
+
+async function writeProposal(
+  deps: TownhallDeps,
+  author: string,
+  id: string,
+  title: string,
+  body: string,
+  closesAt = "2026-12-01T00:00:00Z",
+): Promise<void> {
+  const r = await createProposal(deps, { author, auth: testCred(author), id, title, body, closesAt, ...fee() });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.governance, {
+    v: 1,
+    kind: "proposal",
+    ts: new Date().toISOString(),
+    author,
+    id,
+    title,
+    body,
+    closesAt,
+  });
+}
+
+async function writeProposalVote(
+  deps: TownhallDeps,
+  voter: string,
+  proposalId: string,
+  choice: "yes" | "no" | "abstain",
+): Promise<void> {
+  const r = await voteProposal(deps, proposalId, { voter, auth: testCred(voter), choice, ...fee() });
+  expect(r.status).toBe(200);
+  seedHcs(deps, T.governance, {
+    v: 1,
+    kind: "proposal-vote",
+    ts: new Date().toISOString(),
+    author: voter,
+    proposal: proposalId,
+    voter,
+    choice,
+  });
+}
+
+async function writeRepVote(deps: TownhallDeps, voter: string, target: string, value: 1 | -1): Promise<void> {
+  const r = await castRepVote(deps, { target, voter, auth: testCred(voter), value, ...fee() });
+  expect(r.status).toBe(200);
+  seedHcs(deps, T.votes, {
+    v: 1,
+    kind: "rep-vote",
+    ts: new Date().toISOString(),
+    author: voter,
+    target,
+    voter,
+    value,
+  });
+}
+
+async function writeListing(
+  deps: TownhallDeps,
+  sellerUsername: string,
+  id: string,
+  overrides: {
+    title?: string;
+    description?: string;
+    priceUsdCents?: number;
+    goodsType?: "physical" | "digital";
+    seller?: string;
+  } = {},
+): Promise<void> {
+  const title = overrides.title ?? "Test item";
+  const description = overrides.description ?? "A test listing";
+  const priceUsdCents = overrides.priceUsdCents ?? 100;
+  const goodsType = overrides.goodsType ?? "digital";
+  const seller = overrides.seller ?? "0x000000000000000000000000000000000000a11c";
+  const r = await createListing(deps, {
+    seller,
+    sellerUsername,
+    auth: testCred(sellerUsername),
+    id,
+    title,
+    description,
+    priceUsdCents,
+    goodsType,
+    ...fee(),
+  });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.market, {
+    v: 1,
+    kind: "listing",
+    ts: new Date().toISOString(),
+    author: sellerUsername,
+    id,
+    seller,
+    sellerUsername,
+    title,
+    description,
+    priceUsdCents,
+    goodsType,
+    ipfsHash: null,
+    status: "active",
+  });
+}
+
+async function writeEvent(
+  deps: TownhallDeps,
+  author: string,
+  id: string,
+  title = "Town hall",
+  description = "Weekly sync",
+): Promise<void> {
+  const r = await createEvent(deps, {
+    author,
+    auth: testCred(author),
+    id,
+    title,
+    description,
+    startsAt: "2026-12-01T18:00:00Z",
+    ...fee(),
+  });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.governance, {
+    v: 1,
+    kind: "event",
+    ts: new Date().toISOString(),
+    author,
+    id,
+    title,
+    description,
+    startsAt: "2026-12-01T18:00:00Z",
+    room: `event-${id}`,
+  });
+}
+
+async function writeModAction(
+  deps: TownhallDeps,
+  author: string,
+  targetKind: "post" | "chat",
+  targetSeq: number,
+  scope: { board?: string | null; wall?: string | null } = {},
+): Promise<void> {
+  const r = await submitModAction(deps, {
+    author,
+    auth: testCred(author),
+    targetKind,
+    targetSeq,
+    ...(scope.board ? { board: scope.board } : {}),
+    ...(scope.wall ? { wall: scope.wall } : {}),
+    ...fee(),
+  });
+  expect(r.status).toBe(201);
+  // Mod-actions live in the same HCS topic as their target.
+  seedHcs(deps, targetKind === "chat" ? T.chat : T.forum, {
+    v: 1,
+    kind: "mod-action",
+    ts: new Date().toISOString(),
+    author,
+    targetKind,
+    board: scope.board ?? null,
+    wall: scope.wall ?? null,
+    targetSeq,
+    action: "hide",
+  });
+}
+
+async function writeProfileLinks(
+  deps: TownhallDeps,
+  username: string,
+  links: Record<string, string>,
+): Promise<void> {
+  const r = await setProfileLinks(deps, { username, auth: testCred(username), links, ...fee() });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.forum, {
+    v: 1,
+    kind: "profile-links",
+    ts: new Date().toISOString(),
+    author: username,
+    username: username.toLowerCase(),
+    links,
+  });
+}
+
+async function writeReferral(
+  deps: TownhallDeps,
+  referredUsername: string,
+  referrer: string,
+): Promise<void> {
+  const r = await recordReferral(deps, {
+    referredUsername,
+    referrer,
+    auth: testCred(referredUsername),
+    ...fee(),
+  });
+  expect(r.status).toBe(201);
+  seedHcs(deps, T.forum, {
+    v: 1,
+    kind: "referral",
+    ts: new Date().toISOString(),
+    author: referredUsername,
+    referrer: referrer.toLowerCase(),
+    referred: referredUsername.toLowerCase(),
+  });
+}
+
+async function writeReport(
+  deps: TownhallDeps,
+  reporter: string,
+  targetKind: "post" | "chat" | "listing" | "profile",
+  target: { targetSeq?: number; targetId?: string },
+  reason: string,
+): Promise<void> {
+  const r = await submitReport(deps, {
+    auth: testCred(reporter),
+    reporter,
+    targetKind,
+    ...(target.targetSeq != null ? { targetSeq: target.targetSeq } : {}),
+    ...(target.targetId ? { targetId: target.targetId } : {}),
+    reason,
+    ...fee(),
+  });
+  expect(r.status).toBe(201);
+  const topic =
+    targetKind === "chat" ? T.chat : targetKind === "listing" ? T.market : T.forum;
+  seedHcs(deps, topic, {
+    v: 1,
+    kind: "report",
+    ts: new Date().toISOString(),
+    author: reporter,
+    targetKind,
+    targetSeq: target.targetSeq ?? null,
+    targetId: target.targetId ?? null,
+    reason,
+    reporter,
+  });
+}
+
 describe("getBoards", () => {
-  it("returns the four seed boards", () => {
+  it("returns the seven seed boards", () => {
     const { status, json } = getBoards();
     expect(status).toBe(200);
     const ids = (json as { boards: { id: string }[] }).boards.map((b) => b.id);
-    expect(ids).toEqual(["general", "announcements", "ideas", "help"]);
+    expect(ids).toEqual(["general", "announcements", "tutorials", "showcase", "agents", "ideas", "help"]);
   });
 });
 
-describe("dust-fee enforcement (402)", () => {
-  it("createPost returns 402 without a fee", async () => {
+describe("hcsTxId enforcement (400)", () => {
+  it("createPost returns 400 without an hcsTxId", async () => {
     const r = await createPost(makeDeps(), { author: "alice", auth: testCred("alice"), body: "hello" });
-    expect(r.status).toBe(402);
-    const j = r.json as Record<string, unknown>;
-    expect(j.dustFeeTinybars).toBe(1000);
-    expect(j.treasury).toBe("0.0.999");
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/hcsTxId/);
   });
 
-  it("createProposal returns 402 without a fee", async () => {
+  it("createProposal returns 400 without an hcsTxId", async () => {
     const r = await createProposal(makeDeps(), {
       author: "alice",
       auth: testCred("alice"),
+      id: "test-proposal-001",
       title: "T",
       body: "B",
       closesAt: "2026-12-01T00:00:00Z",
     });
-    expect(r.status).toBe(402);
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/hcsTxId/);
   });
 
-  it("postChat returns 402 without a fee", async () => {
+  it("postChat returns 400 without an hcsTxId", async () => {
     const r = await postChat(makeDeps(), "lobby", { author: "alice", auth: testCred("alice"), body: "hi" });
-    expect(r.status).toBe(402);
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/hcsTxId/);
   });
 
-  it("createListing returns 402 without a fee", async () => {
+  it("createListing returns 400 without an hcsTxId", async () => {
     const r = await createListing(makeDeps(), {
       seller: "0x000000000000000000000000000000000000a11c",
       sellerUsername: "alice",
       auth: testCred("alice"),
+      id: "sticker-pack-x1",
       title: "T",
       description: "D",
       priceUsdCents: 100,
       goodsType: "digital",
     });
-    expect(r.status).toBe(402);
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/hcsTxId/);
   });
 
-  it("rejects an invalid/underpaid fee with 402", async () => {
-    const r = await createPost(makeDeps({ feeOk: false }), {
+  it("rejects a malformed hcsTxId with 400", async () => {
+    const r = await createPost(makeDeps(), {
       author: "alice",
       auth: testCred("alice"),
       body: "hello",
-      ...fee(),
+      hcsTxId: "not-a-tx-id",
     });
-    expect(r.status).toBe(402);
-    expect((r.json as { error: string }).error).toMatch(/invalid/);
-  });
-
-  it("two concurrent writes with the same fee tx id: exactly one succeeds", async () => {
-    // Regression: the fee tx id must be RESERVED synchronously before the
-    // awaited mirror-node verification, so a second concurrent request
-    // presenting the same tx id is rejected instead of double-spending it.
-    const deps = makeDeps();
-    let releaseVerify!: () => void;
-    let verifyCalls = 0;
-    (deps.mirror as MirrorPort).verifyDustFee = async () => {
-      verifyCalls += 1;
-      await new Promise<void>((res) => {
-        releaseVerify = res;
-      });
-      return { ok: true, reason: "ok", receivedTinybars: 1000 };
-    };
-    const txId = "0.0.123@1694000000.000000999";
-    const p1 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "one", hcsTxId: txId });
-    const p2 = createPost(deps, { author: "alice", auth: testCred("alice"), body: "two", hcsTxId: txId });
-    // Wait until the winner's verification is in flight, then give the loser
-    // a chance to reach the reservation.
-    for (let i = 0; i < 200 && verifyCalls === 0; i++) await new Promise((r) => setTimeout(r, 5));
-    expect(verifyCalls).toBe(1); // the loser was rejected before verifying
-    await new Promise((r) => setTimeout(r, 25));
-    releaseVerify();
-    const [r1, r2] = await Promise.all([p1, p2]);
-    expect([r1.status, r2.status].sort()).toEqual([201, 402]);
-    expect(verifyCalls).toBe(1);
-  });
-
-  it("the treasury owner posts free (no dust fee, no self-transfer)", async () => {
-    // Regression: the owner's ECDSA-derived EVM address must match the
-    // bypass — canonicalAddress("0.0.10424063") yields the long-zero form,
-    // which never equals the wallet's real address, and the bypass silently
-    // failed (owner got 402, then ACCOUNT_REPEATED_IN_ACCOUNT_AMOUNTS).
-    const r = await createPost(makeDeps(), {
-      author: "owner",
-      auth: testCred("owner"),
-      body: "owner post, no fee",
-    });
-    expect(r.status).toBe(201);
-  });
-
-  it("a failed fee verification releases the tx id for retry", async () => {
-    const deps = makeDeps({ feeOk: false });
-    const txId = "0.0.123@1694000000.000000998";
-    const body = { author: "alice", auth: testCred("alice"), body: "x", hcsTxId: txId };
-    expect((await createPost(deps, body)).status).toBe(402);
-    // Same tx id after the fee problem is fixed: must not read "already used".
-    (deps.mirror as MirrorPort).verifyDustFee = async () => ({
-      ok: true,
-      reason: "ok",
-      receivedTinybars: 1000,
-    });
-    expect((await createPost(deps, body)).status).toBe(201);
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/verification failed/);
   });
 });
 
@@ -269,10 +528,10 @@ describe("createPost / getPosts", () => {
     deps = makeDeps();
   });
 
-  it("creates a post and returns its seq", async () => {
+  it("creates a post and returns verified:true", async () => {
     const r = await createPost(deps, { author: "alice", auth: testCred("alice"), body: "hello world", ...fee() });
     expect(r.status).toBe(201);
-    expect((r.json as { seq: number }).seq).toBe(1);
+    expect((r.json as { verified: boolean }).verified).toBe(true);
   });
 
   it("rejects unregistered authors with 403", async () => {
@@ -302,7 +561,7 @@ describe("createPost / getPosts", () => {
 
   it("orders posts newest-first and paginates with before", async () => {
     for (const b of ["one", "two", "three"]) {
-      await createPost(deps, { author: "alice", auth: testCred("alice"), body: b, ...fee() });
+      await writePost(deps, "alice", b);
     }
     const first = await getPosts(deps, { limit: "2" });
     const posts = (first.json as { posts: { seq: number; body: string }[] }).posts;
@@ -314,9 +573,9 @@ describe("createPost / getPosts", () => {
   });
 
   it("filters by board and wall", async () => {
-    await createPost(deps, { author: "alice", auth: testCred("alice"), board: "ideas", body: "idea", ...fee() });
-    await createPost(deps, { author: "alice", auth: testCred("alice"), wall: "bob", body: "wall post", ...fee() });
-    await createPost(deps, { author: "bob", auth: testCred("bob"), body: "general", ...fee() });
+    await writePost(deps, "alice", "idea", { board: "ideas" });
+    await writePost(deps, "alice", "wall post", { wall: "bob" });
+    await writePost(deps, "bob", "general");
     const byBoard = (await getPosts(deps, { board: "ideas" })).json as { posts: unknown[] };
     expect(byBoard.posts).toHaveLength(1);
     const byWall = (await getPosts(deps, { wall: "bob" })).json as { posts: unknown[] };
@@ -324,16 +583,26 @@ describe("createPost / getPosts", () => {
   });
 
   it("supports replies via replyTo", async () => {
-    await createPost(deps, { author: "alice", auth: testCred("alice"), body: "parent", ...fee() });
+    await writePost(deps, "alice", "parent");
     const r = await createPost(deps, { author: "bob", auth: testCred("bob"), body: "child", replyTo: 1, ...fee() });
     expect(r.status).toBe(201);
+    seedHcs(deps, T.forum, {
+      v: 1,
+      kind: "post",
+      ts: new Date().toISOString(),
+      author: "bob",
+      board: "general",
+      wall: null,
+      body: "child",
+      replyTo: 1,
+    });
     const posts = ((await getPosts(deps, {})).json as { posts: { replyTo: number | null }[] }).posts;
     expect(posts.find((p) => p.replyTo === 1)).toBeTruthy();
   });
 
   it("filters posts hidden by a mod-action", async () => {
-    await createPost(deps, { author: "alice", auth: testCred("alice"), body: "spam", ...fee() });
-    await createPost(deps, { author: "alice", auth: testCred("alice"), body: "fine", ...fee() });
+    await writePost(deps, "alice", "spam");
+    await writePost(deps, "alice", "fine");
     (deps.hcs as MemoryHcsClient).seed(process.env.TOWNHALL_TOPIC_FORUM!, {
       v: 1,
       kind: "mod-action",
@@ -392,12 +661,12 @@ describe("reputation", () => {
   });
 
   it("tallies votes and reflects changes", async () => {
-    await castRepVote(deps, { target: "bob", voter: "alice", auth: testCred("alice"), value: 1 });
-    await castRepVote(deps, { target: "bob", voter: "brandon", auth: testCred("brandon"), value: -1 });
+    await writeRepVote(deps, "alice", "bob", 1);
+    await writeRepVote(deps, "brandon", "bob", -1);
     let r = await getReputation(deps, "bob", "alice");
     expect(r.json).toMatchObject({ target: "bob", up: 1, down: 1, score: 0, myVote: 1 });
     // changeable: alice flips to -1
-    await castRepVote(deps, { target: "bob", voter: "alice", auth: testCred("alice"), value: -1 });
+    await writeRepVote(deps, "alice", "bob", -1);
     r = await getReputation(deps, "bob", "alice");
     expect(r.json).toMatchObject({ up: 0, down: 2, score: -2, myVote: -1 });
   });
@@ -415,17 +684,18 @@ describe("proposals", () => {
     deps = makeDeps();
   });
 
-  it("creates a proposal and returns an id", async () => {
+  it("creates a proposal and returns its id", async () => {
     const r = await createProposal(deps, {
       author: "alice",
       auth: testCred("alice"),
+      id: "prop-test-1",
       title: "Fund the fountain",
       body: "Build it.",
       closesAt: "2026-12-01T00:00:00Z",
       ...fee(),
     });
     expect(r.status).toBe(201);
-    expect(typeof (r.json as { id: string }).id).toBe("string");
+    expect((r.json as { id: string }).id).toBe("prop-test-1");
   });
 
   it("rejects a bad closesAt", async () => {
@@ -441,18 +711,24 @@ describe("proposals", () => {
   });
 
   it("counts votes with latest-wins", async () => {
-    const { id } = (await createProposal(deps, {
+    const id = "prop-vote-1";
+    await writeProposal(deps, "alice", id, "P", "B");
+    await writeProposalVote(deps, "bob", id, "yes");
+    await writeProposalVote(deps, "brandon", id, "no");
+    await writeProposalVote(deps, "bob", id, "abstain"); // change
+    // voteProposal verifies the wallet tx then tallies from HCS — seed
+    // alice's vote first so the returned tally includes it.
+    seedHcs(deps, T.governance, {
+      v: 1,
+      kind: "proposal-vote",
+      ts: new Date().toISOString(),
       author: "alice",
-      auth: testCred("alice"),
-      title: "P",
-      body: "B",
-      closesAt: "2026-12-01T00:00:00Z",
-      ...fee(),
-    })).json as { id: string };
-    await voteProposal(deps, id, { voter: "bob", auth: testCred("bob"), choice: "yes" });
-    await voteProposal(deps, id, { voter: "brandon", auth: testCred("brandon"), choice: "no" });
-    await voteProposal(deps, id, { voter: "bob", auth: testCred("bob"), choice: "abstain" }); // change
-    const r = await voteProposal(deps, id, { voter: "alice", auth: testCred("alice"), choice: "yes" });
+      proposal: id,
+      voter: "alice",
+      choice: "yes",
+    });
+    const r = await voteProposal(deps, id, { voter: "alice", auth: testCred("alice"), choice: "yes", ...fee() });
+    expect(r.status).toBe(200);
     expect(r.json).toEqual({ yes: 1, no: 1, abstain: 1 });
     const list = (await getProposals(deps)).json as { proposals: { id: string; yes: number; no: number; abstain: number }[] };
     const p = list.proposals.find((x) => x.id === id)!;
@@ -460,7 +736,7 @@ describe("proposals", () => {
   });
 
   it("rejects invalid choices", async () => {
-    const r = await voteProposal(deps, "p1", { voter: "bob", auth: testCred("bob"), choice: "maybe" });
+    const r = await voteProposal(deps, "proposal-alpha-1", { voter: "bob", auth: testCred("bob"), choice: "maybe" });
     expect(r.status).toBe(400);
   });
 });
@@ -468,11 +744,9 @@ describe("proposals", () => {
 describe("chat", () => {
   it("posts a chat message and reads it back in order", async () => {
     const deps = makeDeps();
-    const r1 = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "first", ...fee() });
-    const r2 = await postChat(deps, "lobby", { author: "bob", auth: testCred("bob"), body: "second", ...fee() });
-    await postChat(deps, "other", { author: "alice", auth: testCred("alice"), body: "elsewhere", ...fee() });
-    expect(r1.status).toBe(201);
-    expect(r2.status).toBe(201);
+    await writeChatMsg(deps, "alice", "lobby", "first");
+    await writeChatMsg(deps, "bob", "lobby", "second");
+    await writeChatMsg(deps, "alice", "other", "elsewhere");
     const events = await queryChatMessages(deps, "lobby");
     expect(events.map((e) => e.body)).toEqual(["first", "second"]);
     expect(events[0]).toMatchObject({ room: "lobby", author: "alice" });
@@ -485,16 +759,7 @@ describe("chat", () => {
 describe("chat rooms", () => {
   it("creates a room and lists it after the lobby", async () => {
     const deps = makeDeps();
-    const r = await createChatRoom(deps, {
-      author: "alice",
-      auth: testCred("alice"),
-      id: "agent-coffee",
-      title: "Agent Coffee Chat",
-      description: "Agents and humans talk shop.",
-      ...fee(),
-    });
-    expect(r.status).toBe(201);
-    expect((r.json as { roomId: string }).roomId).toBe("agent-coffee");
+    await writeChatRoom(deps, "alice", "agent-coffee", "Agent Coffee Chat", "Agents and humans talk shop.");
 
     const q = await queryChatRooms(deps);
     expect(q.status).toBe(200);
@@ -534,22 +799,26 @@ describe("chat rooms", () => {
 
   it("returns 409 on duplicate room id", async () => {
     const deps = makeDeps();
-    const body = { author: "alice", auth: testCred("alice"), id: "dupe-room", title: "Dupe Room" };
-    const first = await createChatRoom(deps, { ...body, ...fee() });
-    expect(first.status).toBe(201);
-    const second = await createChatRoom(deps, { ...body, ...fee() });
+    await writeChatRoom(deps, "alice", "dupe-room", "Dupe Room");
+    const second = await createChatRoom(deps, {
+      author: "alice",
+      auth: testCred("alice"),
+      id: "dupe-room",
+      title: "Dupe Room",
+      ...fee(),
+    });
     expect(second.status).toBe(409);
   });
 
-  it("returns 402 without a dust fee", async () => {
+  it("returns 400 without an hcsTxId", async () => {
     const r = await createChatRoom(makeDeps(), {
       author: "alice",
       auth: testCred("alice"),
       id: "no-fee-room",
       title: "No Fee Room",
     });
-    expect(r.status).toBe(402);
-    expect((r.json as Record<string, unknown>).dustFeeTinybars).toBe(1000);
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/hcsTxId/);
   });
 
   it("rejects bad sessions and non-owners", async () => {
@@ -581,20 +850,8 @@ describe("chat rooms", () => {
 
   it("room ids survive a chat message round-trip", async () => {
     const deps = makeDeps();
-    await createChatRoom(deps, {
-      author: "bob",
-      auth: testCred("bob"),
-      id: "dev-talk",
-      title: "Dev Talk",
-      ...fee(),
-    });
-    const m = await postChat(deps, "dev-talk", {
-      author: "alice",
-      auth: testCred("alice"),
-      body: "hello in dev-talk",
-      ...fee(),
-    });
-    expect(m.status).toBe(201);
+    await writeChatRoom(deps, "bob", "dev-talk", "Dev Talk");
+    await writeChatMsg(deps, "alice", "dev-talk", "hello in dev-talk");
     const events = await queryChatMessages(deps, "dev-talk");
     expect(events.map((e) => e.body)).toEqual(["hello in dev-talk"]);
   });
@@ -614,15 +871,8 @@ describe("events", () => {
 
   it("lets mods create events with room event-<id>", async () => {
     const deps = makeDeps();
-    const r = await createEvent(deps, {
-      author: "brandon",
-      auth: testCred("brandon"),
-      title: "Town Hall Live",
-      description: "Q&A",
-      startsAt: "2026-12-01T18:00:00Z",
-    });
-    expect(r.status).toBe(201);
-    const { id } = r.json as { id: string };
+    const id = "town-hall-live-1";
+    await writeEvent(deps, "brandon", id, "Town Hall Live", "Q&A");
     const list = (await getEvents(deps)).json as { events: { id: string; room: string }[] };
     expect(list.events).toHaveLength(1);
     expect(list.events[0].id).toBe(id);
@@ -636,11 +886,12 @@ describe("listings", () => {
     deps = makeDeps();
   });
 
-  it("creates a listing and returns an id", async () => {
+  it("creates a listing and returns its id", async () => {
     const r = await createListing(deps, {
       seller: "0x000000000000000000000000000000000000a11c",
       sellerUsername: "alice",
       auth: testCred("alice"),
+      id: "sticker-pack-1",
       title: "Sticker pack",
       description: "Cool stickers",
       priceUsdCents: 500,
@@ -648,6 +899,7 @@ describe("listings", () => {
       ...fee(),
     });
     expect(r.status).toBe(201);
+    expect((r.json as { id: string }).id).toBe("sticker-pack-1");
   });
 
   it("rejects bad goodsType / price", async () => {
@@ -676,27 +928,45 @@ describe("listings", () => {
   });
 
   it("seller-only status change; latest-wins on read", async () => {
-    const { id } = (await createListing(deps, {
-      seller: "0x000000000000000000000000000000000000a11c",
-      sellerUsername: "alice",
-      auth: testCred("alice"),
+    const id = "sticker-pack-2";
+    await writeListing(deps, "alice", id, {
       title: "Sticker pack",
       description: "Cool stickers",
       priceUsdCents: 500,
       goodsType: "physical",
-      ...fee(),
-    })).json as { id: string };
+    });
 
     const other = await setListingStatus(deps, id, { sellerUsername: "bob", auth: testCred("bob"), status: "sold" });
     expect(other.status).toBe(403);
-    const missing = await setListingStatus(deps, "nope", { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
+    const missing = await setListingStatus(deps, "nonexistent-listing-9", { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
     expect(missing.status).toBe(404);
     const badStatus = await setListingStatus(deps, id, { sellerUsername: "alice", auth: testCred("alice"), status: "shipped" });
     expect(badStatus.status).toBe(400);
 
-    const r = await setListingStatus(deps, id, { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
+    const r = await setListingStatus(deps, id, {
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      status: "sold",
+      ...fee(),
+    });
     expect(r.status).toBe(200);
     expect(r.json).toEqual({});
+    // Simulate the user's wallet submit of the status-update message (same id).
+    seedHcs(deps, T.market, {
+      v: 1,
+      kind: "listing",
+      ts: new Date().toISOString(),
+      author: "alice",
+      id,
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      title: "Sticker pack",
+      description: "Cool stickers",
+      priceUsdCents: 500,
+      goodsType: "physical",
+      ipfsHash: null,
+      status: "sold",
+    });
 
     const list = (await getListings(deps)).json as { listings: { id: string; status: string }[] };
     expect(list.listings.find((l) => l.id === id)!.status).toBe("sold");
@@ -712,7 +982,7 @@ describe("wallet-session auth", () => {
     expect(
       (await createProposal(deps, { author: "alice", title: "T", body: "B", closesAt: "2026-12-01T00:00:00Z", ...fee() })).status,
     ).toBe(401);
-    expect((await voteProposal(deps, "p1", { voter: "alice", choice: "yes" })).status).toBe(401);
+    expect((await voteProposal(deps, "proposal-alpha-1", { voter: "alice", choice: "yes" })).status).toBe(401);
     expect(
       (await createEvent(deps, { author: "brandon", title: "T", description: "D", startsAt: "2026-12-01T18:00:00Z" })).status,
     ).toBe(401);
@@ -757,21 +1027,18 @@ describe("wallet-session auth", () => {
 
   it("setListingStatus still enforces seller-only with sessions", async () => {
     const deps = makeDeps();
-    const { id } = (await createListing(deps, {
-      seller: "0x000000000000000000000000000000000000a11c",
-      sellerUsername: "alice",
-      auth: testCred("alice"),
-      title: "T",
-      description: "D",
-      priceUsdCents: 100,
-      goodsType: "digital",
-      ...fee(),
-    })).json as { id: string };
+    const id = "sess-listing-1";
+    await writeListing(deps, "alice", id);
     // bob has a valid session, but the listing is alice's
     const r = await setListingStatus(deps, id, { sellerUsername: "bob", auth: testCred("bob"), status: "sold" });
     expect(r.status).toBe(403);
     // alice's own session works
-    const ok = await setListingStatus(deps, id, { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
+    const ok = await setListingStatus(deps, id, {
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      status: "sold",
+      ...fee(),
+    });
     expect(ok.status).toBe(200);
   });
 
@@ -800,18 +1067,8 @@ describe("listing payout address vs page identity", () => {
 
   it("keeps the payout address and the sellerUsername in views", async () => {
     const deps = makeDeps();
-    const { id } = (
-      await createListing(deps, {
-        seller: PAYOUT,
-        sellerUsername: "alice",
-        auth: testCred("alice"),
-        title: "T",
-        description: "D",
-        priceUsdCents: 100,
-        goodsType: "digital",
-        ...fee(),
-      })
-    ).json as { id: string };
+    const id = "payout-view-1";
+    await writeListing(deps, "alice", id);
     const list = (await getListings(deps)).json as {
       listings: { id: string; seller: string; sellerUsername: string | null }[];
     };
@@ -846,112 +1103,6 @@ describe("listing payout address vs page identity", () => {
       ...fee(),
     });
     expect(r.status).toBe(403);
-  });
-});
-
-describe("dust-fee replay protection", () => {
-  it("rejects reuse of the same fee tx id on a second write", async () => {
-    const deps = makeDeps();
-    const txId = "0.0.123@1694000000.111111111";
-    const body = (b: string) => ({
-      author: "alice",
-      auth: testCred("alice"),
-      body: b,
-      hcsTxId: txId,
-    });
-    const first = await createPost(deps, body("first"));
-    expect(first.status).toBe(201);
-    const second = await createPost(deps, body("second"));
-    expect(second.status).toBe(402);
-    expect((second.json as { error: string }).error).toMatch(/already used/);
-  });
-
-  it("rejects replay across different write kinds (post then chat)", async () => {
-    const deps = makeDeps();
-    const txId = "0.0.123@1694000000.222222222";
-    const p = await createPost(deps, {
-      author: "alice",
-      auth: testCred("alice"),
-      body: "hello",
-      hcsTxId: txId,
-    });
-    expect(p.status).toBe(201);
-    const c = await postChat(deps, "lobby", {
-      author: "alice",
-      auth: testCred("alice"),
-      body: "hello again",
-      hcsTxId: txId,
-    });
-    expect(c.status).toBe(402);
-    expect((c.json as { error: string }).error).toMatch(/already used/);
-  });
-
-  it("does not consume the tx id when verification fails (retryable)", async () => {
-    const deps = makeDeps({ feeOk: false });
-    const txId = "0.0.123@1694000000.333333333";
-    const body = () => ({
-      author: "alice",
-      auth: testCred("alice"),
-      body: "hello",
-      hcsTxId: txId,
-    });
-    const first = await createPost(deps, body());
-    expect(first.status).toBe(402);
-    expect((first.json as { error: string }).error).toMatch(/invalid/);
-    // A failed verification must not burn the tx id: the next attempt
-    // fails on verification again, not on "already used".
-    const second = await createPost(deps, body());
-    expect(second.status).toBe(402);
-    expect((second.json as { error: string }).error).toMatch(/invalid/);
-  });
-
-  it("rejects concurrent reuse of the same fee tx id (no double-spend)", async () => {
-    // Deferred verification: both requests sit inside the awaited verify
-    // at the same time, forcing the check → await → mark interleaving
-    // that used to let one payment fund two writes.
-    let releaseVerify!: (r: { ok: boolean; reason: string; receivedTinybars: number }) => void;
-    const verifyGate = new Promise<{ ok: boolean; reason: string; receivedTinybars: number }>(
-      (res) => {
-        releaseVerify = res;
-      },
-    );
-    const base = makeDeps();
-    const deps: TownhallDeps = {
-      ...base,
-      mirror: { ...base.mirror, verifyDustFee: () => verifyGate },
-    };
-    const txId = "0.0.123@1694000000.444444444";
-    const body = (b: string) => ({
-      author: "alice",
-      auth: testCred("alice"),
-      body: b,
-      hcsTxId: txId,
-    });
-    const p1 = createPost(deps, body("first"));
-    const p2 = createPost(deps, body("second"));
-    // Let both requests reach the awaited verification before either resolves.
-    await new Promise((r) => setTimeout(r, 20));
-    releaseVerify({ ok: true, reason: "ok", receivedTinybars: 1000 });
-    const [r1, r2] = await Promise.all([p1, p2]);
-    const statuses = [r1.status, r2.status].sort((a, b) => a - b);
-    expect(statuses).toEqual([201, 402]);
-    const rejected = r1.status === 402 ? r1 : r2;
-    expect((rejected.json as { error: string }).error).toMatch(/already used/);
-  });
-
-  it("normalizes the tx id: whitespace variants of one payment buy one write", async () => {
-    const deps = makeDeps();
-    const mkBody = (b: string, txId: string) => ({
-      author: "alice",
-      auth: testCred("alice"),
-      body: b,
-      hcsTxId: txId,
-    });
-    const first = await createPost(deps, mkBody("first", "0.0.123@1694000000.555555555 "));
-    expect(first.status).toBe(201);
-    const second = await createPost(deps, mkBody("second", "  0.0.123@1694000000.555555555"));
-    expect(second.status).toBe(402);
-    expect((second.json as { error: string }).error).toMatch(/already used/);
   });
 });
 
@@ -1028,14 +1179,7 @@ describe("mod-actions", () => {
   it("a global mod can hide a board post; it disappears from reads", async () => {
     const deps = makeDeps();
     const seq = await postOnBoard(deps, "alice", "spammy");
-    const hide = await submitModAction(deps, {
-      author: "brandon",
-      auth: testCred("brandon"),
-      targetKind: "post",
-      targetSeq: seq,
-      board: "general",
-    });
-    expect(hide.status).toBe(201);
+    await writeModAction(deps, "brandon", "post", seq, { board: "general" });
     const posts = await getPosts(deps, { board: "general" });
     const seqs = ((posts.json as { posts: { seq: number }[] }).posts ?? []).map((p) => p.seq);
     expect(seqs).not.toContain(seq);
@@ -1043,23 +1187,8 @@ describe("mod-actions", () => {
 
   it("a wall owner can hide a post on their own wall", async () => {
     const deps = makeDeps();
-    const r = await createPost(deps, {
-      author: "bob",
-      auth: testCred("bob"),
-      wall: "alice",
-      body: "rude comment",
-      ...fee(),
-    });
-    expect(r.status).toBe(201);
-    const seq = (r.json as { seq: number }).seq;
-    const hide = await submitModAction(deps, {
-      author: "alice",
-      auth: testCred("alice"),
-      targetKind: "post",
-      targetSeq: seq,
-      wall: "alice",
-    });
-    expect(hide.status).toBe(201);
+    const seq = await writePost(deps, "bob", "rude comment", { wall: "alice" });
+    await writeModAction(deps, "alice", "post", seq, { wall: "alice" });
     const wall = await getPosts(deps, { wall: "alice" });
     const seqs = ((wall.json as { posts: { seq: number }[] }).posts ?? []).map((p) => p.seq);
     expect(seqs).not.toContain(seq);
@@ -1080,22 +1209,8 @@ describe("mod-actions", () => {
 
   it("a global mod can hide a chat message; it disappears from the room", async () => {
     const deps = makeDeps();
-    const posted = await postChat(deps, "lobby", {
-      author: "alice",
-      auth: testCred("alice"),
-      body: "bad message",
-      ...fee(),
-    });
-    expect(posted.status).toBe(201);
-    const seq = (posted.json as { seq: number }).seq;
-    const hide = await submitModAction(deps, {
-      author: "brandon",
-      auth: testCred("brandon"),
-      targetKind: "chat",
-      targetSeq: seq,
-      board: "lobby",
-    });
-    expect(hide.status).toBe(201);
+    const seq = await writeChatMsg(deps, "alice", "lobby", "bad message");
+    await writeModAction(deps, "brandon", "chat", seq, { board: "lobby" });
     const events = await queryChatMessages(deps, "lobby", 0);
     expect(events.map((e) => e.seq)).not.toContain(seq);
   });
@@ -1105,23 +1220,9 @@ describe("mod-actions", () => {
     // Create a forum post and a chat message; both land at seq 1 in their
     // own topics (MemoryHcsClient sequences per topic).
     const postSeq = await postOnBoard(deps, "alice", "keep me");
-    const chat = await postChat(deps, "lobby", {
-      author: "alice",
-      auth: testCred("alice"),
-      body: "hide me",
-      ...fee(),
-    });
-    expect(chat.status).toBe(201);
-    const chatSeq = (chat.json as { seq: number }).seq;
+    const chatSeq = await writeChatMsg(deps, "alice", "lobby", "hide me");
     expect(chatSeq).toBe(postSeq); // same seq number, different topics
-    const hide = await submitModAction(deps, {
-      author: "brandon",
-      auth: testCred("brandon"),
-      targetKind: "chat",
-      targetSeq: chatSeq,
-      board: "lobby",
-    });
-    expect(hide.status).toBe(201);
+    await writeModAction(deps, "brandon", "chat", chatSeq, { board: "lobby" });
     const posts = await getPosts(deps, { board: "general" });
     const seqs = ((posts.json as { posts: { seq: number }[] }).posts ?? []).map((p) => p.seq);
     expect(seqs).toContain(postSeq);
@@ -1179,15 +1280,7 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
   const modCred = { message: "test-signin:modwallet", signature: "0xtest-modwallet" };
 
   async function postOnBoard(deps: TownhallDeps, author: string, body: string) {
-    const r = await createPost(deps, {
-      author,
-      auth: testCred(author),
-      board: "general",
-      body,
-      ...fee(),
-    });
-    expect(r.status).toBe(201);
-    return (r.json as { seq: number }).seq;
+    return writePost(deps, author, body, { board: "general" });
   }
 
   it("a mod wallet can hide with no registered page, and the hide sticks", async () => {
@@ -1199,9 +1292,21 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
       targetKind: "post",
       targetSeq: seq,
       board: "general",
+      ...fee(),
     });
     expect(r.status).toBe(201);
     // Authored under the wallet address (no page to author under).
+    seedHcs(deps, T.forum, {
+      v: 1,
+      kind: "mod-action",
+      ts: new Date().toISOString(),
+      author: MOD_WALLET,
+      targetKind: "post",
+      board: "general",
+      wall: null,
+      targetSeq: seq,
+      action: "hide",
+    });
     const stored = await deps.hcs.queryAll("0.0.7001");
     const action = stored.find((m) => m.contents.kind === "mod-action")?.contents as {
       author: string;
@@ -1223,8 +1328,21 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
       targetKind: "post",
       targetSeq: seq,
       board: "general",
+      ...fee(),
     });
     expect(r.status).toBe(201);
+    seedHcs(deps, T.forum, {
+      v: 1,
+      kind: "mod-action",
+      ts: new Date().toISOString(),
+      author: "carol",
+      modWallet: MOD_WALLET,
+      targetKind: "post",
+      board: "general",
+      wall: null,
+      targetSeq: seq,
+      action: "hide",
+    });
     const stored = await deps.hcs.queryAll("0.0.7001");
     const action = stored.find((m) => m.contents.kind === "mod-action")?.contents as {
       author: string;
@@ -1264,9 +1382,11 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
     process.env.TOWNHALL_MOD_WALLETS = "0.0.424242";
     const r = await createEvent(asModWallet(makeDeps()), {
       auth: modCred,
+      id: "modwallet-event-1",
       title: "Town Hall",
       description: "D",
       startsAt: "2026-12-01T18:00:00Z",
+      ...fee(),
     });
     expect(r.status).toBe(201);
   });
@@ -1345,12 +1465,12 @@ describe("free-write quota (429)", () => {
     process.env.TOWNHALL_WRITE_DAILY_QUOTA = "3";
     await globalQuotaStore().clearAll();
     const deps = makeDeps();
-    const body = () => ({ voter: "bob", auth: testCred("bob"), choice: "yes" });
+    const body = () => ({ voter: "bob", auth: testCred("bob"), choice: "yes", ...fee() });
     for (let i = 0; i < 3; i++) {
-      const r = await voteProposal(deps, "p1", body());
+      const r = await voteProposal(deps, "proposal-alpha-1", body());
       expect(r.status).toBe(200);
     }
-    const r = await voteProposal(deps, "p1", body());
+    const r = await voteProposal(deps, "proposal-alpha-1", body());
     expect(r.status).toBe(429);
     const j = r.json as Record<string, unknown>;
     expect(j.limit).toBe(3);
@@ -1361,10 +1481,11 @@ describe("free-write quota (429)", () => {
   it("TOWNHALL_WRITE_DAILY_QUOTA=0 denies all free writes", async () => {
     process.env.TOWNHALL_WRITE_DAILY_QUOTA = "0";
     await globalQuotaStore().clearAll();
-    const r = await voteProposal(makeDeps(), "p1", {
+    const r = await voteProposal(makeDeps(), "proposal-alpha-1", {
       voter: "bob",
       auth: testCred("bob"),
       choice: "yes",
+      ...fee(),
     });
     expect(r.status).toBe(429);
   });
@@ -1373,11 +1494,11 @@ describe("free-write quota (429)", () => {
     process.env.TOWNHALL_WRITE_DAILY_QUOTA = "1";
     await globalQuotaStore().clearAll();
     const deps = makeDeps();
-    const r1 = await voteProposal(deps, "p1", { voter: "bob", auth: testCred("bob"), choice: "yes" });
+    const r1 = await voteProposal(deps, "proposal-alpha-1", { voter: "bob", auth: testCred("bob"), choice: "yes", ...fee() });
     expect(r1.status).toBe(200);
-    const r2 = await voteProposal(deps, "p1", { voter: "bob", auth: testCred("bob"), choice: "yes" });
+    const r2 = await voteProposal(deps, "proposal-alpha-1", { voter: "bob", auth: testCred("bob"), choice: "yes", ...fee() });
     expect(r2.status).toBe(429);
-    const r3 = await voteProposal(deps, "p1", { voter: "alice", auth: testCred("alice"), choice: "yes" });
+    const r3 = await voteProposal(deps, "proposal-alpha-1", { voter: "alice", auth: testCred("alice"), choice: "yes", ...fee() });
     expect(r3.status).toBe(200);
   });
 });
@@ -1448,6 +1569,7 @@ describe("safety filter (pre-publish)", () => {
       seller: "0x000000000000000000000000000000000000a11c",
       sellerUsername: "alice",
       auth: testCred("alice"),
+      id: "clean-listing-1",
       title: "Sticker pack",
       description: "Cool stickers",
       priceUsdCents: 500,
@@ -1468,9 +1590,7 @@ describe("safety filter (pre-publish)", () => {
 
 describe("safety reports", () => {
   async function seedPost(deps: TownhallDeps) {
-    const r = await createPost(deps, { author: "alice", auth: testCred("alice"), body: "a post", ...fee() });
-    expect(r.status).toBe(201);
-    return (r.json as { seq: number }).seq;
+    return writePost(deps, "alice", "a post");
   }
 
   it("requires a session", async () => {
@@ -1500,54 +1620,30 @@ describe("safety reports", () => {
     expect(r.status).toBe(404);
   });
 
-  it("files a report on a post and a chat message (free, no dust fee)", async () => {
+  it("files a report on a post and a chat message", async () => {
     const deps = makeDeps();
     const seq = await seedPost(deps);
-    const chat = await postChat(deps, "lobby", { author: "alice", auth: testCred("alice"), body: "hi", ...fee() });
-    const chatSeq = (chat.json as { seq: number }).seq;
-    // No hcsTxId supplied — reports are free.
-    const r1 = await submitReport(deps, {
-      auth: testCred("bob"),
-      reporter: "bob",
-      targetKind: "post",
-      targetSeq: seq,
-      reason: "this post contains harassment targeting another user",
-    });
-    const r2 = await submitReport(deps, {
-      auth: testCred("alice"),
-      targetKind: "chat",
-      targetSeq: chatSeq,
-      reason: "spam links in the lobby, please review this message",
-    });
-    expect(r1.status).toBe(201);
-    expect(r2.status).toBe(201);
+    const chatSeq = await writeChatMsg(deps, "alice", "lobby", "hi");
+    // The reporter signs the report message via their wallet (user-signed HCS).
+    await writeReport(deps, "bob", "post", { targetSeq: seq }, "this post contains harassment targeting another user");
+    await writeReport(deps, "alice", "chat", { targetSeq: chatSeq }, "spam links in the lobby, please review this message");
+    const reports = await queryReports(deps, { auth: testCred("brandon"), username: "brandon" });
+    expect(reports.status).toBe(200);
+    const list = (reports.json as { reports: { targetKind: string }[] }).reports;
+    expect(list.map((r) => r.targetKind).sort()).toEqual(["chat", "post"]);
   });
 
   it("files a report on a listing by targetId", async () => {
     const deps = makeDeps();
-    const l = await createListing(deps, {
-      seller: "0x000000000000000000000000000000000000a11c",
-      sellerUsername: "alice",
-      auth: testCred("alice"),
-      title: "Gadget",
-      description: "A gadget",
-      priceUsdCents: 100,
-      goodsType: "digital",
-      ...fee(),
-    });
-    const id = (l.json as { id: string }).id;
-    const r = await submitReport(deps, {
-      auth: testCred("bob"),
-      targetKind: "listing",
-      targetId: id,
-      reason: "this listing looks like a scam, seller never delivers",
-    });
-    expect(r.status).toBe(201);
+    const id = "report-listing-1";
+    await writeListing(deps, "alice", id, { title: "Gadget", description: "A gadget" });
+    await writeReport(deps, "bob", "listing", { targetId: id }, "this listing looks like a scam, seller never delivers");
     const missing = await submitReport(deps, {
       auth: testCred("bob"),
       targetKind: "listing",
       targetId: "nope-123",
       reason: "this listing does not exist but reason is long enough",
+      ...fee(),
     });
     expect(missing.status).toBe(404);
   });
@@ -1569,6 +1665,7 @@ describe("safety reports", () => {
       targetKind: "post",
       targetSeq: seq,
       reason: "the post contains a violent threat against another user, please review",
+      ...fee(),
     });
     expect(ok.status).toBe(201);
   });
@@ -1576,19 +1673,26 @@ describe("safety reports", () => {
   it("queryReports is mod-only and lists reports newest-first", async () => {
     const deps = makeDeps();
     const seq = await seedPost(deps);
-    await submitReport(deps, {
+    const r1 = await submitReport(deps, {
       auth: testCred("bob"),
       targetKind: "post",
       targetSeq: seq,
       reason: "first report filed against this post for review",
+      ...fee(),
     });
-    await submitReport(deps, {
-      auth: testCred("alice"),
-      reporter: "alice",
+    expect(r1.status).toBe(201);
+    seedHcs(deps, T.forum, {
+      v: 1,
+      kind: "report",
+      ts: new Date().toISOString(),
+      author: "0x00000000000000000000000000000000000000b0",
       targetKind: "post",
       targetSeq: seq,
-      reason: "second report filed against this post for review",
+      targetId: null,
+      reason: "first report filed against this post for review",
+      reporter: "0x00000000000000000000000000000000000000b0",
     });
+    await writeReport(deps, "alice", "post", { targetSeq: seq }, "second report filed against this post for review");
 
     // Non-mod is rejected.
     const denied = await queryReports(deps, { auth: testCred("bob"), username: "bob" });
@@ -1611,25 +1715,19 @@ describe("market search (public agent API)", () => {
   let deps: TownhallDeps;
   beforeEach(async () => {
     deps = makeDeps();
-    await createListing(deps, {
+    await writeListing(deps, "alice", "pixel-art-1", {
       seller: OWNERS.alice,
-      sellerUsername: "alice",
-      auth: testCred("alice"),
       title: "Pixel art commission",
       description: "Custom pixel art avatar",
       priceUsdCents: 2000,
       goodsType: "digital",
-      ...fee(),
     });
-    await createListing(deps, {
+    await writeListing(deps, "bob", "vintage-synth-1", {
       seller: OWNERS.bob,
-      sellerUsername: "bob",
-      auth: testCred("bob"),
       title: "Vintage synth",
       description: "Analog synthesizer, great condition",
       priceUsdCents: 45000,
       goodsType: "physical",
-      ...fee(),
     });
   });
 
@@ -1661,17 +1759,36 @@ describe("market search (public agent API)", () => {
   });
 
   it("sorts by price and excludes sold listings", async () => {
-    const { id } = (await createListing(deps, {
+    const id = "cheap-sticker-1";
+    await writeListing(deps, "alice", id, {
       seller: OWNERS.alice,
-      sellerUsername: "alice",
-      auth: testCred("alice"),
       title: "Cheap sticker",
       description: "A sticker",
       priceUsdCents: 100,
       goodsType: "digital",
+    });
+    const st = await setListingStatus(deps, id, {
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      status: "sold",
       ...fee(),
-    })).json as { id: string };
-    await setListingStatus(deps, id, { sellerUsername: "alice", auth: testCred("alice"), status: "sold" });
+    });
+    expect(st.status).toBe(200);
+    seedHcs(deps, T.market, {
+      v: 1,
+      kind: "listing",
+      ts: new Date().toISOString(),
+      author: "alice",
+      id,
+      seller: OWNERS.alice,
+      sellerUsername: "alice",
+      title: "Cheap sticker",
+      description: "A sticker",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ipfsHash: null,
+      status: "sold",
+    });
 
     const asc = await searchListings(deps, { sort: "price-asc" }, "https://x.test");
     const listings = (asc.json as { listings: { priceUsdCents: number }[] }).listings;
@@ -1696,12 +1813,7 @@ describe("profile links (cross-platform identity)", () => {
   });
 
   it("sets and reads links for the page owner", async () => {
-    const set = await setProfileLinks(deps, {
-      username: "alice",
-      auth: testCred("alice"),
-      links: { twitter: "@alice", website: "https://alice.example" },
-    });
-    expect(set.status).toBe(201);
+    await writeProfileLinks(deps, "alice", { twitter: "@alice", website: "https://alice.example" });
 
     const get = await getProfileLinks(deps, "alice");
     expect(get.status).toBe(200);
@@ -1711,8 +1823,8 @@ describe("profile links (cross-platform identity)", () => {
   });
 
   it("latest write wins", async () => {
-    await setProfileLinks(deps, { username: "alice", auth: testCred("alice"), links: { twitter: "@old" } });
-    await setProfileLinks(deps, { username: "alice", auth: testCred("alice"), links: { twitter: "@new" } });
+    await writeProfileLinks(deps, "alice", { twitter: "@old" });
+    await writeProfileLinks(deps, "alice", { twitter: "@new" });
     const get = await getProfileLinks(deps, "ALICE");
     expect((get.json as { links: Record<string, string> }).links).toEqual({ twitter: "@new" });
   });
@@ -1766,12 +1878,7 @@ describe("referrals (growth loop)", () => {
   });
 
   it("records a referral and reads stats", async () => {
-    const r = await recordReferral(deps, {
-      referredUsername: "alice",
-      referrer: "brandon",
-      auth: testCred("alice"),
-    });
-    expect(r.status).toBe(201);
+    await writeReferral(deps, "alice", "brandon");
 
     const stats = await getReferralStats(deps, "brandon");
     expect(stats.status).toBe(200);
@@ -1791,16 +1898,12 @@ describe("referrals (growth loop)", () => {
   });
 
   it("rejects duplicate referrals (first wins)", async () => {
-    const first = await recordReferral(deps, {
-      referredUsername: "alice",
-      referrer: "brandon",
-      auth: testCred("alice"),
-    });
-    expect(first.status).toBe(201);
+    await writeReferral(deps, "alice", "brandon");
     const dup = await recordReferral(deps, {
       referredUsername: "alice",
       referrer: "bob",
       auth: testCred("alice"),
+      ...fee(),
     });
     expect(dup.status).toBe(400);
   });
@@ -1838,8 +1941,8 @@ describe("referrals (growth loop)", () => {
   });
 
   it("collectReferralCounts dedupes by referred user (first wins)", async () => {
-    await recordReferral(deps, { referredUsername: "alice", referrer: "brandon", auth: testCred("alice") });
-    await recordReferral(deps, { referredUsername: "bob", referrer: "brandon", auth: testCred("bob") });
+    await writeReferral(deps, "alice", "brandon");
+    await writeReferral(deps, "bob", "brandon");
     const messages = await deps.hcs.queryAll("0.0.7001");
     const counts = collectReferralCounts(messages);
     expect(counts.get("brandon")).toBe(2);
@@ -1929,6 +2032,7 @@ describe("audit: enforcement + safety gates on all write paths", () => {
     const created = await createProposal(deps, {
       author: "brandon",
       auth: testCred("brandon"),
+      id: "audit-prop-1",
       title: "Should we?",
       body: "A question",
       closesAt: "2027-01-01T00:00:00Z",
@@ -1991,6 +2095,7 @@ describe("audit: enforcement + safety gates on all write paths", () => {
     const ok = await submitAppeal(deps, {
       auth: testCred("bob"),
       reason: "I believe this ban was a mistake and I would like a second review of my case",
+      ...fee(),
     });
     expect(ok.status).toBe(201);
 
@@ -2007,11 +2112,9 @@ describe("audit: enforcement + safety gates on all write paths", () => {
 describe("stream queries (windowed, for SSE)", () => {
   it("queryPostViews returns only posts after the cursor, filtered by board", async () => {
     const deps = makeDeps();
-    const mk = (board: string, body: string) =>
-      createPost(deps, { author: "alice", auth: testCred("alice"), board, body, ...fee() });
-    expect((await mk("general", "one")).status).toBe(201);
-    expect((await mk("general", "two")).status).toBe(201);
-    expect((await mk("help", "three")).status).toBe(201);
+    await writePost(deps, "alice", "one", { board: "general" });
+    await writePost(deps, "alice", "two", { board: "general" });
+    await writePost(deps, "alice", "three", { board: "help" });
 
     const all = await queryPostViews(deps, null, 0);
     expect(all.map((p) => p.body)).toEqual(["one", "two", "three"]);
@@ -2026,16 +2129,9 @@ describe("stream queries (windowed, for SSE)", () => {
 
   it("queryProposalEvents emits proposal and vote events with the proposal id", async () => {
     const deps = makeDeps();
-    const created = await createProposal(deps, {
-      author: "alice",
-      auth: testCred("alice"),
-      title: "Fund the fountain",
-      body: "Build it.",
-      closesAt: "2026-12-01T00:00:00Z",
-      ...fee(),
-    });
-    const id = (created.json as { id: string }).id;
-    await voteProposal(deps, id, { voter: "bob", auth: testCred("bob"), choice: "yes" });
+    const id = "stream-prop-1";
+    await writeProposal(deps, "alice", id, "Fund the fountain", "Build it.");
+    await writeProposalVote(deps, "bob", id, "yes");
 
     const events = await queryProposalEvents(deps, 0);
     expect(events).toEqual([
@@ -2048,21 +2144,155 @@ describe("stream queries (windowed, for SSE)", () => {
 
   it("queryListingViews returns listing views with seq for cursor tracking", async () => {
     const deps = makeDeps();
-    const r = await createListing(deps, {
-      seller: "0x000000000000000000000000000000000000a11c",
-      sellerUsername: "alice",
-      auth: testCred("alice"),
+    await writeListing(deps, "alice", "stream-listing-1", {
       title: "Sticker pack",
       description: "Cool stickers",
       priceUsdCents: 500,
       goodsType: "physical",
-      ...fee(),
     });
-    expect(r.status).toBe(201);
 
     const views = await queryListingViews(deps, 0);
     expect(views).toHaveLength(1);
     expect(views[0]).toMatchObject({ seq: 1, title: "Sticker pack", sellerUsername: "alice", status: "active" });
     expect(await queryListingViews(deps, 1)).toEqual([]);
+  });
+});
+
+describe("replay protection (hcsTxId single-use)", () => {
+  beforeEach(async () => {
+    await clearConsumedHcsTxIds();
+  });
+
+  it("rejects a reused hcsTxId", async () => {
+    const deps = makeDeps();
+    const { hcsTxId } = fee();
+    const r1 = await createPost(deps, {
+      author: "alice", auth: testCred("alice"), body: "hello", hcsTxId,
+    });
+    expect(r1.status).toBe(201);
+    // Same txId presented again — rejected as a replay.
+    const r2 = await createPost(deps, {
+      author: "alice", auth: testCred("alice"), body: "hello again", hcsTxId,
+    });
+    expect(r2.status).toBe(400);
+    expect((r2.json as { error: string }).error).toMatch(/already used/);
+  });
+
+  it("releases the reservation when verification fails, so the real tx stays retryable", async () => {
+    const deps = makeDeps();
+    const hcsTxId = "0.0.123@1694000000.000000099";
+    // Pre-register a tx whose on-chain message does NOT match the request.
+    (deps.hcs as MemoryHcsClient).__verifyTx(hcsTxId, T.forum, "0.0.41244", {
+      v: 1, kind: "post", author: "mallory", body: "hijacked",
+    });
+    const r1 = await createPost(deps, {
+      author: "alice", auth: testCred("alice"), body: "hello", hcsTxId,
+    });
+    expect(r1.status).toBe(400);
+    expect((r1.json as { error: string }).error).toMatch(/mismatch/);
+    // Fix the on-chain message (e.g. user resubmits correctly) and retry
+    // with the SAME txId — the failed attempt must have released it.
+    (deps.hcs as MemoryHcsClient).__verifyTx(hcsTxId, T.forum, "0.0.41244", {
+      v: 1, kind: "post", author: "alice", board: "general", body: "hello", wall: null, replyTo: null,
+    });
+    const r2 = await createPost(deps, {
+      author: "alice", auth: testCred("alice"), body: "hello", hcsTxId,
+    });
+    expect(r2.status).toBe(201);
+  });
+
+  it("concurrent use of the same hcsTxId: only one wins", async () => {
+    const deps = makeDeps();
+    const { hcsTxId } = fee();
+    const mk = () => createPost(deps, {
+      author: "alice", auth: testCred("alice"), body: "race", hcsTxId,
+    });
+    const [a, b] = await Promise.all([mk(), mk()]);
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 400]);
+  });
+});
+
+describe("content binding (expectedContent)", () => {
+  beforeEach(async () => {
+    await clearConsumedHcsTxIds();
+  });
+
+  it("rejects a proposal whose on-chain title was swapped", async () => {
+    const deps = makeDeps();
+    const { hcsTxId } = fee();
+    (deps.hcs as MemoryHcsClient).__verifyTx(hcsTxId, T.governance, "0.0.41244", {
+      v: 1, kind: "proposal", author: "alice", id: "bind-proposal-1",
+      title: "ATTACKER TITLE", body: "B", closesAt: "2026-12-01T00:00:00Z",
+    });
+    const r = await createProposal(deps, {
+      author: "alice", auth: testCred("alice"), id: "bind-proposal-1",
+      title: "Legit Title", body: "B", closesAt: "2026-12-01T00:00:00Z", hcsTxId,
+    });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/mismatch/);
+  });
+
+  it("rejects a listing whose on-chain price was swapped", async () => {
+    const deps = makeDeps();
+    const { hcsTxId } = fee();
+    const seller = "0x000000000000000000000000000000000000a11c";
+    (deps.hcs as MemoryHcsClient).__verifyTx(hcsTxId, T.market, "0.0.41244", {
+      v: 1, kind: "listing", author: "alice", id: "bind-listing-1",
+      seller, sellerUsername: "alice", title: "T", description: "D",
+      priceUsdCents: 1, goodsType: "digital", ipfsHash: null, status: "active",
+    });
+    const r = await createListing(deps, {
+      seller, sellerUsername: "alice", auth: testCred("alice"), id: "bind-listing-1",
+      title: "T", description: "D", priceUsdCents: 100, goodsType: "digital", hcsTxId,
+    });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/mismatch/);
+  });
+
+  it("rejects a vote whose on-chain choice was swapped", async () => {
+    const deps = makeDeps();
+    const { hcsTxId } = fee();
+    (deps.hcs as MemoryHcsClient).__verifyTx(hcsTxId, T.governance, "0.0.176", {
+      v: 1, kind: "proposal-vote", author: "bob", proposal: "bind-prop-vote-1", voter: "bob", choice: "no",
+    });
+    const r = await voteProposal(deps, "bind-prop-vote-1", {
+      voter: "bob", auth: testCred("bob"), choice: "yes", hcsTxId,
+    });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/mismatch/);
+  });
+});
+
+describe("towhhall id validation", () => {
+  it("rejects malformed proposal, event, and listing ids", async () => {
+    const deps = makeDeps();
+    const badIds = ["abc", "BAD_ID!", "a".repeat(65), "has space"];
+    for (const id of badIds) {
+      const rp = await createProposal(deps, {
+        author: "alice", auth: testCred("alice"), id,
+        title: "T", body: "B", closesAt: "2026-12-01T00:00:00Z", ...fee(),
+      });
+      expect(rp.status).toBe(400);
+      const re = await createEvent(deps, {
+        author: "brandon", auth: testCred("brandon"), id,
+        title: "T", description: "D", startsAt: "2026-12-01T18:00:00Z", ...fee(),
+      });
+      expect(re.status).toBe(400);
+      const rl = await createListing(deps, {
+        seller: "0x000000000000000000000000000000000000a11c",
+        sellerUsername: "alice", auth: testCred("alice"), id,
+        title: "T", description: "D", priceUsdCents: 100, goodsType: "digital", ...fee(),
+      });
+      expect(rl.status).toBe(400);
+    }
+  });
+
+  it("rejects a malformed listing id on status change", async () => {
+    const deps = makeDeps();
+    const r = await setListingStatus(deps, "nope!", {
+      sellerUsername: "alice", auth: testCred("alice"), status: "sold", ...fee(),
+    });
+    expect(r.status).toBe(400);
   });
 });

@@ -41,6 +41,7 @@ import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
 import { RequireSession, useSession } from "@/lib/session";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import {
   BYOK_CONSOLE_URL,
   ByokError,
@@ -1497,6 +1498,7 @@ function PublishPanel({
 }) {
   const { account, getTxSender } = useWallet();
   const { requireSession, signIn } = useSession();
+  const hcs = useHcsSubmit();
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -1681,13 +1683,25 @@ function PublishPanel({
       markPublished(target);
       // Record a referral if the user arrived via ?ref= (captured into
       // localStorage by RootProviders). Best-effort — never blocks publish.
+      // The new user signs the referral via their wallet (transparent on-chain).
       try {
         const referrer = localStorage.getItem("vs_referral");
         if (referrer && referrer !== target.toLowerCase()) {
-          await postJson("/api/townhall/referrals", {
-            referredUsername: target,
-            referrer,
+          const hcsTxId = await hcs.submit("forum", {
+            v: 1,
+            kind: "referral",
+            ts: new Date().toISOString(),
+            author: target.toLowerCase(),
+            referrer: referrer.toLowerCase(),
+            referred: target.toLowerCase(),
           });
+          if (hcsTxId) {
+            await postJson("/api/townhall/referrals", {
+              referredUsername: target,
+              referrer,
+              hcsTxId,
+            });
+          }
           localStorage.removeItem("vs_referral");
         }
       } catch {

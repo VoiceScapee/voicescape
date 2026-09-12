@@ -132,6 +132,58 @@ export async function clearConsumedDustFees(): Promise<void> {
   await getKvStore().clearPrefix("vs:feefx:");
 }
 
+/* ------------------------------------------------------------------ */
+/* User-signed HCS tx replay protection                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * In the user-signed architecture the HCS transaction id is the write
+ * credential: the server verifies (via mirror node) that the tx exists,
+ * succeeded, targeted the right topic, and was paid for by the caller.
+ * Without replay protection, a valid txId could be re-presented to
+ * perform a second write for free. Each HCS txId is therefore
+ * single-use: reserved atomically before verification, released on
+ * failure (the tx stays retryable), consumed permanently on success.
+ *
+ * Same store mechanics as the dust-fee registry above (atomic SET NX,
+ * TTL-bounded reservations).
+ */
+const HCS_TX_RESERVED_TTL_MS = 5 * 60 * 1000;
+const HCS_TX_CONSUMED_TTL_MS = 7 * 24 * 3600 * 1000;
+
+function hcsTxKey(txId: string): string {
+  return `vs:hcstx:${txId}`;
+}
+
+/**
+ * Atomically reserve an HCS tx id for the write being verified. Returns
+ * false when the tx id is already consumed OR already reserved by a
+ * concurrent in-flight verification — the caller must reject. Callers
+ * must releaseHcsTxId on verification failure or consumeHcsTxId on
+ * success.
+ */
+export async function reserveHcsTxId(txId: string): Promise<boolean> {
+  return getKvStore().setNx(hcsTxKey(txId), "reserved", HCS_TX_RESERVED_TTL_MS);
+}
+
+/** Release an in-flight reservation after a failed verification. */
+export async function releaseHcsTxId(txId: string): Promise<void> {
+  await getKvStore().del(hcsTxKey(txId));
+}
+
+/**
+ * Record an HCS tx id as spent. Call only AFTER the write verified OK.
+ * Converts the in-flight reservation into the permanent consumed record.
+ */
+export async function consumeHcsTxId(txId: string): Promise<void> {
+  await getKvStore().set(hcsTxKey(txId), "consumed", HCS_TX_CONSUMED_TTL_MS);
+}
+
+/** Test-only: empty the consumed HCS tx registry (and in-flight reservations). */
+export async function clearConsumedHcsTxIds(): Promise<void> {
+  await getKvStore().clearPrefix("vs:hcstx:");
+}
+
 /**
  * Pure evaluation: does this mirror-node transaction record show a
  * sufficient transfer to the treasury? When `expectedPayerId` is given, the

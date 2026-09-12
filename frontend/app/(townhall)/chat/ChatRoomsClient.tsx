@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getJson, postJson, type TownhallEvent } from "@/lib/townhall";
-import DustFeeGate from "@/components/townhall/DustFeeGate";
-import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 
 interface Room {
   id: string;
@@ -25,7 +25,7 @@ function slugify(title: string): string {
 
 export default function ChatRoomsClient() {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
-  const dust = useDustFee();
+  const hcs = useHcsSubmit();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -92,33 +92,49 @@ export default function ChatRoomsClient() {
       return;
     }
     let newRoomId: string | null = null;
-    const ok = await dust.execute(async (dustFeeTxId) => {
+    // Submit the chatroom-create message via the user's wallet, then notify
+    // the server (it verifies the HCS tx via mirror node).
+    const hcsTxId = await hcs.submit("chat", {
+      v: 1,
+      kind: "chatroom-create",
+      ts: new Date().toISOString(),
+      author: me,
+      id,
+      title: t,
+      description: d,
+    });
+    if (!hcsTxId) return; // User cancelled or error — phase shows the error
+    try {
       const r = await postJson<{ roomId: string }>("/api/townhall/chat", {
         author: me,
         id,
         title: t,
         description: d,
-        dustFeeTxId,
+        hcsTxId,
       });
       newRoomId = r.roomId;
-    });
-    if (ok && newRoomId) {
+    } catch (e) {
+      // Server verification failed — the HCS tx is still on-chain, but the
+      // server didn't accept it (e.g., content filter). Show the error.
+      setFormError(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    if (newRoomId) {
       setCreated(newRoomId);
       setTitle("");
       setDescription("");
       setShowForm(false);
       await loadRooms();
     }
-    // Failures (validation 400/409, fee 402) surface through DustFeeGate.
   };
 
-  const busy = dust.phase.kind === "working" || dust.phase.kind === "paying";
+  const busy = hcs.phase.kind === "submitting";
 
   return (
     <>
       <div className="th-page-head">
         <h1>💬 Live <span className="vs-gradient-text">Chat</span></h1>
-        <p>Real-time rooms over server-sent events. Messages cost the dust fee, same as forum posts.</p>
+        <p>Real-time rooms over server-sent events. You sign each message in your wallet — transparent and on-chain.</p>
       </div>
 
       {canWrite && !showForm && (
@@ -171,7 +187,7 @@ export default function ChatRoomsClient() {
               onClick={createRoom}
               disabled={busy || title.trim().length < 3}
             >
-              {busy ? "…" : "Create room"}
+              {busy ? "Sign in wallet…" : "Create room"}
             </button>
             <button
               type="button"
@@ -185,7 +201,9 @@ export default function ChatRoomsClient() {
               Cancel
             </button>
           </div>
-          <DustFeeGate flow={dust} actionLabel="room" />
+          {hcs.phase.kind === "error" && (
+            <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>
+          )}
         </div>
       )}
 

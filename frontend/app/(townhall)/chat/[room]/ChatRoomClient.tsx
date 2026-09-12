@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import DustFeeGate from "@/components/townhall/DustFeeGate";
 import ReportButton from "@/components/townhall/ReportButton";
 import { PresenceDot } from "@/components/townhall/Presence";
-import { useDustFee, useWriteGate } from "@/components/townhall/useTownhall";
+import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
 import { postJson, timeAgo, type ChatMessage } from "@/lib/townhall";
 
@@ -20,7 +20,7 @@ function isChatMessage(m: unknown): m is ChatMessage {
 
 export default function ChatRoomClient({ room }: { room: string }) {
   const { username: me, canWrite, isAuthenticated } = useWriteGate();
-  const dust = useDustFee();
+  const hcs = useHcsSubmit();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState("");
   const seenRef = useRef<Set<number>>(new Set());
@@ -47,25 +47,36 @@ export default function ChatRoomClient({ room }: { room: string }) {
 
   const send = async () => {
     const text = body.trim();
-    if (!text || !canWrite) return;
-    let sentSeq: number | null = null;
-    const ok = await dust.execute(async (dustFeeTxId) => {
-      const res = await postJson<{ seq: number }>(streamUrl.replace(/\/stream$/, ""), {
+    if (!text || !canWrite || !me) return;
+    // Submit the chat message via the user's wallet, then notify the server
+    // (it verifies the HCS tx via mirror node).
+    const hcsTxId = await hcs.submit("chat", {
+      v: 1,
+      kind: "chat",
+      ts: new Date().toISOString(),
+      author: me,
+      room,
+      body: text,
+    });
+    if (!hcsTxId) return; // User cancelled or error — phase shows the error
+    try {
+      await postJson(streamUrl.replace(/\/stream$/, ""), {
         author: me,
         body: text,
-        dustFeeTxId,
+        hcsTxId,
       });
-      sentSeq = res.seq;
-    });
-    if (ok) {
-      setBody("");
-      // Optimistic: show it now; the stream dedupes when the real copy arrives.
-      if (sentSeq != null && me) {
-        addMessages([
-          { seq: sentSeq, room, author: me, body: text, ts: new Date().toISOString() } as unknown as ChatMessage,
-        ]);
-      }
+    } catch (e) {
+      // Server verification failed — the HCS tx is still on-chain, but the
+      // server didn't accept it (e.g., content filter). Show the error.
+      console.error("Chat verification failed:", e);
+      return;
     }
+    setBody("");
+    // Optimistic: show it now with a temp seq; the stream dedupes when the real copy arrives.
+    const tempSeq = -Date.now();
+    addMessages([
+      { seq: tempSeq, room, author: me, body: text, ts: new Date().toISOString() } as unknown as ChatMessage,
+    ]);
   };
 
   return (
@@ -123,13 +134,15 @@ export default function ChatRoomClient({ room }: { room: string }) {
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
             onClick={send}
-            disabled={!body.trim() || !canWrite || dust.phase.kind === "working" || dust.phase.kind === "paying"}
+            disabled={!body.trim() || !canWrite || hcs.phase.kind === "submitting"}
           >
-            {dust.phase.kind === "working" || dust.phase.kind === "paying" ? "…" : "Send"}
+            {hcs.phase.kind === "submitting" ? "…" : "Send"}
           </button>
         </div>
         {!canWrite && <p className="th-muted" style={{ marginTop: 8 }}>{isAuthenticated ? "You need a page username to chat." : "Sign in with your wallet to chat."}</p>}
-        <DustFeeGate flow={dust} actionLabel="message" />
+        {hcs.phase.kind === "error" && (
+          <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>
+        )}
       </div>
     </>
   );

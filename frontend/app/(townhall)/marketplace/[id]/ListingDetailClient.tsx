@@ -6,6 +6,7 @@ import { ReviewNote, SellerLine, formatUsd } from "@/components/townhall/Listing
 import { useWallet } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
+import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
@@ -36,6 +37,7 @@ function sellerToEvm(addr: string): string {
 export default function ListingDetailClient({ id }: { id: string }) {
   const { account, getTxSender } = useWallet();
   const { username: me, canWrite } = useWriteGate();
+  const hcs = useHcsSubmit();
   let viewerAddress: string | undefined;
   try {
     viewerAddress = useSession().session?.address ?? undefined;
@@ -64,9 +66,29 @@ export default function ListingDetailClient({ id }: { id: string }) {
     setStatusBusy(true);
     setStatusError(null);
     try {
+      // Submit the status-update message via the user's wallet (same id,
+      // latest-per-id wins), then notify the server (it verifies the HCS
+      // tx via mirror node).
+      const hcsTxId = await hcs.submit("market", {
+        v: 1,
+        kind: "listing",
+        ts: new Date().toISOString(),
+        author: me,
+        id: listing.id,
+        seller: listing.seller,
+        sellerUsername: listing.sellerUsername ?? me,
+        title: listing.title,
+        description: listing.description,
+        priceUsdCents: listing.priceUsdCents,
+        goodsType: listing.goodsType,
+        ipfsHash: listing.ipfsHash ?? null,
+        status,
+      });
+      if (!hcsTxId) return; // User cancelled or error — phase shows the error
       await postJson(`/api/townhall/listings/${encodeURIComponent(listing.id)}/status`, {
         sellerUsername: me,
         status,
+        hcsTxId,
       });
       load();
     } catch (e) {
@@ -280,6 +302,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
                 </p>
               )}
               {statusError && <p className="th-error" style={{ marginTop: 8 }}>{statusError}</p>}
+              {hcs.phase.kind === "error" && <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>}
             </div>
           )}
 

@@ -22,6 +22,7 @@ interface MirrorTransaction {
   result: string;
   entity_id?: string; // Topic ID for CONSENSUSSUBMITMESSAGE
   payer_account_id?: string;
+  consensus_timestamp?: string;
   transfers?: Array<{ account: string; amount: number }>;
 }
 
@@ -29,11 +30,25 @@ interface MirrorTransactionResponse {
   transactions?: MirrorTransaction[];
 }
 
+interface MirrorTopicMessage {
+  consensus_timestamp: string;
+  message: string; // base64-encoded
+  sequence_number: number;
+}
+
+interface MirrorTopicMessagesResponse {
+  messages?: MirrorTopicMessage[];
+}
+
 export interface VerifiedHcsTx {
   /** The HCS topic ID the message was submitted to. */
   topicId: string;
   /** The payer's Hedera account ID (0.0.x). */
   payer: string;
+  /** The decoded HCS message content (JSON string). */
+  message: string;
+  /** The HCS sequence number of the message. */
+  sequenceNumber: number;
 }
 
 /**
@@ -99,10 +114,31 @@ export async function verifyHcsTransaction(
     if (!payer) return null;
     if (payer !== expectedPayer) return null;
 
-    return {
-      topicId: tx.entity_id,
-      payer,
-    };
+    // Fetch the actual on-chain message content for content-bound verification.
+    // The transaction's consensus_timestamp lets us query the exact message.
+    const consensusTimestamp = tx.consensus_timestamp;
+    if (!consensusTimestamp) return null;
+
+    try {
+      const msgUrl = `${mirrorBaseUrl()}/api/v1/topics/${expectedTopicId}/messages?timestamp=${consensusTimestamp}`;
+      const msgRes = await fetch(msgUrl);
+      if (!msgRes.ok) return null;
+      const msgData = (await msgRes.json()) as MirrorTopicMessagesResponse;
+      const msg = msgData.messages?.[0];
+      if (!msg || !msg.message) return null;
+
+      // Decode the base64 message content
+      const messageJson = Buffer.from(msg.message, "base64").toString("utf-8");
+
+      return {
+        topicId: tx.entity_id,
+        payer,
+        message: messageJson,
+        sequenceNumber: msg.sequence_number,
+      };
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }

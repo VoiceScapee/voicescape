@@ -101,10 +101,10 @@ describe("POST /api/pin quota", () => {
     try {
       const mkAudioReq = () => {
         const form = new FormData();
-        form.append(
-          "file",
-          new File([new Uint8Array(1024)], "track.mp3", { type: "audio/mpeg" }),
-        );
+        // Realistic MP3 bytes: ID3 header so the magic-byte screen passes.
+        const mp3 = new Uint8Array(1024);
+        mp3.set([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+        form.append("file", new File([mp3], "track.mp3", { type: "audio/mpeg" }));
         const headers: Record<string, string> = {
           [SESSION_HEADER]: GOOD_TOKEN,
         };

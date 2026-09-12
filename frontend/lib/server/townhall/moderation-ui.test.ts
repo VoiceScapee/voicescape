@@ -57,7 +57,15 @@ function makeDeps(): TownhallDeps {
   const mirror: MirrorPort = {
     verifyDustFee: async () => ({ ok: true, reason: "ok", receivedTinybars: 1000 }),
     feeInfo: () => ({ dustFeeTinybars: 1000, treasury: "0.0.999" }),
-    resolveAccountId: async (address: string) => (/^0\.0\.\d+$/.test(address) ? address : null),
+    resolveAccountId: async (address: string) => {
+      if (/^0\.0\.\d+$/.test(address)) return address;
+      const m = /^0x0*([0-9a-f]+)$/i.exec(address);
+      if (m) {
+        const num = parseInt(m[1].slice(-6), 16) % 1000000;
+        return `0.0.${num}`;
+      }
+      return null;
+    },
   };
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() in OWNERS,
@@ -85,7 +93,22 @@ const MOD = { username: "brandon", auth: testCred("brandon") };
 let feeCounter = 0;
 function fee() {
   feeCounter += 1;
-  return { dustFeeTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
+  return { hcsTxId: `0.0.123@1694000000.${String(feeCounter).padStart(9, "0")}` };
+}
+
+const FORUM = "0.0.7001";
+const CHAT = "0.0.7002";
+const MARKET = "0.0.7005";
+
+/** Seed a message to a topic (simulates the user's wallet submit). */
+function seedMsg(deps: TownhallDeps, topic: string, contents: object): number {
+  return (deps.hcs as MemoryHcsClient).seed(topic, contents);
+}
+
+let tsCounter = 0;
+function ts(): string {
+  tsCounter += 1;
+  return new Date(Date.now() + tsCounter).toISOString();
 }
 
 beforeEach(async () => {
@@ -152,8 +175,14 @@ describe("profile reports", () => {
       targetKind: "profile",
       targetId: "alice",
       reason: "this page is impersonating someone famous",
+      ...fee(),
     });
     expect(r.status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "report", ts: ts(), author: "bob",
+      targetKind: "profile", targetSeq: null, targetId: "alice",
+      reason: "this page is impersonating someone famous", reporter: "bob",
+    });
   });
 
   it("normalizes the @ prefix and case", async () => {
@@ -163,8 +192,14 @@ describe("profile reports", () => {
       targetKind: "profile",
       targetId: "@Alice",
       reason: "this page is impersonating someone famous",
+      ...fee(),
     });
     expect(r.status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "report", ts: ts(), author: "bob",
+      targetKind: "profile", targetSeq: null, targetId: "alice",
+      reason: "this page is impersonating someone famous", reporter: "bob",
+    });
   });
 
   it("404s for an unregistered username", async () => {
@@ -215,10 +250,18 @@ describe("listWarnings", () => {
 
   it("returns active warnings newest-first and drops lifted ones", async () => {
     const deps = makeDeps();
-    const w1 = await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind" });
+    const w1 = await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind", ...fee() });
     expect(w1.status).toBe(201);
-    const w2 = await warnUser(deps, { ...MOD, wallet: OWNERS.bob, reason: "second person also misbehaving" });
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, please be kind", warnedBy: "brandon",
+    });
+    const w2 = await warnUser(deps, { ...MOD, wallet: OWNERS.bob, reason: "second person also misbehaving", ...fee() });
     expect(w2.status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.bob, username: null, reason: "second person also misbehaving", warnedBy: "brandon",
+    });
 
     const listed = await listWarnings(deps, { ...MOD });
     expect(listed.status).toBe(200);
@@ -229,8 +272,12 @@ describe("listWarnings", () => {
     expect(wallets).toEqual([OWNERS.alice.toLowerCase(), OWNERS.bob.toLowerCase()].sort());
 
     // Lift alice's warning — it leaves the active list.
-    const lift = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice });
+    const lift = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice, ...fee() });
     expect(lift.status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "unban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, unbannedBy: "brandon",
+    });
     const listed2 = await listWarnings(deps, { ...MOD });
     expect((listed2.json as { warnings: unknown[] }).warnings).toHaveLength(1);
 
@@ -240,10 +287,19 @@ describe("listWarnings", () => {
 
   it("a superseding timeout removes the warning from the active list", async () => {
     const deps = makeDeps();
-    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind" })).status).toBe(201);
+    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind", ...fee() })).status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, please be kind", warnedBy: "brandon",
+    });
     expect(
-      (await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "kept spamming after the warning", durationMinutes: 30 })).status,
+      (await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "kept spamming after the warning", durationMinutes: 30, expiresAt: Date.now() + 30 * 60000, ...fee() })).status,
     ).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "kept spamming after the warning",
+      timedOutBy: "brandon", durationMinutes: 30, expiresAt: Date.now() + 1800000,
+    });
     const listed = await listWarnings(deps, { ...MOD });
     expect((listed.json as { warnings: unknown[] }).warnings).toHaveLength(0);
   });
@@ -267,14 +323,23 @@ describe("getMyRestriction", () => {
 
   it("reports warned then timed-out states for the signing wallet", async () => {
     const deps = makeDeps();
-    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind" })).status).toBe(201);
+    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind", ...fee() })).status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, please be kind", warnedBy: "brandon",
+    });
     const w = await getMyRestriction(deps, { auth: testCred("alice") });
     expect((w.json as { status: string; reason: string }).status).toBe("warned");
     expect((w.json as { reason: string }).reason).toBe("first offense, please be kind");
 
     expect(
-      (await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "kept spamming after the warning", durationMinutes: 45 })).status,
+      (await timeoutUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "kept spamming after the warning", durationMinutes: 45, expiresAt: Date.now() + 45 * 60000, ...fee() })).status,
     ).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "timeout", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "kept spamming after the warning",
+      timedOutBy: "brandon", durationMinutes: 45, expiresAt: Date.now() + 2700000,
+    });
     const t = await getMyRestriction(deps, { auth: testCred("alice") });
     const tj = t.json as { status: string; remainingMs: number; expiresAt: number };
     expect(tj.status).toBe("timed-out");
@@ -284,7 +349,11 @@ describe("getMyRestriction", () => {
 
   it("never reports another wallet's state", async () => {
     const deps = makeDeps();
-    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind" })).status).toBe(201);
+    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind", ...fee() })).status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, please be kind", warnedBy: "brandon",
+    });
     const r = await getMyRestriction(deps, { auth: testCred("bob") });
     expect((r.json as { status: string }).status).toBe("clean");
   });
@@ -302,8 +371,10 @@ describe("resolveReportTarget", () => {
 
   it("resolves a post author to username + wallet", async () => {
     const deps = makeDeps();
-    const p = await createPost(deps, { author: "alice", auth: testCred("alice"), body: "hello world", ...fee() });
-    const seq = (p.json as { seq: number }).seq;
+    const seq = seedMsg(deps, FORUM, {
+      v: 1, kind: "post", ts: ts(), author: "alice",
+      board: "general", body: "hello world",
+    });
     const r = await resolveReportTarget(deps, { ...MOD, targetKind: "post", targetSeq: seq });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ username: "alice", wallet: OWNERS.alice.toLowerCase() });
@@ -311,8 +382,10 @@ describe("resolveReportTarget", () => {
 
   it("resolves a chat message author to username + wallet", async () => {
     const deps = makeDeps();
-    const c = await postChat(deps, "lobby", { author: "bob", auth: testCred("bob"), body: "hey there", ...fee() });
-    const seq = (c.json as { seq: number }).seq;
+    const seq = seedMsg(deps, CHAT, {
+      v: 1, kind: "chat", ts: ts(), author: "bob",
+      room: "lobby", body: "hey there",
+    });
     const r = await resolveReportTarget(deps, { ...MOD, targetKind: "chat", targetSeq: seq });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ username: "bob", wallet: OWNERS.bob.toLowerCase() });
@@ -320,17 +393,15 @@ describe("resolveReportTarget", () => {
 
   it("resolves a listing seller to username + wallet", async () => {
     const deps = makeDeps();
-    const l = await createListing(deps, {
-      seller: OWNERS.alice,
-      sellerUsername: "alice",
-      auth: testCred("alice"),
-      title: "cool thing",
-      description: "a very cool thing for sale",
-      priceUsdCents: 500,
-      goodsType: "digital",
-      ...fee(),
+    const id = "listing-resolve-1";
+    seedMsg(deps, MARKET, {
+      v: 1, kind: "listing", ts: ts(), author: "alice",
+      id, title: "cool thing", description: "a very cool thing for sale",
+      priceUsdCents: 500, goodsType: "digital",
+      seller: OWNERS.alice, sellerUsername: "alice",
+      status: "active", buyer: null, saleTxId: null, statusChangedAt: null,
+      statusChangedBy: null, media: [], contact: null,
     });
-    const id = (l.json as { id: string }).id;
     const r = await resolveReportTarget(deps, { ...MOD, targetKind: "listing", targetId: id });
     expect(r.status).toBe(200);
     expect(r.json).toMatchObject({ username: "alice", wallet: OWNERS.alice.toLowerCase() });
@@ -359,9 +430,17 @@ describe("resolveReportTarget", () => {
 describe("unbanUser lifts warnings", () => {
   it("clears a warned wallet back to clean", async () => {
     const deps = makeDeps();
-    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind" })).status).toBe(201);
-    const lift = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice });
+    expect((await warnUser(deps, { ...MOD, wallet: OWNERS.alice, reason: "first offense, please be kind", ...fee() })).status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "warn", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, username: null, reason: "first offense, please be kind", warnedBy: "brandon",
+    });
+    const lift = await unbanUser(deps, { ...MOD, wallet: OWNERS.alice, ...fee() });
     expect(lift.status).toBe(201);
+    seedMsg(deps, FORUM, {
+      v: 1, kind: "unban", ts: ts(), author: "brandon",
+      wallet: OWNERS.alice, unbannedBy: "brandon",
+    });
     const mine = await getMyRestriction(deps, { auth: testCred("alice") });
     expect((mine.json as { status: string }).status).toBe("clean");
   });

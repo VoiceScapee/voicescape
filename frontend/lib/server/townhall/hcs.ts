@@ -130,10 +130,14 @@ export class MemoryHcsClient implements HcsPort {
       return this.verifiedTxs.get(key)!;
     }
     // Accept well-formed txIds for the expected payer (test convenience).
+    // For content-bound verification, return an empty message — tests that
+    // need content matching should use __verifyTx with a message.
     if (/^0\.0\.\d+[@-]\d+[.-]\d+$/.test(txId)) {
       const verified: VerifiedHcsTx = {
         topicId: expectedTopicId,
         payer: expectedPayer,
+        message: "{}",
+        sequenceNumber: 0,
       };
       this.verifiedTxs.set(key, verified);
       return verified;
@@ -141,9 +145,14 @@ export class MemoryHcsClient implements HcsPort {
     return null;
   }
 
-  /** Test helper: pre-register a verified tx. */
-  __verifyTx(txId: string, topicId: string, payer: string): void {
-    this.verifiedTxs.set(`${txId}:${topicId}:${payer}`, { topicId, payer });
+  /** Test helper: pre-register a verified tx with optional message content. */
+  __verifyTx(txId: string, topicId: string, payer: string, message?: object): void {
+    this.verifiedTxs.set(`${txId}:${topicId}:${payer}`, {
+      topicId,
+      payer,
+      message: message ? JSON.stringify(message) : "{}",
+      sequenceNumber: 0,
+    });
   }
 
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
