@@ -28,13 +28,13 @@ export const RTL_LANGS: Lang[] = ["ar"];
 const en = {
   // Navbar
   "nav.townHall": "Town Hall",
-  "nav.builder": "Builder",
+  "nav.builder": "Create your page",
 
   // Language selector
   "lang.label": "Language",
 
   // Wallet sign-in button
-  "wallet.signInWithWallet": "Sign in with wallet",
+  "wallet.signInWithWallet": "Connect",
   "wallet.signIn": "Sign in",
   "wallet.signOut": "Sign out",
   "wallet.disconnect": "Disconnect",
@@ -115,7 +115,7 @@ const en = {
   "landing.step3b": "Connect your wallet, claim your username, pin to IPFS, and register on Hedera.",
   "landing.step4t": "Get tipped",
   "landing.step4b": "Share your link: /your-name. Tips split 98/2 automatically.",
-  "landing.openBuilder": "Open the builder",
+  "landing.openBuilder": "Create your free page",
   "landing.footerTagline": "Powered by Hedera · pages on IPFS, identity on-chain, vibes on you",
 
   // Dust fee gate (town hall anti-spam fee)
