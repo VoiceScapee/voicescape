@@ -67,6 +67,36 @@ export default function LandingPage() {
               Explore Blockpages
             </Link>
           </div>
+          <div style={{ marginTop: 20 }}>
+            <a
+              href="https://hedera.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="vs-glass"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "8px 18px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--vs-muted)",
+                textDecoration: "none",
+              }}
+            >
+              <span
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  background: "var(--vs-cyan)",
+                  boxShadow: "0 0 8px var(--vs-cyan)",
+                }}
+              />
+              Built on Hedera Mainnet
+            </a>
+          </div>
         </section>
 
         {/* How it works — the 4-step value prop, right up top */}
@@ -135,6 +165,37 @@ export default function LandingPage() {
                     <T k={f.bodyKey} />
                   </p>
                 </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Hedera stack — positioning strip */}
+        <section className="vs-section" style={{ paddingTop: 0 }}>
+          <p className="vs-label" style={{ textAlign: "center" }}><T k="landing.stackLabel" /></p>
+          <h2 style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", margin: "12px 0 28px", textAlign: "center" }}>
+            <T k="landing.stackTitle" />
+          </h2>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
+            {(
+              [
+                { t: "landing.stack1t", b: "landing.stack1b" },
+                { t: "landing.stack2t", b: "landing.stack2b" },
+                { t: "landing.stack3t", b: "landing.stack3b" },
+                { t: "landing.stack4t", b: "landing.stack4b" },
+              ] as { t: I18nKey; b: I18nKey }[]
+            ).map((s) => (
+              <div
+                key={s.t}
+                className="vs-glass"
+                style={{ padding: "18px 20px", flex: "1 1 200px", maxWidth: 300 }}
+              >
+                <h3 className="vs-mono" style={{ margin: "0 0 8px", fontSize: 14, color: "var(--vs-cyan)" }}>
+                  <T k={s.t} />
+                </h3>
+                <p style={{ margin: 0, color: "var(--vs-muted)", lineHeight: 1.6, fontSize: 14 }}>
+                  <T k={s.b} />
+                </p>
               </div>
             ))}
           </div>

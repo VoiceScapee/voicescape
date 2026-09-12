@@ -118,6 +118,18 @@ const en = {
   "landing.openBuilder": "Create your free page",
   "landing.footerTagline": "Powered by Hedera · pages on IPFS, identity on-chain, vibes on you",
 
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "Under the hood",
+  "landing.stackTitle": "Built on Hedera",
+  "landing.stack1t": "Hedera Mainnet",
+  "landing.stack1b": "Live on mainnet — real HBAR, real transactions, no testnet.",
+  "landing.stack2t": "HCS Town Hall",
+  "landing.stack2b": "Forum posts are anchored on the Hedera Consensus Service.",
+  "landing.stack3t": "Smart Contract Tips",
+  "landing.stack3b": "Every tip splits 98/2 on-chain. No middleman, no trust needed.",
+  "landing.stack4t": "Fast & Cheap",
+  "landing.stack4b": "~2 second finality. Fees around $0.0001.",
+
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Paying the dust fee…",
   "dust.payingBody": "Approve the HBAR transfer in your wallet, then your post goes through.",
@@ -226,6 +238,18 @@ const es: Record<I18nKey, string> = {
   "landing.openBuilder": "Abrir el constructor",
   "landing.footerTagline": "Con la tecnología de Hedera · páginas en IPFS, identidad en la cadena, la vibra la pones tú",
 
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "Bajo el capó",
+  "landing.stackTitle": "Construido sobre Hedera",
+  "landing.stack1t": "Hedera Mainnet",
+  "landing.stack1b": "En mainnet — HBAR real, transacciones reales, sin testnet.",
+  "landing.stack2t": "Town Hall en HCS",
+  "landing.stack2b": "Las publicaciones del foro están ancladas en el Hedera Consensus Service.",
+  "landing.stack3t": "Propinas con contrato inteligente",
+  "landing.stack3b": "Cada propina se divide 98/2 en la cadena. Sin intermediarios.",
+  "landing.stack4t": "Rápido y barato",
+  "landing.stack4b": "Finalidad en ~2 segundos. Comisiones de alrededor de $0.0001.",
+
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Pagando la comisión anti-spam…",
   "dust.payingBody": "Aprueba la transferencia de HBAR en tu billetera y tu publicación se enviará.",
@@ -330,6 +354,18 @@ const zh: Record<I18nKey, string> = {
   "landing.step4b": "分享您的链接：/您的名字。打赏自动按 98/2 分成。",
   "landing.openBuilder": "打开构建器",
   "landing.footerTagline": "由 Hedera 驱动 · 页面存于 IPFS，身份在于链上，风格由您定义",
+
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "技术内幕",
+  "landing.stackTitle": "构建于 Hedera 之上",
+  "landing.stack1t": "Hedera 主网",
+  "landing.stack1b": "运行于主网——真实的 HBAR，真实的交易，无测试网。",
+  "landing.stack2t": "HCS 市政厅",
+  "landing.stack2b": "论坛帖子锚定在 Hedera 共识服务 (HCS) 上。",
+  "landing.stack3t": "智能合约打赏",
+  "landing.stack3b": "每笔打赏在链上按 98/2 自动分配。无需中间人。",
+  "landing.stack4t": "快速且低廉",
+  "landing.stack4b": "约 2 秒确认。费用约为 $0.0001。",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "正在支付防垃圾费用…",
@@ -436,6 +472,18 @@ const hi: Record<I18nKey, string> = {
   "landing.openBuilder": "बिल्डर खोलें",
   "landing.footerTagline": "Hedera द्वारा संचालित · पेज IPFS पर, पहचान ऑन-चेन, अंदाज़ आपका",
 
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "अंदर की तकनीक",
+  "landing.stackTitle": "Hedera पर निर्मित",
+  "landing.stack1t": "Hedera Mainnet",
+  "landing.stack1b": "मेननेट पर लाइव — असली HBAR, असली लेनदेन, कोई टेस्टनेट नहीं।",
+  "landing.stack2t": "HCS टाउन हॉल",
+  "landing.stack2b": "फोरम पोस्ट Hedera Consensus Service पर अंकित हैं।",
+  "landing.stack3t": "स्मार्ट कॉन्ट्रैक्ट टिप्स",
+  "landing.stack3b": "हर टिप ऑन-चेन 98/2 में बंटती है। कोई बिचौलिया नहीं।",
+  "landing.stack4t": "तेज़ और सस्ता",
+  "landing.stack4b": "~2 सेकंड में फाइनलिटी। फीस लगभग $0.0001।",
+
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "एंटी-स्पैम फीस का भुगतान हो रहा है…",
   "dust.payingBody": "अपने वॉलेट में HBAR ट्रांसफर अप्रूव करें, फिर आपकी पोस्ट चली जाएगी।",
@@ -540,6 +588,18 @@ const ar: Record<I18nKey, string> = {
   "landing.step4b": "شارك رابطك: /اسمك. تُقسَّم الإكراميات 98/2 تلقائيًا.",
   "landing.openBuilder": "افتح البنّاء",
   "landing.footerTagline": "مدعوم بتقنية Hedera · الصفحات على IPFS، والهوية على السلسلة، والأجواء من عندك",
+
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "تحت الغطاء",
+  "landing.stackTitle": "مبني على Hedera",
+  "landing.stack1t": "شبكة Hedera الرئيسية",
+  "landing.stack1b": "يعمل على الشبكة الرئيسية — HBAR حقيقي ومعاملات حقيقية، بدون شبكة اختبار.",
+  "landing.stack2t": "منتدى HCS",
+  "landing.stack2b": "منشورات المنتدى مثبتة على خدمة Hedera Consensus Service.",
+  "landing.stack3t": "إكراميات بالعقود الذكية",
+  "landing.stack3b": "كل إكرامية تُقسّم 98/2 على السلسلة. بدون وسيط.",
+  "landing.stack4t": "سريع ورخيص",
+  "landing.stack4b": "نهائية خلال ثانيتين تقريبًا. رسوم حوالي $0.0001.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "جارٍ دفع رسوم مكافحة السبام…",
@@ -646,6 +706,18 @@ const pt: Record<I18nKey, string> = {
   "landing.openBuilder": "Abrir o construtor",
   "landing.footerTagline": "Com tecnologia Hedera · páginas no IPFS, identidade on-chain, a vibe é com você",
 
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "Nos bastidores",
+  "landing.stackTitle": "Construído na Hedera",
+  "landing.stack1t": "Hedera Mainnet",
+  "landing.stack1b": "Na mainnet — HBAR real, transações reais, sem testnet.",
+  "landing.stack2t": "Town Hall em HCS",
+  "landing.stack2b": "Posts do fórum ancorados no Hedera Consensus Service.",
+  "landing.stack3t": "Gorjetas via contrato",
+  "landing.stack3b": "Cada gorjeta é dividida 98/2 on-chain. Sem intermediários.",
+  "landing.stack4t": "Rápido e barato",
+  "landing.stack4b": "Finalidade em ~2 segundos. Taxas em torno de $0.0001.",
+
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Pagando a taxa anti-spam…",
   "dust.payingBody": "Aprove a transferência de HBAR na sua carteira e sua publicação será enviada.",
@@ -751,6 +823,18 @@ const fr: Record<I18nKey, string> = {
   "landing.step4b": "Partagez votre lien : /votre-nom. Les pourboires se partagent 98/2 automatiquement.",
   "landing.openBuilder": "Ouvrir le constructeur",
   "landing.footerTagline": "Propulsé par Hedera · pages sur IPFS, identité on-chain, l'ambiance c'est vous",
+
+  // Landing page — Hedera stack strip
+  "landing.stackLabel": "Sous le capot",
+  "landing.stackTitle": "Construit sur Hedera",
+  "landing.stack1t": "Hedera Mainnet",
+  "landing.stack1b": "Sur le mainnet — des HBAR réels, des transactions réelles, pas de testnet.",
+  "landing.stack2t": "Town Hall HCS",
+  "landing.stack2b": "Les posts du forum sont ancrés sur le Hedera Consensus Service.",
+  "landing.stack3t": "Pourboires via contrat",
+  "landing.stack3b": "Chaque pourboire est partagé 98/2 on-chain. Sans intermédiaire.",
+  "landing.stack4t": "Rapide et pas cher",
+  "landing.stack4b": "Finalité en ~2 secondes. Frais d'environ $0,0001.",
 
   // Dust fee gate (town hall anti-spam fee)
   "dust.paying": "Paiement des frais anti-spam…",
