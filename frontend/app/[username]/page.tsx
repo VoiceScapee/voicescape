@@ -229,9 +229,17 @@ function TipBox({
               aria-label="Custom tip amount in USD"
             />
 
-            <div className="pv-pay-price-note" aria-live="polite" style={{ textAlign: "center", marginBottom: 14 }}>
+            <div className="pv-pay-price-note" aria-live="polite" style={{ textAlign: "center", marginBottom: 8 }}>
               You send {railDisplay}
             </div>
+
+            {hbarPrice && usdValid && (
+              <div style={{ fontSize: 12, color: "var(--vs-muted)", textAlign: "center", marginBottom: 14, lineHeight: 1.6 }}>
+                <div>Creator gets ≈ {((usdNum / hbarPrice) * 0.98).toFixed(4)} HBAR (98%)</div>
+                <div>Treasury gets ≈ {((usdNum / hbarPrice) * 0.02).toFixed(4)} HBAR (2%)</div>
+                <div>Network fee ≈ 0.08 HBAR (paid to Hedera, not Voicescape)</div>
+              </div>
+            )}
 
             <button type="button" className="pv-tip-btn" onClick={tip} disabled={busy || verifying || !hbarPrice}>
               <IconTip size={20} />
