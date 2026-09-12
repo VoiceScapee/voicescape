@@ -17,6 +17,33 @@ export interface HcsSubmitResult {
   transactionId: string;
 }
 
+/**
+ * Max HCS message size we will submit. A single HCS chunk carries 1024
+ * bytes; the SDK auto-chunks larger messages into multiple transactions,
+ * which our server never reassembles. Cap at 900 bytes client-side —
+ * BEFORE the user signs and pays — so oversized messages fail fast with a
+ * clear error instead of burning real fees on a message that can never be
+ * accepted.
+ */
+export const MAX_HCS_MESSAGE_BYTES = 900;
+
+/**
+ * Serialize an HCS message and enforce the single-chunk size budget.
+ * Throws with a user-friendly message when the payload is too large —
+ * call BEFORE the user signs so they never pay fees for a message that
+ * can't be accepted.
+ */
+export function assertHcsMessageFits(message: object): string {
+  const messageJson = JSON.stringify(message);
+  const messageBytes = new TextEncoder().encode(messageJson).length;
+  if (messageBytes > MAX_HCS_MESSAGE_BYTES) {
+    throw new Error(
+      `Message is too long (${messageBytes} bytes). HCS messages are capped at ${MAX_HCS_MESSAGE_BYTES} bytes — please shorten your message and try again.`,
+    );
+  }
+  return messageJson;
+}
+
 interface WalletSigner {
   signAndExecuteTransaction(params: object): Promise<unknown>;
   accountId: string;
@@ -53,9 +80,12 @@ export async function submitHcsViaWallet(
 
   try {
     const accountId = AccountId.fromString(signer.accountId);
+    // Fail fast before the user signs and pays: oversized messages are
+    // auto-chunked by the SDK, which our server never reassembles.
+    const messageJson = assertHcsMessageFits(message);
     const tx = new TopicMessageSubmitTransaction()
       .setTopicId(TopicId.fromString(topicId))
-      .setMessage(JSON.stringify(message));
+      .setMessage(messageJson);
 
     // Freeze with the public client so the wallet can sign (HIP-820).
     tx.setTransactionId(TransactionId.generate(accountId));

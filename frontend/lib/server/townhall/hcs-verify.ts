@@ -34,11 +34,20 @@ interface MirrorTopicMessage {
   consensus_timestamp: string;
   message: string; // base64-encoded
   sequence_number: number;
+  // Present when the message is part of a multi-chunk submission.
+  chunk_info?: { number: number; total: number };
 }
 
 interface MirrorTopicMessagesResponse {
   messages?: MirrorTopicMessage[];
 }
+
+/**
+ * Hard HCS single-chunk limit. Messages larger than this are auto-chunked
+ * by the SDK into multiple transactions, which we do not reassemble.
+ * Clients enforce a smaller (~900-byte) cap before the user signs.
+ */
+const MAX_HCS_SINGLE_CHUNK_BYTES = 1024;
 
 export interface VerifiedHcsTx {
   /** The HCS topic ID the message was submitted to. */
@@ -127,8 +136,20 @@ export async function verifyHcsTransaction(
       const msg = msgData.messages?.[0];
       if (!msg || !msg.message) return null;
 
+      // Reject chunked messages: messages over the 1024-byte single-chunk
+      // limit are auto-chunked by the SDK into multiple transactions, which
+      // we never reassemble. Accepting them would drop user-paid messages
+      // on JSON.parse downstream.
+      if (msg.chunk_info && (msg.chunk_info.total ?? 1) > 1) return null;
+
       // Decode the base64 message content
       const messageJson = Buffer.from(msg.message, "base64").toString("utf-8");
+
+      // Reject oversized single-chunk messages outright (belt-and-braces:
+      // clients enforce a ~900-byte cap before the user signs and pays).
+      if (Buffer.byteLength(messageJson, "utf-8") > MAX_HCS_SINGLE_CHUNK_BYTES) {
+        return null;
+      }
 
       return {
         topicId: tx.entity_id,

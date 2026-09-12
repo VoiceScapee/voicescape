@@ -40,6 +40,14 @@ import { checkContent } from "../townhall/content-filter";
 /** Max HBAR per single agent operation — prevents accidents, not a spending cap. */
 export const MAX_HBAR_PER_OP = 100;
 
+/**
+ * Max HCS message size the executor will build. A single HCS chunk carries
+ * 1024 bytes; larger messages are auto-chunked by the SDK into multiple
+ * transactions, which our server never reassembles. Fail before the user
+ * signs so they never pay fees for a message that can't be accepted.
+ */
+export const MAX_HCS_MESSAGE_BYTES = 900;
+
 /** Rate limit: 10 execute requests per wallet per hour. */
 export const EXECUTE_RATE_LIMIT = 10;
 export const EXECUTE_RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -220,16 +228,20 @@ export function buildPostTransaction(
   ctx: BuildContext,
 ): BuiltTransaction {
   if (!ctx.topicId) throw new Error("topic id is required for posts");
+  const postJson = JSON.stringify({
+    kind: "agent-post",
+    destination: op.destination,
+    message: op.message,
+    timestamp: new Date().toISOString(),
+  });
+  if (new TextEncoder().encode(postJson).length > MAX_HCS_MESSAGE_BYTES) {
+    throw new Error(
+      `Post is too long for a single HCS message (max ${MAX_HCS_MESSAGE_BYTES} bytes) — please shorten it.`,
+    );
+  }
   const tx = new TopicMessageSubmitTransaction()
     .setTopicId(TopicId.fromString(ctx.topicId))
-    .setMessage(
-      JSON.stringify({
-        kind: "agent-post",
-        destination: op.destination,
-        message: op.message,
-        timestamp: new Date().toISOString(),
-      }),
-    );
+    .setMessage(postJson);
   const { bytesB64, txId } = freezeForPayer(tx, ctx);
   return {
     unsignedTxBytes: bytesB64,

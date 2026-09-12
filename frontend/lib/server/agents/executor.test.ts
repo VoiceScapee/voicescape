@@ -167,6 +167,16 @@ describe("buildPostTransaction", () => {
       buildPostTransaction({ kind: "post", message: "hi", destination: "chat" }, TEST_CTX),
     ).toThrow(/topic/i);
   });
+
+  it("throws for an oversized message before building the tx", () => {
+    const tooLong = "x".repeat(1200);
+    expect(() =>
+      buildPostTransaction(
+        { kind: "post", message: tooLong, destination: "forum" },
+        { ...TEST_CTX, topicId: "0.0.11111" },
+      ),
+    ).toThrow(/too long.*shorten/i);
+  });
 });
 
 describe("buildBuyTransaction", () => {
