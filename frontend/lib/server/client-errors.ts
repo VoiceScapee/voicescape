@@ -256,12 +256,15 @@ export async function getErrorAggregates(
  * Kept here (server-only) so the list never ships to the browser.
  */
 export function founderWallets(env: Record<string, string | undefined> = process.env): string[] {
-  const list = (env.FOUNDER_WALLETS ?? "")
+  // Founder is always 0.0.10424063 (the treasury wallet).
+  const list = ["0.0.10424063"];
+  const extra = (env.FOUNDER_WALLETS ?? "")
     .split(",")
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
-  const treasury = (env.NEXT_PUBLIC_TREASURY_ADDRESS ?? "").trim().toLowerCase();
-  if (treasury && !list.includes(treasury)) list.push(treasury);
+  for (const w of extra) {
+    if (!list.includes(w)) list.push(w);
+  }
   return list;
 }
 
