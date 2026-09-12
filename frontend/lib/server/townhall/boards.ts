@@ -35,7 +35,7 @@ export const DEFAULT_BOARDS: BoardDef[] = [
   {
     id: "showcase",
     title: "Showcase",
-    description: "Show what you built — pages, agents, projects.",
+    description: "Share your own projects — your blockpage, your agent, your app, your art. Self-promotion welcome.",
     postOnly: false,
   },
   {
