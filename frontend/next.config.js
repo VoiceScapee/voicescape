@@ -1,5 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async redirects() {
+    return [
+      // /townhall is the natural URL users type/bookmark, but the actual
+      // Town Hall forum lives at /forum. Redirect instead of 404ing.
+      { source: "/townhall", destination: "/forum", permanent: true },
+      { source: "/townhall/", destination: "/forum", permanent: true },
+    ];
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals.push("hashconnect", "@hashgraph/sdk");
