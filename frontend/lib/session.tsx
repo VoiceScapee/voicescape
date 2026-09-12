@@ -99,6 +99,12 @@ export interface SessionContextValue {
   token: () => string | null;
   /** Throw SignInRequired unless authenticated. */
   requireSession: () => StoredSession;
+  /**
+   * Sign an arbitrary message with the connected wallet
+   * (Hedera: HashConnect signMessages · EVM: personal_sign).
+   * Used for one-off consents like the agent-link message.
+   */
+  signMessage: (message: string) => Promise<string>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -371,6 +377,20 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     return session;
   }, [session, status]);
 
+  const signMessage = useCallback(
+    async (message: string): Promise<string> => {
+      if (!account) throw new Error("Connect a wallet first.");
+      const info = adapterId ? ADAPTER_SIGNERS[adapterId] : null;
+      if (!info?.canSign) {
+        throw new Error("This wallet cannot sign messages.");
+      }
+      return isHederaAccountId(account)
+        ? signHederaMessage(message, account)
+        : signEvmMessage(message, account);
+    },
+    [account, adapterId, signEvmMessage, signHederaMessage],
+  );
+
   const value = useMemo<SessionContextValue>(
     () => ({
       status,
@@ -384,8 +404,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       authHeader,
       token,
       requireSession,
+      signMessage,
     }),
-    [status, session, signer, account, error, signIn, signOut, authHeader, token, requireSession],
+    [status, session, signer, account, error, signIn, signOut, authHeader, token, requireSession, signMessage],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
