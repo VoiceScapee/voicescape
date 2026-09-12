@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
+import { RecentActivity } from "@/components/RecentActivity";
 
 interface ExplorePage {
   username: string;
@@ -159,6 +160,8 @@ export default function ExplorePage() {
             voicescape.vercel.app/<strong>your-username</strong>
           </p>
         </div>
+
+        <RecentActivity />
       </div>
     </main>
   );
