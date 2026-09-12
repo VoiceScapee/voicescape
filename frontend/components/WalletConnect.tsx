@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { deriveUsername } from "@/lib/identity";
+import { NotificationBell } from "./NotificationBell";
 import {
   isHashPackInAppBrowser,
   useWallet,
@@ -114,6 +115,7 @@ export function WalletConnect() {
     const myUsername = deriveUsername(account);
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <NotificationBell address={account} />
         {myUsername && (
           <Link
             href={`/${myUsername}`}
