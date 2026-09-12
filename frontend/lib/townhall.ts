@@ -263,9 +263,12 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
   const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
   if (!accounts?.[0]) throw new Error("The wallet returned no accounts.");
   const wei = tinybars * 10_000_000_000n; // 1 tinybar = 10^10 wei
+  // Address-form guardrail: the treasury arrives from the server as a 0.0.x
+  // id, but eth_sendTransaction needs a 0x address. Canonicalize locally —
+  // a raw "0.0.x" `to` would be rejected by the wallet as an invalid address.
   const hash = (await eth.request({
     method: "eth_sendTransaction",
-    params: [{ from: accounts[0], to: treasury, value: `0x${wei.toString(16)}` }],
+    params: [{ from: accounts[0], to: accountToEvmAddress(treasury), value: `0x${wei.toString(16)}` }],
   })) as string;
   return hash;
 }

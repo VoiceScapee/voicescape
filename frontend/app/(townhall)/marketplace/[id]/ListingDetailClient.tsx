@@ -11,6 +11,7 @@ import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
 import { getActiveChain } from "@/lib/chains";
 import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/marketplace-verify";
+import { longZeroToAccountId } from "@/lib/session-message";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
 import {
@@ -31,6 +32,15 @@ type BuyPhase =
   | { kind: "done"; tx: string }
   | { kind: "submitted"; tx: string }
   | { kind: "error"; message: string };
+
+/** Normalize "0.0.x", long-zero 0x…, or alias 0x… to a canonical "0.0.x" id when
+ *  derivable locally. Alias-form addresses need the mirror node and return
+ *  null here — callers must treat null as "unknown", never as a match. */
+function canonicalAccountId(addr: string): string | null {
+  const t = addr.trim();
+  if (/^\d+\.\d+\.\d+$/.test(t)) return t;
+  return longZeroToAccountId(t);
+}
 
 /** Normalize a listing payout address to a 0x EVM address for the contract call. */
 function sellerToEvm(addr: string): string {
@@ -257,9 +267,13 @@ export default function ListingDetailClient({ id }: { id: string }) {
     }
   };
 
-  const buyerEvm = account ? accountToEvmAddress(account).toLowerCase() : null;
-  const isOwnListing =
-    !!buyerEvm && !!sellerAddress && buyerEvm === sellerToEvm(sellerAddress).toLowerCase();
+  // Own-listing check as canonical account IDs: the wallet account ("0.0.x",
+  // sometimes an alias 0x…) and the listing payout (long-zero 0x, alias 0x,
+  // or 0.0.x) can all name the same account, so raw string comparison would
+  // miss the cross-form case. Null (unresolvable alias) fails safe to false.
+  const buyerAcct = account ? canonicalAccountId(account) : null;
+  const sellerAcct = sellerAddress ? canonicalAccountId(sellerToEvm(sellerAddress)) : null;
+  const isOwnListing = !!buyerAcct && !!sellerAcct && buyerAcct === sellerAcct;
 
   return (
     <>
