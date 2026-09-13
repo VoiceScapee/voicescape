@@ -63,12 +63,31 @@ describe("listFundraisers", () => {
     );
     const deps = depsFor(store, {
       owners: { alice: OWNER_A, bob: OWNER_B },
-      raised: { [OWNER_A]: 25.5, [OWNER_B]: 120 },
+      raised: { [OWNER_A]: 25.5, [OWNER_B]: 80 },
     });
     const list = await listFundraisers(deps);
     expect(list.map((f) => f.username)).toEqual(["bob", "alice"]);
-    expect(list[0]).toMatchObject({ title: "bob fund", targetHbar: 100, raisedHbar: 120, owner: OWNER_B });
+    expect(list[0]).toMatchObject({ title: "bob fund", targetHbar: 100, raisedHbar: 80, owner: OWNER_B });
     expect(list[1]).toMatchObject({ raisedHbar: 25.5, owner: OWNER_A });
+  });
+
+  it("completed fundraisers (raised >= target) leave the board", async () => {
+    const store = await seed(
+      ["funded", "exact", "active"],
+      {
+        funded: goalRecord("funded", OWNER_A, "2026-09-01T00:00:00.000Z"),
+        exact: goalRecord("exact", OWNER_A, "2026-09-02T00:00:00.000Z"),
+        active: goalRecord("active", OWNER_B, "2026-09-03T00:00:00.000Z"),
+      },
+    );
+    const deps = depsFor(store, {
+      owners: { funded: OWNER_A, exact: OWNER_A, active: OWNER_B },
+      raised: { [OWNER_A]: 100, [OWNER_B]: 99.9999 },
+    });
+    // OWNER_A raised exactly 100 = target 100 → both "funded" and "exact"
+    // leave the board; OWNER_B at 99.9999 stays.
+    const list = await listFundraisers(deps);
+    expect(list.map((f) => f.username)).toEqual(["active"]);
   });
 
   it("skips stale index entries, unresolvable owners, and unreadable totals", async () => {

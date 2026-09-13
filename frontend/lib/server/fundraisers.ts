@@ -85,12 +85,19 @@ export async function listFundraisers(deps: FundraiserDeps): Promise<FundraiserE
     } catch {
       raised = null;
     }
+    const raisedHbar = raised ?? 0;
+    // Completion rule: a fundraiser that reached its goal leaves the board —
+    // it is not needed there anymore. Derived at read time from on-chain
+    // totals, so there is no cron and no state machine. The blockpage keeps
+    // its permanent "Goal reached" record, and the creator can set a new
+    // goal at any time to return to the board.
+    if (raisedHbar >= goal.targetHbar) continue;
     out.push({
       username: goal.username,
       title: goal.title,
       targetHbar: goal.targetHbar,
       owner: owner.toLowerCase(),
-      raisedHbar: raised ?? 0,
+      raisedHbar,
       createdAt: goal.createdAt,
       updatedAt: goal.updatedAt,
     });

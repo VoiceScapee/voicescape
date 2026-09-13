@@ -33,7 +33,6 @@ function fmtHbar(n: number): string {
 function FundraiserCard({ f }: { f: FundraiserEntry }) {
   const { t } = useLanguage();
   const pct = f.targetHbar > 0 ? Math.max(0, Math.min(100, (f.raisedHbar / f.targetHbar) * 100)) : 0;
-  const funded = f.raisedHbar >= f.targetHbar && f.targetHbar > 0;
   return (
     <div
       className="vs-glass"
@@ -83,10 +82,6 @@ function FundraiserCard({ f }: { f: FundraiserEntry }) {
             .replace("{target}", fmtHbar(f.targetHbar))}
         </div>
       </div>
-
-      {funded && (
-        <div style={{ fontSize: 14, fontWeight: 700 }}>{t("fundraiser.funded")}</div>
-      )}
 
       <div style={{ display: "flex", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
         <Link
