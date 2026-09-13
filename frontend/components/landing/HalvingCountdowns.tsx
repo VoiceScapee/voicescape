@@ -3,10 +3,9 @@
 /**
  * Halving countdowns — sits right under the Clarity Act countdown.
  *
- * Bitcoin (block 1,050,000, est. Apr 2028 per CoinGecko) and Litecoin
- * (block 3,360,000, est. ~Jul 2027) count down live, every second.
- * Dogecoin has NO halving — its reward is fixed at 10,000 DOGE per block
- * forever — so its card says exactly that instead of faking a countdown.
+ * Bitcoin (block 1,050,000, est. Apr 2028 per CoinGecko) gets the featured
+ * card; Litecoin (block 3,360,000, est. ~Jul 2027) sits below it. Both tick
+ * live, every second.
  */
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -137,58 +136,22 @@ export function HalvingCountdowns() {
         <Units target={btcTarget} accent="rgba(247,147,26,0.35)" />
       </div>
 
-      <div className="vs-grid-2">
-        {/* Litecoin */}
-        <div
-          className="vs-card"
-          style={{ textAlign: "center", border: "1px solid rgba(90,130,190,0.40)" }}
-        >
-          <div style={{ fontSize: 32, color: "#8ba9d9", marginBottom: 4 }} aria-hidden="true">
-            Ł
-          </div>
-          <h3 style={{ margin: "0 0 6px", fontSize: 19, color: "#8ba9d9" }}>
-            <T k="landing.halvingLtc" />
-          </h3>
-          <p style={{ color: "var(--vs-muted)", fontSize: 13, margin: "0 0 16px" }}>
-            <T k="landing.halvingLtcMeta" /> · {t("landing.halvingEstimated")}{" "}
-            {fmtMonthYear(LTC_HALVING_AT, lang)}
-          </p>
-          <Units target={ltcTarget} accent="rgba(90,130,190,0.35)" />
+      {/* Litecoin */}
+      <div
+        className="vs-card"
+        style={{ textAlign: "center", border: "1px solid rgba(90,130,190,0.40)" }}
+      >
+        <div style={{ fontSize: 32, color: "#8ba9d9", marginBottom: 4 }} aria-hidden="true">
+          Ł
         </div>
-
-        {/* Dogecoin — no halving exists, so no fake countdown */}
-        <div
-          className="vs-card"
-          style={{ textAlign: "center", border: "1px solid rgba(194,166,51,0.40)" }}
-        >
-          <div style={{ fontSize: 32, color: "#d3bc5e", marginBottom: 4 }} aria-hidden="true">
-            Ð
-          </div>
-          <h3 style={{ margin: "0 0 8px", fontSize: 19, color: "#d3bc5e" }}>
-            <T k="landing.halvingDoge" />
-          </h3>
-          <p style={{ margin: "0 0 14px" }}>
-            <span
-              className="vs-badge"
-              style={{
-                background: "rgba(194,166,51,0.12)",
-                color: "#d3bc5e",
-                border: "1px solid rgba(194,166,51,0.35)",
-              }}
-            >
-              <T k="landing.halvingDogeBadge" />
-            </span>
-          </p>
-          <div className="vs-mono" style={{ fontSize: 28, fontWeight: 700 }}>
-            10,000
-          </div>
-          <div style={{ fontSize: 12, color: "var(--vs-muted)", margin: "4px 0 12px" }}>
-            <T k="landing.halvingDogePerBlock" />
-          </div>
-          <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: 0, lineHeight: 1.7 }}>
-            <T k="landing.halvingDogeNote" />
-          </p>
-        </div>
+        <h3 style={{ margin: "0 0 6px", fontSize: 19, color: "#8ba9d9" }}>
+          <T k="landing.halvingLtc" />
+        </h3>
+        <p style={{ color: "var(--vs-muted)", fontSize: 13, margin: "0 0 16px" }}>
+          <T k="landing.halvingLtcMeta" /> · {t("landing.halvingEstimated")}{" "}
+          {fmtMonthYear(LTC_HALVING_AT, lang)}
+        </p>
+        <Units target={ltcTarget} accent="rgba(90,130,190,0.35)" />
       </div>
     </section>
   );
