@@ -1,0 +1,203 @@
+/**
+ * Creator funding goals.
+ *
+ * A page owner can set one public funding goal (target HBAR + optional
+ * title). It is shown publicly on their blockpage with a progress bar
+ * counting all tips ever sent on-chain to the page (the creator's 98%
+ * share recorded by the Tips contract). Goals never touch funds —
+ * Voicescape holds nothing; tipping stays direct wallet-to-wallet
+ * through the on-chain Tips contract.
+ *
+ * Storage: KV `goals:<username>` → JSON, 1-year TTL (refreshed on every
+ * write). Owner-only writes: the session wallet must own the username on
+ * the on-chain registry. Reads are public.
+ */
+import type { KvStore } from "./store";
+import { getKvStore } from "./store";
+import { normalizeUsername } from "./analytics";
+import { checkContent } from "./townhall/content-filter";
+
+/** KV key prefix for funding goals. */
+export const GOAL_KEY_PREFIX = "goals:";
+/** 365 days — a goal survives long past the 30-day analytics window. */
+export const GOAL_TTL_MS = 365 * 24 * 3600 * 1000;
+/** Sanity ceiling: 1M HBAR is far above any realistic creator goal. */
+export const GOAL_MAX_HBAR = 1_000_000;
+/** Goal titles are short labels — never a place for personal details. */
+export const GOAL_TITLE_MAX_LEN = 80;
+
+export interface FundingGoal {
+  username: string;
+  /** Owner wallet (lowercased) that set the goal — audit trail only. */
+  owner: string;
+  targetHbar: number;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function goalKey(username: string): string {
+  return `${GOAL_KEY_PREFIX}${username}`;
+}
+
+/** Validate a goal payload. Returns the normalized record fields or an error. */
+export function validateGoalInput(body: unknown): {
+  ok: true;
+  targetHbar: number;
+  title: string | null;
+} | { ok: false; error: string } {
+  const b = (body ?? {}) as { targetHbar?: unknown; title?: unknown };
+  const n = typeof b.targetHbar === "string" ? Number(b.targetHbar) : b.targetHbar;
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0 || n > GOAL_MAX_HBAR) {
+    return { ok: false, error: `target must be between 0 and ${GOAL_MAX_HBAR.toLocaleString("en-US")} HBAR` };
+  }
+  let title: string | null = null;
+  if (b.title !== undefined && b.title !== null) {
+    if (typeof b.title !== "string") return { ok: false, error: "title must be a string" };
+    const clean = b.title.trim().replace(/\s+/g, " ").slice(0, GOAL_TITLE_MAX_LEN + 1);
+    if (clean.length > GOAL_TITLE_MAX_LEN) {
+      return { ok: false, error: `title must be under ${GOAL_TITLE_MAX_LEN} characters` };
+    }
+    if (clean) {
+      const check = checkContent(clean, "goal title");
+      if (!check.allowed) return { ok: false, error: check.reason ?? "title blocked" };
+      title = clean;
+    }
+  }
+  return { ok: true, targetHbar: n, title };
+}
+
+/** Parse a stored goal value; null when missing or corrupt. */
+export function parseGoalValue(raw: string | null): FundingGoal | null {
+  if (!raw) return null;
+  try {
+    const g = JSON.parse(raw) as Partial<FundingGoal>;
+    if (
+      typeof g.username !== "string" ||
+      typeof g.owner !== "string" ||
+      typeof g.targetHbar !== "number" ||
+      !Number.isFinite(g.targetHbar) ||
+      g.targetHbar <= 0 ||
+      (g.title !== null && typeof g.title !== "string") ||
+      typeof g.createdAt !== "string" ||
+      typeof g.updatedAt !== "string"
+    ) {
+      return null;
+    }
+    return g as FundingGoal;
+  } catch {
+    return null;
+  }
+}
+
+/** Public read: the goal for a username, or null. */
+export async function readGoal(store: KvStore, usernameRaw: unknown): Promise<FundingGoal | null> {
+  const username = normalizeUsername(usernameRaw);
+  if (!username) return null;
+  try {
+    return parseGoalValue(await store.get(goalKey(username)));
+  } catch {
+    return null;
+  }
+}
+
+export interface GoalDeps {
+  store: KvStore;
+  verifySession: (cred: unknown) => Promise<{ ok: true; address: string } | { ok: false; error: string }>;
+  resolveOwner: (username: string) => Promise<string | null>;
+}
+
+export function defaultGoalDeps(): GoalDeps {
+  return {
+    store: getKvStore(),
+    verifySession: async (cred: unknown) => {
+      const { defaultAuthPort } = await import("./townhall/auth");
+      const res = await defaultAuthPort().verifySession(cred);
+      return res.ok ? { ok: true as const, address: res.session.address } : { ok: false as const, error: res.error };
+    },
+    resolveOwner: async (username: string) => {
+      const { resolveUsernameWallet } = await import("./townhall/badges");
+      return resolveUsernameWallet(username);
+    },
+  };
+}
+
+export interface GoalResult {
+  status: number;
+  json: unknown;
+}
+
+function ok(json: unknown, status = 200): GoalResult {
+  return { status, json };
+}
+
+function err(status: number, error: string): GoalResult {
+  return { status, json: { error } };
+}
+
+async function requireOwner(deps: GoalDeps, usernameRaw: unknown, cred: unknown): Promise<
+  | { ok: true; username: string; owner: string }
+  | { ok: false; result: GoalResult }
+> {
+  const username = normalizeUsername(usernameRaw);
+  if (!username) return { ok: false, result: err(400, "username is required") };
+  if (cred == null) return { ok: false, result: err(401, "sign in with your wallet to manage your funding goal") };
+  const verified = await deps.verifySession(cred);
+  if (!verified.ok) return { ok: false, result: err(401, verified.error) };
+  let owner: string | null;
+  try {
+    owner = await deps.resolveOwner(username);
+  } catch {
+    return { ok: false, result: err(503, "could not resolve page ownership — try again in a moment") };
+  }
+  if (!owner) return { ok: false, result: err(404, "page not found") };
+  if (owner.toLowerCase() !== verified.address.toLowerCase()) {
+    return { ok: false, result: err(403, "only the page owner can manage the funding goal") };
+  }
+  return { ok: true, username, owner: owner.toLowerCase() };
+}
+
+/**
+ * Set (create or replace) the funding goal for a username.
+ * Owner-only: 401 bad/missing session · 400 bad input · 404 page not found
+ * · 403 not the owner · 503 store/ownership-resolution failure.
+ */
+export async function writeGoal(deps: GoalDeps, usernameRaw: unknown, body: unknown, cred: unknown): Promise<GoalResult> {
+  const gate = await requireOwner(deps, usernameRaw, cred);
+  if (!gate.ok) return gate.result;
+  const validated = validateGoalInput(body);
+  if (!validated.ok) return err(400, validated.error);
+  const now = new Date().toISOString();
+  let createdAt = now;
+  try {
+    createdAt = (await readGoal(deps.store, gate.username))?.createdAt ?? now;
+  } catch {
+    /* keep now */
+  }
+  const goal: FundingGoal = {
+    username: gate.username,
+    owner: gate.owner,
+    targetHbar: validated.targetHbar,
+    title: validated.title,
+    createdAt,
+    updatedAt: now,
+  };
+  try {
+    await deps.store.set(goalKey(gate.username), JSON.stringify(goal), GOAL_TTL_MS);
+  } catch {
+    return err(503, "temporarily unavailable — please retry in a moment");
+  }
+  return ok({ ok: true, goal });
+}
+
+/** Clear the funding goal for a username. Owner-only (same gates as set). */
+export async function clearGoal(deps: GoalDeps, usernameRaw: unknown, cred: unknown): Promise<GoalResult> {
+  const gate = await requireOwner(deps, usernameRaw, cred);
+  if (!gate.ok) return gate.result;
+  try {
+    await deps.store.del(goalKey(gate.username));
+  } catch {
+    return err(503, "temporarily unavailable — please retry in a moment");
+  }
+  return ok({ ok: true, goal: null });
+}

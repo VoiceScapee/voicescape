@@ -35,6 +35,8 @@ import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
 import { canonicalAddress } from "@/lib/session-message";
 import { TipPushToggle } from "@/components/TipPushToggle";
+import { EarningsPanel } from "@/components/EarningsPanel";
+import { GoalBar } from "@/components/GoalBar";
 
 type LoadState =
   | { status: "loading" }
@@ -647,6 +649,9 @@ function PublicPageInner({ username }: { username: string }) {
     );
   }
 
+  // EVM form of the page owner for the on-chain earnings APIs.
+  const ownerEvm = canonicalAddress(state.meta.owner);
+
   return (
     <>
       <OnChainLiveBadge owner={state.meta.owner} />
@@ -666,7 +671,11 @@ function PublicPageInner({ username }: { username: string }) {
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>
+        {ownerEvm && <GoalBar username={username} ownerAddress={ownerEvm} />}
         {isOwner && <TipPushToggle wallet={state.meta.owner} />}
+        {isOwner && ownerEvm && (
+          <EarningsPanel username={username} ownerAddress={ownerEvm} ownerType={state.meta.ownerType} />
+        )}
         <ShareButtons username={username} />
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />

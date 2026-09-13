@@ -111,6 +111,70 @@ export function aggregateWeeklyTips(events: TipEvent[]): WeeklyLeader[] {
 }
 
 /**
+ * Per-creator earnings summary over decoded TipEvent streams.
+ */
+export interface EarningsSummary {
+  /** HBAR received in the last 7 days. */
+  hbar7d: number;
+  /** HBAR received in the last 30 days. */
+  hbar30d: number;
+  /** HBAR received across all fetched events (see truncation flag). */
+  hbarAllTime: number;
+  /** Number of tips received in the last 7 days. */
+  tipCount7d: number;
+  /** Number of tips received in the last 30 days. */
+  tipCount30d: number;
+  /** Distinct tipper addresses in the last 30 days. */
+  uniqueTippers30d: number;
+}
+
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Sum tip windows for one recipient address. Window boundaries are
+ * inclusive of events at exactly the cutoff (>= cutoff). Events are
+ * already expected to be filtered to TipSent (decodeTipSentLog); events
+ * not addressed to `address` are ignored here so the caller can aggregate
+ * over a raw mixed stream.
+ */
+export function aggregateEarnings(
+  events: TipEvent[],
+  address: string,
+  nowMs: number = Date.now(),
+): EarningsSummary {
+  const owner = address.toLowerCase();
+  const cut7 = nowMs - 7 * MS_PER_DAY;
+  const cut30 = nowMs - 30 * MS_PER_DAY;
+  const summary: EarningsSummary = {
+    hbar7d: 0,
+    hbar30d: 0,
+    hbarAllTime: 0,
+    tipCount7d: 0,
+    tipCount30d: 0,
+    uniqueTippers30d: 0,
+  };
+  const tippers = new Set<string>();
+  for (const e of events) {
+    if (e.to.toLowerCase() !== owner) continue;
+    const sec = Number(e.timestamp.split(".")[0]);
+    if (!Number.isFinite(sec)) continue;
+    const ms = sec * 1000;
+    summary.hbarAllTime += e.amountHbar;
+    if (ms >= cut30) {
+      summary.hbar30d += e.amountHbar;
+      summary.tipCount30d += 1;
+      tippers.add(e.from);
+      if (ms >= cut7) {
+        summary.hbar7d += e.amountHbar;
+        summary.tipCount7d += 1;
+      }
+    }
+  }
+  summary.uniqueTippers30d = tippers.size;
+  return summary;
+}
+
+/**
  * Human-filter rule for the leaderboard. The on-chain Registry is the
  * source of truth for whether a page is human or agent (registerPage's
  * ownerType: 0 = HUMAN, 1 = AGENT). Known agent pages are excluded.
