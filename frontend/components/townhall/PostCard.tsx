@@ -229,7 +229,18 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
                 <TxConfirming sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)." />
               </div>
             )}
-            {error && <p className="th-error">{error}</p>}
+            {error && (
+              <p className="th-error">
+                {error}{" "}
+                <a
+                  href="https://discord.gg/2KGzPduUN5"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Need help? Get support on Discord →
+                </a>
+              </p>
+            )}
           </>
         )}
       </div>

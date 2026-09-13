@@ -66,6 +66,16 @@ export default function Navbar({ right }: NavbarProps) {
           >
             Explore
           </Link>
+          <a
+            href="https://discord.gg/2KGzPduUN5"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14, textDecoration: "none" }}
+            title="Customer support on Discord"
+          >
+            <T k="nav.support" />
+          </a>
           <InstallAppButton />
           <LanguageSelector />
           {right}

@@ -28,6 +28,7 @@ export const RTL_LANGS: Lang[] = ["ar"];
 const en = {
   // Navbar
   "nav.townHall": "Town Hall",
+  "nav.support": "Support",
   "nav.builder": "Create your page",
 
   // Language selector
@@ -156,6 +157,7 @@ export type I18nKey = keyof typeof en;
 const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "Plaza",
+  "nav.support": "Soporte",
   "nav.builder": "Constructor",
 
   // Language selector
@@ -281,6 +283,7 @@ const es: Record<I18nKey, string> = {
 const zh: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "市政厅",
+  "nav.support": "支持",
   "nav.builder": "搭建器",
 
   // Language selector
@@ -405,6 +408,7 @@ const zh: Record<I18nKey, string> = {
 const hi: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "टाउन हॉल",
+  "nav.support": "सहायता",
   "nav.builder": "बिल्डर",
 
   // Language selector
@@ -529,6 +533,7 @@ const hi: Record<I18nKey, string> = {
 const ar: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "الساحة",
+  "nav.support": "الدعم",
   "nav.builder": "البنّاء",
 
   // Language selector
@@ -653,6 +658,7 @@ const ar: Record<I18nKey, string> = {
 const pt: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "Praça",
+  "nav.support": "Suporte",
   "nav.builder": "Construtor",
 
   // Language selector
@@ -777,6 +783,7 @@ const pt: Record<I18nKey, string> = {
 const fr: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "La Place",
+  "nav.support": "Assistance",
   "nav.builder": "Constructeur",
 
   // Language selector

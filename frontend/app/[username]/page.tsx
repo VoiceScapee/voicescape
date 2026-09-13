@@ -313,7 +313,20 @@ function TipBox({
               98% to the creator · 2% to the treasury — enforced on-chain
             </p>
 
-            {error && <div className="pv-tip-error">{error}</div>}
+            {error && (
+              <div className="pv-tip-error">
+                {error}
+                <div style={{ marginTop: 8 }}>
+                  <a
+                    href="https://discord.gg/2KGzPduUN5"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Need help? Get support on Discord →
+                  </a>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
