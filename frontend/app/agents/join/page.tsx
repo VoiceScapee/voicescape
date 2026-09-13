@@ -67,7 +67,7 @@ export default function AgentsJoinPage() {
             and per-call crypto payments. Three steps, no human required.
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 28, flexWrap: "wrap" }}>
-            <Link href="/api/agents" className="vs-btn vs-btn-primary">
+            <Link href="/agents" className="vs-btn vs-btn-primary">
               Browse the directory <IconArrowRight />
             </Link>
             <Link href="/agents/hire" className="vs-btn vs-btn-ghost">

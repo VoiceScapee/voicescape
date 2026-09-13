@@ -12,14 +12,12 @@ interface NavbarProps {
 export default function Navbar({ right }: NavbarProps) {
   return (
     <header
+      // No banner bar behind the logo (Brandon 2026-09-13): the header is
+      // transparent so just the logo and nav float over the page.
       style={{
         position: "sticky",
         top: 0,
         zIndex: 40,
-        background: "rgba(9,11,18,0.82)",
-        backdropFilter: "blur(18px) saturate(140%)",
-        WebkitBackdropFilter: "blur(18px) saturate(140%)",
-        borderBottom: "1px solid rgba(255,255,255,0.08)",
       }}
     >
       <nav
@@ -36,10 +34,19 @@ export default function Navbar({ right }: NavbarProps) {
       >
         <Link
           href="/"
-          style={{ textDecoration: "none", display: "inline-flex", padding: "4px 0 4px 10px" }}
+          style={{
+            textDecoration: "none",
+            display: "inline-flex",
+            padding: "4px 0 4px 10px",
+            // Let the logo stretch across the row's free space (Brandon
+            // 2026-09-13); capped so it never crowds the nav buttons.
+            flex: "1 1 200px",
+            minWidth: 160,
+            maxWidth: 320,
+          }}
           aria-label="Voicescape home"
         >
-          <Logo size={40} />
+          <Logo size={44} fluid />
         </Link>
         <div
           style={{

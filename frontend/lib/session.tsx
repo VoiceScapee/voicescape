@@ -451,7 +451,7 @@ export function RequireSession({
  * (The header/nav `WalletConnect` in components/WalletConnect.tsx is the
  * same flow with full connection-state chrome.)
  */
-function SignInButton() {
+export function SignInButton() {
   const { signIn, status } = useSession();
   const chain = getActiveChain();
   const [showOptions, setShowOptions] = useState(false);

@@ -945,3 +945,41 @@ select.vs-input option {
   color: #ffca72;
   border-color: rgba(255, 202, 114, 0.5);
 }
+
+/* ---------- preview-mode banner (unsigned users can design + preview) ---------- */
+
+.vb-preview-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 12px 16px 0;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  background: rgba(16, 185, 129, 0.07);
+  font-size: 14px;
+  color: var(--vs-text);
+}
+
+.vb-preview-banner-text span {
+  color: var(--vs-muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .vb-preview-banner {
+    animation: vb-banner-in 0.35s ease-out;
+  }
+}
+
+@keyframes vb-banner-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

@@ -40,7 +40,7 @@ import { TEMPLATES, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
-import { RequireSession, useSession } from "@/lib/session";
+import { useSession, SignInButton } from "@/lib/session";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import {
   BYOK_CONSOLE_URL,
@@ -1901,6 +1901,9 @@ type TabId = (typeof TABS)[number]["id"];
 function BuilderInner() {
   const chain = getActiveChain();
   const { account } = useWallet();
+  // No wallet session required to design: preview mode lets anyone build and
+  // preview. The publish flow asks for the wallet signature when it matters.
+  const { isAuthenticated } = useSession();
   const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
   const [page, setPage] = useState<VoicescapePage>(() =>
     JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage,
@@ -2127,6 +2130,18 @@ function BuilderInner() {
         </span>
       </header>
 
+      {/* Preview mode: anyone can design + preview; the wallet is only
+          needed when publishing on-chain. */}
+      {!isAuthenticated && (
+        <div className="vb-preview-banner" role="note">
+          <div className="vb-preview-banner-text">
+            <strong>Preview mode.</strong>{" "}
+            <span>Design your blockpage freely — connect your wallet when you're ready to publish it on-chain.</span>
+          </div>
+          <SignInButton />
+        </div>
+      )}
+
       <div className="vb-main">
         {/* Left: controls */}
         <div className="vb-controls">
@@ -2260,21 +2275,17 @@ function BuilderInner() {
 }
 
 export default function BuilderPage() {
+  // No session gate: anyone can open the builder and preview their
+  // blockpage. The wallet signature is requested at publish time.
   return (
-    <RequireSession
-      title="Sign in to build your blockpage"
-      description="Connect your wallet and sign the sign-in message to open the blockpage builder."
+    <Suspense
+      fallback={
+        <div className="vb-shell" style={{ padding: 32, color: "var(--vs-muted)" }}>
+          Loading builder…
+        </div>
+      }
     >
-      {/* Suspense boundary required by Next.js for useSearchParams (?draft= deep-link). */}
-      <Suspense
-        fallback={
-          <div className="vb-shell" style={{ padding: 32, color: "var(--vs-muted)" }}>
-            Loading builder…
-          </div>
-        }
-      >
-        <BuilderInner />
-      </Suspense>
-    </RequireSession>
+      <BuilderInner />
+    </Suspense>
   );
 }

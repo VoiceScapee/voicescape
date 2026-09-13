@@ -1,6 +1,13 @@
 interface LogoProps {
   size?: number;
   withWordmark?: boolean;
+  /**
+   * Fluid mode: the lockup fills its container's width (height auto) instead
+   * of rendering at a fixed pixel size. Used by the navbar so the logo can
+   * stretch across the available row space (Brandon 2026-09-13).
+   */
+  fluid?: boolean;
+  className?: string;
 }
 
 /**
@@ -14,7 +21,7 @@ interface LogoProps {
  * `withWordmark` is kept for API compatibility — the wordmark is baked into
  * the lockup, so the full lockup always renders (no call site passes false).
  */
-export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
+export default function Logo({ size = 32, withWordmark = true, fluid = false, className }: LogoProps) {
   void withWordmark;
   return (
     <img
@@ -23,12 +30,22 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
       width={size * 3} // lockup is 2736x912 (3:1)
       height={size}
       draggable={false}
-      style={{
-        display: "block",
-        height: size,
-        width: "auto",
-        userSelect: "none",
-      }}
+      className={className}
+      style={
+        fluid
+          ? {
+              display: "block",
+              width: "100%",
+              height: "auto",
+              userSelect: "none",
+            }
+          : {
+              display: "block",
+              height: size,
+              width: "auto",
+              userSelect: "none",
+            }
+      }
     />
   );
 }
