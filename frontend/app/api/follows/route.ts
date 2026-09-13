@@ -5,6 +5,11 @@ import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
 import { getKvStore } from "@/lib/server/store";
 import { ipGate } from "@/lib/server/rate-limit";
 import {
+  globalQuotaStore,
+  quotaExceededBody,
+  quotaLimitFromEnv,
+} from "@/lib/server/quota";
+import {
   followPage,
   readFollowList,
   unfollowPage,
@@ -57,6 +62,37 @@ async function writeGate(req: NextRequest): Promise<NextResponse | null> {
   );
 }
 
+/** Per-wallet daily quota for follows (POST only — the growth vector).
+ * KV growth is real but cheap, so the default is generous; the point is
+ * to stop an automated wallet from following unlimited pages. Fail
+ * closed (503) when the quota store is unreachable. */
+async function followQuota(wallet: string): Promise<NextResponse | null> {
+  const limit = quotaLimitFromEnv("FOLLOWS_DAILY_QUOTA", 100);
+  let res;
+  try {
+    res = await globalQuotaStore().consume(
+      "follows",
+      wallet.toLowerCase(),
+      limit,
+    );
+  } catch (e) {
+    console.error(
+      `[follows] quota store unreachable: ${e instanceof Error ? e.message : String(e)}`,
+    );
+    return NextResponse.json(
+      { error: "temporarily unavailable — please retry in a moment" },
+      { status: 503 },
+    );
+  }
+  if (!res.allowed) {
+    return NextResponse.json(
+      quotaExceededBody(res, "daily follow quota exceeded — try again after UTC midnight"),
+      { status: 429 },
+    );
+  }
+  return null;
+}
+
 async function readBody(req: NextRequest): Promise<{ username?: unknown }> {
   try {
     const body: unknown = await req.json();
@@ -78,6 +114,9 @@ export async function POST(req: NextRequest) {
   if (!USERNAME_RE.test(name)) {
     return NextResponse.json({ error: "invalid username" }, { status: 400 });
   }
+
+  const quotaHit = await followQuota(authed.wallet);
+  if (quotaHit) return quotaHit;
 
   try {
     const result = await followPage({

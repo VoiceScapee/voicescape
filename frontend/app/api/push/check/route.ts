@@ -22,8 +22,15 @@ export const runtime = "nodejs";
  * is safe by design: a sweep only sends factual notifications derived from
  * real on-chain TipSent logs, and the KV watermark makes repeat calls
  * no-ops — an unauthenticated caller can only trigger the same legitimate
- * sweep the cron would run anyway. Set a secret later via KV if you want
- * the stricter posture:
+ * sweep the cron would run anyway.
+ *
+ * NOTE (2026-09-13): the secret is INTENTIONALLY left unset until the
+ * shared KV (Upstash) is configured. Production currently runs on the
+ * per-instance in-memory store, so a secret set on one instance would
+ * not exist on others — cold instances would randomly 401 the sweep
+ * while warm ones accept it. Once Upstash is live, one KV write flips
+ * this endpoint to the stricter posture; the push-tip-sweep cron doc
+ * already says it must then send `x-push-secret`.
  *
  *   await getKvStore().set("push:check:secret", "<random-secret>", <ttlMs>)
  *

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ipGate } from "@/lib/server/rate-limit";
+import { defaultAuthPort } from "@/lib/server/townhall/auth";
+import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import {
   getPresenceCount,
   isValidPresenceId,
@@ -28,6 +30,11 @@ export async function GET(req: NextRequest) {
  * Heartbeat — call every ~30s while the tab is visible. Entries expire
  * after 60s, so closed tabs fade out on their own. Per-IP flood bound;
  * `id` is `user:<name>` when signed in, otherwise a random tab id.
+ *
+ * Impersonation guard: when the caller sends a valid wallet session, the
+ * id is forced to their wallet address — a client must not be able to
+ * plant someone else's `user:<name>` in the headcount. Anonymous tabs
+ * keep their client-chosen ids; presence is deliberately pre-auth.
  */
 export async function POST(req: NextRequest) {
   const gated = await ipGate(
@@ -45,9 +52,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
   const scope = (body as { scope?: unknown } | null)?.scope;
-  const id = (body as { id?: unknown } | null)?.id;
-  if (!isValidPresenceScope(scope) || !isValidPresenceId(id)) {
+  const rawId = (body as { id?: unknown } | null)?.id;
+  if (!isValidPresenceScope(scope) || !isValidPresenceId(rawId)) {
     return NextResponse.json({ error: "scope and id are required" }, { status: 400 });
+  }
+  let id: string = rawId;
+  // Best-effort session check, fail-open: anonymous presence keeps working.
+  try {
+    const verified = await defaultAuthPort().verifySession(sessionCredentialFrom(req));
+    if (verified.ok) {
+      id = `user:${verified.session.address.toLowerCase()}`;
+    }
+  } catch {
+    /* anonymous ping — keep the client-supplied id */
   }
   const count = await pingPresence(scope, id).catch(() => 0);
   return NextResponse.json({ scope, count });

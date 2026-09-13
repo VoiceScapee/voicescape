@@ -1,14 +1,26 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { ipGate } from "@/lib/server/rate-limit";
+import { getKvStore } from "@/lib/server/store";
 
 /**
  * GET /api/agents/directory
  *
  * Returns agent blockpages from the on-chain Registry.
  * Filters PageRegistered events by OwnerType.AGENT (1).
+ *
+ * Guardrails: per-IP rate limit (60/hr) plus a 15-minute server-side
+ * result cache. Without these, a polling loop turns one request into a
+ * serial mirror-node fan-out that can blow the Vercel function's time
+ * budget for every caller. Directory data changes slowly (on-chain
+ * registrations), so a 15-minute stale window is fine.
  */
 
 const REGISTRY_ID = "0.0.10854058";
 const PAGEREGISTERED_TOPIC = "0xa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f3";
+
+/** Server-side cache of the computed directory; best-effort, fail-open. */
+const DIRECTORY_CACHE_KEY = "agents:directory:v1";
+const DIRECTORY_CACHE_TTL_MS = 15 * 60_000;
 
 /** Decode username from registerPage call data. */
 function decodeUsername(functionParameters: string): string | null {
@@ -57,7 +69,30 @@ function decodePurpose(data: string): string {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Per-IP gate: one polling agent must not turn this endpoint into an
+  // unauthenticated mirror-node amplification vector.
+  const gated = await ipGate(
+    req,
+    "agents-directory",
+    "IP_RATE_LIMIT_AGENTS_DIRECTORY",
+    60,
+    "too many directory requests from this network — try again later",
+  );
+  if (gated) return gated;
+
+  // Serve from the shared cache when fresh; a directory miss is the only
+  // path that fans out to the mirror node. Fail-open: a broken cache
+  // must not take the directory offline.
+  try {
+    const cached = await getKvStore().get(DIRECTORY_CACHE_KEY);
+    if (cached) {
+      return NextResponse.json(JSON.parse(cached));
+    }
+  } catch {
+    /* fall through to a live fetch */
+  }
+
   try {
     const logsUrl =
       `https://mainnet.mirrornode.hedera.com/api/v1/contracts/${REGISTRY_ID}/results/logs` +
@@ -118,7 +153,16 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ agents, count: agents.length });
+    const result = { agents, count: agents.length };
+
+    // Best-effort cache write — directory freshness is bounded by the TTL.
+    try {
+      await getKvStore().set(DIRECTORY_CACHE_KEY, JSON.stringify(result), DIRECTORY_CACHE_TTL_MS);
+    } catch {
+      /* a missed cache write is not an error */
+    }
+
+    return NextResponse.json(result);
   } catch (err) {
     console.error("[agents] Error:", err);
     return NextResponse.json({ agents: [], count: 0 });

@@ -64,6 +64,8 @@ function req(method: string, opts: { token?: string; json?: unknown } = {}): Nex
 beforeEach(async () => {
   await getKvStore().clearPrefix("follows:");
   await getKvStore().clearPrefix("followers:");
+  await getKvStore().clearPrefix("vs:quota:");
+  delete process.env.FOLLOWS_DAILY_QUOTA;
 });
 
 describe("auth", () => {
@@ -107,6 +109,18 @@ describe("POST /api/follows", () => {
     const second = await POST(authed({ username: "Alice" }));
     expect(second.status).toBe(200);
     expect(await second.json()).toEqual({ ok: true, following: ["alice"] });
+  });
+
+  it("429s when the wallet exhausts its daily follow quota", async () => {
+    process.env.FOLLOWS_DAILY_QUOTA = "2";
+    const a = await POST(authed({ username: "alice" }));
+    expect(a.status).toBe(200);
+    const b = await POST(authed({ username: "alice" }));
+    expect(b.status).toBe(200);
+    const c = await POST(authed({ username: "alice" }));
+    expect(c.status).toBe(429);
+    const json = (await c.json()) as { error: string };
+    expect(json.error).toMatch(/daily follow quota exceeded/);
   });
 });
 
