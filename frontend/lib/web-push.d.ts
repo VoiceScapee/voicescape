@@ -27,4 +27,9 @@ declare module "web-push" {
     payload?: string | Buffer,
     options?: Record<string, unknown>,
   ): Promise<unknown>;
+  /**
+   * Generate a fresh VAPID keypair. publicKey is 87 URL-safe base64 chars,
+   * privateKey is 43. Used for lazy self-generation in lib/server/push.ts.
+   */
+  export function generateVAPIDKeys(): { publicKey: string; privateKey: string };
 }

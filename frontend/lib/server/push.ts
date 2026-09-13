@@ -4,9 +4,18 @@
  * Two HTTP surfaces sit on top of this module:
  *   - /api/push/subscriptions (session-checked): manage a wallet's push
  *     subscriptions.
- *   - /api/push/check (shared-secret checked, server-to-server): poll the
- *     Hedera mirror node for new TipSent events on the Tips contract and
- *     deliver web-push notifications to the recipients' subscribed devices.
+ *   - /api/push/check (sweep): poll the Hedera mirror node for new TipSent
+ *     events on the Tips contract and deliver web-push notifications to the
+ *     recipients' subscribed devices.
+ *
+ * The VAPID keypair is self-generated on first use and persisted in KV —
+ * no operator key setup is required. /api/push/check is guarded by an
+ * optional shared secret (KV "push:check:secret"): when the secret exists
+ * the x-push-secret header is required; when it does not, the endpoint
+ * accepts rate-limited calls (see the route). That is safe because a sweep
+ * only sends factual on-chain-derived notifications and the watermark makes
+ * repeats no-ops, so an unconfigured secret degrades to rate-limited public
+ * polling rather than a vulnerability.
  *
  * All chain reads go through the official Hedera mirror-node REST API.
  * Nothing here moves value and nothing redeploys contracts. A push is only
@@ -15,19 +24,30 @@
  */
 
 import { createHash, timingSafeEqual } from "crypto";
-import { setVapidDetails, sendNotification } from "web-push";
+import { generateVAPIDKeys, setVapidDetails, sendNotification } from "web-push";
 import type { KvStore } from "./store";
 import { canonicalAddress } from "@/lib/session-message";
 import { dictionaries, type Lang } from "@/lib/i18n/dictionaries";
-import { isValidVapidPrivateKey, type PushSubscriptionPayload } from "@/lib/push";
+import {
+  isValidVapidPrivateKey,
+  isValidVapidPublicKey,
+  type PushSubscriptionPayload,
+} from "@/lib/push";
 
 /* ------------------------------------------------------------------ */
 /* KV layout                                                           */
 /* ------------------------------------------------------------------ */
 
-/** The VAPID private key. Written by scripts/store-vapid-key.mjs; the operator sets it. Never in code/git. */
+/** The VAPID private key. Self-generated on first use by ensureVapidKeypair
+ * and persisted here. Never in code/git. (scripts/store-vapid-key.mjs can
+ * overwrite it for manual rotation.) */
 export const PUSH_VAPID_KV_KEY = "push:vapid:private";
-/** Shared secret guarding /api/push/check. The operator sets it (any random string). */
+/** The VAPID public key (served by /api/push/vapid-public-key). Generated
+ * alongside the private key. Public by design — safe to return in HTTP. */
+export const PUSH_VAPID_PUBLIC_KV_KEY = "push:vapid:public";
+/** Shared secret guarding /api/push/check. OPTIONAL: when set (any random
+ * string), the x-push-secret header is required; when absent the sweep
+ * accepts rate-limited calls. Set by the operator via KV directly. */
 export const PUSH_CHECK_SECRET_KV_KEY = "push:check:secret";
 /** Watermark: highest mirror-node consensus timestamp (seconds) processed. */
 export const PUSH_LAST_TS_KV_KEY = "push:check:lastTs";
@@ -38,6 +58,43 @@ export const PUSH_SUBS_TTL_MS = 31_536_000_000;
 export const PUSH_SENT_TTL_MS = 2_592_000_000;
 /** VAPID private key TTL: 10 years (rotate by overwriting). */
 export const PUSH_VAPID_TTL_MS = 315_360_000_000;
+
+/** VAPID keypair: the private key signs push payloads, the public key is
+ * handed to browsers at subscription time. */
+export interface VapidKeypair {
+  publicKey: string;
+  privateKey: string;
+}
+
+/**
+ * Read the VAPID keypair from KV, generating and persisting one on first
+ * use. This is what makes push self-sufficient: no operator ever has to
+ * provision keys — the app bootstraps itself the first time a sweep or a
+ * subscription needs it.
+ *
+ * The private key NEVER appears in code, git, logs, or HTTP responses;
+ * only the public key is ever served (via /api/push/vapid-public-key).
+ *
+ * If a private key exists but its public half is missing or malformed (a
+ * partial write), both are regenerated — a half-pair can never sign.
+ */
+export async function ensureVapidKeypair(kv: KvStore): Promise<VapidKeypair> {
+  const storedPrivate = await kv.get(PUSH_VAPID_KV_KEY);
+  const storedPublic = await kv.get(PUSH_VAPID_PUBLIC_KV_KEY);
+  if (isValidVapidPrivateKey(storedPrivate) && isValidVapidPublicKey(storedPublic)) {
+    return { publicKey: storedPublic, privateKey: storedPrivate };
+  }
+  const generated = generateVAPIDKeys();
+  if (
+    !isValidVapidPublicKey(generated.publicKey) ||
+    !isValidVapidPrivateKey(generated.privateKey)
+  ) {
+    throw new Error("generated VAPID keypair failed format validation");
+  }
+  await kv.set(PUSH_VAPID_KV_KEY, generated.privateKey, PUSH_VAPID_TTL_MS);
+  await kv.set(PUSH_VAPID_PUBLIC_KV_KEY, generated.publicKey, PUSH_VAPID_TTL_MS);
+  return generated;
+}
 
 /* ------------------------------------------------------------------ */
 /* Chain constants                                                     */
@@ -364,11 +421,11 @@ export interface PushCheckDeps {
   kv: KvStore;
   fetchImpl?: typeof fetch;
   sender?: PushSender;
-  /** VAPID public key (code constant). */
-  vapidPublicKey: string;
-  /** VAPID private key from KV, or null when not configured. */
-  vapidPrivateKey: string | null;
-  /** Expected shared secret from KV ("push:check:secret"), null when unset. */
+  /** Expected shared secret from KV ("push:check:secret"), null when unset.
+   * When set, the x-push-secret header must match; when unset, the route
+   * applies per-IP rate limiting instead (see the route comment for why
+   * that is safe: sweeps only send factual on-chain-derived notifications
+   * and the watermark makes repeats no-ops). */
   expectedSecret: string | null;
   /** Secret supplied in the x-push-secret header. */
   providedSecret: string | null | undefined;
@@ -399,10 +456,22 @@ async function readWatermark(kv: KvStore): Promise<number> {
   return Number.isFinite(v) ? v : 0;
 }
 
-async function fetchTipLogs(fetchImpl: typeof fetch): Promise<MirrorLog[]> {
+async function fetchTipLogs(
+  fetchImpl: typeof fetch,
+  sinceSec: number,
+): Promise<MirrorLog[]> {
+  // Mirror-node topic searches require a BOUNDED timestamp range (both a
+  // lower and an upper bound); an unbounded topic query is rejected with
+  // HTTP 400 ("Cannot search topics without a valid timestamp range").
+  // Lower bound = the sweep watermark (or a 24h lookback on the very first
+  // run); upper bound = now. Logs at/below the watermark are still
+  // filtered client-side, and per-tx setNx keeps delivery exactly-once, so
+  // a slightly overlapping window is harmless.
+  const nowSec = Math.floor(Date.now() / 1000);
   const url =
     `${MIRROR_NODE}/contracts/${TIPS_CONTRACT_ID}/results/logs` +
-    `?order=desc&limit=50&topic0=${TIPSENT_TOPIC0}`;
+    `?order=desc&limit=50&topic0=${TIPSENT_TOPIC0}` +
+    `&timestamp=gte:${sinceSec}.000000000&timestamp=lte:${nowSec}.999999999`;
   const res = await fetchImpl(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`mirror node responded ${res.status}`);
   const json = (await res.json()) as { logs?: unknown };
@@ -420,40 +489,51 @@ export async function runPushCheck(
     kv,
     fetchImpl = fetch,
     sender = webPushSender,
-    vapidPublicKey,
-    vapidPrivateKey,
     expectedSecret,
     providedSecret,
     siteUrl,
     resolveUsername,
   } = deps;
 
-  if (!secretsMatch(expectedSecret, providedSecret)) {
+  // Auth: a configured secret is required; without one the route applies
+  // per-IP rate limiting and the sweep itself stays safe because every push
+  // is derived from a real on-chain TipSent log and the watermark makes
+  // repeat calls no-ops — an unauthenticated caller can only trigger the
+  // same legitimate sweep the cron would run anyway.
+  if (expectedSecret != null && !secretsMatch(expectedSecret, providedSecret)) {
     return { status: 401, body: { error: "unauthorized" } };
   }
 
   let logs: MirrorLog[];
+  const watermark = await readWatermark(kv);
+  // Lower bound for the mirror-node topic query: the watermark, or a 24h
+  // lookback when no sweep has ever run.
+  const sinceSec = watermark > 0 ? Math.floor(watermark) : Math.floor(Date.now() / 1000) - 86_400;
   try {
-    logs = await fetchTipLogs(fetchImpl);
+    logs = await fetchTipLogs(fetchImpl, sinceSec);
   } catch (e) {
     console.error(`[push/check] mirror node fetch failed: ${e instanceof Error ? e.message : String(e)}`);
     return { status: 503, body: { error: "mirror node unavailable" } };
   }
 
-  const watermark = await readWatermark(kv);
   let maxTs = watermark;
   for (const log of logs) {
     const ts = parseFloat(log.timestamp ?? "");
     if (Number.isFinite(ts) && ts > maxTs) maxTs = ts;
   }
 
-  // No VAPID private key yet: honest skip — still advance the watermark so
-  // enabling keys later doesn't replay old tips.
-  if (!isValidVapidPrivateKey(vapidPrivateKey)) {
+  // VAPID keypair is self-generated on first use and persisted in KV —
+  // no operator setup needed. If the keypair can't be obtained (KV write
+  // failure), honestly skip sends but still advance the watermark so a
+  // later healthy sweep doesn't replay old tips.
+  let keypair: VapidKeypair;
+  try {
+    keypair = await ensureVapidKeypair(kv);
+  } catch (e) {
+    console.error(`[push/check] VAPID keypair unavailable: ${e instanceof Error ? e.message : String(e)}`);
     await kv.set(PUSH_LAST_TS_KV_KEY, String(maxTs), PUSH_VAPID_TTL_MS);
-    return { status: 200, body: { checked: 0, sent: 0, pruned: 0, skipped: "no-vapid-key" } };
+    return { status: 200, body: { checked: 0, sent: 0, pruned: 0, skipped: "vapid-unavailable" } };
   }
-  const privateKey = vapidPrivateKey as string;
 
   let checked = 0;
   let sent = 0;
@@ -490,7 +570,7 @@ export async function runPushCheck(
     if (subs.length === 0) continue;
 
     const url = await blockpageUrlFor(tip.recipient);
-    const vapid = { subject: VAPID_SUBJECT, publicKey: vapidPublicKey, privateKey };
+    const vapid = { subject: VAPID_SUBJECT, publicKey: keypair.publicKey, privateKey: keypair.privateKey };
     for (const sub of subs) {
       const payload = buildTipPayload(tip, sub.lang, url);
       try {

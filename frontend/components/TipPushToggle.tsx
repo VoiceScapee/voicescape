@@ -5,11 +5,37 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useSession } from "@/lib/session";
 import {
   PUSH_VAPID_PUBLIC_KEY,
+  isValidVapidPublicKey,
   pushToggleStorageKey,
   urlBase64ToUint8Array,
 } from "@/lib/push";
 
 type ToggleState = "loading" | "on" | "off" | "denied" | "unsupported";
+
+/**
+ * Fetch the authoritative VAPID public key from the server. The keypair is
+ * self-generated on first use, so the endpoint is the source of truth.
+ * Falls back to the bundled constant (with an honest console warning) when
+ * the endpoint is unreachable — a rotated keypair would make the fallback
+ * stale, so this is strictly a last resort.
+ */
+async function fetchVapidPublicKey(): Promise<string> {
+  try {
+    const res = await fetch("/api/push/vapid-public-key", {
+      headers: { accept: "application/json" },
+    });
+    if (res.ok) {
+      const json = (await res.json()) as { publicKey?: unknown };
+      if (isValidVapidPublicKey(json.publicKey)) return json.publicKey;
+    }
+  } catch {
+    /* unreachable — fall through to the fallback below */
+  }
+  console.warn(
+    "[push] /api/push/vapid-public-key unreachable — using fallback VAPID public key",
+  );
+  return PUSH_VAPID_PUBLIC_KEY;
+}
 
 function pushSupported(): boolean {
   return (
@@ -78,9 +104,10 @@ export function TipPushToggle({ wallet }: { wallet: string }) {
         return;
       }
       const reg = await navigator.serviceWorker.register("/sw.js");
+      const vapidPublicKey = await fetchVapidPublicKey();
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(PUSH_VAPID_PUBLIC_KEY),
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
       });
       const json = sub.toJSON();
       const keys = json.keys ?? {};

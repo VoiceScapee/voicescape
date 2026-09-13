@@ -5,11 +5,20 @@
  * service worker registration flow.
  *
  * Security: ONLY the VAPID *public* key lives here. The private key is
- * never in code or git — it lives in the KV store at "push:vapid:private"
- * (written via scripts/store-vapid-key.mjs, read server-side only).
+ * never in code or git — it is self-generated on first use and persisted in
+ * the server KV store (read server-side only).
+ *
+ * The authoritative public key is served by GET /api/push/vapid-public-key;
+ * the constant below is only a FALLBACK for the rare case that endpoint is
+ * unreachable (a rotated keypair would make the fallback stale, so the
+ * endpoint is always tried first).
  */
 
-/** VAPID public key for push subscription (URL-safe base64, no padding). */
+/**
+ * Fallback VAPID public key for push subscription (URL-safe base64, no
+ * padding). Used only when /api/push/vapid-public-key is unreachable —
+ * see the note above. The authoritative key always comes from the endpoint.
+ */
 export const PUSH_VAPID_PUBLIC_KEY =
   "BPXMSlVt7p4oeaxugnbpF_B0zKw7kkUYqIjQtKF4IjmEzQcg1dIkmSBO2cqyPKaHzBaJ2qvuCG0DAddppnKA_5c";
 

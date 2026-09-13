@@ -1,25 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getKvStore } from "@/lib/server/store";
+import { ipGate } from "@/lib/server/rate-limit";
 import {
   PUSH_CHECK_SECRET_KV_KEY,
-  PUSH_VAPID_KV_KEY,
   runPushCheck,
 } from "@/lib/server/push";
-import { PUSH_VAPID_PUBLIC_KEY } from "@/lib/push";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
 import { siteUrl } from "@/lib/seo";
 
 export const runtime = "nodejs";
 
 /**
- * POST /api/push/check — server-to-server sweep for new tips.
+ * POST /api/push/check — sweep for new tips and push-notify recipients.
  *
- * Triggered externally (e.g. a cron job) — NOT by browsers. The caller must
- * send the shared secret in the `x-push-secret` header. The secret lives in
- * the KV store at key "push:check:secret" and is set by the operator with
- * any random string, e.g.:
+ * Triggered externally (e.g. a cron job) — NOT by browsers.
  *
- *   node -e '...'  (or scripts/store-vapid-key.mjs style)
+ * Auth: the shared secret is OPTIONAL. When KV holds "push:check:secret",
+ * the caller must send it in the `x-push-secret` header (401 otherwise).
+ * When no secret is configured, the endpoint accepts the call under a
+ * per-IP rate limit (20/hour, "push-check" bucket) instead. That fallback
+ * is safe by design: a sweep only sends factual notifications derived from
+ * real on-chain TipSent logs, and the KV watermark makes repeat calls
+ * no-ops — an unauthenticated caller can only trigger the same legitimate
+ * sweep the cron would run anyway. Set a secret later via KV if you want
+ * the stricter posture:
+ *
  *   await getKvStore().set("push:check:secret", "<random-secret>", <ttlMs>)
  *
  * Flow: fetch recent TipSent logs from the official Hedera mirror node for
@@ -28,19 +33,16 @@ export const runtime = "nodejs";
  * "push:sent:<txhash>" → web-push to the recipient's subscribed devices
  * → dead subscriptions (410/404) are pruned → watermark advances.
  *
- * The VAPID private key comes from KV "push:vapid:private" (never code/git).
- * When it is absent the sweep honestly skips sends but still advances the
- * watermark, reporting { skipped: "no-vapid-key" }.
+ * The VAPID keypair is self-generated on first use and persisted in KV —
+ * no operator key setup is required.
  *
  * Response: { checked, sent, pruned, skipped? }.
  */
 export async function POST(req: NextRequest) {
   const kv = getKvStore();
   let expectedSecret: string | null = null;
-  let vapidPrivateKey: string | null = null;
   try {
     expectedSecret = await kv.get(PUSH_CHECK_SECRET_KV_KEY);
-    vapidPrivateKey = await kv.get(PUSH_VAPID_KV_KEY);
   } catch (e) {
     console.error(`[push/check] KV unavailable: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json(
@@ -49,10 +51,21 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // No secret configured → rate-limit the open endpoint instead of
+  // requiring a header nobody can know.
+  if (expectedSecret == null) {
+    const gated = await ipGate(
+      req,
+      "push-check",
+      "IP_RATE_LIMIT_PUSH_CHECK",
+      20,
+      "too many requests — try again later",
+    );
+    if (gated) return gated;
+  }
+
   const result = await runPushCheck({
     kv,
-    vapidPublicKey: PUSH_VAPID_PUBLIC_KEY,
-    vapidPrivateKey,
     expectedSecret,
     providedSecret: req.headers.get("x-push-secret"),
     siteUrl: siteUrl(),

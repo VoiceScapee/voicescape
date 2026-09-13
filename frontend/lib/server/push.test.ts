@@ -12,10 +12,13 @@ import { describe, expect, it, vi } from "vitest";
 import { createMemoryKvStore } from "./store";
 import {
   PUSH_LAST_TS_KV_KEY,
+  PUSH_VAPID_KV_KEY,
+  PUSH_VAPID_PUBLIC_KV_KEY,
   TIPSENT_TOPIC0,
   addSubscription,
   buildTipPayload,
   decodeTipLog,
+  ensureVapidKeypair,
   listSubscriptions,
   removeSubscription,
   runPushCheck,
@@ -65,8 +68,6 @@ function mockFetch(logs: unknown[]) {
     }) as Response) as typeof fetch;
 }
 
-const VAPID_PRIVATE = "_sGgRM53OhBYCphwFEMusiBTy5QWttPQHykxtdzWcVk";
-
 function checkDeps(
   kv: ReturnType<typeof createMemoryKvStore>,
   overrides: Partial<PushCheckDeps> = {},
@@ -75,8 +76,6 @@ function checkDeps(
     kv,
     fetchImpl: mockFetch([tipLog()]),
     sender: vi.fn(async () => {}),
-    vapidPublicKey: PUSH_VAPID_PUBLIC_KEY,
-    vapidPrivateKey: VAPID_PRIVATE,
     expectedSecret: "s3cret",
     providedSecret: "s3cret",
     siteUrl: "https://example.test",
@@ -310,7 +309,23 @@ describe("runPushCheck", () => {
     expect(remaining.map((s) => s.endpoint)).toEqual(["https://push.example.com/live"]);
   });
 
-  it("reports no-vapid-key honestly and still advances the watermark", async () => {
+  it("queries the mirror node with a bounded timestamp range (topic searches require it)", async () => {
+    const kv = createMemoryKvStore();
+    let seenUrl = "";
+    const capturingFetch = (async (url: unknown) => {
+      seenUrl = String(url);
+      return { ok: true, json: async () => ({ logs: [] }) };
+    }) as typeof fetch;
+    const r = await runPushCheck(checkDeps(kv, { fetchImpl: capturingFetch }));
+    expect(r.status).toBe(200);
+    // Mirror node rejects topic queries without BOTH a lower and an upper
+    // timestamp bound — the sweep must always send a bounded range.
+    expect(seenUrl).toContain("topic0=");
+    expect(seenUrl).toMatch(/timestamp=gte:\d+\.000000000/);
+    expect(seenUrl).toMatch(/timestamp=lte:\d+\.999999999/);
+  });
+
+  it("allows the sweep without a secret when none is configured", async () => {
     const kv = createMemoryKvStore();
     await addSubscription(
       kv,
@@ -318,14 +333,49 @@ describe("runPushCheck", () => {
       { endpoint: "https://push.example.com/a", keys: { p256dh: "p", auth: "a" }, lang: "en" },
     );
     const sender = vi.fn(async () => {});
-    const r = await runPushCheck(checkDeps(kv, { sender, vapidPrivateKey: null }));
+    const r = await runPushCheck(
+      checkDeps(kv, { sender, expectedSecret: null, providedSecret: null }),
+    );
+    expect(r.status).toBe(200);
+    expect(sender).toHaveBeenCalledTimes(1);
+  });
+
+  it("generates and persists a VAPID keypair on the first sweep", async () => {
+    const kv = createMemoryKvStore();
+    await addSubscription(
+      kv,
+      WALLET,
+      { endpoint: "https://push.example.com/a", keys: { p256dh: "p", auth: "a" }, lang: "en" },
+    );
+    const sender = vi.fn(async () => {});
+    const r = await runPushCheck(checkDeps(kv, { sender }));
     expect(r.status).toBe(200);
     if (r.status === 200) {
-      expect(r.body.skipped).toBe("no-vapid-key");
-      expect(r.body.sent).toBe(0);
+      expect(r.body.sent).toBe(1);
+      expect(r.body.skipped).toBeUndefined();
     }
-    expect(sender).not.toHaveBeenCalled();
-    expect(parseFloat((await kv.get(PUSH_LAST_TS_KV_KEY)) ?? "0")).toBeGreaterThan(1700001000);
+    const storedPrivate = await kv.get(PUSH_VAPID_KV_KEY);
+    const storedPublic = await kv.get(PUSH_VAPID_PUBLIC_KV_KEY);
+    expect(isValidVapidPrivateKey(storedPrivate)).toBe(true);
+    expect(isValidVapidPublicKey(storedPublic)).toBe(true);
+  });
+
+  it("reuses the persisted keypair on later sweeps (no rotation)", async () => {
+    const kv = createMemoryKvStore();
+    const first = await ensureVapidKeypair(kv);
+    const second = await ensureVapidKeypair(kv);
+    expect(second).toEqual(first);
+  });
+
+  it("regenerates both halves when only a half-pair is present", async () => {
+    const kv = createMemoryKvStore();
+    await kv.set(PUSH_VAPID_KV_KEY, "x".repeat(43), 60_000);
+    const pair = await ensureVapidKeypair(kv);
+    expect(isValidVapidPrivateKey(pair.privateKey)).toBe(true);
+    expect(isValidVapidPublicKey(pair.publicKey)).toBe(true);
+    // The stale half-pair was replaced wholesale.
+    expect(await kv.get(PUSH_VAPID_KV_KEY)).toBe(pair.privateKey);
+    expect(await kv.get(PUSH_VAPID_PUBLIC_KV_KEY)).toBe(pair.publicKey);
   });
 
   it("resolves the blockpage URL when a username is known", async () => {
@@ -417,8 +467,11 @@ describe("VAPID key formats", () => {
   it("accepts the real generated public key", () => {
     expect(isValidVapidPublicKey(PUSH_VAPID_PUBLIC_KEY)).toBe(true);
   });
-  it("accepts the real generated private key", () => {
-    expect(isValidVapidPrivateKey(VAPID_PRIVATE)).toBe(true);
+  it("accepts a self-generated keypair (both halves, correct formats)", async () => {
+    const kv = createMemoryKvStore();
+    const pair = await ensureVapidKeypair(kv);
+    expect(isValidVapidPublicKey(pair.publicKey)).toBe(true);
+    expect(isValidVapidPrivateKey(pair.privateKey)).toBe(true);
   });
   it("rejects malformed keys", () => {
     expect(isValidVapidPublicKey("not-a-key")).toBe(false);
