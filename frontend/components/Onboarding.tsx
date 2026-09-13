@@ -16,7 +16,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { TEMPLATES, type Template } from "@/lib/templates";
+import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 
 export interface OnboardDraft {
   templateId: string;
@@ -76,7 +76,7 @@ export function consumeOnboardDraft(): OnboardDraft | null {
 
 const STEPS = ["Choose your vibe", "Make it yours", "Publish"] as const;
 
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export function Onboarding({ onDone, account }: { onDone: () => void; account?: string | null }) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
@@ -178,7 +178,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
-              {TEMPLATES.map((t) => {
+              {TEMPLATES.filter((t) => isTemplateVisible(t, account)).map((t) => {
                 const selected = t.id === templateId;
                 return (
                   <button

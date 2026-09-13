@@ -85,7 +85,7 @@ export function OnboardingTrigger() {
   }, [isAuthenticated, status, account, sessionAddress]);
 
   if (!visible || checking) return null;
-  return <Onboarding onDone={() => setVisible(false)} />;
+  return <Onboarding onDone={() => setVisible(false)} account={account ?? sessionAddress} />;
 }
 
 /** Called by the builder after a successful publish. */

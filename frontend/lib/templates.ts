@@ -5,7 +5,28 @@ export interface Template {
   name: string;
   description: string;
   category: "business" | "personal";
+  /**
+   * Private template: only shown in the builder/onboarding pickers when the
+   * connected wallet's account id matches one of these (case-insensitive,
+   * either 0.0.x or 0x form). Omit for public templates.
+   */
+  ownerAccounts?: string[];
   page: VoicescapePage;
+}
+
+/**
+ * Whether a template may be offered to the given connected wallet.
+ * Owner-gated templates stay invisible to everyone else (fail closed when
+ * no wallet is connected).
+ */
+export function isTemplateVisible(
+  t: Template,
+  account: string | null | undefined,
+): boolean {
+  if (!t.ownerAccounts || t.ownerAccounts.length === 0) return true;
+  if (!account) return false;
+  const want = account.trim().toLowerCase();
+  return t.ownerAccounts.some((a) => a.trim().toLowerCase() === want);
 }
 
 function base(username: string): Omit<VoicescapePage, "theme"> {
@@ -774,6 +795,77 @@ export const TEMPLATES: Template[] = [
         },
         { type: "tipJar", message: "fuel the next mile — tips go straight on-chain 🧭" },
       ],
+    },
+  },
+  // ---- Private: Brandon's founder blockpage. Owner-gated — invisible to
+  // every wallet except the founder's (0.0.10424063). Never listed publicly.
+  {
+    id: "founder",
+    name: "Founder",
+    description:
+      "The founder's blockpage — editorial hero, founder story, build log, and on-chain proof.",
+    category: "personal",
+    ownerAccounts: ["0.0.10424063", "0x30c63dc43608b6764a6b8b53960553aebf306817"],
+    page: {
+      version: 1,
+      username: "user-10424063",
+      blocks: [
+        { type: "hero", title: "Brandon", subtitle: "Founder / Builder / Human", avatarEmoji: "🎙️" },
+        {
+          type: "bio",
+          text: "I took \u201ccarve out your piece of cyberspace\u201d literally. Voicescape is my proof that one person with an idea can build a place where humans and agents create, connect, and transact.",
+        },
+        {
+          type: "bio",
+          text: "From homeless to web3 to dapp founder \u2014 this is my journey. I started building Voicescape on a phone with nothing else. If it changes one person's life, we succeeded.",
+        },
+        {
+          type: "links",
+          items: [
+            { label: "Enter Voicescape", url: "https://voicescape.vercel.app" },
+            {
+              label: "On-chain proof \u2014 Registry 0.0.10854058",
+              url: "https://hashscan.io/mainnet/contract/0.0.10854058",
+            },
+            {
+              label: "On-chain proof \u2014 Tips 0.0.10854060",
+              url: "https://hashscan.io/mainnet/contract/0.0.10854060",
+            },
+            { label: "Find me on X", url: "https://x.com/Brandon14289412" },
+          ],
+        },
+        { type: "music", title: "My anthem", tracks: [] },
+        {
+          type: "guestbook",
+          entries: [
+            {
+              name: "v1 \u2014 mainnet",
+              message: "Registry + Tips contracts live. 98/2 split enforced on-chain, atomic.",
+              date: "2026-09-11",
+            },
+            {
+              name: "v2 \u2014 town hall",
+              message: "Forum, marketplace, polls, and chat shipped. Direct sales, zero custody.",
+              date: "2026-09-12",
+            },
+            {
+              name: "v3 \u2014 fundraiser board",
+              message: "On-chain goals with automatic completion. Donations are direct tips.",
+              date: "2026-09-13",
+            },
+          ],
+        },
+        {
+          type: "tipJar",
+          message: "Tips split 98/2 on-chain \u2014 98% to the creator, 2% keeps the lights on. Don't trust, verify.",
+        },
+      ],
+      theme: {
+        background: "linear-gradient(180deg, #0b0b10 0%, #141419 100%)",
+        foreground: "#f5f2ea",
+        accent: "#ff6b35",
+        fontFamily: "Georgia, 'Times New Roman', serif",
+      },
     },
   },
 ];

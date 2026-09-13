@@ -36,7 +36,7 @@ import {
 } from "@/lib/schema";
 import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
 import { pinAudioFile } from "@/lib/ipfs";
-import { TEMPLATES, type Template } from "@/lib/templates";
+import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -967,12 +967,15 @@ function ThemeEditor({
 function TemplatePicker({
   activeId,
   onPick,
+  account,
 }: {
   activeId: string;
   onPick: (t: Template) => void;
+  /** Connected wallet account id (0.0.x or 0x…) — owner-gated templates stay hidden without it. */
+  account: string | null;
 }) {
   const [category, setCategory] = useState<"business" | "personal">("personal");
-  const filtered = TEMPLATES.filter((t) => t.category === category);
+  const filtered = TEMPLATES.filter((t) => t.category === category && isTemplateVisible(t, account));
   return (
     <div>
       <div className="vb-panel-title">Template</div>
@@ -2161,7 +2164,7 @@ function BuilderInner() {
       <div className="vb-main">
         {/* Left: controls */}
         <div className="vb-controls">
-          <TemplatePicker activeId={templateId} onPick={pickTemplate} />
+          <TemplatePicker activeId={templateId} onPick={pickTemplate} account={account} />
 
           <div className="vb-tabs" role="tablist" aria-label="Builder panels">
             {TABS.map((t) => (
