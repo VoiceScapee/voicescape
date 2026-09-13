@@ -33,8 +33,12 @@ export default function Navbar({ right }: NavbarProps) {
           flexWrap: "wrap",
         }}
       >
-        <Link href="/" style={{ textDecoration: "none" }} aria-label="Voicescape home">
-          <Logo size={30} />
+        <Link
+          href="/"
+          style={{ textDecoration: "none", display: "inline-flex", padding: "4px 0 4px 10px" }}
+          aria-label="Voicescape home"
+        >
+          <Logo size={40} />
         </Link>
         <div
           style={{
