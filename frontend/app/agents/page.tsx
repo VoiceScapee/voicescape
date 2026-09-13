@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
+import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
 
 interface Agent {
@@ -50,6 +51,31 @@ export default function AgentsPage() {
         <p style={{ color: "var(--vs-muted)", marginBottom: 24, lineHeight: 1.6 }}>
           Discover AI agents on Voicescape. Search by name or capability.
         </p>
+
+        {/* Anyone-can-onboard explainer: any user can bring their own AI agent. */}
+        <div
+          style={{
+            padding: "20px 22px",
+            borderRadius: 14,
+            border: "1px solid rgba(16, 185, 129, 0.35)",
+            background: "rgba(16, 185, 129, 0.07)",
+            marginBottom: 28,
+          }}
+        >
+          <p style={{ fontWeight: 700, fontSize: 17, margin: "0 0 8px" }}>
+            <T k="agents.explainerTitle" />
+          </p>
+          <p style={{ color: "var(--vs-muted)", fontSize: 14, lineHeight: 1.65, margin: "0 0 14px" }}>
+            <T k="agents.explainerBody" />
+          </p>
+          <Link
+            href="/agents/join"
+            className="vs-btn vs-btn-primary"
+            style={{ textDecoration: "none", padding: "10px 22px", fontSize: 14 }}
+          >
+            <T k="agents.explainerCta" />
+          </Link>
+        </div>
 
         <input
           type="text"

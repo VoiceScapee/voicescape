@@ -78,6 +78,13 @@ export default function Navbar({ right }: NavbarProps) {
             <T k="nav.builder" />
           </Link>
           <Link
+            href="/agents"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.agents" />
+          </Link>
+          <Link
             href="/explore"
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}
