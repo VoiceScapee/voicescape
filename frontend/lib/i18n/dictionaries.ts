@@ -150,6 +150,18 @@ const en = {
   // Stat cards — "LIVE IN DAPP" pulsing badge (kept in English as a
   // stylized mono label across all languages, per the design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // Tip push notifications (blockpage owner toggle + push payload)
+  "push.title": "Tip notifications",
+  "push.desc": "Get a notification on this device when someone tips your page.",
+  "push.on": "On — you'll be notified here when you receive a tip.",
+  "push.enabling": "Turning on…",
+  "push.disabling": "Turning off…",
+  "push.denied": "Notifications are blocked for this site. To turn them on, allow notifications in your browser settings.",
+  "push.error": "Couldn't update notification settings. Please try again.",
+  "push.unsupported": "This browser doesn't support push notifications.",
+  "push.receivedTitle": "New tip received",
+  "push.receivedBody": "You received {amount} HBAR",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -278,6 +290,18 @@ const es: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // Notificaciones push de propinas (interruptor del propietario + texto del push)
+  "push.title": "Notificaciones de propinas",
+  "push.desc": "Recibe una notificación en este dispositivo cuando alguien dé propina a tu página.",
+  "push.on": "Activadas: recibirás una notificación aquí cuando recibas una propina.",
+  "push.enabling": "Activando…",
+  "push.disabling": "Desactivando…",
+  "push.denied": "Las notificaciones están bloqueadas para este sitio. Para activarlas, permite las notificaciones en los ajustes de tu navegador.",
+  "push.error": "No se pudo actualizar la configuración de notificaciones. Inténtalo de nuevo.",
+  "push.unsupported": "Este navegador no admite notificaciones push.",
+  "push.receivedTitle": "Nueva propina recibida",
+  "push.receivedBody": "Recibiste {amount} HBAR",
 };
 
 const zh: Record<I18nKey, string> = {
@@ -403,6 +427,18 @@ const zh: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // 打赏推送通知（页面所有者开关 + 推送文本）
+  "push.title": "打赏通知",
+  "push.desc": "当有人给你的页面打赏时，在此设备上接收通知。",
+  "push.on": "已开启——收到打赏时你会在此收到通知。",
+  "push.enabling": "正在开启…",
+  "push.disabling": "正在关闭…",
+  "push.denied": "此网站的通知已被屏蔽。如需开启，请在浏览器设置中允许通知。",
+  "push.error": "无法更新通知设置，请重试。",
+  "push.unsupported": "此浏览器不支持推送通知。",
+  "push.receivedTitle": "收到新的打赏",
+  "push.receivedBody": "你收到了 {amount} HBAR",
 };
 
 const hi: Record<I18nKey, string> = {
@@ -528,6 +564,18 @@ const hi: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // टिप पुश सूचनाएं (पेज स्वामी टॉगल + पुश टेक्स्ट)
+  "push.title": "टिप सूचनाएं",
+  "push.desc": "जब कोई आपके पेज को टिप दे, तो इस डिवाइस पर सूचना पाएं।",
+  "push.on": "चालू — जब आपको टिप मिलेगी, यहां सूचना मिलेगी।",
+  "push.enabling": "चालू किया जा रहा है…",
+  "push.disabling": "बंद किया जा रहा है…",
+  "push.denied": "इस साइट के लिए सूचनाएं अवरुद्ध हैं। इन्हें चालू करने के लिए, अपने ब्राउज़र की सेटिंग में सूचनाओं को अनुमति दें।",
+  "push.error": "सूचना सेटिंग अपडेट नहीं हो सकी। कृपया पुनः प्रयास करें।",
+  "push.unsupported": "यह ब्राउज़र पुश सूचनाओं का समर्थन नहीं करता।",
+  "push.receivedTitle": "नई टिप मिली",
+  "push.receivedBody": "आपको {amount} HBAR मिला",
 };
 
 const ar: Record<I18nKey, string> = {
@@ -653,6 +701,18 @@ const ar: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // إشعارات الإكراميات الفورية (مفتاح مالك الصفحة + نص الإشعار)
+  "push.title": "إشعارات الإكراميات",
+  "push.desc": "احصل على إشعار على هذا الجهاز عندما يرسل لك أحدهم إكرامية على صفحتك.",
+  "push.on": "مفعّلة — ستصلك إشعار هنا عندما تتلقى إكرامية.",
+  "push.enabling": "جارٍ التفعيل…",
+  "push.disabling": "جارٍ الإيقاف…",
+  "push.denied": "الإشعارات محظورة لهذا الموقع. لتفعيلها، اسمح بالإشعارات في إعدادات المتصفح.",
+  "push.error": "تعذّر تحديث إعدادات الإشعارات. حاول مجددًا.",
+  "push.unsupported": "هذا المتصفح لا يدعم الإشعارات الفورية.",
+  "push.receivedTitle": "تم استلام إكرامية جديدة",
+  "push.receivedBody": "تلقيت {amount} HBAR",
 };
 
 const pt: Record<I18nKey, string> = {
@@ -778,6 +838,18 @@ const pt: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // Notificações push de gorjetas (interruptor do proprietário + texto do push)
+  "push.title": "Notificações de gorjetas",
+  "push.desc": "Receba uma notificação neste dispositivo quando alguém der gorjeta à sua página.",
+  "push.on": "Ativado — você será notificado aqui quando receber uma gorjeta.",
+  "push.enabling": "Ativando…",
+  "push.disabling": "Desativando…",
+  "push.denied": "As notificações estão bloqueadas para este site. Para ativá-las, permita notificações nas configurações do navegador.",
+  "push.error": "Não foi possível atualizar as configurações de notificação. Tente novamente.",
+  "push.unsupported": "Este navegador não suporta notificações push.",
+  "push.receivedTitle": "Nova gorjeta recebida",
+  "push.receivedBody": "Você recebeu {amount} HBAR",
 };
 
 const fr: Record<I18nKey, string> = {
@@ -904,6 +976,18 @@ const fr: Record<I18nKey, string> = {
 
   // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
   "stats.liveInDapp": "LIVE IN DAPP",
+
+  // Notifications push de pourboires (interrupteur du propriétaire + texte du push)
+  "push.title": "Notifications de pourboires",
+  "push.desc": "Recevez une notification sur cet appareil quand quelqu'un donne un pourboire à votre page.",
+  "push.on": "Activé — vous serez notifié ici quand vous recevrez un pourboire.",
+  "push.enabling": "Activation…",
+  "push.disabling": "Désactivation…",
+  "push.denied": "Les notifications sont bloquées pour ce site. Pour les activer, autorisez les notifications dans les paramètres de votre navigateur.",
+  "push.error": "Impossible de mettre à jour les paramètres de notification. Réessayez.",
+  "push.unsupported": "Ce navigateur ne prend pas en charge les notifications push.",
+  "push.receivedTitle": "Nouveau pourboire reçu",
+  "push.receivedBody": "Vous avez reçu {amount} HBAR",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr };

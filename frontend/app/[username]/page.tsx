@@ -33,6 +33,8 @@ import {
 import { usdToWei } from "@/lib/tokens";
 import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
+import { canonicalAddress } from "@/lib/session-message";
+import { TipPushToggle } from "@/components/TipPushToggle";
 
 type LoadState =
   | { status: "loading" }
@@ -545,6 +547,18 @@ function PublicPageInner({ username }: { username: string }) {
     viewerAddress = undefined;
   }
 
+  // Owner view: the connected wallet matches the page's on-chain owner
+  // (compared in canonical EVM form — the session may be 0.0.x or 0x…).
+  // The tip-notifications toggle renders ONLY for the owner.
+  const isOwner =
+    state.status === "ready" &&
+    !!viewerAddress &&
+    (() => {
+      const a = canonicalAddress(viewerAddress as string);
+      const b = canonicalAddress(state.meta.owner);
+      return !!a && !!b && a === b;
+    })();
+
   // Fire-and-forget view tracking for creator analytics. Never blocks the
   // page; the server rate-limits per IP and skips the owner's own views.
   useEffect(() => {
@@ -652,6 +666,7 @@ function PublicPageInner({ username }: { username: string }) {
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>
+        {isOwner && <TipPushToggle wallet={state.meta.owner} />}
         <ShareButtons username={username} />
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />
