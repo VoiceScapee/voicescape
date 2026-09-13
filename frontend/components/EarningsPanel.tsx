@@ -247,7 +247,10 @@ export function EarningsPanel({
             {t("earnings.visitsNote")}
           </p>
 
-          <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--vs-border, rgba(255,255,255,0.08))" }}>
+          <div
+            id="set-funding-goal"
+            style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--vs-border, rgba(255,255,255,0.08))", scrollMarginTop: 90 }}
+          >
             <h3 style={{ fontSize: "0.95rem", margin: "0 0 10px" }}>🎯 {t("goal.setTitle")}</h3>
             <div style={{ display: "grid", gap: 10, maxWidth: 420 }}>
               <label style={{ display: "grid", gap: 4, fontSize: "0.8rem" }}>

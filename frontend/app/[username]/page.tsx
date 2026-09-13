@@ -568,16 +568,29 @@ function PublicPageInner({ username }: { username: string }) {
   const [tipOpen, setTipOpen] = useState(false);
   const [service, setService] = useState<ServiceItem | null>(null);
   // Deep link from the fundraiser board: /<username>?tip=1 opens the tip box
-  // so a donation is one tap from the campaign card.
+  // so a donation is one tap from the campaign card. ?goal=1 scrolls to the
+  // funding-goal setter so starting a fundraiser is one tap, not a hunt.
   let autoTip = false;
+  let autoGoal = false;
   try {
-    autoTip = useSearchParams().get("tip") === "1";
+    const sp = useSearchParams();
+    autoTip = sp.get("tip") === "1";
+    autoGoal = sp.get("goal") === "1";
   } catch {
     autoTip = false;
+    autoGoal = false;
   }
   useEffect(() => {
     if (autoTip) setTipOpen(true);
   }, [autoTip]);
+  useEffect(() => {
+    if (!autoGoal || state.status !== "ready") return;
+    // The goal form lives in the owner-only EarningsPanel below the fold;
+    // scroll straight to it once the page data has rendered.
+    document
+      .getElementById("set-funding-goal")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [autoGoal, state.status]);
   // Session may be absent outside the root providers; degrade gracefully.
   let viewerAddress: string | undefined;
   try {

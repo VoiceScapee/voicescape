@@ -122,7 +122,9 @@ export default function FundraiserClient() {
   }, []);
 
   const myUsername = useMemo(() => (account ? deriveUsername(account) : null), [account]);
-  const startHref = myUsername ? `/${myUsername}` : "/builder";
+  // "Start a fundraiser" deep-links the signed-in owner straight to the
+  // funding-goal setter on their blockpage (?goal=1 scrolls to the form).
+  const startHref = myUsername ? `/${myUsername}?goal=1` : "/builder";
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--vs-bg)" }}>
