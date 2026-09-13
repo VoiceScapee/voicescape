@@ -42,6 +42,7 @@ import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
 import { canonicalAddress } from "@/lib/session-message";
 import { TipPushToggle } from "@/components/TipPushToggle";
+import TipCelebration from "@/components/TipCelebration";
 import { EarningsPanel } from "@/components/EarningsPanel";
 import { GoalBar } from "@/components/GoalBar";
 import { FollowButton } from "@/components/FollowButton";
@@ -212,8 +213,14 @@ function TipBox({
     >
       <div className="pv-tip-card">
         {txHash ? (
-          <TxReceipt
-            title="Tip confirmed"
+          <>
+            <TipCelebration
+              usd={usdNum.toFixed(2)}
+              hbar={shareHbar}
+              username={username}
+            />
+            <TxReceipt
+              title="Tip confirmed"
             approvedAt={approvedAt}
             finalizedAt={finalizedAt}
             txId={txHash}
@@ -236,6 +243,7 @@ function TipBox({
                 : undefined
             }
           />
+          </>
         ) : submittedHash ? (
           <div className="pv-tip-confirm">
             <span className="pv-tip-confirm-icon" aria-hidden="true">
