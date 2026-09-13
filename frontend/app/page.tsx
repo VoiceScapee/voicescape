@@ -7,6 +7,8 @@ import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
 import { OnboardingTrigger } from "@/components/OnboardingTrigger";
 import { ClarityCountdown } from "@/components/landing/ClarityCountdown";
+import { HalvingCountdowns } from "@/components/landing/HalvingCountdowns";
+import { EcosystemSpotlight } from "@/components/landing/EcosystemSpotlight";
 import { NewToWeb3 } from "@/components/landing/NewToWeb3";
 import { CommunityPulse } from "@/components/landing/CommunityPulse";
 import { ChatPreview } from "@/components/landing/ChatPreview";
@@ -107,6 +109,8 @@ export default function LandingPage() {
 
         {/* Community front door — reasons to come back */}
         <ClarityCountdown />
+        <HalvingCountdowns />
+        <EcosystemSpotlight />
         <CommunityPulse />
         <ChatPreview />
         <NewToWeb3 />
