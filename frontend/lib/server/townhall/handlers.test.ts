@@ -590,6 +590,22 @@ describe("createPost / getPosts", () => {
     expect(byWall.posts).toHaveLength(1);
   });
 
+  it("wall-scoped comments never leak into the board feed", async () => {
+    // Mimics CommentWall: submitted to the forum topic with board "general"
+    // but scoped to a wall.
+    await writePost(deps, "alice", "hello forum", { board: "general" });
+    await writePost(deps, "bob", "nice wall", { board: "general", wall: "alice" });
+    const general = ((await getPosts(deps, { board: "general" })).json as {
+      posts: { body: string; wall: string | null }[];
+    }).posts;
+    expect(general.map((p) => p.body)).toEqual(["hello forum"]);
+    // …and the wall feed still shows only that wall's comments.
+    const wall = ((await getPosts(deps, { wall: "alice" })).json as {
+      posts: { body: string }[];
+    }).posts;
+    expect(wall.map((p) => p.body)).toEqual(["nice wall"]);
+  });
+
   it("supports replies via replyTo", async () => {
     await writePost(deps, "alice", "parent");
     const r = await createPost(deps, { author: "bob", auth: testCred("bob"), body: "child", replyTo: 1, ...fee() });
@@ -2292,6 +2308,16 @@ describe("stream queries (windowed, for SSE)", () => {
 
     const afterOne = await queryPostViews(deps, null, 1);
     expect(afterOne.map((p) => p.seq)).toEqual([2, 3]);
+  });
+
+  it("queryPostViews excludes wall-scoped comments from a board stream", async () => {
+    const deps = makeDeps();
+    await writePost(deps, "alice", "board post", { board: "general" });
+    // Wall comment submitted exactly like CommentWall does.
+    await writePost(deps, "bob", "wall comment", { board: "general", wall: "alice" });
+
+    const general = await queryPostViews(deps, "general", 0);
+    expect(general.map((p) => p.body)).toEqual(["board post"]);
   });
 
   it("queryProposalEvents emits proposal and vote events with the proposal id", async () => {

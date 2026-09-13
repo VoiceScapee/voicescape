@@ -93,3 +93,24 @@ export function clearVanityName(wallet: string): void {
     /* ignore */
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* On-chain page check: does this wallet already own a page?           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ask the server which page username a wallet account ("0.0.x" or "0x…")
+ * owns on-chain (reverse registry lookup — works for vanity names too, not
+ * just wallet-derived ones). Returns the username, or null when the account
+ * owns no page (HTTP 404). Throws on transport errors so callers can decide
+ * how to fail (the onboarding gate fails open: the wizard is skippable).
+ */
+export async function fetchRegisteredUsername(account: string): Promise<string | null> {
+  const res = await fetch(`/api/resolve?owner=${encodeURIComponent(account)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`page lookup failed (HTTP ${res.status})`);
+  const json = (await res.json().catch(() => null)) as { username?: unknown } | null;
+  return typeof json?.username === "string" && json.username ? json.username : null;
+}

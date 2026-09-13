@@ -450,7 +450,13 @@ export async function getPosts(deps: TownhallDeps, q: GetPostsQuery): Promise<Ha
     mods.map((m) => m.contents),
   );
   let filtered = visible;
-  if (q.board) filtered = filtered.filter((p) => p.board.toLowerCase() === q.board!.toLowerCase());
+  if (q.board) {
+    filtered = filtered.filter((p) => p.board.toLowerCase() === q.board!.toLowerCase());
+    // A board feed shows board posts only. Wall-scoped comments (wall set)
+    // belong on the blockpage wall (?wall=… below) — they must never leak
+    // into the Town Hall forum.
+    if (!q.wall) filtered = filtered.filter((p) => !p.wall);
+  }
   if (q.wall) filtered = filtered.filter((p) => p.wall && p.wall.toLowerCase() === q.wall!.toLowerCase());
   const ordered = orderNewestFirst(filtered);
   const before = q.before ? Number(q.before) : NaN;
@@ -495,7 +501,8 @@ export async function queryPostViews(
   const want = board ? board.toLowerCase() : null;
   return posts
     .filter((p) => visibleSeqs.has(p.seq))
-    .filter((p) => !want || p.contents.board.toLowerCase() === want)
+    // Board feeds exclude wall-scoped comments — they belong on the wall.
+    .filter((p) => !want || (p.contents.board.toLowerCase() === want && !p.contents.wall))
     .map((p) => ({
       seq: p.seq,
       board: p.contents.board,

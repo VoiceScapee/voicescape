@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   deriveUsername,
   isAccountId,
@@ -66,5 +66,43 @@ describe("isValidUsername", () => {
     expect(isValidUsername("UPPER")).toBe(false);
     expect(isValidUsername("with space")).toBe(false);
     expect(isValidUsername("with_underscore")).toBe(false);
+  });
+});
+
+describe("fetchRegisteredUsername", () => {
+  const realFetch = globalThis.fetch;
+
+  function mockFetch(handler: (url: string) => { status: number; body: unknown }) {
+    (globalThis as { fetch?: unknown }).fetch = async (url: string) => ({
+      status: handler(url).status,
+      ok: handler(url).status >= 200 && handler(url).status < 300,
+      json: async () => handler(url).body,
+    });
+  }
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("returns the username when the account owns a page", async () => {
+    const { fetchRegisteredUsername } = await import("./identity");
+    mockFetch((url) => {
+      expect(url).toContain("/api/resolve?owner=");
+      expect(url).toContain(encodeURIComponent("0.0.10425049"));
+      return { status: 200, body: { username: "user-10425049" } };
+    });
+    expect(await fetchRegisteredUsername("0.0.10425049")).toBe("user-10425049");
+  });
+
+  it("returns null on 404 (no page registered)", async () => {
+    const { fetchRegisteredUsername } = await import("./identity");
+    mockFetch(() => ({ status: 404, body: { error: "no page registered for this account" } }));
+    expect(await fetchRegisteredUsername("0.0.99999999")).toBeNull();
+  });
+
+  it("throws on transport errors so the caller can fail open", async () => {
+    const { fetchRegisteredUsername } = await import("./identity");
+    mockFetch(() => ({ status: 503, body: { error: "down" } }));
+    await expect(fetchRegisteredUsername("0.0.10425049")).rejects.toThrow();
   });
 });

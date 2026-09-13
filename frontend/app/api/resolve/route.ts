@@ -1,14 +1,19 @@
 /**
- * GET /api/resolve?username=<name>
+ * GET /api/resolve?username=<name> | ?owner=<0.0.x | 0x…>
  *
  * Server-side page resolution. The browser can't always call the Hedera
  * RPC directly (CORS), so we resolve here where there's no CORS restriction.
  *
- * Returns: { owner, ipfsHash, ownerType, operator, purpose } or 404.
+ * ?username= → { owner, ipfsHash, ownerType, operator, purpose } or 404.
+ * ?owner=    → { username } — reverse lookup: which page does this wallet
+ *              account own? Finds the account's latest registerPage call on
+ *              the Registry via the mirror node. 404 when the account owns
+ *              no page.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
+import { resolveUsernameForOwner } from "@/lib/registry-reverse";
 
 const REGISTRY_ABI = [
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
@@ -20,8 +25,21 @@ const RPC_URL = process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC?.trim() || "https://m
 
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get("username");
+  const owner = req.nextUrl.searchParams.get("owner");
+
+  // Reverse lookup: wallet account -> registered username. Used by the
+  // onboarding gate so a wallet that already owns a page never replays the
+  // "first blockpage" wizard on a fresh browser/profile.
+  if (owner) {
+    const found = await resolveUsernameForOwner(owner);
+    if (!found) {
+      return NextResponse.json({ error: "no page registered for this account" }, { status: 404 });
+    }
+    return NextResponse.json({ username: found });
+  }
+
   if (!username) {
-    return NextResponse.json({ error: "username required" }, { status: 400 });
+    return NextResponse.json({ error: "username or owner required" }, { status: 400 });
   }
 
   try {
