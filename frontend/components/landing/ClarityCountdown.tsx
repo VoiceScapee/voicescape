@@ -42,8 +42,10 @@ export function ClarityCountdown() {
   }, []);
 
   const target = Date.parse(CLARITY_VOTE_AT);
-  // SSR / pre-hydration: render the static shell so layout never shifts.
-  const p = partsLeft(target, now ?? target);
+  // SSR / pre-hydration: render the countdown against the server clock so
+  // the static shell never claims the vote is live before it is. The client
+  // takes over on the next tick; a sub-second skew self-corrects.
+  const p = partsLeft(target, now ?? Date.now());
 
   const units: { v: number; label: string }[] = [
     { v: p.days, label: t("landing.cdDays") },
