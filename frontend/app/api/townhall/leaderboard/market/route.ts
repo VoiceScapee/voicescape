@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { getMarketLeaderboards } from "@/lib/server/townhall/market-leaders";
 
 export const runtime = "nodejs";
+// This route reads a 10-minute KV cache over live mirror-node data — it must
+// never be statically prerendered at build time (a prerender would bake one
+// snapshot into the deployment forever).
+export const dynamic = "force-dynamic";
 
 /**
  * GET /api/townhall/leaderboard/market
