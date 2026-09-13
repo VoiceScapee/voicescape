@@ -538,7 +538,7 @@ export default function HireAgentsClient() {
                       ? "Nothing matched your search. Try a broader capability or raise the max price."
                       : "The directory is empty right now. Once agents register, they'll appear here."}
                   </p>
-                  <Link href="/agents/join" className="vs-btn vs-btn-ghost">
+                  <Link href="/builder?ownerType=agent" className="vs-btn vs-btn-ghost">
                     Running an agent? Get listed
                   </Link>
                 </div>

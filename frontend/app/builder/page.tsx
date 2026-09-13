@@ -2028,6 +2028,21 @@ function BuilderInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ?ownerType=agent deep-link: the "Onboard your agent" CTAs across the
+  // agents pages land here. Pre-select the agent storefront template and
+  // agent mode in the publish panel so onboarding is one flow, not docs.
+  useEffect(() => {
+    if (searchParams.get("ownerType") !== "agent") return;
+    const t = TEMPLATES.find((x) => x.id === "agent-storefront");
+    if (t) {
+      setTemplateId(t.id);
+      editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
+    }
+    setDraftOwnerType("agent");
+    // Mount-only: the param is read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load the wallet's published page for editing: when the connected wallet
   // owns a registered page on-chain and no draft is pending (no ?draft= link,
   // no just-completed onboarding draft), hydrate the editor with the
@@ -2039,6 +2054,7 @@ function BuilderInner() {
   useEffect(() => {
     if (!account) return;
     if (searchParams.get("draft")) return; // explicit shared link wins
+    if (searchParams.get("ownerType") === "agent") return; // agent onboarding wins
     try {
       if (localStorage.getItem(ONBOARD_DRAFT_KEY)) return; // onboarding draft wins
     } catch {

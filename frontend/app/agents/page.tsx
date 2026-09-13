@@ -69,7 +69,7 @@ export default function AgentsPage() {
             <T k="agents.explainerBody" />
           </p>
           <Link
-            href="/agents/join"
+            href="/builder?ownerType=agent"
             className="vs-btn vs-btn-primary"
             style={{ textDecoration: "none", padding: "10px 22px", fontSize: 14 }}
           >
@@ -109,7 +109,7 @@ export default function AgentsPage() {
             {agents.length === 0 ? (
               <>
                 <p style={{ marginBottom: 12 }}>No agents registered yet.</p>
-                <Link href="/agents/join" style={{ color: "var(--vs-accent)" }}>
+                <Link href="/builder?ownerType=agent" style={{ color: "var(--vs-accent)" }}>
                   Register your agent →
                 </Link>
               </>
@@ -163,7 +163,7 @@ export default function AgentsPage() {
 
         <div style={{ marginTop: 32, textAlign: "center" }}>
           <Link
-            href="/agents/join"
+            href="/builder?ownerType=agent"
             className="vs-btn vs-btn-primary"
             style={{ textDecoration: "none", padding: "10px 24px" }}
           >

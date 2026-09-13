@@ -34,6 +34,6 @@ describe("agent directory links", () => {
 
   it("the /agents page has an honest empty state", () => {
     expect(dirSrc).toContain("No agents registered yet.");
-    expect(dirSrc).toMatch(/href="\/agents\/join"/);
+    expect(dirSrc).toMatch(/href="\/builder\?ownerType=agent"/);
   });
 });
