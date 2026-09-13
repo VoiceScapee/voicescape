@@ -1,26 +1,20 @@
 "use client";
 
 /**
- * Post-connect routing + onboarding decision on the landing page.
+ * First-run onboarding on the landing page.
  *
- * On first app load after the wallet connects:
- *   - wallet owns a page on-chain (or local storage says published)
- *     → route straight to their blockpage (not the builder).
- *   - onboarded but never published → the builder (their draft lives there).
- *   - wallet owns NO page → show the first-blockpage wizard (unchanged).
- *
- * The redirect fires once per tab session, only after the on-chain page
- * check resolves — existing owners never see a wizard flash, and new
- * wallets still get the guided first-blockpage flow.
+ * Everyone — brand-new or returning owner — gets the same flow: splash,
+ * then the landing page, then the navbar (Brandon's call, 2026-09-13).
+ * This component never redirects anywhere. Its only job: if the connected
+ * wallet owns no blockpage, show the skippable first-blockpage wizard.
+ * Returning owners reach their page through the navbar wallet menu.
  */
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/session";
 import { fetchRegisteredUsername } from "@/lib/identity";
-import { Onboarding, isOnboarded } from "@/components/Onboarding";
+import { Onboarding } from "@/components/Onboarding";
 
 const PUBLISHED_KEY = "vs_published_username";
-const REDIRECT_KEY = "vs_home_redirect_done";
 
 /** The locally-remembered published username, if any. */
 function publishedUsername(): string | null {
@@ -32,24 +26,6 @@ function publishedUsername(): string | null {
   }
 }
 
-/** Once per tab session — navigating back to the landing page must not yank. */
-function redirectDone(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return sessionStorage.getItem(REDIRECT_KEY) === "1";
-  } catch {
-    return true; // storage unavailable — fail closed, don't redirect
-  }
-}
-
-function markRedirectDone(): void {
-  try {
-    sessionStorage.setItem(REDIRECT_KEY, "1");
-  } catch {
-    /* best effort */
-  }
-}
-
 export function OnboardingTrigger() {
   const { isAuthenticated, status, account, session } = useSession();
   const sessionAddress = session?.address ?? null;
@@ -57,7 +33,6 @@ export function OnboardingTrigger() {
   const [checking, setChecking] = useState(false);
   // The on-chain page check runs once per connected address.
   const checkedFor = useRef<string | null>(null);
-  const router = useRouter();
 
   useEffect(() => {
     if (status === "loading") return;
@@ -66,28 +41,10 @@ export function OnboardingTrigger() {
       setChecking(false);
       return;
     }
-    const mayRedirect = !redirectDone();
-    const owned = publishedUsername();
-    if (owned) {
-      // Returning owner — straight to their blockpage on first load.
-      // The builder stays one tap away in the navbar.
+    if (publishedUsername()) {
+      // Returning owner — nothing to do. They navigate from the navbar.
       setVisible(false);
       setChecking(false);
-      if (mayRedirect) {
-        markRedirectDone();
-        router.replace(`/${owned}`);
-      }
-      return;
-    }
-    if (isOnboarded()) {
-      // Finished the wizard but never published — the builder is where
-      // their draft lives.
-      setVisible(false);
-      setChecking(false);
-      if (mayRedirect) {
-        markRedirectDone();
-        router.replace("/builder");
-      }
       return;
     }
     const address = account ?? sessionAddress;
@@ -106,13 +63,8 @@ export function OnboardingTrigger() {
         if (username) {
           // Already has a page on-chain — skip the wizard entirely and
           // remember it locally so the next load decides instantly.
-          // First load after connect: take them to their blockpage.
           markPublished(username);
           setVisible(false);
-          if (mayRedirect) {
-            markRedirectDone();
-            router.replace(`/${username.toLowerCase()}`);
-          }
         } else {
           setVisible(true);
         }
@@ -130,7 +82,7 @@ export function OnboardingTrigger() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, status, account, sessionAddress, router]);
+  }, [isAuthenticated, status, account, sessionAddress]);
 
   if (!visible || checking) return null;
   return <Onboarding onDone={() => setVisible(false)} />;

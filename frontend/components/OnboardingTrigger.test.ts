@@ -1,14 +1,15 @@
 /**
- * Post-connect routing regression tests (source assertions).
+ * Landing-page onboarding regression tests (source assertions).
  *
- * On first app load after the wallet connects:
- *   - wallet owns a page on-chain (or local storage says published)
- *     → route straight to their blockpage (not the builder)
- *   - onboarded but never published → the builder (their draft lives there)
- *   - wallet owns NO page → the first-blockpage wizard shows (unchanged)
+ * Everyone — brand-new or returning owner — gets the same flow: splash,
+ * then the landing page, then the navbar (Brandon's call, 2026-09-13).
+ * This component never redirects anywhere. Its only job:
+ *   - wallet owns a page (local storage or on-chain) → nothing. The
+ *     owner navigates from the navbar (wallet menu → My Page).
+ *   - wallet owns NO page → the skippable first-blockpage wizard shows.
  *
  * Guards:
- *   - the redirect fires once per tab session (no yank on back-navigation)
+ *   - zero router usage — no yank, ever, on first load or back-navigation
  *   - existing owners never see a wizard flash (wizard stays hidden while
  *     the on-chain check runs)
  */
@@ -20,42 +21,33 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "OnboardingTrigger.tsx"), "utf8");
 
-describe("post-connect routing", () => {
-  it("routes published owners to their blockpage on first load after connect", () => {
-    // Locally-remembered published username → /<username> (blockpage).
-    expect(src).toContain("router.replace(`/${owned}`)");
-    // On-chain registered username → /<username> (blockpage).
-    expect(src).toContain("router.replace(`/${username.toLowerCase()}`)");
+describe("landing-page onboarding (no redirects)", () => {
+  it("never redirects — no router usage at all", () => {
+    expect(src).not.toContain("useRouter");
+    expect(src).not.toContain("router.replace");
+    expect(src).not.toContain("vs_home_redirect_done");
+  });
+
+  it("returning owners get nothing — they navigate from the navbar", () => {
+    // Locally-remembered published username → hide wizard, no redirect.
+    expect(src).toContain("publishedUsername()");
+    // On-chain registered username → cached locally, wizard hidden.
     expect(src).toContain("fetchRegisteredUsername");
+    expect(src).toContain("markPublished(username)");
   });
 
-  it("routes onboarded-but-unpublished owners to /builder", () => {
-    // Finished the wizard but never published — the draft lives in /builder.
-    expect(src).toContain('router.replace("/builder")');
-    expect(src).toMatch(/isOnboarded\(\)/);
-  });
-
-  it("redirects once per tab session — never on back-navigation", () => {
-    expect(src).toContain("vs_home_redirect_done");
-    expect(src).toContain("redirectDone()");
-    expect(src).toContain("markRedirectDone()");
-  });
-
-  it("new wallets still get the first-blockpage wizard (no redirect)", () => {
-    // The no-username branch shows the wizard; the redirect branches only
-    // fire where a username/ownership was found.
+  it("new wallets still get the first-blockpage wizard", () => {
+    // The no-username branch shows the wizard.
     expect(src).toMatch(/else\s*{\s*\n\s*setVisible\(true\)/);
-    const redirectLines = src
-      .split("\n")
-      .filter((l) => l.includes("router.replace("));
-    expect(redirectLines.length).toBeGreaterThan(0);
-    // Every redirect is guarded by the ownership checks above it — the
-    // wizard branch contains no router.replace.
-    expect(src).not.toMatch(/setVisible\(true\)[\s\S]{0,200}router\.replace/);
+    expect(src).toContain("<Onboarding onDone=");
   });
 
   it("wizard stays hidden while the on-chain check runs (no flash)", () => {
     expect(src).toContain("setChecking(true)");
     expect(src).toContain("checking");
+  });
+
+  it("still exports markPublished for the builder", () => {
+    expect(src).toContain("export function markPublished");
   });
 });
