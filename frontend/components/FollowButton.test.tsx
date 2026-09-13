@@ -45,7 +45,35 @@ describe("blockpage wiring", () => {
 
 describe("navbar", () => {
   it("links to /following with a translated label", () => {
-    expect(navSrc).toContain('href="/following"');
+    expect(navSrc).toContain('"/following"');
     expect(navSrc).toContain('k="nav.following"');
+  });
+
+  it("groups learn links under a translated Learn dropdown", () => {
+    expect(navSrc).toContain('k="nav.learn"');
+    expect(navSrc).toContain('"/new-to-web3"');
+    expect(navSrc).toContain('k="nav.newToWeb3"');
+    expect(navSrc).toContain('"/mining-depin"');
+    expect(navSrc).toContain('k="nav.miningDePIN"');
+  });
+
+  it("groups community links under a translated Community dropdown", () => {
+    expect(navSrc).toContain('k="nav.community"');
+    expect(navSrc).toContain('"/forum"');
+    expect(navSrc).toContain('k="nav.townHall"');
+    expect(navSrc).toContain('"/explore"');
+    expect(navSrc).toContain('"/fundraiser"');
+    expect(navSrc).toContain('k="nav.fundraiser"');
+    expect(navSrc).toContain('"/leaderboard"');
+    expect(navSrc).toContain('k="nav.leaderboard"');
+  });
+
+  it("keeps builder, agents and support as top-level links", () => {
+    expect(navSrc).toContain('href="/builder"');
+    expect(navSrc).toContain('k="nav.builder"');
+    expect(navSrc).toContain('href="/agents"');
+    expect(navSrc).toContain('k="nav.agents"');
+    expect(navSrc).toContain("discord.gg/2KGzPduUN5");
+    expect(navSrc).toContain('k="nav.support"');
   });
 });

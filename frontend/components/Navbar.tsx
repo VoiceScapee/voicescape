@@ -3,6 +3,7 @@ import Logo from "./Logo";
 import InstallAppButton from "./InstallAppButton";
 import { LanguageSelector } from "./LanguageSelector";
 import { T } from "./T";
+import NavDropdown from "./NavDropdown";
 
 interface NavbarProps {
   right?: React.ReactNode;
@@ -49,27 +50,23 @@ export default function Navbar({ right }: NavbarProps) {
             marginLeft: "auto",
           }}
         >
-          <Link
-            href="/new-to-web3"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.newToWeb3" />
-          </Link>
-          <Link
-            href="/mining-depin"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.miningDePIN" />
-          </Link>
-          <Link
-            href="/forum"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.townHall" />
-          </Link>
+          <NavDropdown
+            label={<T k="nav.learn" />}
+            items={[
+              { href: "/new-to-web3", label: <T k="nav.newToWeb3" /> },
+              { href: "/mining-depin", label: <T k="nav.miningDePIN" /> },
+            ]}
+          />
+          <NavDropdown
+            label={<T k="nav.community" />}
+            items={[
+              { href: "/forum", label: <T k="nav.townHall" /> },
+              { href: "/explore", label: <>Explore</> },
+              { href: "/fundraiser", label: <T k="nav.fundraiser" /> },
+              { href: "/leaderboard", label: <T k="nav.leaderboard" /> },
+              { href: "/following", label: <T k="nav.following" /> },
+            ]}
+          />
           <Link
             href="/builder"
             className="vs-btn vs-btn-ghost"
@@ -83,34 +80,6 @@ export default function Navbar({ right }: NavbarProps) {
             style={{ padding: "8px 20px", fontSize: 14 }}
           >
             <T k="nav.agents" />
-          </Link>
-          <Link
-            href="/explore"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            Explore
-          </Link>
-          <Link
-            href="/fundraiser"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.fundraiser" />
-          </Link>
-          <Link
-            href="/leaderboard"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.leaderboard" />
-          </Link>
-          <Link
-            href="/following"
-            className="vs-btn vs-btn-ghost"
-            style={{ padding: "8px 20px", fontSize: 14 }}
-          >
-            <T k="nav.following" />
           </Link>
           <a
             href="https://discord.gg/2KGzPduUN5"
