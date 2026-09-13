@@ -4,85 +4,33 @@ interface LogoProps {
 }
 
 /**
- * Voicescape mark: a microphone with flanking soundwave bars, in the
- * violet→azure signature gradient — matching the design-system branding.
- * Plus an optional gradient wordmark.
+ * Voicescape logo: the official approved lockup — a microphone with
+ * radiating sound waves plus the gradient "Voicescape" wordmark
+ * (Brandon's direction: "something with a microphone and sound wave").
+ *
+ * The asset has its dark-navy background baked in; `mix-blend-mode: screen`
+ * drops the dark background so the lockup blends into the dark theme
+ * surfaces instead of showing as a mismatched rectangle.
+ *
+ * `withWordmark` is kept for API compatibility — the wordmark is baked into
+ * the lockup, so the full lockup always renders (no call site passes false).
  */
 export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
-  const gid = "vs-logo-grad";
+  void withWordmark;
   return (
-    <span
+    <img
+      src="/voicescape-logo.webp"
+      alt="Voicescape logo"
+      width={size * 3} // lockup is 2736x912 (3:1)
+      height={size}
+      draggable={false}
       style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 10,
-        lineHeight: 1,
+        display: "block",
+        height: size,
+        width: "auto",
+        mixBlendMode: "screen",
         userSelect: "none",
-        fontFamily: 'var(--font-display, "Montserrat"), "DM Sans", sans-serif',
       }}
-    >
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 48 48"
-        fill="none"
-        role="img"
-        aria-label="Voicescape logo"
-      >
-        <defs>
-          <linearGradient id={gid} x1="10" y1="6" x2="38" y2="42" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#8259ef" />
-            <stop offset="0.44" stopColor="#4f46e5" />
-            <stop offset="1" stopColor="#0031ff" />
-          </linearGradient>
-        </defs>
-        {/* soundwave bars, left */}
-        <rect x="7" y="19" width="3" height="10" rx="1.5" fill="#91a8ff" opacity="0.5" />
-        <rect x="12" y="14" width="3" height="20" rx="1.5" fill="#91a8ff" opacity="0.75" />
-        {/* soundwave bars, right */}
-        <rect x="33" y="14" width="3" height="20" rx="1.5" fill="#91a8ff" opacity="0.75" />
-        <rect x="38" y="19" width="3" height="10" rx="1.5" fill="#91a8ff" opacity="0.5" />
-        {/* mic capsule */}
-        <rect
-          x="18"
-          y="6"
-          width="12"
-          height="20"
-          rx="6"
-          stroke={`url(#${gid})`}
-          strokeWidth="2.6"
-        />
-        {/* mic grille lines */}
-        <path
-          d="M21.5 12.5h5M21.5 16.5h5M21.5 20.5h5"
-          stroke={`url(#${gid})`}
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          opacity="0.75"
-        />
-        {/* mic stand */}
-        <path
-          d="M24 26v7"
-          stroke={`url(#${gid})`}
-          strokeWidth="2.6"
-          strokeLinecap="round"
-        />
-        {/* mic base */}
-        <path
-          d="M18 37h12"
-          stroke={`url(#${gid})`}
-          strokeWidth="2.6"
-          strokeLinecap="round"
-        />
-      </svg>
-      {withWordmark && (
-        <span
-          className="vs-gradient-text"
-          style={{ fontSize: size * 0.68, fontWeight: 700, letterSpacing: "-0.01em" }}
-        >
-          Voicescape
-        </span>
-      )}
-    </span>
+    />
   );
 }
