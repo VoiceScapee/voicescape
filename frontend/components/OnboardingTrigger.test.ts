@@ -2,8 +2,9 @@
  * Post-connect routing regression tests (source assertions).
  *
  * On first app load after the wallet connects:
- *   - wallet owns a page on-chain (or local storage says onboarded/published)
- *     → route straight to /builder (their page loads for editing)
+ *   - wallet owns a page on-chain (or local storage says published)
+ *     → route straight to their blockpage (not the builder)
+ *   - onboarded but never published → the builder (their draft lives there)
  *   - wallet owns NO page → the first-blockpage wizard shows (unchanged)
  *
  * Guards:
@@ -20,16 +21,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "OnboardingTrigger.tsx"), "utf8");
 
 describe("post-connect routing", () => {
-  it("routes existing owners to /builder on first load after connect", () => {
-    expect(src).toContain('router.replace("/builder")');
-    // Both paths that prove ownership trigger the redirect: local state
-    // (onboarded/published) and the on-chain reverse lookup.
-    expect(src).toMatch(/isOnboarded\(\)\s*\|\|\s*hasPublished\(\)/);
+  it("routes published owners to their blockpage on first load after connect", () => {
+    // Locally-remembered published username → /<username> (blockpage).
+    expect(src).toContain("router.replace(`/${owned}`)");
+    // On-chain registered username → /<username> (blockpage).
+    expect(src).toContain("router.replace(`/${username.toLowerCase()}`)");
     expect(src).toContain("fetchRegisteredUsername");
   });
 
+  it("routes onboarded-but-unpublished owners to /builder", () => {
+    // Finished the wizard but never published — the draft lives in /builder.
+    expect(src).toContain('router.replace("/builder")');
+    expect(src).toMatch(/isOnboarded\(\)/);
+  });
+
   it("redirects once per tab session — never on back-navigation", () => {
-    expect(src).toContain("vs_builder_redirect_done");
+    expect(src).toContain("vs_home_redirect_done");
     expect(src).toContain("redirectDone()");
     expect(src).toContain("markRedirectDone()");
   });
@@ -40,7 +47,7 @@ describe("post-connect routing", () => {
     expect(src).toMatch(/else\s*{\s*\n\s*setVisible\(true\)/);
     const redirectLines = src
       .split("\n")
-      .filter((l) => l.includes('router.replace("/builder")'));
+      .filter((l) => l.includes("router.replace("));
     expect(redirectLines.length).toBeGreaterThan(0);
     // Every redirect is guarded by the ownership checks above it — the
     // wizard branch contains no router.replace.

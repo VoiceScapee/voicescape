@@ -4,8 +4,9 @@
  * Post-connect routing + onboarding decision on the landing page.
  *
  * On first app load after the wallet connects:
- *   - wallet owns a page on-chain (or local storage says onboarded/published)
- *     → route straight to the page builder (their page loads for editing).
+ *   - wallet owns a page on-chain (or local storage says published)
+ *     → route straight to their blockpage (not the builder).
+ *   - onboarded but never published → the builder (their draft lives there).
  *   - wallet owns NO page → show the first-blockpage wizard (unchanged).
  *
  * The redirect fires once per tab session, only after the on-chain page
@@ -19,14 +20,15 @@ import { fetchRegisteredUsername } from "@/lib/identity";
 import { Onboarding, isOnboarded } from "@/components/Onboarding";
 
 const PUBLISHED_KEY = "vs_published_username";
-const REDIRECT_KEY = "vs_builder_redirect_done";
+const REDIRECT_KEY = "vs_home_redirect_done";
 
-function hasPublished(): boolean {
-  if (typeof window === "undefined") return false;
+/** The locally-remembered published username, if any. */
+function publishedUsername(): string | null {
+  if (typeof window === "undefined") return null;
   try {
-    return !!localStorage.getItem(PUBLISHED_KEY);
+    return localStorage.getItem(PUBLISHED_KEY);
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -65,8 +67,21 @@ export function OnboardingTrigger() {
       return;
     }
     const mayRedirect = !redirectDone();
-    if (isOnboarded() || hasPublished()) {
-      // Returning owner — straight to the builder on first load.
+    const owned = publishedUsername();
+    if (owned) {
+      // Returning owner — straight to their blockpage on first load.
+      // The builder stays one tap away in the navbar.
+      setVisible(false);
+      setChecking(false);
+      if (mayRedirect) {
+        markRedirectDone();
+        router.replace(`/${owned}`);
+      }
+      return;
+    }
+    if (isOnboarded()) {
+      // Finished the wizard but never published — the builder is where
+      // their draft lives.
       setVisible(false);
       setChecking(false);
       if (mayRedirect) {
@@ -91,12 +106,12 @@ export function OnboardingTrigger() {
         if (username) {
           // Already has a page on-chain — skip the wizard entirely and
           // remember it locally so the next load decides instantly.
-          // First load after connect: take them to the builder.
+          // First load after connect: take them to their blockpage.
           markPublished(username);
           setVisible(false);
           if (mayRedirect) {
             markRedirectDone();
-            router.replace("/builder");
+            router.replace(`/${username.toLowerCase()}`);
           }
         } else {
           setVisible(true);

@@ -6,6 +6,10 @@ import BuiltOnHedera from "@/components/BuiltOnHedera";
 import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
 import { OnboardingTrigger } from "@/components/OnboardingTrigger";
+import { ClarityCountdown } from "@/components/landing/ClarityCountdown";
+import { NewToWeb3 } from "@/components/landing/NewToWeb3";
+import { CommunityPulse } from "@/components/landing/CommunityPulse";
+import { ChatPreview } from "@/components/landing/ChatPreview";
 import {
   IconArrowRight,
   IconCheck,
@@ -101,7 +105,13 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* How it works — the 4-step value prop, right up top */}
+        {/* Community front door — reasons to come back */}
+        <ClarityCountdown />
+        <CommunityPulse />
+        <ChatPreview />
+        <NewToWeb3 />
+
+        {/* How it works — the 4-step value prop */}
         <section className="vs-section" style={{ paddingTop: 0 }}>
           <p className="vs-label" style={{ textAlign: "center" }}><T k="landing.gettingStarted" /></p>
           <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 32px", textAlign: "center" }}>
