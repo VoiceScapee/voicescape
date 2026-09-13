@@ -44,7 +44,7 @@ describe("buildPageMetadata", () => {
     expect(og.url).toBe("https://voicescape.vercel.app/alice");
     const images = og.images as { url: string }[];
     expect(images[0].url).toBe(
-      "https://voicescape.vercel.app/voicescape-banner.jpg",
+      "https://voicescape.vercel.app/voicescape-logo.webp",
     );
     const tw = meta.twitter as Record<string, unknown>;
     expect(tw.card).toBe("summary_large_image");

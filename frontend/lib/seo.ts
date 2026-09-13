@@ -17,8 +17,8 @@ export function siteUrl(): string {
   return raw.replace(/\/+$/, "");
 }
 
-/** Default share image — the Voicescape banner logo (public/voicescape-banner.jpg). */
-export const DEFAULT_OG_IMAGE = "/voicescape-banner.jpg";
+/** Default share image — the approved Voicescape logo lockup (public/voicescape-logo.webp). */
+export const DEFAULT_OG_IMAGE = "/voicescape-logo.webp";
 
 /** Collapse whitespace and cap length for meta descriptions. */
 export function truncate(text: string, max = 200): string {

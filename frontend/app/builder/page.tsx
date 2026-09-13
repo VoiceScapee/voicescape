@@ -6,7 +6,7 @@ import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
 import { VoiceInput } from "@/components/VoiceInput";
-import { consumeOnboardDraft } from "@/components/Onboarding";
+import { consumeOnboardDraft, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
 import { markPublished } from "@/components/OnboardingTrigger";
 import {
   IconArrowRight,
@@ -57,11 +57,12 @@ import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
 import {
   deriveUsername,
   deriveUsernameFromEvm,
+  fetchRegisteredUsername,
   getVanityName,
   isValidUsername,
   setVanityName,
 } from "@/lib/identity";
-import { pinPageJson } from "@/lib/ipfs";
+import { fetchPageJson, pinPageJson } from "@/lib/ipfs";
 import { postJson } from "@/lib/townhall";
 import {
   createWalletHederaSigner,
@@ -1899,6 +1900,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 function BuilderInner() {
   const chain = getActiveChain();
+  const { account } = useWallet();
   const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
   const [page, setPage] = useState<VoicescapePage>(() =>
     JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage,
@@ -2023,6 +2025,54 @@ function BuilderInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Load the wallet's published page for editing: when the connected wallet
+  // owns a registered page on-chain and no draft is pending (no ?draft= link,
+  // no just-completed onboarding draft), hydrate the editor with the
+  // published page JSON from IPFS (via /api/resolve). Republishing then
+  // calls updatePage on-chain — never a duplicate registration. Runs once
+  // the wallet account is known; fails open (blank template stays editable).
+  const [loadedPublished, setLoadedPublished] = useState(false);
+  const [publishedUsername, setPublishedUsername] = useState<string | null>(null);
+  useEffect(() => {
+    if (!account) return;
+    if (searchParams.get("draft")) return; // explicit shared link wins
+    try {
+      if (localStorage.getItem(ONBOARD_DRAFT_KEY)) return; // onboarding draft wins
+    } catch {
+      /* storage unavailable — fall through to the on-chain check */
+    }
+    let live = true;
+    (async () => {
+      try {
+        const username = await fetchRegisteredUsername(account);
+        if (!live || !username) return;
+        const res = await fetch(
+          `/api/resolve?username=${encodeURIComponent(username)}`,
+          { cache: "no-store" },
+        );
+        if (!live || !res.ok) return;
+        const data = (await res.json()) as { ipfsHash?: unknown };
+        if (!live || typeof data?.ipfsHash !== "string" || !data.ipfsHash) return;
+        const pageJson = JSON.parse(await fetchPageJson(data.ipfsHash)) as unknown;
+        if (!live || !isValidPage(pageJson)) return;
+        const loaded = JSON.parse(JSON.stringify(pageJson)) as VoicescapePage;
+        editPage(loaded);
+        setDraftOwnerType(loaded.ownerType === "agent" ? "agent" : "human");
+        if (isValidUsername(loaded.username)) {
+          setPublishedUsername(loaded.username.toLowerCase());
+        }
+        setLoadedPublished(true);
+      } catch {
+        // Fail open: the blank template stays editable.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+    // Runs when the wallet account becomes known.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account]);
+
   const updateTheme = (key: keyof VoicescapePage["theme"], value: string) =>
     editPage((p) => ({ ...p, theme: { ...p.theme, [key]: value } }));
 
@@ -2052,6 +2102,16 @@ function BuilderInner() {
             <IconCheck size={14} />
             <span className="vb-draft-chip-full">Draft loaded: {urlDraft.name}</span>
             <span className="vb-draft-chip-short">Draft</span>
+          </span>
+        )}
+        {loadedPublished && (
+          <span
+            className="vs-chip vb-draft-chip"
+            title="Your published page loaded from the network — edit it and republish to update it on-chain."
+          >
+            <IconCheck size={14} />
+            <span className="vb-draft-chip-full">Published page loaded — edit & republish to update</span>
+            <span className="vb-draft-chip-short">Published</span>
           </span>
         )}
         {urlDraft && !urlDraft.ok && (
@@ -2161,7 +2221,10 @@ function BuilderInner() {
               page={page}
               onPageChange={(p) => editPage(p)}
               initialOwnerType={draftOwnerType ?? undefined}
-              initialVanity={draftVanity}
+              // The wallet's published username (loaded from the network)
+              // defaults the name field so republishing updates the page
+              // on-chain instead of registering a second one.
+              initialVanity={draftVanity ?? publishedUsername}
             />
           )}
         </div>

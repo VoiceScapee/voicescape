@@ -1,27 +1,25 @@
 "use client";
 
 /**
- * Decides whether to show the onboarding modal on the landing page.
+ * Post-connect routing + onboarding decision on the landing page.
  *
- * Shows when ALL of:
- *   - the wallet session is authenticated (wallet connected + signed in)
- *   - the user has not completed/skipped onboarding (vs_onboarded)
- *   - the user has not published a page yet (vs_published_username)
- *   - the connected account owns NO page on-chain (reverse registry lookup)
+ * On first app load after the wallet connects:
+ *   - wallet owns a page on-chain (or local storage says onboarded/published)
+ *     → route straight to the page builder (their page loads for editing).
+ *   - wallet owns NO page → show the first-blockpage wizard (unchanged).
  *
- * The on-chain check is what stops the bug where a returning user on a
- * fresh browser/profile (empty localStorage) replays the "build your first
- * blockpage" wizard even though their page is registered on Hedera. While
- * the check runs the wizard stays hidden — no flash of the wizard.
- *
- * Returning users (have a page, or already onboarded/skipped) never see it.
+ * The redirect fires once per tab session, only after the on-chain page
+ * check resolves — existing owners never see a wizard flash, and new
+ * wallets still get the guided first-blockpage flow.
  */
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useSession } from "@/lib/session";
 import { fetchRegisteredUsername } from "@/lib/identity";
 import { Onboarding, isOnboarded } from "@/components/Onboarding";
 
 const PUBLISHED_KEY = "vs_published_username";
+const REDIRECT_KEY = "vs_builder_redirect_done";
 
 function hasPublished(): boolean {
   if (typeof window === "undefined") return false;
@@ -32,6 +30,24 @@ function hasPublished(): boolean {
   }
 }
 
+/** Once per tab session — navigating back to the landing page must not yank. */
+function redirectDone(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return sessionStorage.getItem(REDIRECT_KEY) === "1";
+  } catch {
+    return true; // storage unavailable — fail closed, don't redirect
+  }
+}
+
+function markRedirectDone(): void {
+  try {
+    sessionStorage.setItem(REDIRECT_KEY, "1");
+  } catch {
+    /* best effort */
+  }
+}
+
 export function OnboardingTrigger() {
   const { isAuthenticated, status, account, session } = useSession();
   const sessionAddress = session?.address ?? null;
@@ -39,12 +55,24 @@ export function OnboardingTrigger() {
   const [checking, setChecking] = useState(false);
   // The on-chain page check runs once per connected address.
   const checkedFor = useRef<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     if (status === "loading") return;
-    if (!isAuthenticated || isOnboarded() || hasPublished()) {
+    if (!isAuthenticated) {
       setVisible(false);
       setChecking(false);
+      return;
+    }
+    const mayRedirect = !redirectDone();
+    if (isOnboarded() || hasPublished()) {
+      // Returning owner — straight to the builder on first load.
+      setVisible(false);
+      setChecking(false);
+      if (mayRedirect) {
+        markRedirectDone();
+        router.replace("/builder");
+      }
       return;
     }
     const address = account ?? sessionAddress;
@@ -63,8 +91,13 @@ export function OnboardingTrigger() {
         if (username) {
           // Already has a page on-chain — skip the wizard entirely and
           // remember it locally so the next load decides instantly.
+          // First load after connect: take them to the builder.
           markPublished(username);
           setVisible(false);
+          if (mayRedirect) {
+            markRedirectDone();
+            router.replace("/builder");
+          }
         } else {
           setVisible(true);
         }
@@ -82,7 +115,7 @@ export function OnboardingTrigger() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, status, account, sessionAddress]);
+  }, [isAuthenticated, status, account, sessionAddress, router]);
 
   if (!visible || checking) return null;
   return <Onboarding onDone={() => setVisible(false)} />;

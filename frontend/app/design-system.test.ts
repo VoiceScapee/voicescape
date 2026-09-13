@@ -7,7 +7,7 @@
  * misnamed --green violet token).
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -113,5 +113,43 @@ describe("design-system behavior surface", () => {
   it("stat cards carry the 3px gradient accent bar + live badge", () => {
     expect(css).toMatch(/\.vs-stat::before\s*{[^}]*width:\s*3px/);
     expect(css).toContain(".vs-stat-live");
+  });
+});
+
+describe("landing branding conformance", () => {
+  const root = join(here, "..");
+  const splash = readFileSync(join(here, "../components/Splash.tsx"), "utf8");
+  const landing = readFileSync(join(here, "page.tsx"), "utf8");
+  const seo = readFileSync(join(here, "../lib/seo.ts"), "utf8");
+  const footer = readFileSync(join(here, "../components/BuiltOnHedera.tsx"), "utf8");
+
+  it("splash hero uses the approved voicescape-logo.webp lockup, not the stale banner", () => {
+    expect(splash).toContain("/voicescape-logo.webp");
+    expect(splash).not.toContain("voicescape-banner");
+  });
+
+  it("stale banner assets are gone; the official Hedera logo asset exists", () => {
+    expect(existsSync(join(root, "public/voicescape-banner.png"))).toBe(false);
+    expect(existsSync(join(root, "public/voicescape-banner.jpg"))).toBe(false);
+    const hedera = readFileSync(join(root, "public/hedera-logo.svg"), "utf8");
+    expect(hedera).toContain("<svg");
+    // The official asset carries its ™ mark (never redrawn).
+    expect(hedera.length).toBeGreaterThan(1000);
+  });
+
+  it("share/OG image points at the approved logo, not the stale banner", () => {
+    expect(seo).toContain('DEFAULT_OG_IMAGE = "/voicescape-logo.webp"');
+    expect(seo).not.toContain("voicescape-banner");
+  });
+
+  it("landing footer uses the trademark-compliant Built on Hedera lockup", () => {
+    expect(landing).toContain("BuiltOnHedera");
+    // Compliant wording — never "powered by".
+    expect(footer).toContain("Built on");
+    expect(footer).not.toMatch(/powered by/i);
+    // Official logo asset (white reverse on dark), never redrawn.
+    expect(footer).toContain("/hedera-logo.svg");
+    // Voicescape stays more prominent than the Hedera mark.
+    expect(footer).toContain("landing.hederaDisclaimer");
   });
 });

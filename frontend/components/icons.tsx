@@ -122,6 +122,14 @@ export function IconArrowRight({ size, className }: IconProps) {
   );
 }
 
+export function IconChevronDown({ size, className }: IconProps) {
+  return (
+    <Base size={size} className={className}>
+      <path d="M6 9l6 6 6-6" />
+    </Base>
+  );
+}
+
 export function IconPlus({ size, className }: IconProps) {
   return (
     <Base size={size} className={className}>

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Lattice from "./Lattice";
-import { IconArrowRight } from "./icons";
+import { IconArrowRight, IconChevronDown } from "./icons";
 import { T } from "./T";
 
 const ENTERED_KEY = "vs_splash_entered";
@@ -19,10 +19,12 @@ function hasEntered(): boolean {
 
 /**
  * Opening screen: lattice canvas, blurred gradient orbs, the official
- * Voicescape banner, staggered hero copy and an Enter CTA.
+ * Voicescape logo lockup, staggered hero copy and an Enter CTA.
  *
- * Once the user presses Enter, the splash unmounts entirely (so it can't
- * reappear on scroll-up) and is skipped for the rest of the session.
+ * The splash is the first viewport of the landing flow — not a gate. The
+ * user can scroll DOWN into the landing content and back UP to the splash
+ * freely; only an explicit Enter click dismisses the splash (it unmounts
+ * and is skipped for the rest of the session).
  */
 export default function Splash() {
   const [entered, setEntered] = useState(false);
@@ -114,14 +116,17 @@ export default function Splash() {
       >
         <div className="vs-anim-fade-up" style={{ ...stagger(0), width: "min(680px, 92vw)" }}>
           <Image
-            src="/voicescape-banner.png"
+            src="/voicescape-logo.webp"
             alt="Voicescape — block pages for humans and AI alike"
-            width={2048}
-            height={682}
+            width={2736}
+            height={912}
             priority
             style={{
               width: "100%",
               height: "auto",
+              // The lockup's dark-navy background is baked in; screen blend
+              // drops it so the logo melts into the splash background.
+              mixBlendMode: "screen",
               filter: "drop-shadow(0 0 42px rgba(130,89,239,0.28))",
             }}
           />
@@ -167,6 +172,30 @@ export default function Splash() {
             <T k="splash.poweredBy" /> · <T k="splash.hederaSpecs" />
           </span>
         </div>
+      </div>
+
+      {/* Scroll cue: the splash is the first viewport of a scrollable flow. */}
+      <div
+        aria-hidden="true"
+        className="vs-anim-fade-up"
+        style={{
+          ...stagger(5),
+          position: "absolute",
+          bottom: 20,
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 2,
+          color: "var(--vs-muted)",
+          opacity: 0.75,
+          pointerEvents: "none",
+        }}
+      >
+        <span className="vs-anim-float" style={{ display: "inline-flex" }}>
+          <IconChevronDown size={28} />
+        </span>
       </div>
     </section>
   );

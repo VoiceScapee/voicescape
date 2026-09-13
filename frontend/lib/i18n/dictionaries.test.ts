@@ -110,4 +110,31 @@ describe("i18n dictionaries", () => {
     expect(f2b.toLowerCase()).toMatch(/review/);
     expect(f2b.toLowerCase()).toMatch(/apply or discard/);
   });
+
+  it("en splash chip uses compliant 'Built on Hedera' wording", () => {
+    expect(dictionaries.en["splash.poweredBy"]).toBe("Built on Hedera");
+  });
+
+  it("no language uses non-compliant 'Powered by Hedera' wording", () => {
+    for (const { code } of LANGS) {
+      const dict = dictionaries[code as Lang];
+      for (const [k, v] of Object.entries(dict)) {
+        expect(v, `"Powered by" in ${code}.${k}`).not.toMatch(/powered by/i);
+      }
+      expect(dict["landing.footerTagline"], `${code} footer tagline`).not.toMatch(
+        /powered by|Powered/i,
+      );
+    }
+  });
+
+  it("every language carries the Hedera non-affiliation disclaimer", () => {
+    for (const { code } of LANGS) {
+      const d = dictionaries[code as Lang]["landing.hederaDisclaimer"];
+      expect(d, `${code} disclaimer`).toBeTruthy();
+      expect(d.length, `${code} disclaimer length`).toBeGreaterThan(40);
+    }
+    expect(dictionaries.en["landing.hederaDisclaimer"]).toBe(
+      "Voicescape is an independent project — not affiliated with, sponsored, or endorsed by Hedera Hashgraph, LLC.",
+    );
+  });
 });
