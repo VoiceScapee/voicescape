@@ -308,9 +308,13 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
   if (EMAIL_RE.test(text)) {
     return blocked("posting email addresses is not allowed — contact details are not allowed anywhere on Voicescape");
   }
+  // Hedera entity IDs (0.0.xxxxxxxx) are the platform's native identifiers —
+  // contracts, accounts, treasury — and their dotted digit groups must not
+  // be mistaken for phone numbers. Strip them before the phone scan.
+  const textSansHederaIds = text.replace(/\b0\.0\.\d+\b/g, "");
   const phoneRe = new RegExp(PHONE_RE.source, "g");
   let pm: RegExpExecArray | null;
-  while ((pm = phoneRe.exec(text)) !== null) {
+  while ((pm = phoneRe.exec(textSansHederaIds)) !== null) {
     if (digitCount(pm[0]) >= 10) {
       return blocked("posting phone numbers is not allowed — contact details are not allowed anywhere on Voicescape");
     }

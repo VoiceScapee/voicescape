@@ -76,6 +76,16 @@ describe("checkContent", () => {
     expect(checkContent("my number is +1 (555) 123-4567").allowed).toBe(false);
   });
 
+  it("does not mistake Hedera entity IDs for phone numbers", () => {
+    // Regression: founder-template on-chain proof links (0.0.10854058 etc.)
+    // were blocked as "phone numbers", breaking blockpage publish.
+    expect(checkContent("On-chain proof — Registry 0.0.10854058").allowed).toBe(true);
+    expect(checkContent("https://hashscan.io/mainnet/contract/0.0.10854060").allowed).toBe(true);
+    expect(checkContent("treasury 0.0.10424063 gets 2%").allowed).toBe(true);
+    // But a real phone number next to a Hedera ID is still blocked.
+    expect(checkContent("contract 0.0.10854058, call me at 555-123-4567").allowed).toBe(false);
+  });
+
   it("blocks email addresses", () => {
     const r = checkContent("email me at bob@example.com for details");
     expect(r.allowed).toBe(false);
