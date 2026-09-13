@@ -50,6 +50,10 @@ export const ALL_BADGES: Badge[] = [
   { id: "marketplace-mogul", name: "Marketplace Mogul", description: "Listed 5 items for sale.", icon: "🏪", category: "activity" },
   // Quality
   { id: "tipped", name: "Tipped", description: "Received a first tip or completed sale — someone paid real value.", icon: "💰", category: "quality" },
+  { id: "patron", name: "Patron", description: "Sent a first tip — real value to a creator.", icon: "💸", category: "quality" },
+  { id: "generous-tipper", name: "Generous Tipper", description: "Sent 25 tips to creators.", icon: "🎁", category: "quality" },
+  { id: "collector", name: "Collector", description: "Completed 5 marketplace purchases.", icon: "🛍️", category: "quality" },
+  { id: "merchant", name: "Merchant", description: "Completed 5 marketplace sales.", icon: "💼", category: "quality" },
   { id: "crowd-favorite", name: "Crowd Favorite", description: "Earned positive reputation votes from 10 different people.", icon: "⭐", category: "quality" },
   { id: "community-helper", name: "Community Helper", description: "Earned positive reputation votes from 5 different people.", icon: "🤝", category: "quality" },
   { id: "clean-record", name: "Clean Record", description: "Active 30+ days with 50+ actions and zero warnings or bans.", icon: "🛡️", category: "quality" },
@@ -80,6 +84,10 @@ export const THRESHOLDS = {
   forumRegular: 20,
   roomBuilder: 3,
   marketplaceMogul: 5,
+  patron: 1,
+  generousTipper: 25,
+  collector: 5,
+  merchant: 5,
   crowdFavorite: 10,
   communityHelper: 5,
   cleanRecordDays: 30,
@@ -273,6 +281,12 @@ export function totalActions(s: UserStats): number {
 export interface BadgeEnrichment {
   /** On-chain tips + completed sales received by the wallet. */
   tipsReceived: number;
+  /** On-chain tips sent by the wallet. */
+  tipsSent: number;
+  /** On-chain marketplace purchases completed by the wallet (as buyer). */
+  purchasesBought: number;
+  /** On-chain marketplace sales completed by the wallet (as seller). */
+  purchasesSold: number;
   /** Registry says the wallet's page is an agent page. */
   isAgent: boolean;
   /** 1-based rank among agent pages by registration, null if not an agent. */
@@ -285,6 +299,9 @@ export interface BadgeEnrichment {
 
 export const EMPTY_ENRICHMENT: BadgeEnrichment = {
   tipsReceived: 0,
+  tipsSent: 0,
+  purchasesBought: 0,
+  purchasesSold: 0,
   isAgent: false,
   agentRank: null,
   violations: 0,
@@ -319,6 +336,10 @@ export function badgesForUser(
 
   // Quality
   if (e.tipsReceived >= 1) give("tipped");
+  if (e.tipsSent >= THRESHOLDS.patron) give("patron");
+  if (e.tipsSent >= THRESHOLDS.generousTipper) give("generous-tipper");
+  if (e.purchasesBought >= THRESHOLDS.collector) give("collector");
+  if (e.purchasesSold >= THRESHOLDS.merchant) give("merchant");
   if (s.positiveVoters.size >= THRESHOLDS.communityHelper) give("community-helper");
   if (s.positiveVoters.size >= THRESHOLDS.crowdFavorite) give("crowd-favorite");
   const ageDays = (now - s.firstTs) / (24 * 60 * 60 * 1000);
@@ -505,29 +526,56 @@ async function fetchLogPages(firstUrl: string, cap: number): Promise<NonNullable
 }
 
 /**
+ * Count contract logs for one event filtered by a wallet in one topic slot.
+ * Bounded pages; fail-open → 0.
+ */
+async function countLogs(
+  topic0: string,
+  topicKey: "topic1" | "topic2" | "topic3",
+  wallet: string,
+): Promise<number> {
+  const contract = tipsContract();
+  if (!contract) return 0;
+  const base = `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs`;
+  const params: Record<string, string> = {
+    order: "asc",
+    limit: "100",
+    topic0,
+    [topicKey]: paddedTopic(wallet),
+  };
+  try {
+    const logs = await fetchLogPages(`${base}?${new URLSearchParams(params)}`, LOG_PAGE_CAP);
+    return logs.length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Count completed on-chain payments TO a wallet: TipSent (toOwner = topic3)
  * + PurchaseCompleted (seller = topic2). Bounded pages; fail-open → 0.
  */
 export async function countPaymentsReceived(wallet: string): Promise<number> {
-  const contract = tipsContract();
-  if (!contract) return 0;
-  const walletTopic = paddedTopic(wallet);
-  const base = `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs`;
-  try {
-    const [tips, sales] = await Promise.all([
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: "100", topic0: TIPSENT_TOPIC0, topic3: walletTopic })}`,
-        LOG_PAGE_CAP,
-      ),
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: "100", topic0: PURCHASE_TOPIC0, topic2: walletTopic })}`,
-        LOG_PAGE_CAP,
-      ),
-    ]);
-    return tips.length + sales.length;
-  } catch {
-    return 0;
-  }
+  const [tips, sales] = await Promise.all([
+    countLogs(TIPSENT_TOPIC0, "topic3", wallet),
+    countLogs(PURCHASE_TOPIC0, "topic2", wallet),
+  ]);
+  return tips + sales;
+}
+
+/** Count TipSent events FROM a wallet (topic2). Bounded; fail-open → 0. */
+export async function countTipsSent(wallet: string): Promise<number> {
+  return countLogs(TIPSENT_TOPIC0, "topic2", wallet);
+}
+
+/** Count PurchaseCompleted events with the wallet as buyer (topic1). Bounded; fail-open → 0. */
+export async function countPurchasesBought(wallet: string): Promise<number> {
+  return countLogs(PURCHASE_TOPIC0, "topic1", wallet);
+}
+
+/** Count PurchaseCompleted events with the wallet as seller (topic2). Bounded; fail-open → 0. */
+export async function countPurchasesSold(wallet: string): Promise<number> {
+  return countLogs(PURCHASE_TOPIC0, "topic2", wallet);
 }
 
 /**
@@ -680,18 +728,33 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
   const canonWallet = input.wallet ? canonicalAddress(input.wallet) : null;
   const wallet = canonWallet && canonWallet !== "0x" ? input.wallet!.trim() : undefined;
 
-  const enrichment: BadgeEnrichment = { tipsReceived: 0, isAgent: false, agentRank: null, violations: 0, ownsPage: false };
+  const enrichment: BadgeEnrichment = {
+    tipsReceived: 0,
+    tipsSent: 0,
+    purchasesBought: 0,
+    purchasesSold: 0,
+    isAgent: false,
+    agentRank: null,
+    violations: 0,
+    ownsPage: false,
+  };
   if (wallet) {
-    const [tips, agent, violations, ownsPage] = await Promise.all([
+    const [tips, agent, violations, ownsPage, tipsSent, bought, sold] = await Promise.all([
       countPaymentsReceived(wallet),
       isAgentWallet(wallet),
       countViolations(hcs, wallet),
       ownsRegisteredPage(wallet),
+      countTipsSent(wallet),
+      countPurchasesBought(wallet),
+      countPurchasesSold(wallet),
     ]);
     enrichment.tipsReceived = tips;
     enrichment.isAgent = agent;
     enrichment.violations = violations;
     enrichment.ownsPage = ownsPage;
+    enrichment.tipsSent = tipsSent;
+    enrichment.purchasesBought = bought;
+    enrichment.purchasesSold = sold;
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
     // Founder bypass: the founder wallet always qualifies for the Builder badge.
     applyFounderEnrichment(wallet, enrichment);

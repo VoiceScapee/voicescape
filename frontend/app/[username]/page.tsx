@@ -11,6 +11,7 @@ import { fetchPageJson } from "@/lib/ipfs";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
+import { recordConversionEvent } from "@/lib/metrics";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
@@ -76,8 +77,10 @@ function TipBox({
     if (confirmStatus === "confirmed") {
       setFinalizedAt(new Date());
       setTxHash(confirmTxId);
+      recordConversionEvent("tip_confirmed");
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent — check the explorer for details.");
+      recordConversionEvent("tip_failed");
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
@@ -131,6 +134,7 @@ function TipBox({
     }
     setBusy(true);
     setWaitingLong(false);
+    recordConversionEvent("tip_attempt");
     // HashPack sometimes goes silent after the user approves (the tx still
     // lands on-chain; the wallet layer recovers via the mirror node after a
     // 90s timeout). Without a progress hint the UI looks frozen on
@@ -219,6 +223,14 @@ function TipBox({
             </a>
             <button type="button" className="pv-tip-again" onClick={resetTip}>
               Tip again
+            </button>
+            <button
+              type="button"
+              className="vs-btn vs-btn-ghost"
+              style={{ marginTop: 8 }}
+              onClick={onClose}
+            >
+              Done
             </button>
           </div>
         ) : (
@@ -612,6 +624,10 @@ function PublicPageInner({ username }: { username: string }) {
         tipInteractive
         onTip={() => setTipOpen((v) => !v)}
         onPayService={setService}
+        // Canonical identity: the route username, which only renders after
+        // /api/resolve confirms the on-chain registration. The Founder badge
+        // is gated on this — never on the IPFS page JSON.
+        canonicalUsername={username}
       />
       {tipOpen && (
         <TipBox username={username} onClose={() => setTipOpen(false)} />

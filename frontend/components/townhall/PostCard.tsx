@@ -16,6 +16,7 @@ import { timeAgo, type TownhallPost } from "@/lib/townhall";
 import { IconTip, IconClose, IconCheck } from "@/components/icons";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
+import { recordConversionEvent } from "@/lib/metrics";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import ReputationBadge from "./Reputation";
 import ModHideButton from "./ModHideButton";
@@ -52,8 +53,10 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     if (confirmStatus === "confirmed") {
       setFinalizedAt(new Date());
       setTxId(confirmTxId);
+      recordConversionEvent("tip_confirmed");
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent.");
+      recordConversionEvent("tip_failed");
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
@@ -76,6 +79,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     // first so the user never signs a transaction that cannot succeed.
     setBusy(true);
     setWaitingLong(false);
+    recordConversionEvent("tip_attempt");
     // HashPack sometimes goes silent after the user approves — reassure
     // after 15s so users don't abandon the page.
     const waitingNote = setTimeout(() => setWaitingLong(true), 15000);

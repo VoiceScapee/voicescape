@@ -5,9 +5,11 @@
  * minimal report to POST /api/client-error. The server stores AGGREGATE
  * counts only — never anything that identifies who hit the error:
  *
- *   stored:   errors:agg:<date>:<page-slug>:<hash> → {page, message, component, count, firstSeen, lastSeen}
+ *   stored:   errors:agg:<date>:<page-slug>:<hash> → {page, message, component, frame, count, firstSeen, lastSeen}
  *   NOT stored: IP addresses, user agents, wallet addresses, full URLs
- *                (query strings / fragments are stripped), stack traces.
+ *                (query strings / fragments are stripped), full stack
+ *                traces (first scrubbed frame only — enough to attribute
+ *                an error to our code vs a wallet dependency).
  *
  * All keys carry a 7-day TTL and auto-expire. Recording is best-effort:
  * it never throws, so error telemetry can never break the app.
@@ -23,6 +25,7 @@ export const CLIENT_ERROR_TTL_MS = 7 * 24 * 3600 * 1000; // 7 days
 export const MAX_ERROR_MESSAGE_LEN = 200;
 export const MAX_ERROR_PAGE_LEN = 120;
 export const MAX_ERROR_COMPONENT_LEN = 40;
+export const MAX_ERROR_FRAME_LEN = 120;
 export const MAX_ERRORS_INDEXED_PER_DAY = 100;
 export const ERROR_STATS_DAY_COUNT = 7;
 
@@ -91,6 +94,16 @@ export function normalizeErrorComponent(raw: unknown): string | null {
   return c || null;
 }
 
+/**
+ * First stack frame, scrubbed of identifiers, capped at 120 chars.
+ * Null when empty. Only ever the single first frame — never a full stack.
+ */
+export function normalizeErrorFrame(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const f = scrubErrorMessage(raw.trim().replace(/\s+/g, " ")).slice(0, MAX_ERROR_FRAME_LEN);
+  return f || null;
+}
+
 /** FNV-1a 32-bit hash → 8 hex chars. Buckets identical reports together. */
 export function hashErrorMessage(input: string): string {
   let h = 0x811c9dc5;
@@ -127,6 +140,8 @@ export interface ErrorAggregate {
   page: string;
   message: string;
   component: string | null;
+  /** First scrubbed stack frame (function + chunk + line), or null. */
+  frame: string | null;
   count: number;
   firstSeen: number;
   lastSeen: number;
@@ -134,50 +149,71 @@ export interface ErrorAggregate {
 
 /**
  * Record one client error report. Best-effort: never throws. Aggregates
- * identical (page, component, message) reports per UTC day and keeps a
- * bounded index of aggregate keys so the admin view can list them.
+ * identical (page, component, message, frame) reports per UTC day and keeps
+ * a bounded index of aggregate keys so the admin view can list them.
+ *
+ * ERROR-SPIKE ALERT (item 6, $0 path): when an aggregate's daily count
+ * crosses ERROR_SPIKE_THRESHOLD, one structured console.warn is emitted
+ * per aggregate per day. Vercel's log stream is the alert channel — the
+ * team watches for the `[error-spike]` tag. No paid service, no PII.
  */
+export const ERROR_SPIKE_THRESHOLD = 25;
+
 export async function recordClientError(
   store: KvStore,
   pageRaw: unknown,
   messageRaw: unknown,
   componentRaw: unknown = null,
+  frameRaw: unknown = null,
   nowMs: number = Date.now(),
 ): Promise<boolean> {
   const page = normalizeErrorPage(pageRaw);
   const message = normalizeErrorMessage(messageRaw);
   if (!page || !message) return false;
   const component = normalizeErrorComponent(componentRaw);
+  const frame = normalizeErrorFrame(frameRaw);
   try {
     const date = errorDateKey(new Date(nowMs));
-    const hash = hashErrorMessage(`${page}|${component ?? ""}|${message}`);
+    const hash = hashErrorMessage(`${page}|${component ?? ""}|${message}|${frame ?? ""}`);
     const key = errorAggKey(date, page, hash);
 
     let agg: ErrorAggregate | null = null;
+    let spikeAlerted = false;
     try {
       const raw = await store.get(key);
       if (raw) {
-        const parsed = JSON.parse(raw) as Partial<ErrorAggregate>;
+        const parsed = JSON.parse(raw) as Partial<ErrorAggregate> & { spikeAlerted?: boolean };
         if (parsed && typeof parsed.count === "number") {
           agg = {
             page,
             message,
             component,
+            frame: typeof parsed.frame === "string" ? parsed.frame : frame,
             count: parsed.count,
             firstSeen: typeof parsed.firstSeen === "number" ? parsed.firstSeen : nowMs,
             lastSeen: nowMs,
           };
+          spikeAlerted = parsed.spikeAlerted === true;
         }
       }
     } catch {
       agg = null;
     }
     if (!agg) {
-      agg = { page, message, component, count: 0, firstSeen: nowMs, lastSeen: nowMs };
+      agg = { page, message, component, frame, count: 0, firstSeen: nowMs, lastSeen: nowMs };
     }
     agg.count += 1;
     agg.lastSeen = nowMs;
-    await store.set(key, JSON.stringify(agg), CLIENT_ERROR_TTL_MS);
+    if (!spikeAlerted && agg.count >= ERROR_SPIKE_THRESHOLD) {
+      spikeAlerted = true;
+      // $0 alert path: structured log the team can watch in Vercel logs.
+      // Aggregate data only — no PII by construction.
+      console.warn(
+        `[error-spike] "${message}" on ${page} hit ${agg.count} reports today` +
+          (frame ? ` (first frame: ${frame})` : ""),
+      );
+    }
+    await store.set(key, JSON.stringify({ ...agg, spikeAlerted }), CLIENT_ERROR_TTL_MS);
 
     // Bounded per-day index of aggregate keys (best-effort).
     try {
@@ -236,6 +272,7 @@ export async function getErrorAggregates(
             page: typeof agg.page === "string" ? agg.page : "?",
             message: agg.message.slice(0, MAX_ERROR_MESSAGE_LEN),
             component: typeof agg.component === "string" ? agg.component : null,
+            frame: typeof agg.frame === "string" ? agg.frame : null,
             count: agg.count,
             firstSeen: typeof agg.firstSeen === "number" ? agg.firstSeen : 0,
             lastSeen: typeof agg.lastSeen === "number" ? agg.lastSeen : 0,

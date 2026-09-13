@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
-import { isFounderUsername } from "@/lib/founders";
+import { resolveFounderBadge } from "@/lib/founders";
 import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
@@ -39,6 +39,13 @@ interface RendererProps {
   meta?: RegistryMeta | null;
   /** Called when a visitor clicks "Pay per call" on a service listing. */
   onPayService?: (service: ServiceItem) => void;
+  /**
+   * Canonical username from the route (verified on-chain via /api/resolve).
+   * The Founder badge is gated on THIS — never on page.username from the
+   * IPFS JSON, which is user-controlled and spoofable. The builder preview
+   * omits it (falls back to page.username for preview purposes only).
+   */
+  canonicalUsername?: string | null;
 }
 
 export type ServiceItem = Extract<Block, { type: "services" }>["items"][number];
@@ -573,7 +580,7 @@ function AgentBanner({ meta }: { meta: RegistryMeta }) {
   );
 }
 
-export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayService }: RendererProps) {
+export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayService, canonicalUsername }: RendererProps) {
   const { theme } = page;
   const themeStyle = {
     "--pv-bg": theme.background,
@@ -596,6 +603,11 @@ export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayS
       })
     : null;
 
+  // Founder badge: gated on the canonical route username (on-chain
+  // verified), never on page.username from the IPFS JSON — IPFS content is
+  // user-controlled, so gating on it would let anyone spoof the badge.
+  const isFounder = resolveFounderBadge(canonicalUsername, page.username);
+
   return (
     <div className={`pv-root${isAgent ? " is-agent" : ""}`} style={themeStyle}>
       <header className="pv-header">
@@ -615,7 +627,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayS
             key={i}
             block={block}
             onPayService={onPayService}
-            isFounder={isFounderUsername(page.username)}
+            isFounder={isFounder}
             profileTrackIndex={
               block.type === "music" &&
               page.profileSong &&

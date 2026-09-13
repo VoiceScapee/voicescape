@@ -9,6 +9,8 @@ import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
+import { TxConfirming } from "@/components/TxConfirm";
+import { recordConversionEvent } from "@/lib/metrics";
 import { getActiveChain } from "@/lib/chains";
 import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/marketplace-verify";
 import { longZeroToAccountId } from "@/lib/session-message";
@@ -201,6 +203,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
   const startBuy = async () => {
     setBuy({ kind: "buying" });
+    recordConversionEvent("purchase_attempt");
     try {
       if (!account) throw new Error("Connect a wallet to buy.");
       if (!listing) throw new Error("Listing not loaded.");
@@ -247,8 +250,10 @@ export default function ListingDetailClient({ id }: { id: string }) {
           amountHbar: usdToHbarDisplay(usd, hbarPrice),
           seller: sellerAddress,
         });
+        recordConversionEvent("purchase_confirmed");
         setBuy({ kind: "done", tx });
       } else if (result.status === "failed") {
+        recordConversionEvent("purchase_failed");
         setBuy({ kind: "error", message: "The payment failed on-chain. No funds were transferred — check the explorer for details." });
       } else {
         // Submitted but not yet visible (mirror lag). Don't claim success
@@ -390,7 +395,12 @@ export default function ListingDetailClient({ id }: { id: string }) {
           )}
 
           {buy.kind === "confirming" && (
-            <p className="th-muted" role="status">Payment sent — confirming on-chain…</p>
+            <div style={{ marginTop: 8 }}>
+              <TxConfirming
+                title="Confirming payment…"
+                sub="Payment approved in your wallet — verifying the 98/2 split on-chain before claiming success."
+              />
+            </div>
           )}
 
           {buy.kind === "submitted" && (

@@ -40,6 +40,7 @@ const en = {
   "wallet.disconnect": "Disconnect",
   "wallet.connecting": "Connecting…",
   "wallet.connectingHashPack": "Connecting to HashPack…",
+  "wallet.connectHashPack": "Connect HashPack",
   "wallet.checkWallet": "Check your wallet…",
 
   // Splash screen
@@ -48,7 +49,7 @@ const en = {
     "Pick a template or build block by block. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
   "splash.enter": "Enter Voicescape",
   "splash.poweredBy": "Powered by Hedera",
-  "splash.hederaSpecs": "~2s finality · $0.0001 tx · carbon-negative",
+  "splash.hederaSpecs": "~3–5s finality · $0.0001 tx · carbon-negative",
 
   // Landing page — hero
   "landing.whatIs": "What is Voicescape",
@@ -61,9 +62,9 @@ const en = {
   "landing.f1t": "Templates",
   "landing.f1b":
     "Start from a template — restaurants, salons, gyms, shops and more — then make it yours.",
-  "landing.f2t": "Speak it, AI builds it",
+  "landing.f2t": "Speak it, AI drafts it",
   "landing.f2b":
-    "Describe your page — or say it out loud — and watch it assemble itself. “Make it neon cyberpunk” is all it takes.",
+    "Describe your page — or say it out loud — and the AI drafts a new version for you to review in the preview, then apply or discard. “Make it neon cyberpunk” is all it takes.",
   "landing.f3t": "On-chain identity",
   "landing.f3b":
     "Your page content is pinned to IPFS and registered on-chain. You truly own it — no platform can take it.",
@@ -164,30 +165,31 @@ const es: Record<I18nKey, string> = {
   "wallet.disconnect": "Desconectar",
   "wallet.connecting": "Conectando…",
   "wallet.connectingHashPack": "Conectando a HashPack…",
+  "wallet.connectHashPack": "Conectar HashPack",
   "wallet.checkWallet": "Revisa tu billetera…",
 
   // Splash screen
   "splash.tagline": "Habla y da vida a tu espacio.",
   "splash.sub":
-    "Describe tu página — o dila en voz alta — y mira cómo la IA la construye. Publícala en Hedera y recibe propinas en HBAR. Para humanos y agentes de IA por igual.",
+    "Describe tu página — o dila en voz alta — y mira cómo la IA prepara el borrador. Publícala en Hedera y recibe propinas en HBAR. Para humanos y agentes de IA por igual.",
   "splash.enter": "Entrar a Voicescape",
   "splash.poweredBy": "Con la tecnología de Hedera",
-  "splash.hederaSpecs": "~2s de finalidad · $0.0001 por tx · carbono-negativo",
+  "splash.hederaSpecs": "~3–5s de finalidad · $0.0001 por tx · carbono-negativo",
 
   // Landing page — hero
   "landing.whatIs": "Qué es Voicescape",
   "landing.hero1": "Páginas de bloques para",
   "landing.hero2": "humanos e IA por igual",
   "landing.heroBody":
-    "Habla o escribe lo que quieras — la IA construye tu página, bloque por bloque. Se fija en IPFS y se registra en Hedera, así que realmente te pertenece. Tus fans te dan propinas en HBAR, y cada propina se divide 98/2 automáticamente.",
+    "Habla o escribe lo que quieras — la IA prepara el borrador de tu página y tú lo ajustas a tu gusto. Se fija en IPFS y se registra en Hedera, así que realmente te pertenece. Tus fans te dan propinas en HBAR, y cada propina se divide 98/2 automáticamente.",
 
   // Landing page — features
   "landing.f1t": "Plantillas",
   "landing.f1b":
     "Empieza desde una plantilla — restaurantes, salones, gimnasios, tiendas y más — y hazla tuya.",
-  "landing.f2t": "Dilo, la IA lo construye",
+  "landing.f2t": "Dilo, la IA prepara el borrador",
   "landing.f2b":
-    "Describe tu página — o dila en voz alta — y mírala construirse sola. «Hazla neón cyberpunk» es todo lo que necesitas.",
+    "Describe tu página — o dila en voz alta — y la IA prepara un borrador que revisas en la vista previa, y luego aplicas o descartas. «Hazla neón cyberpunk» es todo lo que necesitas.",
   "landing.f3t": "Identidad en la cadena",
   "landing.f3b":
     "El contenido de tu página se fija en IPFS y se registra en la cadena. Realmente te pertenece — ninguna plataforma te lo puede quitar.",
@@ -233,8 +235,8 @@ const es: Record<I18nKey, string> = {
   "landing.howItWorks": "Cómo funciona",
   "landing.step1t": "Describe o elige",
   "landing.step1b": "Dile a la IA lo que quieres — o empieza desde una plantilla.",
-  "landing.step2t": "Mira cómo la IA la construye",
-  "landing.step2b": "Habla o escribe — tu página se arma sola, bloque por bloque. Ajusta lo que quieras a mano.",
+  "landing.step2t": "Hazla tuya",
+  "landing.step2b": "Añade tu bio, enlaces, música y estilo. Ajusta todo a mano.",
   "landing.step3t": "Publica en la cadena",
   "landing.step3b": "Conecta tu billetera, reclama tu nombre de usuario, fija en IPFS y registra en Hedera.",
   "landing.step4t": "Recibe propinas",
@@ -285,30 +287,31 @@ const zh: Record<I18nKey, string> = {
   "wallet.disconnect": "断开连接",
   "wallet.connecting": "连接中…",
   "wallet.connectingHashPack": "正在连接 HashPack…",
+  "wallet.connectHashPack": "连接 HashPack",
   "wallet.checkWallet": "请查看您的钱包…",
 
   // Splash screen
   "splash.tagline": "用声音创造你的空间。",
   "splash.sub":
-    "描述您的页面——或直接说出来——看着 AI 为您建造。在 Hedera 上发布，获得 HBAR 打赏。人类与 AI 智能体共享。",
+    "描述您的页面——或直接说出来——看着 AI 为您起草初稿。在 Hedera 上发布，获得 HBAR 打赏。人类与 AI 智能体共享。",
   "splash.enter": "进入 Voicescape",
   "splash.poweredBy": "由 Hedera 驱动",
-  "splash.hederaSpecs": "约2秒确认 · 每笔交易 $0.0001 · 负碳排放",
+  "splash.hederaSpecs": "约3–5秒确认 · 每笔交易 $0.0001 · 负碳排放",
 
   // Landing page — hero
   "landing.whatIs": "什么是 Voicescape",
   "landing.hero1": "人类与 AI",
   "landing.hero2": "共享的区块页面",
   "landing.heroBody":
-    "说出或输入您的想法——AI 会逐块为您建造页面。页面固定在 IPFS 并在 Hedera 注册，真正属于您。粉丝用 HBAR 打赏，每笔打赏自动按 98/2 分成。",
+    "说出或输入您的想法——AI 为您起草页面初稿，再由您亲自调整。页面固定在 IPFS 并在 Hedera 注册，真正属于您。粉丝用 HBAR 打赏，每笔打赏自动按 98/2 分成。",
 
   // Landing page — features
   "landing.f1t": "模板",
   "landing.f1b":
     "从模板开始——餐厅、沙龙、健身房、商店等等——然后打造属于您的风格。",
-  "landing.f2t": "说出来，AI 来建造",
+  "landing.f2t": "说出来，AI 起草初稿",
   "landing.f2b":
-    "描述您的页面——或直接说出来——看着它自动组装。“做成霓虹赛博朋克风”就够了。",
+    "描述您的页面——或直接说出来——AI 会生成一个新版本供您在预览中审核，然后应用或放弃。“做成霓虹赛博朋克风”就够了。",
   "landing.f3t": "链上身份",
   "landing.f3b":
     "您的页面内容固定在 IPFS 上并在链上注册。它真正属于您——任何平台都无法夺走。",
@@ -353,8 +356,8 @@ const zh: Record<I18nKey, string> = {
   "landing.howItWorks": "使用方法",
   "landing.step1t": "描述或选择",
   "landing.step1b": "告诉 AI 您想要什么——或从模板开始。",
-  "landing.step2t": "看 AI 建造",
-  "landing.step2b": "说或写——您的页面会自动逐块组装。随时手动微调。",
+  "landing.step2t": "打造成你的风格",
+  "landing.step2b": "添加您的简介、链接、音乐和风格。所有内容均可手动微调。",
   "landing.step3t": "链上发布",
   "landing.step3b": "连接钱包、领取用户名、固定到 IPFS 并在 Hedera 上注册。",
   "landing.step4t": "获得打赏",
@@ -405,30 +408,31 @@ const hi: Record<I18nKey, string> = {
   "wallet.disconnect": "डिस्कनेक्ट",
   "wallet.connecting": "कनेक्ट हो रहा है…",
   "wallet.connectingHashPack": "HashPack से कनेक्ट हो रहा है…",
+  "wallet.connectHashPack": "HashPack से कनेक्ट करें",
   "wallet.checkWallet": "अपना वॉलेट देखें…",
 
   // Splash screen
   "splash.tagline": "अपनी आवाज़ से अपनी दुनिया बनाएं।",
   "splash.sub":
-    "अपना पेज बताएं — या बोलकर बताएं — और देखें AI उसे बनाता है। Hedera पर पब्लिश करें, HBAR में टिप्स पाएं। इंसानों और AI एजेंटों, दोनों के लिए।",
+    "अपना पेज बताएं — या बोलकर बताएं — और देखें AI उसका मसौदा तैयार करता है। Hedera पर पब्लिश करें, HBAR में टिप्स पाएं। इंसानों और AI एजेंटों, दोनों के लिए।",
   "splash.enter": "Voicescape में प्रवेश करें",
   "splash.poweredBy": "Hedera द्वारा संचालित",
-  "splash.hederaSpecs": "~2 सेकंड फाइनैलिटी · $0.0001 प्रति tx · कार्बन-नेगेटिव",
+  "splash.hederaSpecs": "~3–5 सेकंड फाइनैलिटी · $0.0001 प्रति tx · कार्बन-नेगेटिव",
 
   // Landing page — hero
   "landing.whatIs": "Voicescape क्या है",
   "landing.hero1": "इंसानों और AI दोनों के लिए",
   "landing.hero2": "ब्लॉक पेज",
   "landing.heroBody":
-    "बोलें या लिखें कि आपको क्या चाहिए — AI आपका पेज ब्लॉक दर ब्लॉक बना देगा। यह IPFS पर पिन होता है और Hedera पर रजिस्टर होता है, इसलिए यह सच में आपका है। प्रशंसक HBAR में टिप्स देते हैं, और हर टिप अपने आप 98/2 में बंट जाती है।",
+    "बोलें या लिखें कि आपको क्या चाहिए — AI आपके पेज का मसौदा तैयार करता है, जिसे आप खुद संवारते हैं। यह IPFS पर पिन होता है और Hedera पर रजिस्टर होता है, इसलिए यह सच में आपका है। प्रशंसक HBAR में टिप्स देते हैं, और हर टिप अपने आप 98/2 में बंट जाती है।",
 
   // Landing page — features
   "landing.f1t": "टेम्पलेट",
   "landing.f1b":
     "टेम्पलेट से शुरू करें — रेस्टोरेंट, सैलून, जिम, दुकानें और भी बहुत कुछ — फिर उसे अपना बनाएं।",
-  "landing.f2t": "बोलें, AI बनाएगा",
+  "landing.f2t": "बोलें, AI मसौदा तैयार करेगा",
   "landing.f2b":
-    "अपना पेज बताएं — या ज़ोर से बोलें — और देखें कि वह खुद बन जाता है। “इसे नियॉन साइबरपंक बनाओ” बस इतना ही काफी है।",
+    "अपना पेज बताएं — या ज़ोर से बोलें — और AI एक नया ड्राफ़्ट तैयार करेगा, जिसे आप प्रीव्यू में देखकर लागू या छोड़ सकते हैं। “इसे नियॉन साइबरपंक बनाओ” बस इतना ही काफी है।",
   "landing.f3t": "ऑन-चेन पहचान",
   "landing.f3b":
     "आपके पेज का कंटेंट IPFS पर पिन होता है और ऑन-चेन रजिस्टर होता है। यह सच में आपका है — कोई प्लेटफॉर्म इसे छीन नहीं सकता।",
@@ -473,8 +477,8 @@ const hi: Record<I18nKey, string> = {
   "landing.howItWorks": "यह कैसे काम करता है",
   "landing.step1t": "बताएं या चुनें",
   "landing.step1b": "AI को बताएं कि आपको क्या चाहिए — या टेम्पलेट से शुरू करें।",
-  "landing.step2t": "AI को बनाते देखें",
-  "landing.step2b": "बोलें या लिखें — आपका पेज खुद-ब-खुद, ब्लॉक दर ब्लॉक बन जाएगा। चाहें तो खुद भी बदलें।",
+  "landing.step2t": "इसे अपना बनाएं",
+  "landing.step2b": "अपना बायो, लिंक, संगीत और स्टाइल जोड़ें। सब कुछ अपने हाथ से बदलें।",
   "landing.step3t": "ऑन-चेन पब्लिश करें",
   "landing.step3b": "वॉलेट कनेक्ट करें, यूज़रनेम लें, IPFS पर पिन करें और Hedera पर रजिस्टर करें।",
   "landing.step4t": "टिप पाएं",
@@ -525,30 +529,31 @@ const ar: Record<I18nKey, string> = {
   "wallet.disconnect": "قطع الاتصال",
   "wallet.connecting": "جارٍ الاتصال…",
   "wallet.connectingHashPack": "جارٍ الاتصال بـ HashPack…",
+  "wallet.connectHashPack": "الاتصال بـ HashPack",
   "wallet.checkWallet": "تحقق من محفظتك…",
 
   // Splash screen
   "splash.tagline": "تكلّم لتُوجِد مساحتك.",
   "splash.sub":
-    "صِف صفحتك — أو قلها بصوتك — وشاهد الذكاء الاصطناعي يبنيها. انشر على Hedera واحصل على إكراميات بـ HBAR. للبشر ووكلاء الذكاء الاصطناعي معًا.",
+    "صِف صفحتك — أو قلها بصوتك — وشاهد الذكاء الاصطناعي يُعدّ مسودتها. انشر على Hedera واحصل على إكراميات بـ HBAR. للبشر ووكلاء الذكاء الاصطناعي معًا.",
   "splash.enter": "ادخل إلى Voicescape",
   "splash.poweredBy": "مدعوم من Hedera",
-  "splash.hederaSpecs": "نهائية خلال ~ثانيتين · $0.0001 للمعاملة · سالب الكربون",
+  "splash.hederaSpecs": "نهائية خلال ~3–5 ثوانٍ · $0.0001 للمعاملة · سالب الكربون",
 
   // Landing page — hero
   "landing.whatIs": "ما هو Voicescape",
   "landing.hero1": "صفحات بلوك",
   "landing.hero2": "للبشر والذكاء الاصطناعي معًا",
   "landing.heroBody":
-    "تكلّم أو اكتب ما تريد — الذكاء الاصطناعي يبني صفحتك بلوكًا ببلوك. تُثبَّت على IPFS وتُسجَّل على Hedera، فهي ملكك حقًا. معجبوك يكرمونك بـ HBAR، وكل إكرامية تُقسَّم 98/2 تلقائيًا.",
+    "تكلّم أو اكتب ما تريد — الذكاء الاصطناعي يُعدّ مسودة صفحتك وأنت تُكملها بنفسك. تُثبَّت على IPFS وتُسجَّل على Hedera، فهي ملكك حقًا. معجبوك يكرمونك بـ HBAR، وكل إكرامية تُقسَّم 98/2 تلقائيًا.",
 
   // Landing page — features
   "landing.f1t": "قوالب",
   "landing.f1b":
     "ابدأ من قالب — مطاعم وصالونات وصالات رياضية ومتاجر وغيرها — ثم اجعله خاصًا بك.",
-  "landing.f2t": "تكلّم، والذكاء الاصطناعي يبني",
+  "landing.f2t": "تكلّم، والذكاء الاصطناعي يُعدّ مسودة",
   "landing.f2b":
-    "صِف صفحتك — أو قلها بصوت عالٍ — وشاهدها تُبنى بنفسها. «اجعلها نيون سايبربانك» يكفي.",
+    "صِف صفحتك — أو قلها بصوت عالٍ — وسيُعدّ الذكاء الاصطناعي مسودة جديدة تراجعها في المعاينة، ثم تطبّقها أو تتجاهلها. «اجعلها نيون سايبربانك» يكفي.",
   "landing.f3t": "هوية على السلسلة",
   "landing.f3b":
     "محتوى صفحتك مثبت على IPFS ومسجل على السلسلة. إنه ملكك حقًا — لا يمكن لأي منصة أن تسلبه منك.",
@@ -593,8 +598,8 @@ const ar: Record<I18nKey, string> = {
   "landing.howItWorks": "كيف يعمل",
   "landing.step1t": "صِف أو اختر",
   "landing.step1b": "أخبر الذكاء الاصطناعي بما تريد — أو ابدأ من قالب.",
-  "landing.step2t": "شاهد الذكاء الاصطناعي يبنيها",
-  "landing.step2b": "تكلّم أو اكتب — صفحتك تُبنى بنفسها، بلوكًا ببلوك. عدّل أي شيء يدويًا.",
+  "landing.step2t": "اجعلها ملكك",
+  "landing.step2b": "أضف نبذتك وروابطك وموسيقاك وأسلوبك. عدّل كل شيء يدويًا.",
   "landing.step3t": "انشر على السلسلة",
   "landing.step3b": "اربط محفظتك، واحجز اسم المستخدم، وثبّت على IPFS، وسجّل على Hedera.",
   "landing.step4t": "احصل على إكراميات",
@@ -645,30 +650,31 @@ const pt: Record<I18nKey, string> = {
   "wallet.disconnect": "Desconectar",
   "wallet.connecting": "Conectando…",
   "wallet.connectingHashPack": "Conectando ao HashPack…",
+  "wallet.connectHashPack": "Conectar HashPack",
   "wallet.checkWallet": "Verifique sua carteira…",
 
   // Splash screen
   "splash.tagline": "Fale e dê vida ao seu espaço.",
   "splash.sub":
-    "Descreva sua página — ou fale em voz alta — e veja a IA construí-la. Publique na Hedera e receba gorjetas em HBAR. Para humanos e agentes de IA.",
+    "Descreva sua página — ou fale em voz alta — e veja a IA preparar um rascunho. Publique na Hedera e receba gorjetas em HBAR. Para humanos e agentes de IA.",
   "splash.enter": "Entrar no Voicescape",
   "splash.poweredBy": "Com tecnologia Hedera",
-  "splash.hederaSpecs": "~2s de finalidade · $0,0001 por tx · carbono-negativo",
+  "splash.hederaSpecs": "~3–5s de finalidade · $0,0001 por tx · carbono-negativo",
 
   // Landing page — hero
   "landing.whatIs": "O que é o Voicescape",
   "landing.hero1": "Páginas de blocos para",
   "landing.hero2": "humanos e IA",
   "landing.heroBody":
-    "Fale ou digite o que você quer — a IA constrói sua página, bloco por bloco. Ela é fixada no IPFS e registrada na Hedera, então é realmente sua. Seus fãs te dão gorjetas em HBAR, e cada gorjeta se divide 98/2 automaticamente.",
+    "Fale ou digite o que você quer — a IA prepara o rascunho da sua página e você ajusta do seu jeito. Ela é fixada no IPFS e registrada na Hedera, então é realmente sua. Seus fãs te dão gorjetas em HBAR, e cada gorjeta se divide 98/2 automaticamente.",
 
   // Landing page — features
   "landing.f1t": "Modelos",
   "landing.f1b":
     "Comece de um modelo — restaurantes, salões, academias, lojas e mais — e faça do seu jeito.",
-  "landing.f2t": "Fale, a IA constrói",
+  "landing.f2t": "Fale, a IA prepara um rascunho",
   "landing.f2b":
-    "Descreva sua página — ou fale em voz alta — e veja-a se montar sozinha. “Deixa neon cyberpunk” é tudo que você precisa.",
+    "Descreva sua página — ou fale em voz alta — e a IA prepara um rascunho para você revisar na pré-visualização, e então aplicar ou descartar. “Deixa neon cyberpunk” é tudo que você precisa.",
   "landing.f3t": "Identidade on-chain",
   "landing.f3b":
     "O conteúdo da sua página é fixado no IPFS e registrado on-chain. É realmente seu — nenhuma plataforma pode tirar de você.",
@@ -713,8 +719,8 @@ const pt: Record<I18nKey, string> = {
   "landing.howItWorks": "Como funciona",
   "landing.step1t": "Descreva ou escolha",
   "landing.step1b": "Diga à IA o que você quer — ou comece de um modelo.",
-  "landing.step2t": "Veja a IA construir",
-  "landing.step2b": "Fale ou digite — sua página se monta sozinha, bloco por bloco. Ajuste o que quiser manualmente.",
+  "landing.step2t": "Deixe com a sua cara",
+  "landing.step2b": "Adicione sua bio, links, música e estilo. Ajuste tudo manualmente.",
   "landing.step3t": "Publique on-chain",
   "landing.step3b": "Conecte sua carteira, reivindique seu nome de usuário, fixe no IPFS e registre na Hedera.",
   "landing.step4t": "Receba gorjetas",
@@ -765,30 +771,31 @@ const fr: Record<I18nKey, string> = {
   "wallet.disconnect": "Déconnecter",
   "wallet.connecting": "Connexion…",
   "wallet.connectingHashPack": "Connexion à HashPack…",
+  "wallet.connectHashPack": "Connecter HashPack",
   "wallet.checkWallet": "Vérifiez votre portefeuille…",
 
   // Splash screen
   "splash.tagline": "Parlez, et votre espace prend vie.",
   "splash.sub":
-    "Décrivez votre page — ou dites-la à voix haute — et regardez l'IA la construire. Publiez sur Hedera et recevez des pourboires en HBAR. Pour les humains comme pour les agents IA.",
+    "Décrivez votre page — ou dites-la à voix haute — et regardez l'IA préparer un brouillon. Publiez sur Hedera et recevez des pourboires en HBAR. Pour les humains comme pour les agents IA.",
   "splash.enter": "Entrer dans Voicescape",
   "splash.poweredBy": "Propulsé par Hedera",
-  "splash.hederaSpecs": "finalité ~2s · 0,0001 $ par tx · carbone-négatif",
+  "splash.hederaSpecs": "finalité ~3–5s · 0,0001 $ par tx · carbone-négatif",
 
   // Landing page — hero
   "landing.whatIs": "Qu'est-ce que Voicescape",
   "landing.hero1": "Des pages de blocs pour",
   "landing.hero2": "les humains comme l'IA",
   "landing.heroBody":
-    "Parlez ou écrivez ce que vous voulez — l'IA construit votre page, bloc par bloc. Elle est épinglée sur IPFS et enregistrée sur Hedera : elle vous appartient vraiment. Vos fans vous donnent des pourboires en HBAR, et chaque pourboire se partage 98/2 automatiquement.",
+    "Parlez ou écrivez ce que vous voulez — l'IA prépare le brouillon de votre page, que vous ajustez à votre goût. Elle est épinglée sur IPFS et enregistrée sur Hedera : elle vous appartient vraiment. Vos fans vous donnent des pourboires en HBAR, et chaque pourboire se partage 98/2 automatiquement.",
 
   // Landing page — features
   "landing.f1t": "Modèles",
   "landing.f1b":
     "Partez d'un modèle — restaurants, salons, salles de sport, boutiques et plus — puis faites-le vôtre.",
-  "landing.f2t": "Dites-le, l'IA le construit",
+  "landing.f2t": "Dites-le, l'IA prépare un brouillon",
   "landing.f2b":
-    "Décrivez votre page — ou dites-le à voix haute — et regardez-la s'assembler toute seule. « Rends-la néon cyberpunk » suffit.",
+    "Décrivez votre page — ou dites-le à voix haute — et l'IA prépare une nouvelle version que vous relisez dans l'aperçu, puis vous l'appliquez ou l'écartez. « Rends-la néon cyberpunk » suffit.",
   "landing.f3t": "Identité on-chain",
   "landing.f3b":
     "Le contenu de votre page est épinglé sur IPFS et enregistré on-chain. Il vous appartient vraiment — aucune plateforme ne peut vous le retirer.",
@@ -834,8 +841,8 @@ const fr: Record<I18nKey, string> = {
   "landing.howItWorks": "Comment ça marche",
   "landing.step1t": "Décrivez ou choisissez",
   "landing.step1b": "Dites à l'IA ce que vous voulez — ou partez d'un modèle.",
-  "landing.step2t": "Regardez l'IA construire",
-  "landing.step2b": "Parlez ou écrivez — votre page s'assemble toute seule, bloc par bloc. Retouchez tout à la main.",
+  "landing.step2t": "Appropriez-la",
+  "landing.step2b": "Ajoutez votre bio, vos liens, votre musique et votre style. Retouchez tout à la main.",
   "landing.step3t": "Publiez on-chain",
   "landing.step3b": "Connectez votre portefeuille, réclamez votre pseudo, épinglez sur IPFS et enregistrez sur Hedera.",
   "landing.step4t": "Recevez des pourboires",

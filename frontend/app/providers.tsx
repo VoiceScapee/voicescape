@@ -91,15 +91,21 @@ function useReferralCapture() {
   }, []);
 }
 
+import { firstStackFrame } from "@/lib/client-error-frame";
+
 /**
  * Privacy-first client error reporting.
  *
  * Listens for uncaught errors and unhandled promise rejections and sends
  * a minimal report to POST /api/client-error. What leaves the browser:
  *   - error.message only (max 200 chars, scrubbed of wallet addresses)
+ *   - the FIRST stack frame only, scrubbed (function + chunk basename +
+ *     line — enough to tell our code from a wallet dependency, e.g. for
+ *     the `Cannot read properties of undefined (reading 'call')` class)
  *   - window.location.pathname (no query strings — they can carry PII)
  *   - an optional component tag
- * Never sent: stack traces, filenames, IPs, user agents, wallet addresses.
+ * Never sent: full stack traces, full URLs/paths, IPs, user agents, wallet
+ * addresses.
  *
  * Delivery is fire-and-forget via navigator.sendBeacon (works during page
  * unload), with a keepalive fetch fallback. Reporting never throws and
@@ -112,16 +118,21 @@ function useClientErrorReporting() {
     const scrub = (s: string): string =>
       s.replace(/0x[a-fA-F0-9]{8,}/g, "0x…").replace(/\b\d{1,10}\.\d{1,10}\.\d{1,10}\b/g, "0.0.…");
 
-    const report = (message: string, component?: string) => {
+    const report = (message: string, component?: string, frame?: string | null) => {
       try {
         const msg = scrub(message).trim().replace(/\s+/g, " ").slice(0, 200);
         if (!msg) return;
         // Pathname only — strip query string and fragment (can carry PII).
         const page = (window.location.pathname || "/").split("?")[0].split("#")[0] || "/";
-        const key = `${page}|${component ?? ""}|${msg}`;
+        const key = `${page}|${component ?? ""}|${msg}|${frame ?? ""}`;
         if (seen.has(key) || seen.size >= 10) return;
         seen.add(key);
-        const payload = JSON.stringify({ message: msg, page, ...(component ? { component } : {}) });
+        const payload = JSON.stringify({
+          message: msg,
+          page,
+          ...(component ? { component } : {}),
+          ...(frame ? { frame } : {}),
+        });
         if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
           navigator.sendBeacon("/api/client-error", new Blob([payload], { type: "application/json" }));
         } else {
@@ -140,8 +151,11 @@ function useClientErrorReporting() {
     };
 
     const onError = (e: ErrorEvent) => {
-      // e.message only — never e.filename / e.error.stack (paths, PII).
-      report(typeof e.message === "string" && e.message ? e.message : "unknown error");
+      // Message + first scrubbed stack frame — enough to attribute the
+      // error to our code vs a wallet dependency.
+      const err = (e as ErrorEvent & { error?: unknown }).error;
+      const frame = err instanceof Error ? firstStackFrame(err.stack) : firstStackFrame((err as { stack?: unknown } | null)?.stack);
+      report(typeof e.message === "string" && e.message ? e.message : "unknown error", undefined, frame);
     };
     const onRejection = (e: PromiseRejectionEvent) => {
       const r: unknown = e.reason;
@@ -151,7 +165,7 @@ function useClientErrorReporting() {
           : typeof r === "string" && r
             ? r
             : "unhandled promise rejection";
-      report(msg);
+      report(msg, undefined, r instanceof Error ? firstStackFrame(r.stack) : null);
     };
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);

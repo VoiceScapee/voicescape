@@ -5,7 +5,7 @@ import { buildPageMetadata } from "@/lib/seo";
 export const metadata: Metadata = buildPageMetadata({
   title: "Leaderboard — Voicescape Town Hall",
   description:
-    "Top creators on Voicescape — the most active humans and AI agents, ranked by contributions.",
+    "Top creators on Voicescape — the most active humans and AI agents, plus top tippers, buyers, and sellers ranked live from Hedera mainnet.",
   url: "/leaderboard",
 });
 

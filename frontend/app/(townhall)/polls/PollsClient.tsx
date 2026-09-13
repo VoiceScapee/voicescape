@@ -6,6 +6,10 @@ import { PresenceDot } from "@/components/townhall/Presence";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
+import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
+import { TxConfirming, TxReceipt } from "@/components/TxConfirm";
+import { recordConversionEvent } from "@/lib/metrics";
+import { getActiveChain } from "@/lib/chains";
 import { getJson, postJson, makeTownhallId, type Proposal } from "@/lib/townhall";
 
 /** Stream event: a new proposal or vote — the client refetches tallies. */
@@ -63,10 +67,21 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
   const closed = proposal.closesAt <= Date.now();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Reactive finality: after the wallet approves, poll the mirror node
+  // until the vote reaches consensus — the UI reacts to the real outcome.
+  const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const confirmStatus = useConfirmedTransaction(confirmTxId);
+  const [approvedAt, setApprovedAt] = useState<number | null>(null);
+  const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  const [confirmedChoice, setConfirmedChoice] = useState<string | null>(null);
+  // Submitted but the mirror node hasn't shown it yet — honest delayed state.
+  const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
+  const chain = getActiveChain();
   const total = proposal.yes + proposal.no + proposal.abstain;
 
   const vote = async (choice: "yes" | "no" | "abstain") => {
     setError(null);
+    setSubmittedTxId(null);
     if (!canWrite || !me) {
       setError(isAuthenticated ? "Set your page username (top of the page) to vote." : "Sign in with your wallet to vote.");
       return;
@@ -85,18 +100,48 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
         choice,
       });
       if (!hcsTxId) return; // User cancelled or error
+      // Wallet approved — start the finality clock and the mirror poll.
+      // The vote is on-chain from here; buttons stay busy until the
+      // network verdict lands.
+      setApprovedAt(Date.now());
+      setConfirmedChoice(choice);
+      setConfirmTxId(hcsTxId);
       await postJson(`/api/townhall/proposals/${encodeURIComponent(proposal.id)}/vote`, {
         voter: me,
         choice,
         hcsTxId,
       });
-      onVoted();
+      // Tally refresh happens on "confirmed" below.
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
-    } finally {
       setBusy(null);
+      setConfirmTxId(null);
     }
   };
+
+  // Mirror-node verdict landed — move to the matching end state.
+  useEffect(() => {
+    if (!confirmTxId) return;
+    if (confirmStatus === "confirmed") {
+      setFinalizedAt(new Date());
+      setBusy(null);
+      recordConversionEvent("vote_submitted");
+      onVoted();
+    } else if (confirmStatus === "failed") {
+      setError("The vote transaction failed on Hedera — your vote was not counted.");
+      setBusy(null);
+      recordConversionEvent("vote_failed");
+      setConfirmTxId(null);
+    } else if (confirmStatus === "timeout") {
+      // Submitted but not yet visible (mirror lag). The vote is on-chain —
+      // never claim failure; show the honest "submitted" state.
+      setSubmittedTxId(confirmTxId);
+      setBusy(null);
+      setConfirmTxId(null);
+      onVoted();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmStatus]);
 
   const pct = (n: number) => (total > 0 ? Math.round((n / total) * 100) : 0);
 
@@ -128,7 +173,15 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
               onClick={() => vote(c)}
               disabled={busy !== null}
             >
-              {busy === c ? "Voting…" : c === "yes" ? "Vote yes" : c === "no" ? "Vote no" : "Abstain"}
+              {busy === c
+                ? confirmStatus === "confirming"
+                  ? "Confirming…"
+                  : "Voting…"
+                : c === "yes"
+                  ? "Vote yes"
+                  : c === "no"
+                    ? "Vote no"
+                    : "Abstain"}
             </button>
           ))}
         </div>
@@ -137,6 +190,48 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
       )}
       {error && <p className="th-error">{error}</p>}
       {hcs.phase.kind === "error" && <p className="th-error">Failed to submit: {hcs.phase.message}</p>}
+      {confirmStatus === "confirming" && (
+        <div style={{ marginTop: 8 }}>
+          <TxConfirming
+            title="Confirming your vote…"
+            sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)."
+          />
+        </div>
+      )}
+      {confirmStatus === "confirmed" && confirmTxId && finalizedAt && (
+        <div style={{ marginTop: 8 }}>
+          <TxReceipt
+            title="Vote confirmed"
+            approvedAt={approvedAt}
+            finalizedAt={finalizedAt}
+            txId={confirmTxId}
+            explorerBase={chain.blockExplorer}
+            lines={[
+              { label: "Choice", value: confirmedChoice ?? "—" },
+              { label: "Proposal", value: proposal.title },
+            ]}
+            nextStep="Your vote is on-chain and counted in the tally above."
+            onDone={() => {
+              setConfirmTxId(null);
+              setConfirmedChoice(null);
+              setFinalizedAt(null);
+            }}
+          />
+        </div>
+      )}
+      {submittedTxId && (
+        <p className="th-muted" style={{ marginTop: 8 }}>
+          ◌ Vote submitted to Hedera, but confirmation is delayed — it will be counted once the network catches up.{" "}
+          <a
+            href={`${chain.blockExplorer}/transaction/${submittedTxId}`}
+            target="_blank"
+            rel="noreferrer"
+            className="th-identity-link"
+          >
+            View on HashScan
+          </a>
+        </p>
+      )}
     </div>
   );
 }
@@ -149,9 +244,27 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
   const [closesAt, setClosesAt] = useState("");
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Reactive finality for the proposal HCS transaction.
+  const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const confirmStatus = useConfirmedTransaction(confirmTxId);
+  const [approvedAt, setApprovedAt] = useState<number | null>(null);
+  const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
+  const chain = getActiveChain();
+
+  const resetForm = () => {
+    setTitle("");
+    setBody("");
+    setClosesAt("");
+    setConfirmTxId(null);
+    setFinalizedAt(null);
+    setSubmittedTxId(null);
+    setOpen(false);
+  };
 
   const submit = async () => {
     setSubmitError(null);
+    setSubmittedTxId(null);
     if (!title.trim() || !body.trim() || !closesAt || !canWrite || !me) return;
     const ts = new Date(closesAt).getTime();
     if (!Number.isFinite(ts) || ts <= Date.now()) return;
@@ -172,6 +285,9 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
       closesAt: closesIso,
     });
     if (!hcsTxId) return; // User cancelled or error — phase shows the error
+    // Wallet approved — start the finality clock and the mirror poll.
+    setApprovedAt(Date.now());
+    setConfirmTxId(hcsTxId);
     try {
       await postJson("/api/townhall/proposals", {
         author: me,
@@ -183,14 +299,32 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
       });
     } catch (e) {
       setSubmitError(e instanceof Error ? e.message : String(e));
+      setConfirmTxId(null);
       return;
     }
-    setTitle("");
-    setBody("");
-    setClosesAt("");
-    setOpen(false);
-    onCreated();
+    // List refresh happens on "confirmed" below; the form stays open
+    // showing the confirmation state until the user dismisses it.
   };
+
+  // Mirror-node verdict landed — move to the matching end state.
+  useEffect(() => {
+    if (!confirmTxId) return;
+    if (confirmStatus === "confirmed") {
+      setFinalizedAt(new Date());
+      recordConversionEvent("proposal_submitted");
+      onCreated();
+    } else if (confirmStatus === "failed") {
+      setSubmitError("The proposal transaction failed on Hedera — it was not published.");
+      recordConversionEvent("proposal_failed");
+      setConfirmTxId(null);
+    } else if (confirmStatus === "timeout") {
+      // Submitted but not yet visible (mirror lag) — never claim failure.
+      setSubmittedTxId(confirmTxId);
+      setConfirmTxId(null);
+      onCreated();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmStatus]);
 
   if (!open) {
     return (
@@ -241,11 +375,15 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
             onClick={submit}
-            disabled={!title.trim() || !body.trim() || !closesAt || !canWrite || hcs.phase.kind === "submitting"}
+            disabled={!title.trim() || !body.trim() || !closesAt || !canWrite || hcs.phase.kind === "submitting" || confirmStatus === "confirming" || confirmStatus === "confirmed"}
           >
-            {hcs.phase.kind === "submitting" ? "Sign in wallet…" : "Publish proposal"}
+            {hcs.phase.kind === "submitting"
+              ? "Sign in wallet…"
+              : confirmStatus === "confirming"
+                ? "Confirming…"
+                : "Publish proposal"}
           </button>
-          <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setOpen(false)}>
+          <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setOpen(false)} disabled={confirmStatus === "confirming"}>
             Cancel
           </button>
         </div>
@@ -254,6 +392,47 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
           <p className="th-error">Failed to submit: {hcs.phase.message}</p>
         )}
         {submitError && <p className="th-error">{submitError}</p>}
+        {confirmStatus === "confirming" && (
+          <div style={{ marginTop: 8 }}>
+            <TxConfirming
+              title="Confirming your proposal…"
+              sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)."
+            />
+          </div>
+        )}
+        {confirmStatus === "confirmed" && confirmTxId && finalizedAt && (
+          <div style={{ marginTop: 8 }}>
+            <TxReceipt
+              title="Proposal published"
+              approvedAt={approvedAt}
+              finalizedAt={finalizedAt}
+              txId={confirmTxId}
+              explorerBase={chain.blockExplorer}
+              lines={[
+                { label: "Title", value: title.trim() || "—" },
+                { label: "Voting closes", value: closesAt || "—" },
+              ]}
+              nextStep="Your proposal is on-chain and live in the list below."
+              onDone={() => {
+                resetForm();
+                onCreated();
+              }}
+            />
+          </div>
+        )}
+        {submittedTxId && (
+          <p className="th-muted" style={{ marginTop: 8 }}>
+            ◌ Proposal submitted to Hedera, but confirmation is delayed — it will appear once the network catches up.{" "}
+            <a
+              href={`${chain.blockExplorer}/transaction/${submittedTxId}`}
+              target="_blank"
+              rel="noreferrer"
+              className="th-identity-link"
+            >
+              View on HashScan
+            </a>
+          </p>
+        )}
       </div>
     </div>
   );

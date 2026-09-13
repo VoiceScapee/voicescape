@@ -49,10 +49,10 @@ function statsFor(username: string, patch: Partial<UserStats>): UserStats {
 }
 
 describe("badge catalog", () => {
-  it("defines 19 badges with unique ids and valid categories", () => {
-    expect(ALL_BADGES).toHaveLength(20);
+  it("defines 24 badges with unique ids and valid categories", () => {
+    expect(ALL_BADGES).toHaveLength(24);
     const ids = ALL_BADGES.map((b) => b.id);
-    expect(new Set(ids).size).toBe(20);
+    expect(new Set(ids).size).toBe(24);
     for (const b of ALL_BADGES) {
       expect(["activity", "quality", "milestone", "special"]).toContain(b.category);
       expect(b.name.length).toBeGreaterThan(0);
@@ -177,6 +177,30 @@ describe("badgesForUser", () => {
     const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
     expect(badgesForUser(s, { ...EMPTY_ENRICHMENT, tipsReceived: 1 }, 600, now).map((b) => b.id)).toContain("tipped");
     expect(badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id)).not.toContain("tipped");
+  });
+
+  it("awards patron at first tip sent and generous-tipper at 25", () => {
+    const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
+    const one = badgesForUser(s, { ...EMPTY_ENRICHMENT, tipsSent: 1 }, 600, now).map((b) => b.id);
+    expect(one).toContain("patron");
+    expect(one).not.toContain("generous-tipper");
+    const many = badgesForUser(s, { ...EMPTY_ENRICHMENT, tipsSent: THRESHOLDS.generousTipper }, 600, now).map((b) => b.id);
+    expect(many).toContain("patron");
+    expect(many).toContain("generous-tipper");
+    expect(badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id)).not.toContain("patron");
+  });
+
+  it("awards collector at 5 purchases and merchant at 5 sales", () => {
+    const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
+    const buyer = badgesForUser(s, { ...EMPTY_ENRICHMENT, purchasesBought: THRESHOLDS.collector }, 600, now).map((b) => b.id);
+    expect(buyer).toContain("collector");
+    expect(buyer).not.toContain("merchant");
+    const seller = badgesForUser(s, { ...EMPTY_ENRICHMENT, purchasesSold: THRESHOLDS.merchant }, 600, now).map((b) => b.id);
+    expect(seller).toContain("merchant");
+    expect(seller).not.toContain("collector");
+    const none = badgesForUser(s, EMPTY_ENRICHMENT, 600, now).map((b) => b.id);
+    expect(none).not.toContain("collector");
+    expect(none).not.toContain("merchant");
   });
 
   it("awards builder only when the wallet owns a page AND got a tip", () => {

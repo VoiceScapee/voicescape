@@ -7,6 +7,7 @@ import { describe, expect, test } from "vitest";
 import { createMemoryKvStore, type KvStore } from "./store";
 import {
   CLIENT_ERROR_TTL_MS,
+  ERROR_SPIKE_THRESHOLD,
   ERROR_STATS_DAY_COUNT,
   MAX_ERROR_MESSAGE_LEN,
   errorAggKey,
@@ -18,6 +19,7 @@ import {
   hashErrorMessage,
   isFounderWallet,
   normalizeErrorComponent,
+  normalizeErrorFrame,
   normalizeErrorMessage,
   normalizeErrorPage,
   recordClientError,
@@ -114,10 +116,10 @@ describe("recordClientError", () => {
   test("aggregates identical reports and tracks first/last seen", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    await recordClientError(store, "/builder", "chunk failed", null, t0);
-    await recordClientError(store, "/builder", "chunk failed", null, t0 + 1000);
+    await recordClientError(store, "/builder", "chunk failed", null, null, t0);
+    await recordClientError(store, "/builder", "chunk failed", null, null, t0 + 1000);
     const date = errorDateKey(new Date(t0));
-    const key = errorAggKey(date, "/builder", hashErrorMessage("/builder||chunk failed"));
+    const key = errorAggKey(date, "/builder", hashErrorMessage("/builder||chunk failed|"));
     const raw = await store.get(key);
     expect(raw).not.toBeNull();
     const agg = JSON.parse(raw!) as { count: number; firstSeen: number; lastSeen: number };
@@ -129,9 +131,9 @@ describe("recordClientError", () => {
   test("separate buckets per page/message/component", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    await recordClientError(store, "/a", "boom", null, t0);
-    await recordClientError(store, "/b", "boom", null, t0);
-    await recordClientError(store, "/a", "bam", null, t0);
+    await recordClientError(store, "/a", "boom", null, null, t0);
+    await recordClientError(store, "/b", "boom", null, null, t0);
+    await recordClientError(store, "/a", "bam", null, null, t0);
     const date = errorDateKey(new Date(t0));
     const idx = JSON.parse((await store.get(errorIndexKey(date)))!) as string[];
     expect(idx).toHaveLength(3);
@@ -146,12 +148,12 @@ describe("recordClientError", () => {
   test("stored aggregate contains no PII fields", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    await recordClientError(store, "/builder?token=secret", "fail 0.0.10424063", "Btn", t0);
+    await recordClientError(store, "/builder?token=secret", "fail 0.0.10424063", "Btn", null, t0);
     const date = errorDateKey(new Date(t0));
     const keys = JSON.parse((await store.get(errorIndexKey(date)))!) as string[];
     const agg = JSON.parse((await store.get(keys[0]))!) as Record<string, unknown>;
     expect(Object.keys(agg).sort()).toEqual(
-      ["component", "count", "firstSeen", "lastSeen", "message", "page"].sort(),
+      ["component", "count", "firstSeen", "frame", "lastSeen", "message", "page", "spikeAlerted"].sort(),
     );
     expect(agg.page).toBe("/builder"); // query stripped
     expect(agg.message).not.toContain("0.0.10424063"); // scrubbed
@@ -170,18 +172,79 @@ describe("recordClientError", () => {
     };
     await expect(recordClientError(broken, "/a", "boom")).resolves.toBe(false);
   });
+
+  test("normalizeErrorFrame scrubs identifiers, caps length, nulls junk", () => {
+    expect(normalizeErrorFrame(null)).toBeNull();
+    expect(normalizeErrorFrame(123)).toBeNull();
+    expect(normalizeErrorFrame("")).toBeNull();
+    expect(normalizeErrorFrame("at tip (c.js:1:2) for 0.0.10424063")).toBe(
+      "at tip (c.js:1:2) for 0.0.…",
+    );
+    const long = "at " + "f".repeat(200) + " (c.js:1:2)";
+    expect(normalizeErrorFrame(long)!.length).toBeLessThanOrEqual(120);
+  });
+
+  test("first frame is stored and distinguishes otherwise-identical buckets", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    const msg = "Cannot read properties of undefined (reading 'call')";
+    await recordClientError(store, "/", msg, null, "at a (x.js:1:1)", t0);
+    await recordClientError(store, "/", msg, null, "at b (y.js:2:2)", t0);
+    await recordClientError(store, "/", msg, null, "at a (x.js:1:1)", t0);
+    const date = errorDateKey(new Date(t0));
+    const idx = JSON.parse((await store.get(errorIndexKey(date)))!) as string[];
+    expect(idx).toHaveLength(2); // two frames → two aggregates
+    const aggs = await getErrorAggregates(store, ERROR_STATS_DAY_COUNT, t0);
+    const counts = Object.fromEntries(aggs.map((a) => [a.frame, a.count]));
+    expect(counts).toEqual({ "at a (x.js:1:1)": 2, "at b (y.js:2:2)": 1 });
+  });
+
+  test("error spike emits exactly one [error-spike] log per aggregate per day", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    const warnings: string[] = [];
+    const orig = console.warn;
+    console.warn = (m: string) => void warnings.push(m);
+    try {
+      for (let i = 0; i < ERROR_SPIKE_THRESHOLD + 3; i++) {
+        await recordClientError(store, "/x", "spike-me", null, null, t0 + i);
+      }
+      const spikes = warnings.filter((w) => w.startsWith("[error-spike]"));
+      expect(spikes).toHaveLength(1);
+      expect(spikes[0]).toContain("spike-me");
+      expect(spikes[0]).toContain(String(ERROR_SPIKE_THRESHOLD));
+    } finally {
+      console.warn = orig;
+    }
+  });
+
+  test("no spike log below the threshold", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    const warnings: string[] = [];
+    const orig = console.warn;
+    console.warn = (m: string) => void warnings.push(m);
+    try {
+      for (let i = 0; i < ERROR_SPIKE_THRESHOLD - 1; i++) {
+        await recordClientError(store, "/x", "quiet", null, null, t0 + i);
+      }
+      expect(warnings.filter((w) => w.startsWith("[error-spike]"))).toHaveLength(0);
+    } finally {
+      console.warn = orig;
+    }
+  });
 });
 
 describe("getErrorAggregates", () => {
   test("returns last-7-day aggregates sorted by count desc", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    await recordClientError(store, "/a", "rare", null, t0);
-    await recordClientError(store, "/b", "common", null, t0);
-    await recordClientError(store, "/b", "common", null, t0);
-    await recordClientError(store, "/b", "common", null, t0);
+    await recordClientError(store, "/a", "rare", null, null, t0);
+    await recordClientError(store, "/b", "common", null, null, t0);
+    await recordClientError(store, "/b", "common", null, null, t0);
+    await recordClientError(store, "/b", "common", null, null, t0);
     // Old report (8 days ago) should be excluded.
-    await recordClientError(store, "/old", "ancient", null, t0 - 8 * 86400_000);
+    await recordClientError(store, "/old", "ancient", null, null, t0 - 8 * 86400_000);
     const aggs = await getErrorAggregates(store, ERROR_STATS_DAY_COUNT, t0);
     expect(aggs.map((a) => a.message)).toEqual(["common", "rare"]);
     expect(aggs[0].count).toBe(3);

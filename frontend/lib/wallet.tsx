@@ -48,6 +48,18 @@ export interface WalletState {
   adapterName: string | null;
   isConnecting: boolean;
   error: string | null;
+  /**
+   * True once the mount-time boot sequence finished (silent restore +
+   * optional in-app auto-connect attempt). Lets UIs distinguish "we're
+   * still figuring out the wallet" from "nothing is happening" so they
+   * never show a fake "Connecting…" state.
+   */
+  bootSettled: boolean;
+  /**
+   * True after the user explicitly disconnected. Suppresses any
+   * auto-connect UI until the user takes action again.
+   */
+  userDisconnected: boolean;
   connect: (adapter: WalletAdapterId) => Promise<string | null>;
   disconnect: () => Promise<void>;
   /** TxSender bound to the current connection. Throws when not connected. */
@@ -164,6 +176,24 @@ export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
 }
 
 /**
+ * Friendly copy for known transient wallet-library errors.
+ *
+ * Diagnosis (2026-09-13): no app code invokes `.call()` — the
+ * "Cannot read properties of undefined (reading 'call')" TypeError comes
+ * from inside @hashgraph/hedera-wallet-connect during provider/signer
+ * initialization, and has not been reproduced on the current build. When
+ * it does surface, "reading 'call'" is meaningless to a user; map it to
+ * the actual recovery step. Unknown errors pass through unchanged.
+ */
+export function friendlyWalletError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e ?? "Failed to connect wallet");
+  if (/cannot read propert\w+ of undefined \(reading ['"]call['"]\)/i.test(msg)) {
+    return "HashPack didn't finish initializing — reopen or reconnect HashPack, then try again.";
+  }
+  return msg;
+}
+
+/**
  * Reliable in-app browser detection, including iOS. Synchronous signals
  * first (fast path); on mobile, falls back to a brief iframe-channel
  * probe, which is the only signal HashPack's iOS in-app browser provides.
@@ -178,6 +208,45 @@ export async function isHashPackInAppBrowserAsync(): Promise<boolean> {
 
 /** How long the mobile iframe-channel probe waits for a wallet answer. */
 export const IN_APP_PROBE_TIMEOUT_MS = 4_000;
+
+/**
+ * Pure decision logic for the anonymous in-app-browser header state.
+ *
+ * Returns:
+ * - "connecting" — a real connection attempt is in flight (boot detection
+ *   still running, or connect() awaiting the wallet). The ONLY case where
+ *   the header may show "Connecting…".
+ * - "retry" — boot settled with nothing happening: offer an explicit
+ *   one-tap reconnect. Never a fake "Connecting…" here.
+ * - "default" — not in the in-app browser, has an account, or an error is
+ *   showing: fall through to the normal branches/picker.
+ *
+ * Extracted pure so the "no unsolicited Connecting…" rule is unit-tested.
+ */
+export function resolveInAppHeaderState(opts: {
+  inHashPackBrowser: boolean;
+  account: string | null;
+  isConnecting: boolean;
+  bootSettled: boolean;
+  userDisconnected: boolean;
+  error: string | null;
+  signInError: string | null;
+}): "connecting" | "retry" | "default" {
+  const {
+    inHashPackBrowser,
+    account,
+    isConnecting,
+    bootSettled,
+    userDisconnected,
+    error,
+    signInError,
+  } = opts;
+  if (!inHashPackBrowser || account) return "default";
+  if (error || signInError) return "default";
+  if (userDisconnected) return "retry";
+  if (isConnecting || !bootSettled) return "connecting";
+  return "retry";
+}
 
 /* ------------------------------------------------------------------ */
 /* Shared Hedera pairing via DAppConnector                              */
@@ -821,11 +890,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [adapterName, setAdapterName] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bootSettled, setBootSettled] = useState(false);
+  const [userDisconnected, setUserDisconnected] = useState(false);
   const senderGetter = React.useRef<(() => Promise<TxSender>) | null>(null);
 
   const connect = useCallback(async (adapterId: WalletAdapterId) => {
     setIsConnecting(true);
     setError(null);
+    setUserDisconnected(false);
     try {
       const chain = getActiveChain();
       const adapter = ADAPTERS[adapterId];
@@ -840,7 +912,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return result.account;
     } catch (e) {
       senderGetter.current = null;
-      const msg = e instanceof Error ? e.message : "Failed to connect wallet";
+      // Map known transient wallet-library TypeErrors (e.g. the
+      // hedera-wallet-connect "reading 'call'" init race) to actionable
+      // copy; everything else passes through unchanged.
+      const msg = friendlyWalletError(e);
       setError(msg);
       // Clean up a half-opened Hedera session on failure.
       await disconnectHedera();
@@ -865,6 +940,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAccount(null);
     setChainId(null);
     setAdapterName(null);
+    setUserDisconnected(true);
     writeStoredAdapterId(null);
   }, [adapterName]);
 
@@ -898,31 +974,38 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (account) return;
     bootTried.current = true;
     (async () => {
-      setIsConnecting(true);
       try {
-        const restoredAccount = await restoreHederaPairing();
-        const pairing = getHederaPairing();
-        if (restoredAccount && pairing) {
-          const chain = getActiveChain();
-          senderGetter.current = hederaGetTxSender(chain);
-          setAccount(pairing.accountId);
-          setChainId(chain.chainId);
-          setAdapterName(readStoredAdapterId() ?? "hashpack");
-          return;
+        setIsConnecting(true);
+        try {
+          const restoredAccount = await restoreHederaPairing();
+          const pairing = getHederaPairing();
+          if (restoredAccount && pairing) {
+            const chain = getActiveChain();
+            senderGetter.current = hederaGetTxSender(chain);
+            setAccount(pairing.accountId);
+            setChainId(chain.chainId);
+            setAdapterName(readStoredAdapterId() ?? "hashpack");
+            return;
+          }
+        } catch {
+          /* restore failed — fall through to the flows below */
+        } finally {
+          setIsConnecting(false);
         }
-      } catch {
-        /* restore failed — fall through to the flows below */
+        const inApp = await isHashPackInAppBrowserAsync().catch(() => false);
+        if (inApp) {
+          // Await the attempt (not fire-and-forget) so bootSettled only
+          // flips once the auto-connect resolved or failed — the header
+          // "Connecting…" state below is then always backed by real activity.
+          await connect("hashpack").catch(() => {
+            // connect() already recorded the specific failure in
+            // wallet.error and rethrows; swallow it here since the error
+            // state is the user-visible signal and the manual picker
+            // remains as a fallback.
+          });
+        }
       } finally {
-        setIsConnecting(false);
-      }
-      const inApp = await isHashPackInAppBrowserAsync().catch(() => false);
-      if (inApp) {
-        connect("hashpack").catch(() => {
-          // connect() already recorded the specific failure in
-          // wallet.error and rethrows; swallow it here since the error
-          // state is the user-visible signal and the manual picker
-          // remains as a fallback.
-        });
+        setBootSettled(true);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -934,8 +1017,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<WalletState>(
-    () => ({ account, chainId, adapterName, isConnecting, error, connect, disconnect, getTxSender }),
-    [account, chainId, adapterName, isConnecting, error, connect, disconnect, getTxSender],
+    () => ({ account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, connect, disconnect, getTxSender }),
+    [account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, connect, disconnect, getTxSender],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

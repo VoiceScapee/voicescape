@@ -7,6 +7,8 @@ import { PresenceDot } from "@/components/townhall/Presence";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
+import { pollTransactionStatus } from "@/lib/tx-confirm";
+import { recordConversionEvent } from "@/lib/metrics";
 import { useSession } from "@/lib/session";
 import { postJson, getJson, timeAgo, type ChatMessage } from "@/lib/townhall";
 
@@ -40,6 +42,16 @@ export default function ChatRoomClient({ room }: { room: string }) {
   const seenRef = useRef<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
   const streamUrl = `/api/townhall/chat/${encodeURIComponent(room)}/stream`;
+  // Abort controllers for per-message consensus polls (one per optimistic
+  // send). Aborted on unmount; entries remove themselves when they settle.
+  const trackControllers = useRef(new Map<number, AbortController>());
+  useEffect(() => {
+    const controllers = trackControllers.current;
+    return () => {
+      controllers.forEach((c) => c.abort());
+      controllers.clear();
+    };
+  }, []);
 
   // Builders room: check the signer's badge before connecting the stream.
   // The stream endpoint itself enforces the same gate (401/403).
@@ -102,8 +114,47 @@ export default function ChatRoomClient({ room }: { room: string }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  const send = async () => {
-    const text = body.trim();
+  /**
+   * Track one optimistic message's HCS transaction to real consensus and
+   * flip its badge: "sending…" → "✓ on Hedera" on confirm, or mark it
+   * failed with a resend option. Follows the hook's guidance: list UIs
+   * call pollTransactionStatus directly instead of one hook per item.
+   */
+  const trackChatTx = useCallback((tempSeq: number, hcsTxId: string) => {
+    const controller = new AbortController();
+    trackControllers.current.set(tempSeq, controller);
+    void pollTransactionStatus(hcsTxId, { signal: controller.signal })
+      .then((outcome) => {
+        trackControllers.current.delete(tempSeq);
+        if (outcome === "confirmed") {
+          // Confirmed on-chain — the stream replaces the optimistic copy
+          // with the real message shortly after; until then show proof.
+          recordConversionEvent("chat_sent");
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.seq === tempSeq ? ({ ...m, confirmedTx: true } as ChatMessage) : m,
+            ),
+          );
+        } else if (outcome === "failed") {
+          recordConversionEvent("chat_failed");
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.seq === tempSeq
+                ? ({ ...m, pending: false, failedTx: true } as ChatMessage)
+                : m,
+            ),
+          );
+        }
+        // "timeout" (mirror lag): the delayed-confirmation notice below
+        // already covers it — never claim failure.
+      })
+      .catch(() => {
+        // Aborted on unmount — nothing to report.
+      });
+  }, []);
+
+  const send = async (resendText?: string, dropSeq?: number) => {
+    const text = (resendText ?? body).trim();
     if (!text || !canWrite || !me) return;
     // Submit the chat message via the user's wallet, then notify the server
     // (it verifies the HCS tx via mirror node).
@@ -116,7 +167,15 @@ export default function ChatRoomClient({ room }: { room: string }) {
       body: text,
     });
     if (!hcsTxId) return; // User cancelled or error — phase shows the error
-    setBody("");
+    if (dropSeq != null) {
+      // Resend of a failed message: the new optimistic copy below takes the
+      // failed copy's place. Only dropped now — cancelling above keeps it.
+      setMessages((prev) => prev.filter((m) => m.seq !== dropSeq));
+      trackControllers.current.get(dropSeq)?.abort();
+      trackControllers.current.delete(dropSeq);
+    } else {
+      setBody("");
+    }
     setVerifyError(null);
     // Optimistic: show it NOW, before server verification. The HCS tx is
     // already on-chain (user paid + signed), so the message WILL appear once
@@ -131,6 +190,10 @@ export default function ChatRoomClient({ room }: { room: string }) {
       pending: true,
     } as unknown as ChatMessage;
     addMessages([optimisticMsg]);
+    // Track the HCS transaction to real consensus so the badge flips to a
+    // confirmed state (or a failed state with resend) instead of hanging
+    // on "sending…" forever.
+    trackChatTx(tempSeq, hcsTxId);
     // Notify the server with retries: the mirror node can lag several seconds
     // behind consensus, so the first verification attempt may 404. The txId
     // reservation is released on failure, so retrying is safe.
@@ -237,9 +300,48 @@ export default function ChatRoomClient({ room }: { room: string }) {
                 @{m.author}
               </Link>
               <span className="th-post-ts">{timeAgo(m.ts)}</span>
-              {(m as unknown as { pending?: boolean }).pending && (
-                <span className="th-muted" title="Sent to Hedera — waiting for network confirmation"> ◌ sending…</span>
-              )}
+              {(() => {
+                const flags = m as unknown as {
+                  pending?: boolean;
+                  confirmedTx?: boolean;
+                  failedTx?: boolean;
+                };
+                if (flags.failedTx) {
+                  return (
+                    <>
+                      <span className="th-error" title="The transaction failed on Hedera — the message was not sent">
+                        {" "}✕ failed on-chain
+                      </span>
+                      <button
+                        type="button"
+                        className="th-identity-link"
+                        style={{ marginLeft: 6 }}
+                        onClick={() => send(m.body, m.seq)}
+                      >
+                        resend
+                      </button>
+                    </>
+                  );
+                }
+                if (flags.pending && flags.confirmedTx) {
+                  return (
+                    <span
+                      style={{ color: "#4ade80" }}
+                      title="Confirmed on Hedera — the feed is catching up"
+                    >
+                      {" "}✓ on Hedera
+                    </span>
+                  );
+                }
+                if (flags.pending) {
+                  return (
+                    <span className="th-muted" title="Sent to Hedera — waiting for network confirmation">
+                      {" "}◌ sending…
+                    </span>
+                  );
+                }
+                return null;
+              })()}
               {m.author !== me && <ReportButton targetKind="chat" targetSeq={m.seq} />}
             </div>
             <p className="th-chat-body">{m.body}</p>
@@ -267,7 +369,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
           <button
             type="button"
             className="vs-btn vs-btn-primary th-btn-sm"
-            onClick={send}
+            onClick={() => send()}
             disabled={!body.trim() || !canWrite || hcs.phase.kind === "submitting"}
           >
             {hcs.phase.kind === "submitting" ? "…" : "Send"}

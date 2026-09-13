@@ -39,10 +39,10 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: true });
   }
-  const b = (body ?? {}) as { message?: unknown; page?: unknown; component?: unknown };
+  const b = (body ?? {}) as { message?: unknown; page?: unknown; component?: unknown; frame?: unknown };
 
   try {
-    await recordClientError(getKvStore(), b.page, b.message, b.component);
+    await recordClientError(getKvStore(), b.page, b.message, b.component, b.frame);
   } catch {
     /* telemetry must never break the page */
   }

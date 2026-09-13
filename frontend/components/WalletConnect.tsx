@@ -13,6 +13,7 @@ import { deriveUsername } from "@/lib/identity";
 import { NotificationBell } from "./NotificationBell";
 import {
   isHashPackInAppBrowser,
+  resolveInAppHeaderState,
   useWallet,
   WALLET_ADAPTERS,
   type WalletAdapterId,
@@ -29,7 +30,7 @@ function shortAccount(account: string): string {
 }
 
 export function WalletConnect() {
-  const { account, isConnecting, error, connect, disconnect } = useWallet();
+  const { account, isConnecting, error, bootSettled, userDisconnected, connect, disconnect } = useWallet();
   const { t } = useLanguage();
   // SessionProvider is mounted at the root layout; when present the button
   // drives full sign-in, otherwise it degrades to connect-only.
@@ -49,10 +50,26 @@ export function WalletConnect() {
   const signing = status === "signing";
   const signInError = session?.error;
   // Inside HashPack's browser the wallet auto-connects on mount — show a
-  // connecting state instead of the adapter picker. If auto-connect
-  // failed, fall through to the manual picker so the user can retry.
+  // connecting state only while something is actually happening (boot
+  // detection still running, or a real connect attempt in flight). Never
+  // show "Connecting…" when the user explicitly disconnected or when boot
+  // already settled with no attempt running — that was the unsolicited
+  // frozen "Connecting…" state.
   const inHashPackBrowser = isHashPackInAppBrowser();
-  const autoConnectPending = inHashPackBrowser && !error && !signInError;
+  const inAppState = resolveInAppHeaderState({
+    inHashPackBrowser,
+    account,
+    isConnecting,
+    bootSettled,
+    userDisconnected,
+    error,
+    signInError: signInError ?? null,
+  });
+  const autoConnectPending = inAppState === "connecting";
+  // In-app browser, boot settled, nothing in flight, no error: offer an
+  // explicit one-tap reconnect instead of a fake "Connecting…" or a QR
+  // picker that can't work inside the wallet app.
+  const showInAppRetry = inAppState === "retry";
 
   async function handlePick(adapterId: WalletAdapterId) {
     setShowOptions(false);
@@ -233,7 +250,7 @@ export function WalletConnect() {
   }
 
   // Anonymous: inside HashPack's browser the wallet is auto-connecting —
-  // show a connecting state (falls back to the picker on failure).
+  // show a connecting state only while the attempt is real (see above).
   if (autoConnectPending) {
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -243,6 +260,25 @@ export function WalletConnect() {
           style={{ padding: "9px 22px", fontSize: 14, opacity: 0.75, cursor: "wait" }}
         >
           {t("wallet.connectingHashPack")}
+        </button>
+      </div>
+    );
+  }
+
+  // Anonymous: in-app browser, boot settled, nothing happening — one-tap
+  // reconnect the user explicitly triggers.
+  if (showInAppRetry) {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <button
+          onClick={() => void connect("hashpack").catch(() => {
+            // Failure surfaces via wallet.error below.
+          })}
+          disabled={isConnecting}
+          className="vs-btn vs-btn-primary"
+          style={{ padding: "9px 22px", fontSize: 14 }}
+        >
+          {t("wallet.connectHashPack")}
         </button>
       </div>
     );
