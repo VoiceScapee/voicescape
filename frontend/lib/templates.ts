@@ -834,7 +834,7 @@ export const TEMPLATES: Template[] = [
             { label: "Find me on X", url: "https://x.com/Brandon14289412" },
           ],
         },
-        { type: "music", title: "My anthem", tracks: [] },
+        { type: "music", title: "My anthem", tracks: [{ source: "youtube", id: "QmMjY6tXaEo", kind: "video", url: "https://www.youtube.com/watch?v=QmMjY6tXaEo", title: "Ripple", artist: "Grateful Dead" }] },
         {
           type: "guestbook",
           entries: [
@@ -858,6 +858,10 @@ export const TEMPLATES: Template[] = [
         {
           type: "tipJar",
           message: "Tips split 98/2 on-chain \u2014 98% to the creator, 2% keeps the lights on. Don't trust, verify.",
+        },
+        {
+          type: "bio",
+          text: "Founder fundraiser \u2014 I'm raising $1,000 to keep building Voicescape. Every tip pushes the goal forward, all on-chain. Set the live goal and progress bar from the Earnings panel after publishing.",
         },
       ],
       theme: {
