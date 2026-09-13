@@ -43,4 +43,18 @@ describe("splash scroll behavior", () => {
     expect(splash).toContain("/voicescape-logo.webp");
     expect(splash).not.toContain("voicescape-banner");
   });
+
+  it("keeps the splash alive: logo pulses and has no baked-in background box", () => {
+    // pulsing wrapper class drives the breathing scale/glow animation
+    expect(splash).toContain("vs-anim-logo");
+    // transparent asset — no screen-blend hack, no visible banner box
+    expect(splash).not.toContain("mixBlendMode");
+  });
+
+  it("makes the first impression pop: community eyebrow, sound ripples, glowing CTA", () => {
+    expect(splash).toContain("splash.eyebrow");
+    expect(splash).toContain("vs-eyebrow");
+    expect(splash).toContain("vs-anim-ripple");
+    expect(splash).toContain("vs-anim-cta-glow");
+  });
 });

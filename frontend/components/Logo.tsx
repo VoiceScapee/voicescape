@@ -8,9 +8,8 @@ interface LogoProps {
  * radiating sound waves plus the gradient "Voicescape" wordmark
  * (Brandon's direction: "something with a microphone and sound wave").
  *
- * The asset has its dark-navy background baked in; `mix-blend-mode: screen`
- * drops the dark background so the lockup blends into the dark theme
- * surfaces instead of showing as a mismatched rectangle.
+ * The asset is a transparent WebP, so it blends into any dark-theme
+ * surface with no visible box around it.
  *
  * `withWordmark` is kept for API compatibility — the wordmark is baked into
  * the lockup, so the full lockup always renders (no call site passes false).
@@ -28,7 +27,6 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
         display: "block",
         height: size,
         width: "auto",
-        mixBlendMode: "screen",
         userSelect: "none",
       }}
     />

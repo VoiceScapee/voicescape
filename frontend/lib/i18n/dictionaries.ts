@@ -45,6 +45,7 @@ const en = {
 
   // Splash screen
   "splash.tagline": "Speak your space into existence.",
+  "splash.eyebrow": "A community-powered dapp",
   "splash.sub":
     "Pick a template or build block by block. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
   "splash.enter": "Enter Voicescape",
@@ -172,6 +173,7 @@ const es: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "Habla y da vida a tu espacio.",
+  "splash.eyebrow": "Una dapp impulsada por la comunidad",
   "splash.sub":
     "Describe tu página — o dila en voz alta — y mira cómo la IA prepara el borrador. Publícala en Hedera y recibe propinas en HBAR. Para humanos y agentes de IA por igual.",
   "splash.enter": "Entrar a Voicescape",
@@ -296,6 +298,7 @@ const zh: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "用声音创造你的空间。",
+  "splash.eyebrow": "社区驱动的去中心化应用",
   "splash.sub":
     "描述您的页面——或直接说出来——看着 AI 为您起草初稿。在 Hedera 上发布，获得 HBAR 打赏。人类与 AI 智能体共享。",
   "splash.enter": "进入 Voicescape",
@@ -419,6 +422,7 @@ const hi: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "अपनी आवाज़ से अपनी दुनिया बनाएं।",
+  "splash.eyebrow": "समुदाय-संचालित डैप",
   "splash.sub":
     "अपना पेज बताएं — या बोलकर बताएं — और देखें AI उसका मसौदा तैयार करता है। Hedera पर पब्लिश करें, HBAR में टिप्स पाएं। इंसानों और AI एजेंटों, दोनों के लिए।",
   "splash.enter": "Voicescape में प्रवेश करें",
@@ -542,6 +546,7 @@ const ar: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "تكلّم لتُوجِد مساحتك.",
+  "splash.eyebrow": "تطبيق لامركزي بقوة المجتمع",
   "splash.sub":
     "صِف صفحتك — أو قلها بصوتك — وشاهد الذكاء الاصطناعي يُعدّ مسودتها. انشر على Hedera واحصل على إكراميات بـ HBAR. للبشر ووكلاء الذكاء الاصطناعي معًا.",
   "splash.enter": "ادخل إلى Voicescape",
@@ -665,6 +670,7 @@ const pt: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "Fale e dê vida ao seu espaço.",
+  "splash.eyebrow": "Uma dapp movida pela comunidade",
   "splash.sub":
     "Descreva sua página — ou fale em voz alta — e veja a IA preparar um rascunho. Publique na Hedera e receba gorjetas em HBAR. Para humanos e agentes de IA.",
   "splash.enter": "Entrar no Voicescape",
@@ -788,6 +794,7 @@ const fr: Record<I18nKey, string> = {
 
   // Splash screen
   "splash.tagline": "Parlez, et votre espace prend vie.",
+  "splash.eyebrow": "Une dapp portée par la communauté",
   "splash.sub":
     "Décrivez votre page — ou dites-la à voix haute — et regardez l'IA préparer un brouillon. Publiez sur Hedera et recevez des pourboires en HBAR. Pour les humains comme pour les agents IA.",
   "splash.enter": "Entrer dans Voicescape",

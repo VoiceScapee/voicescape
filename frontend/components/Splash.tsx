@@ -128,7 +128,42 @@ export default function Splash() {
           gap: 20,
         }}
       >
-        <div className="vs-anim-fade-up" style={{ ...stagger(0), width: "min(680px, 92vw)" }}>
+        <div className="vs-anim-fade-up" style={{ ...stagger(0) }}>
+          <span className="vs-eyebrow">
+            <T k="splash.eyebrow" />
+          </span>
+        </div>
+        <div style={{ position: "relative", width: "min(760px, 94vw)" }}>
+          <div
+            aria-hidden="true"
+            className="vs-anim-ripple"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: "min(560px, 72vw)",
+              aspectRatio: "1",
+              borderRadius: "50%",
+              border: "2px solid rgba(130,89,239,0.55)",
+              pointerEvents: "none",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="vs-anim-ripple"
+            style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              width: "min(560px, 72vw)",
+              aspectRatio: "1",
+              borderRadius: "50%",
+              border: "2px solid rgba(0,49,255,0.5)",
+              animationDelay: "-1.7s",
+              pointerEvents: "none",
+            }}
+          />
+          <div className="vs-anim-logo" style={{ position: "relative" }}>
           <Image
             src="/voicescape-logo.webp"
             alt="Voicescape — block pages for humans and AI alike"
@@ -138,12 +173,11 @@ export default function Splash() {
             style={{
               width: "100%",
               height: "auto",
-              // The lockup's dark-navy background is baked in; screen blend
-              // drops it so the logo melts into the splash background.
-              mixBlendMode: "screen",
-              filter: "drop-shadow(0 0 42px rgba(130,89,239,0.28))",
+              // The lockup is a transparent PNG-style WebP — no baked
+              // background, so it melts straight into the splash.
             }}
           />
+          </div>
         </div>
         <p
           className="vs-anim-fade-up"
@@ -174,7 +208,7 @@ export default function Splash() {
           <button
             type="button"
             onClick={handleEnter}
-            className="vs-btn vs-btn-primary"
+            className="vs-btn vs-btn-primary vs-anim-cta-glow"
             style={{ fontSize: 18, padding: "15px 36px", cursor: "pointer" }}
           >
             <T k="splash.enter" />
