@@ -203,12 +203,17 @@ async function injectedEthCall(
 export function createInjectedEvmTxSender(
   eth: Eip1193Provider,
   account: string,
-  opts?: { receiptTimeoutMs?: number },
+  opts?: { receiptTimeoutMs?: number; sendTimeoutMs?: number },
 ): TxSender {
   if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
     throw new Error("Injected wallet returned an invalid account address.");
   }
   const receiptTimeoutMs = opts?.receiptTimeoutMs ?? 120_000;
+  // The wallet's send prompt can go silent (mobile deep-link never opens,
+  // provider hangs). Without a timeout the UI hangs on "Waiting on your
+  // wallet…" forever — seen in production 2026-09-13. Match the Hedera
+  // sender's 90s wallet timeout.
+  const sendTimeoutMs = opts?.sendTimeoutMs ?? 90_000;
 
   async function sendWrite(
     to: string,
@@ -220,10 +225,26 @@ export function createInjectedEvmTxSender(
       if (valueWei <= 0n) throw new Error("Payment amount must be greater than zero.");
       params.value = toQuantityHex(valueWei);
     }
-    const hash = (await eth.request({
-      method: "eth_sendTransaction",
-      params: [params],
-    })) as string;
+    let hash: string;
+    try {
+      hash = (await Promise.race([
+        eth.request({ method: "eth_sendTransaction", params: [params] }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("WALLET_SEND_TIMEOUT")), sendTimeoutMs),
+        ),
+      ])) as string;
+    } catch (e) {
+      if (e instanceof Error && e.message === "WALLET_SEND_TIMEOUT") {
+        // No hash came back, so there is nothing to confirm on-chain.
+        // Never claim failure — the user may have approved in the wallet.
+        throw new Error(
+          "Your wallet didn't respond in time. Open your wallet and check for the pending " +
+            "request — if you already approved, the transaction may still go through. " +
+            "Check your wallet activity before retrying so you don't pay twice.",
+        );
+      }
+      throw e;
+    }
     if (typeof hash !== "string" || !hash.startsWith("0x")) {
       throw new Error("The wallet did not return a transaction hash.");
     }
@@ -518,20 +539,38 @@ export async function mirrorContractCall(
   to: string,
   data: string,
 ): Promise<string> {
-  const res = await fetch(`${mirrorNodeBase(chain)}/api/v1/contracts/call`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ to, data, gas: HEDERA_QUERY_GAS }),
-  });
-  const body = (await res.json().catch(() => null)) as {
-    result?: unknown;
-    _status?: { messages?: Array<{ message?: string }> };
-  } | null;
-  if (!res.ok || !body || typeof body.result !== "string" || body.result === "0x") {
-    const detail = body?._status?.messages?.map((m) => m.message).join("; ");
-    throw new Error(`Mirror-node contract call failed${detail ? `: ${detail}` : "."}`);
+  // Mobile connections can stall mid-request; without a timeout the UI
+  // hangs on "Waiting on your wallet…" forever (seen in production
+  // 2026-09-13). Fail fast with an actionable message instead.
+  const MIRROR_TIMEOUT_MS = 20_000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MIRROR_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${mirrorNodeBase(chain)}/api/v1/contracts/call`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, data, gas: HEDERA_QUERY_GAS }),
+      signal: controller.signal,
+    });
+    const body = (await res.json().catch(() => null)) as {
+      result?: unknown;
+      _status?: { messages?: Array<{ message?: string }> };
+    } | null;
+    if (!res.ok || !body || typeof body.result !== "string" || body.result === "0x") {
+      const detail = body?._status?.messages?.map((m) => m.message).join("; ");
+      throw new Error(`Mirror-node contract call failed${detail ? `: ${detail}` : "."}`);
+    }
+    return body.result;
+  } catch (e) {
+    if (controller.signal.aborted) {
+      throw new Error(
+        "Couldn't reach Hedera in time — check your connection and try again. Nothing was sent.",
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
-  return body.result;
 }
 
 export function createReadOnlySender(chain: ChainConfig): TxSender {

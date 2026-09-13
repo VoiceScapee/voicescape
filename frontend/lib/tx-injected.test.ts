@@ -182,6 +182,17 @@ describe("createInjectedEvmTxSender", () => {
     expect(err).toBeInstanceOf(WalletTimeoutError);
     expect((err as WalletTimeoutError).txId).toBe(TX_HASH);
   }, 10000);
+
+  it("fails fast with an actionable error when the wallet never answers the send", async () => {
+    const { eth } = mockEth({
+      eth_sendTransaction: () => new Promise(() => {}), // provider hangs forever
+    });
+    const sender = createInjectedEvmTxSender(eth, ACCOUNT, { sendTimeoutMs: 50 });
+    const err = await sender.sendTip(TIPS, "some-name", 100n).catch((e) => e);
+    expect(err).not.toBeInstanceOf(WalletTimeoutError); // no hash — nothing to poll
+    expect((err as Error).message).toMatch(/didn't respond in time/);
+    expect((err as Error).message).toMatch(/before retrying so you don't pay twice/);
+  }, 10000);
 });
 
 describe("mirrorContractCall", () => {
@@ -237,6 +248,24 @@ describe("mirrorContractCall", () => {
       /mirror-node contract call failed/i,
     );
   });
+
+  it("fails fast with an actionable error when the request is aborted (stalled connection)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: unknown, init?: RequestInit) => {
+        // Simulate a stalled mobile connection: hang until aborted.
+        await new Promise<void>((_, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError")),
+          );
+        });
+        throw new Error("unreachable");
+      }),
+    );
+    await expect(
+      mirrorContractCall(CHAINS["hedera-mainnet"], REGISTRY, "0xabcdef"),
+    ).rejects.toThrow(/couldn't reach hedera in time/i);
+  }, 30000);
 });
 
 describe("createReadOnlySender", () => {
