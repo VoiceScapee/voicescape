@@ -117,6 +117,10 @@ function makeDeps(opts: { feeOk?: boolean; purchases?: [string, string][] } = {}
   const registry: RegistryPort = {
     isRegistered: async (u) => u.trim().toLowerCase() in OWNERS,
     resolveOwner: async (u) => OWNERS[u.trim().toLowerCase()] ?? null,
+    resolvePage: async (u) => {
+      const owner = OWNERS[u.trim().toLowerCase()] ?? null;
+      return owner ? { owner, ownerType: 0 as const } : null;
+    },
   };
   // Proof-of-payment: [buyerUsername, sellerUsername] pairs with a completed
   // on-chain purchase in the test world. Matched by canonical address, like

@@ -43,6 +43,7 @@ import { canonicalAddress } from "@/lib/session-message";
 import { TipPushToggle } from "@/components/TipPushToggle";
 import { EarningsPanel } from "@/components/EarningsPanel";
 import { GoalBar } from "@/components/GoalBar";
+import { FollowButton } from "@/components/FollowButton";
 
 type LoadState =
   | { status: "loading" }
@@ -701,6 +702,7 @@ function PublicPageInner({ username }: { username: string }) {
           <EarningsPanel username={username} ownerAddress={ownerEvm} ownerType={state.meta.ownerType} />
         )}
         <ShareButtons username={username} />
+        {!isOwner && <FollowButton username={username} />}
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />
         <ReferralCard username={username} />

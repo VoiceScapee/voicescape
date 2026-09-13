@@ -25,6 +25,12 @@ export interface RegistryPort {
    * not self-asserted.
    */
   resolveOwner(username: string): Promise<string | null>;
+  /**
+   * The full registered page (owner + on-chain owner type), or null when
+   * the username is not registered. Null on read failure too — callers
+   * must not mistake an outage for an unregistered name.
+   */
+  resolvePage(username: string): Promise<{ owner: string; ownerType: 0 | 1 } | null>;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -70,6 +76,12 @@ export class RealRegistryPort implements RegistryPort {
   async resolveOwner(username: string): Promise<string | null> {
     const resolved = await resolveCached(username);
     return resolved?.owner ?? null;
+  }
+
+  async resolvePage(username: string): Promise<{ owner: string; ownerType: 0 | 1 } | null> {
+    const resolved = await resolveCached(username);
+    if (!resolved) return null;
+    return { owner: resolved.owner, ownerType: resolved.ownerType };
   }
 }
 

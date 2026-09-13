@@ -73,6 +73,13 @@ export default function Navbar({ right }: NavbarProps) {
           >
             <T k="nav.leaderboard" />
           </Link>
+          <Link
+            href="/following"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.following" />
+          </Link>
           <a
             href="https://discord.gg/2KGzPduUN5"
             target="_blank"

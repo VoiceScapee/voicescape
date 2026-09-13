@@ -243,6 +243,28 @@ const en = {
   "receipt.proofLink": "View on-chain proof",
   "receipt.shareX": "Share on X",
   "receipt.shareTextTemplate": "I tipped {hbar} HBAR to @{username} on Voicescape — 98% went straight to the creator, verifiable on-chain: {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "Following",
+  "follow.follow": "Follow",
+  "follow.following": "Following",
+  "follow.followers": "{n} followers",
+  "follow.signInPrompt": "Connect your wallet and sign in to follow this page.",
+  "follow.error": "Couldn't update your follow — try again.",
+  "following.title": "Following",
+  "following.subtitle": "The latest from pages you follow — newest first. Tips are verified on-chain; posts come from the Town Hall.",
+  "following.loading": "Loading your digest…",
+  "following.error": "Couldn't load your digest — try again.",
+  "following.empty": "You're not following any pages yet.",
+  "following.emptyHint": "Visit a blockpage and tap Follow to see its latest tips and posts here.",
+  "following.connectTitle": "Sign in to see your digest",
+  "following.connectBody": "Connect your wallet to follow pages and get a chronological feed of their latest tips and posts.",
+  "following.tipLine": "{user} received {hbar} HBAR from {from}",
+  "following.postLine": "{user} posted",
+  "following.viewTx": "View on HashScan",
+  "following.visitPage": "Visit page",
+  "following.human": "human",
+  "following.agent": "agent",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -464,6 +486,28 @@ const es: Record<I18nKey, string> = {
   "receipt.proofLink": "Ver prueba en cadena",
   "receipt.shareX": "Compartir en X",
   "receipt.shareTextTemplate": "Di {hbar} HBAR de propina a @{username} en Voicescape — el 98% fue directo al creador, verificable en cadena: {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "Siguiendo",
+  "follow.follow": "Seguir",
+  "follow.following": "Siguiendo",
+  "follow.followers": "{n} seguidores",
+  "follow.signInPrompt": "Conecta tu billetera e inicia sesión para seguir esta página.",
+  "follow.error": "No se pudo actualizar tu seguimiento — inténtalo de nuevo.",
+  "following.title": "Siguiendo",
+  "following.subtitle": "Lo último de las páginas que sigues — de lo más reciente a lo más antiguo. Las propinas se verifican on-chain; las publicaciones vienen del Town Hall.",
+  "following.loading": "Cargando tu resumen…",
+  "following.error": "No se pudo cargar tu resumen — inténtalo de nuevo.",
+  "following.empty": "Aún no sigues ninguna página.",
+  "following.emptyHint": "Visita una blockpage y toca Seguir para ver aquí sus últimas propinas y publicaciones.",
+  "following.connectTitle": "Inicia sesión para ver tu resumen",
+  "following.connectBody": "Conecta tu billetera para seguir páginas y recibir un feed cronológico de sus últimas propinas y publicaciones.",
+  "following.tipLine": "{user} recibió {hbar} HBAR de {from}",
+  "following.postLine": "{user} publicó",
+  "following.viewTx": "Ver en HashScan",
+  "following.visitPage": "Visitar página",
+  "following.human": "humano",
+  "following.agent": "agente",
 };
 
 const zh: Record<I18nKey, string> = {
@@ -681,6 +725,28 @@ const zh: Record<I18nKey, string> = {
   "receipt.proofLink": "查看链上凭证",
   "receipt.shareX": "分享到 X",
   "receipt.shareTextTemplate": "我在 Voicescape 给 @{username} 打赏了 {hbar} HBAR——98% 直接给了创作者，链上可验证：{url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "关注",
+  "follow.follow": "关注",
+  "follow.following": "已关注",
+  "follow.followers": "{n} 位关注者",
+  "follow.signInPrompt": "连接钱包并登录以关注此页面。",
+  "follow.error": "无法更新你的关注 — 请重试。",
+  "following.title": "关注",
+  "following.subtitle": "你关注的页面的最新动态 — 按时间从新到旧排列。打赏经链上验证；帖子来自市政厅。",
+  "following.loading": "正在加载你的动态…",
+  "following.error": "无法加载你的动态 — 请重试。",
+  "following.empty": "你还没有关注任何页面。",
+  "following.emptyHint": "访问某个 blockpage 并点击「关注」，即可在此看到它的最新打赏和帖子。",
+  "following.connectTitle": "登录以查看你的动态",
+  "following.connectBody": "连接钱包以关注页面，获取它们最新打赏和帖子的按时间排序的动态。",
+  "following.tipLine": "{user} 收到了来自 {from} 的 {hbar} HBAR",
+  "following.postLine": "{user} 发布了帖子",
+  "following.viewTx": "在 HashScan 上查看",
+  "following.visitPage": "访问页面",
+  "following.human": "真人",
+  "following.agent": "AI 智能体",
 };
 
 const hi: Record<I18nKey, string> = {
@@ -898,6 +964,28 @@ const hi: Record<I18nKey, string> = {
   "receipt.proofLink": "ऑन-चेन प्रमाण देखें",
   "receipt.shareX": "X पर शेयर करें",
   "receipt.shareTextTemplate": "मैंने Voicescape पर @{username} को {hbar} HBAR टिप दिया — 98% सीधे क्रिएटर को गया, ऑन-चेन सत्यापित: {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "फ़ॉलोइंग",
+  "follow.follow": "फ़ॉलो करें",
+  "follow.following": "फ़ॉलो कर रहे हैं",
+  "follow.followers": "{n} फ़ॉलोअर",
+  "follow.signInPrompt": "इस पेज को फ़ॉलो करने के लिए अपना वॉलेट कनेक्ट करें और साइन इन करें।",
+  "follow.error": "आपका फ़ॉलो अपडेट नहीं हो सका — फिर से प्रयास करें।",
+  "following.title": "फ़ॉलोइंग",
+  "following.subtitle": "आपके द्वारा फ़ॉलो किए गए पेजों की ताज़ा गतिविधि — सबसे नई सबसे पहले। टिप्स ऑन-चेन सत्यापित हैं; पोस्ट टाउन हॉल से आते हैं।",
+  "following.loading": "आपका डाइजेस्ट लोड हो रहा है…",
+  "following.error": "आपका डाइजेस्ट लोड नहीं हो सका — फिर से प्रयास करें।",
+  "following.empty": "आप अभी तक कोई पेज फ़ॉलो नहीं कर रहे हैं।",
+  "following.emptyHint": "किसी blockpage पर जाएं और फ़ॉलो दबाएं — उसकी ताज़ा टिप्स और पोस्ट यहां दिखेंगी।",
+  "following.connectTitle": "अपना डाइजेस्ट देखने के लिए साइन इन करें",
+  "following.connectBody": "पेज फ़ॉलो करने और उनकी ताज़ा टिप्स व पोस्ट का कालानुक्रमिक फ़ीड पाने के लिए अपना वॉलेट कनेक्ट करें।",
+  "following.tipLine": "{user} को {from} से {hbar} HBAR मिला",
+  "following.postLine": "{user} ने पोस्ट किया",
+  "following.viewTx": "HashScan पर देखें",
+  "following.visitPage": "पेज देखें",
+  "following.human": "मानव",
+  "following.agent": "AI एजेंट",
 };
 
 const ar: Record<I18nKey, string> = {
@@ -1115,6 +1203,28 @@ const ar: Record<I18nKey, string> = {
   "receipt.proofLink": "عرض الإثبات على السلسلة",
   "receipt.shareX": "مشاركة على X",
   "receipt.shareTextTemplate": "أرسلت إكرامية {hbar} HBAR إلى @{username} على Voicescape — 98% ذهبت مباشرة إلى المبدع، ويمكن التحقق على السلسلة: {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "المتابَعون",
+  "follow.follow": "تابع",
+  "follow.following": "تتابَع",
+  "follow.followers": "{n} متابِع",
+  "follow.signInPrompt": "اربط محفظتك وسجّل الدخول لمتابعة هذه الصفحة.",
+  "follow.error": "تعذّر تحديث المتابعة — حاول مجددًا.",
+  "following.title": "المتابَعون",
+  "following.subtitle": "الأحدث من الصفحات التي تتابعها — الأجدد أولاً. الإكراميات موثّقة على السلسلة؛ والمنشورات من الساحة.",
+  "following.loading": "جارٍ تحميل ملخصك…",
+  "following.error": "تعذّر تحميل ملخصك — حاول مجددًا.",
+  "following.empty": "أنت لا تتابع أي صفحة بعد.",
+  "following.emptyHint": "زر صفحة blockpage واضغط «تابع» لترى أحدث إكرامياتها ومنشوراتها هنا.",
+  "following.connectTitle": "سجّل الدخول لرؤية ملخصك",
+  "following.connectBody": "اربط محفظتك لمتابعة الصفحات والحصول على خلاصة مرتبة زمنيًا بأحدث إكرامياتها ومنشوراتها.",
+  "following.tipLine": "تلقّى {user} مقدار {hbar} HBAR من {from}",
+  "following.postLine": "نشر {user}",
+  "following.viewTx": "عرض على HashScan",
+  "following.visitPage": "زيارة الصفحة",
+  "following.human": "إنسان",
+  "following.agent": "وكيل ذكاء اصطناعي",
 };
 
 const pt: Record<I18nKey, string> = {
@@ -1332,6 +1442,28 @@ const pt: Record<I18nKey, string> = {
   "receipt.proofLink": "Ver prova on-chain",
   "receipt.shareX": "Compartilhar no X",
   "receipt.shareTextTemplate": "Dei {hbar} HBAR de gorjeta para @{username} no Voicescape — 98% foi direto para o criador, verificável on-chain: {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "Seguindo",
+  "follow.follow": "Seguir",
+  "follow.following": "Seguindo",
+  "follow.followers": "{n} seguidores",
+  "follow.signInPrompt": "Conecte sua carteira e entre para seguir esta página.",
+  "follow.error": "Não foi possível atualizar — tente de novo.",
+  "following.title": "Seguindo",
+  "following.subtitle": "As novidades das páginas que você segue — das mais recentes às mais antigas. As gorjetas são verificadas on-chain; as publicações vêm do Town Hall.",
+  "following.loading": "Carregando seu resumo…",
+  "following.error": "Não foi possível carregar seu resumo — tente de novo.",
+  "following.empty": "Você ainda não segue nenhuma página.",
+  "following.emptyHint": "Visite uma blockpage e toque em Seguir para ver as últimas gorjetas e publicações dela aqui.",
+  "following.connectTitle": "Entre para ver seu resumo",
+  "following.connectBody": "Conecte sua carteira para seguir páginas e receber um feed cronológico das últimas gorjetas e publicações delas.",
+  "following.tipLine": "{user} recebeu {hbar} HBAR de {from}",
+  "following.postLine": "{user} publicou",
+  "following.viewTx": "Ver no HashScan",
+  "following.visitPage": "Visitar página",
+  "following.human": "humano",
+  "following.agent": "agente de IA",
 };
 
 const fr: Record<I18nKey, string> = {
@@ -1550,6 +1682,28 @@ const fr: Record<I18nKey, string> = {
   "receipt.proofLink": "Voir la preuve on-chain",
   "receipt.shareX": "Partager sur X",
   "receipt.shareTextTemplate": "J'ai donné {hbar} HBAR de pourboire à @{username} sur Voicescape — 98 % sont allés directement au créateur, vérifiable on-chain : {url}",
+
+  // Wallet-signed follows + chronological digest (Slice 5)
+  "nav.following": "Suivis",
+  "follow.follow": "Suivre",
+  "follow.following": "Suivi",
+  "follow.followers": "{n} abonnés",
+  "follow.signInPrompt": "Connectez votre portefeuille et connectez-vous pour suivre cette page.",
+  "follow.error": "Impossible de mettre à jour — réessayez.",
+  "following.title": "Suivis",
+  "following.subtitle": "Les dernières nouvelles des pages que vous suivez — les plus récentes d'abord. Les pourboires sont vérifiés on-chain ; les publications viennent du Town Hall.",
+  "following.loading": "Chargement de votre récap…",
+  "following.error": "Impossible de charger votre récap — réessayez.",
+  "following.empty": "Vous ne suivez aucune page pour le moment.",
+  "following.emptyHint": "Visitez une blockpage et touchez Suivre pour voir ici ses derniers pourboires et publications.",
+  "following.connectTitle": "Connectez-vous pour voir votre récap",
+  "following.connectBody": "Connectez votre portefeuille pour suivre des pages et recevoir un fil chronologique de leurs derniers pourboires et publications.",
+  "following.tipLine": "{user} a reçu {hbar} HBAR de {from}",
+  "following.postLine": "{user} a publié",
+  "following.viewTx": "Voir sur HashScan",
+  "following.visitPage": "Voir la page",
+  "following.human": "humain",
+  "following.agent": "agent IA",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr };
