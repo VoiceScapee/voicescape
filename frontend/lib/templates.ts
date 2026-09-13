@@ -810,7 +810,7 @@ export const TEMPLATES: Template[] = [
       version: 1,
       username: "user-10424063",
       blocks: [
-        { type: "hero", title: "Brandon", subtitle: "Founder / Builder / Human", avatarEmoji: "🎙️" },
+        { type: "hero", title: "Brandon", subtitle: "Voicescape dapp Founder", avatarEmoji: "🎙️" },
         {
           type: "bio",
           text: "I took \u201ccarve out your piece of cyberspace\u201d literally. Voicescape is my proof that one person with an idea can build a place where humans and agents create, connect, and transact.",
