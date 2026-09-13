@@ -39,6 +39,7 @@ const en = {
     "nav.builder": "Create your blockpage",
   "nav.newToWeb3": "New to Web3",
   "nav.fundraiser": "Fundraiser",
+  "nav.miningDePIN": "Mining & DePIN",
 
   // Language selector
   "lang.label": "Language",
@@ -243,6 +244,20 @@ const en = {
   "fundraiser.loading": "Loading fundraisers…",
   "fundraiser.error": "Couldn't load fundraisers — try again later.",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "Mining & DePIN",
+  "mining.subtitle": "The experienced corner. Every project below was checked live and verified \u2014 real mining operations and DePIN networks, real links, no hype.",
+  "mining.miningTitle": "Crypto mining",
+  "mining.miningSub": "Earn block rewards with your own hardware \u2014 or point it at a trusted pool.",
+  "mining.depinTitle": "DePIN \u2014 earn with your hardware",
+  "mining.depinSub": "Decentralized physical infrastructure: get paid in crypto for sharing bandwidth, storage, compute, or sensor data.",
+  "mining.verifiedOn": "Verified {date}",
+  "mining.visitSite": "Visit site",
+  "mining.referralVisit": "Visit with referral",
+  "mining.whyTrusted": "Why it\u2019s trusted",
+  "mining.referralNote": "Links marked with a referral badge support Voicescape at no extra cost to you.",
+  "mining.referralAvailable": "Referral program available",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "On-chain tip proof",
   "txproof.kicker": "Public proof",
@@ -349,6 +364,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "Crea tu blockpage",
   "nav.newToWeb3": "Nuevo en Web3",
   "nav.fundraiser": "Recaudación",
+  "nav.miningDePIN": "Miner\u00eda y DePIN",
 
   // Language selector
   "lang.label": "Idioma",
@@ -552,6 +568,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "Cargando recaudaciones…",
   "fundraiser.error": "No se pudieron cargar las recaudaciones — inténtalo más tarde.",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "Miner\u00eda y DePIN",
+  "mining.subtitle": "El rinc\u00f3n de los experimentados. Cada proyecto fue verificado en vivo \u2014 operaciones de miner\u00eda y redes DePIN reales, enlaces reales, sin humo.",
+  "mining.miningTitle": "Miner\u00eda de criptomonedas",
+  "mining.miningSub": "Gana recompensas de bloque con tu propio hardware \u2014 o ap\u00fantalo a un pool confiable.",
+  "mining.depinTitle": "DePIN \u2014 gana con tu hardware",
+  "mining.depinSub": "Infraestructura f\u00edsica descentralizada: recibe cripto por compartir ancho de banda, almacenamiento, c\u00f3mputo o datos de sensores.",
+  "mining.verifiedOn": "Verificado el {date}",
+  "mining.visitSite": "Visitar sitio",
+  "mining.referralVisit": "Visitar con referido",
+  "mining.whyTrusted": "Por qu\u00e9 es confiable",
+  "mining.referralNote": "Los enlaces con insignia de referido apoyan a Voicescape sin costo extra para ti.",
+  "mining.referralAvailable": "Programa de referidos disponible",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "Prueba de propina en cadena",
   "txproof.kicker": "Prueba pública",
@@ -654,6 +684,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "\u521b\u5efa\u60a8\u7684 blockpage",
   "nav.newToWeb3": "Web3 \u65b0\u624b",
   "nav.fundraiser": "众筹",
+  "nav.miningDePIN": "\u6316\u77ff\u4e0e DePIN",
 
   // Language selector
   "lang.label": "语言",
@@ -855,6 +886,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "正在加载众筹…",
   "fundraiser.error": "众筹加载失败——请稍后再试。",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "\u6316\u77ff\u4e0e DePIN",
+  "mining.subtitle": "\u8d44\u6df1\u73a9\u5bb6\u4e13\u533a\u3002\u4e0b\u9762\u6bcf\u4e2a\u9879\u76ee\u90fd\u7ecf\u8fc7\u5b9e\u65f6\u9a8c\u8bc1\u2014\u2014\u771f\u5b9e\u7684\u6316\u77ff\u4e1a\u52a1\u548c DePIN \u7f51\u7edc\uff0c\u771f\u5b9e\u94fe\u63a5\uff0c\u62d2\u7edd\u7092\u4f5c\u3002",
+  "mining.miningTitle": "\u52a0\u5bc6\u8d27\u5e01\u6316\u77ff",
+  "mining.miningSub": "\u7528\u81ea\u5df1\u7684\u786c\u4ef6\u8d5a\u53d6\u533a\u5757\u5956\u52b1\u2014\u2014\u6216\u63a5\u5165\u53ef\u4fe1\u77ff\u6c60\u3002",
+  "mining.depinTitle": "DePIN\u2014\u2014\u7528\u786c\u4ef6\u8d5a\u94b1",
+  "mining.depinSub": "\u53bb\u4e2d\u5fc3\u5316\u7269\u7406\u57fa\u7840\u8bbe\u65bd\uff1a\u5206\u4eab\u5e26\u5bbd\u3001\u5b58\u50a8\u3001\u7b97\u529b\u6216\u4f20\u611f\u5668\u6570\u636e\u5373\u53ef\u8d5a\u53d6\u52a0\u5bc6\u8d27\u5e01\u3002",
+  "mining.verifiedOn": "\u9a8c\u8bc1\u4e8e {date}",
+  "mining.visitSite": "\u8bbf\u95ee\u5b98\u7f51",
+  "mining.referralVisit": "\u901a\u8fc7\u63a8\u8350\u94fe\u63a5\u8bbf\u95ee",
+  "mining.whyTrusted": "\u4e3a\u4f55\u53ef\u4fe1",
+  "mining.referralNote": "\u5e26\u6709\u63a8\u8350\u6807\u8bc6\u7684\u94fe\u63a5\u4f1a\u5728\u4e0d\u589e\u52a0\u4f60\u6210\u672c\u7684\u60c5\u51b5\u4e0b\u652f\u6301 Voicescape\u3002",
+  "mining.referralAvailable": "\u6709\u63a8\u8350\u8ba1\u5212",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "链上打赏凭证",
   "txproof.kicker": "公开凭证",
@@ -957,6 +1002,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "\u0905\u092a\u0928\u093e blockpage \u092c\u0928\u093e\u090f\u0902",
   "nav.newToWeb3": "Web3 \u092e\u0947\u0902 \u0928\u090f",
   "nav.fundraiser": "फंडरेज़र",
+  "nav.miningDePIN": "\u092e\u093e\u0907\u0928\u093f\u0902\u0917 \u0914\u0930 DePIN",
 
   // Language selector
   "lang.label": "भाषा",
@@ -1158,6 +1204,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "फंडरेज़र लोड हो रहे हैं…",
   "fundraiser.error": "फंडरेज़र लोड नहीं हो सके — बाद में पुनः प्रयास करें।",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "\u092e\u093e\u0907\u0928\u093f\u0902\u0917 \u0914\u0930 DePIN",
+  "mining.subtitle": "\u0905\u0928\u0941\u092d\u0935\u0940 \u0932\u094b\u0917\u094b\u0902 \u0915\u093e \u0915\u094b\u0928\u093e\u0964 \u0928\u0940\u091a\u0947 \u0939\u0930 \u092a\u094d\u0930\u094b\u091c\u0947\u0915\u094d\u091f \u0915\u0940 \u0932\u093e\u0907\u0935 \u091c\u093e\u0902\u091a \u0915\u0940 \u0917\u0908 \u0939\u0948 \u2014 \u0905\u0938\u0932\u0940 \u092e\u093e\u0907\u0928\u093f\u0902\u0917 \u0911\u092a\u0930\u0947\u0936\u0928 \u0914\u0930 DePIN \u0928\u0947\u091f\u0935\u0930\u094d\u0915, \u0905\u0938\u0932\u0940 \u0932\u093f\u0902\u0915, \u0915\u094b\u0908 \u0939\u093e\u0907\u092a \u0928\u0939\u0940\u0902\u0964",
+  "mining.miningTitle": "\u0915\u094d\u0930\u093f\u092a\u094d\u091f\u094b \u092e\u093e\u0907\u0928\u093f\u0902\u0917",
+  "mining.miningSub": "\u0905\u092a\u0928\u0947 \u0939\u093e\u0930\u094d\u0921\u0935\u0947\u092f\u0930 \u0938\u0947 \u092c\u094d\u0932\u0949\u0915 \u0930\u093f\u0935\u0949\u0930\u094d\u0921 \u0915\u092e\u093e\u090f\u0902 \u2014 \u092f\u093e \u0909\u0938\u0947 \u0915\u093f\u0938\u0940 \u092d\u0930\u094b\u0938\u0947\u092e\u0902\u0926 \u092a\u0942\u0932 \u0938\u0947 \u091c\u094b\u0921\u093c\u0947\u0902\u0964",
+  "mining.depinTitle": "DePIN \u2014 \u0905\u092a\u0928\u0947 \u0939\u093e\u0930\u094d\u0921\u0935\u0947\u092f\u0930 \u0938\u0947 \u0915\u092e\u093e\u090f\u0902",
+  "mining.depinSub": "\u0935\u093f\u0915\u0947\u0902\u0926\u094d\u0930\u0940\u0915\u0943\u0924 \u092d\u094c\u0924\u093f\u0915 \u092c\u0941\u0928\u093f\u092f\u093e\u0926\u0940 \u0922\u093e\u0902\u091a\u093e: \u092c\u0948\u0902\u0921\u0935\u093f\u0921\u094d\u0925, \u0938\u094d\u091f\u094b\u0930\u0947\u091c, \u0915\u0902\u092a\u094d\u092f\u0942\u091f \u092f\u093e \u0938\u0947\u0902\u0938\u0930 \u0921\u0947\u091f\u093e \u0938\u093e\u091d\u093e \u0915\u0930\u0915\u0947 \u0915\u094d\u0930\u093f\u092a\u094d\u091f\u094b \u0915\u092e\u093e\u090f\u0902\u0964",
+  "mining.verifiedOn": "{date} \u0915\u094b \u0938\u0924\u094d\u092f\u093e\u092a\u093f\u0924",
+  "mining.visitSite": "\u0938\u093e\u0907\u091f \u092a\u0930 \u091c\u093e\u090f\u0902",
+  "mining.referralVisit": "\u0930\u0947\u092b\u0930\u0932 \u0915\u0947 \u0938\u093e\u0925 \u091c\u093e\u090f\u0902",
+  "mining.whyTrusted": "\u092f\u0939 \u092d\u0930\u094b\u0938\u0947\u092e\u0902\u0926 \u0915\u094d\u092f\u094b\u0902 \u0939\u0948",
+  "mining.referralNote": "\u0930\u0947\u092b\u0930\u0932 \u092c\u0948\u091c \u0935\u093e\u0932\u0947 \u0932\u093f\u0902\u0915 \u0906\u092a\u0915\u094b \u092c\u093f\u0928\u093e \u0905\u0924\u093f\u0930\u093f\u0915\u094d\u0924 \u0932\u093e\u0917\u0924 \u0915\u0947 Voicescape \u0915\u093e \u0938\u092e\u0930\u094d\u0925\u0928 \u0915\u0930\u0924\u0947 \u0939\u0948\u0902\u0964",
+  "mining.referralAvailable": "\u0930\u0947\u092b\u0930\u0932 \u092a\u094d\u0930\u094b\u0917\u094d\u0930\u093e\u092e \u0909\u092a\u0932\u092c\u094d\u0927",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "ऑन-चेन टिप प्रमाण",
   "txproof.kicker": "सार्वजनिक प्रमाण",
@@ -1260,6 +1320,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "\u0623\u0646\u0634\u0626 \u0627\u0644\u0640 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643",
   "nav.newToWeb3": "\u062c\u062f\u064a\u062f \u0641\u064a Web3",
   "nav.fundraiser": "جمع التبرعات",
+  "nav.miningDePIN": "\u0627\u0644\u062a\u0639\u062f\u064a\u0646 \u0648 DePIN",
 
   // Language selector
   "lang.label": "اللغة",
@@ -1461,6 +1522,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "جارٍ تحميل حملات التبرع…",
   "fundraiser.error": "تعذر تحميل حملات التبرع — حاول لاحقًا.",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "\u0627\u0644\u062a\u0639\u062f\u064a\u0646 \u0648 DePIN",
+  "mining.subtitle": "\u0631\u0643\u0646 \u0627\u0644\u0645\u062d\u062a\u0631\u0641\u064a\u0646. \u062a\u0645 \u0627\u0644\u062a\u062d\u0642\u0642 \u0645\u0646 \u0643\u0644 \u0645\u0634\u0631\u0648\u0639 \u0623\u062f\u0646\u0627\u0647 \u0645\u0628\u0627\u0634\u0631\u0629 \u2014 \u0639\u0645\u0644\u064a\u0627\u062a \u062a\u0639\u062f\u064a\u0646 \u0648\u0634\u0628\u0643\u0627\u062a DePIN \u062d\u0642\u064a\u0642\u064a\u0629\u060c \u0631\u0648\u0627\u0628\u0637 \u062d\u0642\u064a\u0642\u064a\u0629\u060c \u0628\u0644\u0627 \u0636\u062c\u064a\u062c.",
+  "mining.miningTitle": "\u062a\u0639\u062f\u064a\u0646 \u0627\u0644\u0639\u0645\u0644\u0627\u062a \u0627\u0644\u0631\u0642\u0645\u064a\u0629",
+  "mining.miningSub": "\u0627\u0643\u0633\u0628 \u0645\u0643\u0627\u0641\u0622\u062a \u0627\u0644\u0643\u062a\u0644 \u0628\u0639\u062a\u0627\u062f\u0643 \u0627\u0644\u062e\u0627\u0635 \u2014 \u0623\u0648 \u0648\u062c\u0651\u0647\u0647 \u0625\u0644\u0649 \u0645\u062c\u0645\u0651\u0639 \u0645\u0648\u062b\u0648\u0642.",
+  "mining.depinTitle": "DePIN \u2014 \u0627\u0643\u0633\u0628 \u0628\u0639\u062a\u0627\u062f\u0643",
+  "mining.depinSub": "\u0628\u0646\u064a\u0629 \u062a\u062d\u062a\u064a\u0629 \u0641\u064a\u0632\u064a\u0627\u0626\u064a\u0629 \u0644\u0627\u0645\u0631\u0643\u0632\u064a\u0629: \u0627\u0643\u0633\u0628 \u0627\u0644\u0639\u0645\u0644\u0627\u062a \u0627\u0644\u0631\u0642\u0645\u064a\u0629 \u0645\u0642\u0627\u0628\u0644 \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0646\u0637\u0627\u0642 \u0627\u0644\u062a\u0631\u062f\u062f\u064a \u0623\u0648 \u0627\u0644\u062a\u062e\u0632\u064a\u0646 \u0623\u0648 \u0627\u0644\u062d\u0648\u0633\u0628\u0629 \u0623\u0648 \u0628\u064a\u0627\u0646\u0627\u062a \u0627\u0644\u0627\u0633\u062a\u0634\u0639\u0627\u0631.",
+  "mining.verifiedOn": "\u062a\u0645 \u0627\u0644\u062a\u062d\u0642\u0642 \u0641\u064a {date}",
+  "mining.visitSite": "\u0632\u064a\u0627\u0631\u0629 \u0627\u0644\u0645\u0648\u0642\u0639",
+  "mining.referralVisit": "\u0632\u064a\u0627\u0631\u0629 \u0628\u0631\u0627\u0628\u0637 \u0625\u062d\u0627\u0644\u0629",
+  "mining.whyTrusted": "\u0644\u0645\u0627\u0630\u0627 \u0647\u0648 \u0645\u0648\u062b\u0648\u0642",
+  "mining.referralNote": "\u0627\u0644\u0631\u0648\u0627\u0628\u0637 \u0627\u0644\u062a\u064a \u062a\u062d\u0645\u0644 \u0634\u0627\u0631\u0629 \u0625\u062d\u0627\u0644\u0629 \u062a\u062f\u0639\u0645 Voicescape \u062f\u0648\u0646 \u0623\u064a \u062a\u0643\u0644\u0641\u0629 \u0625\u0636\u0627\u0641\u064a\u0629 \u0639\u0644\u064a\u0643.",
+  "mining.referralAvailable": "\u0628\u0631\u0646\u0627\u0645\u062c \u0625\u062d\u0627\u0644\u0629 \u0645\u062a\u0627\u062d",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "إثبات الإكرامية على السلسلة",
   "txproof.kicker": "إثبات عام",
@@ -1563,6 +1638,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "Crie seu blockpage",
   "nav.newToWeb3": "Novo no Web3",
   "nav.fundraiser": "Arrecadação",
+  "nav.miningDePIN": "Minera\u00e7\u00e3o e DePIN",
 
   // Language selector
   "lang.label": "Idioma",
@@ -1764,6 +1840,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "Carregando arrecadações…",
   "fundraiser.error": "Não foi possível carregar as arrecadações — tente mais tarde.",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "Minera\u00e7\u00e3o e DePIN",
+  "mining.subtitle": "O canto dos experientes. Cada projeto abaixo foi verificado ao vivo \u2014 opera\u00e7\u00f5es de minera\u00e7\u00e3o e redes DePIN reais, links reais, sem hype.",
+  "mining.miningTitle": "Minera\u00e7\u00e3o de criptomoedas",
+  "mining.miningSub": "Ganhe recompensas de bloco com seu pr\u00f3prio hardware \u2014 ou aponte-o para uma pool confi\u00e1vel.",
+  "mining.depinTitle": "DePIN \u2014 ganhe com seu hardware",
+  "mining.depinSub": "Infraestrutura f\u00edsica descentralizada: receba cripto por compartilhar banda, armazenamento, computa\u00e7\u00e3o ou dados de sensores.",
+  "mining.verifiedOn": "Verificado em {date}",
+  "mining.visitSite": "Visitar site",
+  "mining.referralVisit": "Visitar com indica\u00e7\u00e3o",
+  "mining.whyTrusted": "Por que \u00e9 confi\u00e1vel",
+  "mining.referralNote": "Links com selo de indica\u00e7\u00e3o apoiam o Voicescape sem custo extra para voc\u00ea.",
+  "mining.referralAvailable": "Programa de indica\u00e7\u00e3o dispon\u00edvel",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "Prova de gorjeta on-chain",
   "txproof.kicker": "Prova pública",
@@ -1866,6 +1956,7 @@ const es: Record<I18nKey, string> = {
     "nav.builder": "Cr\u00e9ez votre blockpage",
   "nav.newToWeb3": "D\u00e9buter en Web3",
   "nav.fundraiser": "Collecte",
+  "nav.miningDePIN": "Minage et DePIN",
 
   // Language selector
   "lang.label": "Langue",
@@ -2068,6 +2159,20 @@ const es: Record<I18nKey, string> = {
   "fundraiser.loading": "Chargement des collectes…",
   "fundraiser.error": "Impossible de charger les collectes — réessayez plus tard.",
 
+  // Mining & DePIN — experienced corner
+  "mining.title": "Minage et DePIN",
+  "mining.subtitle": "Le coin des exp\u00e9riment\u00e9s. Chaque projet ci-dessous a \u00e9t\u00e9 v\u00e9rifi\u00e9 en direct \u2014 vraies op\u00e9rations de minage et r\u00e9seaux DePIN, vrais liens, sans hype.",
+  "mining.miningTitle": "Minage de cryptomonnaies",
+  "mining.miningSub": "Gagnez des r\u00e9compenses de bloc avec votre propre mat\u00e9riel \u2014 ou pointez-le vers une pool de confiance.",
+  "mining.depinTitle": "DePIN \u2014 gagnez avec votre mat\u00e9riel",
+  "mining.depinSub": "Infrastructure physique d\u00e9centralis\u00e9e : soyez pay\u00e9 en crypto pour partager bande passante, stockage, calcul ou donn\u00e9es de capteurs.",
+  "mining.verifiedOn": "V\u00e9rifi\u00e9 le {date}",
+  "mining.visitSite": "Visiter le site",
+  "mining.referralVisit": "Visiter avec parrainage",
+  "mining.whyTrusted": "Pourquoi c\u2019est fiable",
+  "mining.referralNote": "Les liens marqu\u00e9s d\u2019un badge de parrainage soutiennent Voicescape sans co\u00fbt suppl\u00e9mentaire pour vous.",
+  "mining.referralAvailable": "Programme de parrainage disponible",
+
   // On-chain tip proof — split explorer + shareable receipts (Slice 4)
   "txproof.title": "Preuve de pourboire on-chain",
   "txproof.kicker": "Preuve publique",
@@ -2171,6 +2276,7 @@ const ja: Record<I18nKey, string> = {
   "nav.builder": "blockpageを作成",
   "nav.newToWeb3": "Web3初心者向け",
   "nav.fundraiser": "ファンドレイザー",
+  "nav.miningDePIN": "\u30de\u30a4\u30cb\u30f3\u30b0 & DePIN",
   "lang.label": "言語",
   "wallet.signInWithWallet": "接続",
   "wallet.myPage": "マイブロックページ",
@@ -2336,6 +2442,20 @@ const ja: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "あなたのblockpageで資金調達ゴールを設定すると、ここに表示されます。",
   "fundraiser.loading": "ファンドレイザーを読み込み中…",
   "fundraiser.error": "ファンドレイザーを読み込めませんでした — 後でもう一度お試しください。",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "\u30de\u30a4\u30cb\u30f3\u30b0 & DePIN",
+  "mining.subtitle": "\u4e0a\u7d1a\u8005\u5411\u3051\u30b3\u30fc\u30ca\u30fc\u3002\u63b2\u8f09\u30d7\u30ed\u30b8\u30a7\u30af\u30c8\u306f\u3059\u3079\u3066\u5b9f\u969b\u306b\u78ba\u8a8d\u6e08\u307f\u2014\u2014\u672c\u7269\u306e\u30de\u30a4\u30cb\u30f3\u30b0\u4e8b\u696d\u3068DePIN\u30cd\u30c3\u30c8\u30ef\u30fc\u30af\u3001\u672c\u7269\u306e\u30ea\u30f3\u30af\u3001\u8a87\u5927\u5e83\u544a\u306a\u3057\u3002",
+  "mining.miningTitle": "\u6697\u53f7\u8cc7\u7523\u30de\u30a4\u30cb\u30f3\u30b0",
+  "mining.miningSub": "\u81ea\u5206\u306e\u30cf\u30fc\u30c9\u30a6\u30a7\u30a2\u3067\u30d6\u30ed\u30c3\u30af\u5831\u916c\u3092\u7372\u5f97\u2014\u2014\u4fe1\u983c\u3067\u304d\u308b\u30d7\u30fc\u30eb\u306b\u5411\u3051\u308b\u624b\u3082\u3002",
+  "mining.depinTitle": "DePIN\u2014\u2014\u30cf\u30fc\u30c9\u30a6\u30a7\u30a2\u3067\u7a3c\u3050",
+  "mining.depinSub": "\u5206\u6563\u578b\u7269\u7406\u30a4\u30f3\u30d5\u30e9\uff1a\u5e2f\u57df\u30fb\u30b9\u30c8\u30ec\u30fc\u30b8\u30fb\u8a08\u7b97\u529b\u30fb\u30bb\u30f3\u30b5\u30fc\u30c7\u30fc\u30bf\u306e\u5171\u6709\u3067\u6697\u53f7\u8cc7\u7523\u3092\u7372\u5f97\u3002",
+  "mining.verifiedOn": "{date}\u306b\u78ba\u8a8d\u6e08\u307f",
+  "mining.visitSite": "\u516c\u5f0f\u30b5\u30a4\u30c8\u3078",
+  "mining.referralVisit": "\u7d39\u4ecb\u30ea\u30f3\u30af\u3067\u8a2a\u554f",
+  "mining.whyTrusted": "\u4fe1\u983c\u3067\u304d\u308b\u7406\u7531",
+  "mining.referralNote": "\u7d39\u4ecb\u30d0\u30c3\u30b8\u4ed8\u304d\u30ea\u30f3\u30af\u306f\u3001\u8ffd\u52a0\u30b3\u30b9\u30c8\u306a\u3057\u3067Voicescape\u3092\u652f\u63f4\u3057\u307e\u3059\u3002",
+  "mining.referralAvailable": "\u7d39\u4ecb\u30d7\u30ed\u30b0\u30e9\u30e0\u3042\u308a",
   "txproof.title": "オンチェーン投げ銭の証明",
   "txproof.kicker": "公開証明",
   "txproof.sender": "送信者",
@@ -2436,6 +2556,7 @@ const ko: Record<I18nKey, string> = {
   "nav.builder": "blockpage 만들기",
   "nav.newToWeb3": "Web3 입문",
   "nav.fundraiser": "펀딩",
+  "nav.miningDePIN": "\ucc44\uad74 & DePIN",
   "lang.label": "언어",
   "wallet.signInWithWallet": "연결",
   "wallet.myPage": "내 blockpage",
@@ -2601,6 +2722,20 @@ const ko: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "내 blockpage에 펀딩 목표를 설정하면 여기에 표시됩니다.",
   "fundraiser.loading": "펀딩 불러오는 중…",
   "fundraiser.error": "펀딩을 불러오지 못했습니다 — 나중에 다시 시도하세요.",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "\ucc44\uad74 & DePIN",
+  "mining.subtitle": "\uc219\ub828\uc790\ub97c \uc704\ud55c \uacf5\uac04. \uc544\ub798 \ubaa8\ub4e0 \ud504\ub85c\uc81d\ud2b8\ub294 \uc9c1\uc811 \ud655\uc778\uc874 \u2014 \uc2e4\uc81c \ucc44\uad74 \uc0ac\uc5c5\uacfc DePIN \ub124\ud2b8\uc6cc\ud06c, \uc2e4\uc81c \ub9c1\ud06c, \uacfc\uc7a5 \uc5c6\uc74c.",
+  "mining.miningTitle": "\uc554\ud638\ud654\ud3d0 \ucc44\uad74",
+  "mining.miningSub": "\uc790\uc2e0\uc758 \ud558\ub4dc\uc6e8\uc5b4\ub85c \ube14\ub85d \ubcf4\uc0c1\uc744 \ud68d\ub4dd \u2014 \uc2e0\ub8b0\ud560 \uc218 \uc788\ub294 \ud480\uc5d0 \uc5f0\uacb0\ud574\ub3c4 \ub429\ub2c8\ub2e4.",
+  "mining.depinTitle": "DePIN \u2014 \ud558\ub4dc\uc6e8\uc5b4\ub85c \uc218\uc775",
+  "mining.depinSub": "\ud0c8\uc911\uc559\ud654 \ubb3c\ub9ac \uc778\ud504\ub77c: \ub300\uc5ed\ud3ed, \uc2a4\ud1a0\ub9ac\uc9c0, \uc5f0\uc0b0\ub825, \uc13c\uc11c \ub370\uc774\ud130\ub97c \uacf5\uc720\ud558\uace0 \uc554\ud638\ud654\ud3d0\ub97c \ubc1b\uc73c\uc138\uc694.",
+  "mining.verifiedOn": "{date} \ud655\uc778\ub428",
+  "mining.visitSite": "\uc0ac\uc774\ud2b8 \ubc29\ubb38",
+  "mining.referralVisit": "\ucd94\ucc9c \ub9c1\ud06c\ub85c \ubc29\ubb38",
+  "mining.whyTrusted": "\uc2e0\ub8b0\ud560 \uc218 \uc788\ub294 \uc774\uc720",
+  "mining.referralNote": "\ucd94\ucc9c \ubc30\uc9c0\uac00 \uc788\ub294 \ub9c1\ud06c\ub294 \ucd94\uac00 \ube44\uc6a9 \uc5c6\uc774 Voicescape\ub97c \ud6c4\uc6d0\ud569\ub2c8\ub2e4.",
+  "mining.referralAvailable": "\ucd94\ucc9c \ud504\ub85c\uadf8\ub7a8 \uc788\uc74c",
   "txproof.title": "온체인 팁 증명",
   "txproof.kicker": "공개 증명",
   "txproof.sender": "보낸 사람",
@@ -2701,6 +2836,7 @@ const vi: Record<I18nKey, string> = {
   "nav.builder": "Tạo blockpage",
   "nav.newToWeb3": "Mới với Web3",
   "nav.fundraiser": "Gây quỹ",
+  "nav.miningDePIN": "Khai th\u00e1c & DePIN",
   "lang.label": "Ngôn ngữ",
   "wallet.signInWithWallet": "Kết nối",
   "wallet.myPage": "Blockpage của tôi",
@@ -2866,6 +3002,20 @@ const vi: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "Đặt mục tiêu gây quỹ trên blockpage của bạn và nó sẽ hiện ở đây.",
   "fundraiser.loading": "Đang tải các chiến dịch…",
   "fundraiser.error": "Không tải được các chiến dịch — thử lại sau.",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "Khai th\u00e1c & DePIN",
+  "mining.subtitle": "G\u00f3c d\u00e0nh cho ng\u01b0\u1eddi s\u00e0nh s\u1ecfi. M\u1ecdi d\u1ef1 \u00e1n d\u01b0\u1edbi \u0111\u00e2y \u0111\u1ec1u \u0111\u00e3 \u0111\u01b0\u1ee3c ki\u1ec3m ch\u1ee9ng tr\u1ef1c ti\u1ebfp \u2014 ho\u1ea1t \u0111\u1ed9ng khai th\u00e1c v\u00e0 m\u1ea1ng DePIN th\u1eadt, li\u00ean k\u1ebft th\u1eadt, kh\u00f4ng th\u1ed5i ph\u1ed3ng.",
+  "mining.miningTitle": "Khai th\u00e1c ti\u1ec1n m\u00e3 h\u00f3a",
+  "mining.miningSub": "Ki\u1ebfm ph\u1ea7n th\u01b0\u1edfng kh\u1ed1i b\u1eb1ng ph\u1ea7n c\u1ee9ng c\u1ee7a b\u1ea1n \u2014 ho\u1eb7c tr\u1ecf n\u00f3 t\u1edbi m\u1ed9t pool \u0111\u00e1ng tin.",
+  "mining.depinTitle": "DePIN \u2014 ki\u1ebfm ti\u1ec1n b\u1eb1ng ph\u1ea7n c\u1ee9ng",
+  "mining.depinSub": "H\u1ea1 t\u1ea7ng v\u1eadt l\u00fd phi t\u1eadp trung: nh\u1eadn crypto khi chia s\u1ebb b\u0103ng th\u00f4ng, l\u01b0u tr\u1eef, s\u1ee9c m\u1ea1nh t\u00ednh to\u00e1n ho\u1eb7c d\u1eef li\u1ec7u c\u1ea3m bi\u1ebfn.",
+  "mining.verifiedOn": "\u0110\u00e3 x\u00e1c minh {date}",
+  "mining.visitSite": "Truy c\u1eadp trang",
+  "mining.referralVisit": "Truy c\u1eadp b\u1eb1ng link gi\u1edbi thi\u1ec7u",
+  "mining.whyTrusted": "V\u00ec sao \u0111\u00e1ng tin",
+  "mining.referralNote": "C\u00e1c li\u00ean k\u1ebft g\u1eafn huy hi\u1ec7u gi\u1edbi thi\u1ec7u s\u1ebd \u1ee7ng h\u1ed9 Voicescape m\u00e0 b\u1ea1n kh\u00f4ng t\u1ed1n th\u00eam chi ph\u00ed.",
+  "mining.referralAvailable": "C\u00f3 ch\u01b0\u01a1ng tr\u00ecnh gi\u1edbi thi\u1ec7u",
   "txproof.title": "Bằng chứng tip on-chain",
   "txproof.kicker": "Bằng chứng công khai",
   "txproof.sender": "Người gửi",
@@ -2966,6 +3116,7 @@ const id: Record<I18nKey, string> = {
   "nav.builder": "Buat blockpage",
   "nav.newToWeb3": "Baru di Web3",
   "nav.fundraiser": "Penggalangan dana",
+  "nav.miningDePIN": "Mining & DePIN",
   "lang.label": "Bahasa",
   "wallet.signInWithWallet": "Hubungkan",
   "wallet.myPage": "Blockpage saya",
@@ -3131,6 +3282,20 @@ const id: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "Atur target penggalangan dana di blockpage-mu dan akan muncul di sini.",
   "fundraiser.loading": "Memuat penggalangan dana…",
   "fundraiser.error": "Gagal memuat penggalangan dana — coba lagi nanti.",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "Mining & DePIN",
+  "mining.subtitle": "Sudut para ahli. Setiap proyek di bawah sudah dicek langsung dan terverifikasi \u2014 operasi mining dan jaringan DePIN asli, tautan asli, tanpa hype.",
+  "mining.miningTitle": "Mining kripto",
+  "mining.miningSub": "Raih block reward dengan hardware milikmu \u2014 atau arahkan ke pool tepercaya.",
+  "mining.depinTitle": "DePIN \u2014 hasilkan dengan hardware-mu",
+  "mining.depinSub": "Infrastruktur fisik terdesentralisasi: dibayar kripto untuk berbagi bandwidth, penyimpanan, komputasi, atau data sensor.",
+  "mining.verifiedOn": "Terverifikasi {date}",
+  "mining.visitSite": "Kunjungi situs",
+  "mining.referralVisit": "Kunjungi via referral",
+  "mining.whyTrusted": "Kenapa tepercaya",
+  "mining.referralNote": "Tautan berlabel referral mendukung Voicescape tanpa biaya tambahan untukmu.",
+  "mining.referralAvailable": "Program referral tersedia",
   "txproof.title": "Bukti tip on-chain",
   "txproof.kicker": "Bukti publik",
   "txproof.sender": "Pengirim",
@@ -3231,6 +3396,7 @@ const th: Record<I18nKey, string> = {
   "nav.builder": "สร้าง blockpage",
   "nav.newToWeb3": "มือใหม่ Web3",
   "nav.fundraiser": "ระดมทุน",
+  "nav.miningDePIN": "\u0e02\u0e38\u0e14 & DePIN",
   "lang.label": "ภาษา",
   "wallet.signInWithWallet": "เชื่อมต่อ",
   "wallet.myPage": "blockpage ของฉัน",
@@ -3396,6 +3562,20 @@ const th: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "ตั้งเป้าหมายระดมทุนบน blockpage ของคุณ แล้วจะปรากฏที่นี่",
   "fundraiser.loading": "กำลังโหลดแคมเปญ…",
   "fundraiser.error": "โหลดแคมเปญไม่สำเร็จ — ลองใหม่อีกครั้ง",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "\u0e02\u0e38\u0e14 & DePIN",
+  "mining.subtitle": "\u0e21\u0e38\u0e21\u0e02\u0e2d\u0e07\u0e1c\u0e39\u0e49\u0e21\u0e35\u0e1b\u0e23\u0e30\u0e2a\u0e1a\u0e01\u0e32\u0e23\u0e13\u0e4c \u0e17\u0e38\u0e01\u0e42\u0e1b\u0e23\u0e40\u0e08\u0e01\u0e15\u0e4c\u0e14\u0e49\u0e32\u0e19\u0e25\u0e25\u0e48\u0e32\u0e19\u0e1c\u0e48\u0e32\u0e19\u0e01\u0e32\u0e23\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e08\u0e23\u0e34\u0e07 \u2014 \u0e18\u0e38\u0e23\u0e01\u0e34\u0e08\u0e02\u0e38\u0e14\u0e41\u0e25\u0e30\u0e08\u0e23\u0e34\u0e07 \u0e41\u0e25\u0e30\u0e40\u0e04\u0e23\u0e37\u0e2d\u0e02\u0e48\u0e32\u0e22 DePIN \u0e02\u0e2d\u0e07\u0e08\u0e23\u0e34\u0e07 \u0e25\u0e34\u0e07\u0e01\u0e4c\u0e02\u0e2d\u0e07\u0e08\u0e23\u0e34\u0e07 \u0e44\u0e21\u0e48\u0e21\u0e35\u0e42\u0e06\u0e29\u0e13\u0e32\u0e40\u0e01\u0e34\u0e19\u0e08\u0e23\u0e34\u0e07",
+  "mining.miningTitle": "\u0e02\u0e38\u0e14\u0e04\u0e23\u0e34\u0e1b\u0e42\u0e42\u0e42",
+  "mining.miningSub": "\u0e23\u0e31\u0e1a\u0e23\u0e32\u0e07\u0e27\u0e31\u0e25\u0e1a\u0e25\u0e47\u0e2d\u0e01\u0e14\u0e49\u0e27\u0e22\u0e2e\u0e32\u0e23\u0e4c\u0e41\u0e27\u0e22\u0e23\u0e4c\u0e02\u0e2d\u0e07\u0e40\u0e2d\u0e07 \u2014 \u0e2b\u0e23\u0e37\u0e2d\u0e0a\u0e35\u0e49\u0e44\u0e1b\u0e17\u0e35\u0e48\u0e1e\u0e39\u0e25\u0e17\u0e35\u0e48\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e16\u0e37\u0e2d\u0e44\u0e14\u0e49\u0e44\u0e14\u0e49",
+  "mining.depinTitle": "DePIN \u2014 \u0e2a\u0e23\u0e49\u0e32\u0e07\u0e23\u0e32\u0e22\u0e44\u0e14\u0e49\u0e14\u0e49\u0e27\u0e22\u0e2e\u0e32\u0e23\u0e4c\u0e41\u0e27\u0e22\u0e23\u0e4c",
+  "mining.depinSub": "\u0e42\u0e04\u0e23\u0e2a\u0e23\u0e49\u0e32\u0e07\u0e1e\u0e37\u0e49\u0e19\u0e10\u0e38\u0e2d\u0e32\u0e07\u0e20\u0e32\u0e22\u0e41\u0e41\u0e1a\u0e1a\u0e01\u0e23\u0e30\u0e08\u0e32\u0e22\u0e28\u0e39\u0e19\u0e22\u0e4c: \u0e23\u0e31\u0e1a\u0e04\u0e23\u0e34\u0e1b\u0e42\u0e42\u0e42\u0e08\u0e32\u0e01\u0e01\u0e32\u0e23\u0e41\u0e0a\u0e23\u0e4c\u0e41\u0e0a\u0e23\u0e4c\u0e41\u0e0a\u0e07\u0e41\u0e32\u0e23\u0e41\u0e0a\u0e07\u0e41\u0e32\u0e23\u0e41\u0e48\u0e2d\u0e1b\u0e19\u0e14\u0e4c \u0e1e\u0e37\u0e49\u0e19\u0e17\u0e35\u0e48\u0e40\u0e01\u0e47\u0e1a\u0e02\u0e34\u0e14\u0e02\u0e2d\u0e07 \u0e1e\u0e25\u0e31\u0e07\u0e1b\u0e23\u0e30\u0e21\u0e27\u0e25\u0e04\u0e33 \u0e2b\u0e23\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e02\u0e40\u0e0b\u0e47\u0e19\u0e40\u0e0b\u0e47\u0e23\u0e40\u0e0b\u0e47\u0e23\u0e4c",
+  "mining.verifiedOn": "\u0e15\u0e23\u0e27\u0e08\u0e2a\u0e2d\u0e1a\u0e41\u0e25\u0e25\u0e48\u0e27 {date}",
+  "mining.visitSite": "\u0e40\u0e22\u0e35\u0e48\u0e22\u0e21\u0e21\u0e21\u0e40\u0e27\u0e47\u0e1a\u0e44\u0e0b\u0e15\u0e4c",
+  "mining.referralVisit": "\u0e40\u0e22\u0e35\u0e48\u0e22\u0e21\u0e21\u0e21\u0e1c\u0e48\u0e32\u0e19\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e41\u0e19\u0e30\u0e41\u0e19\u0e30",
+  "mining.whyTrusted": "\u0e17\u0e33\u0e44\u0e21\u0e08\u0e36\u0e07\u0e19\u0e48\u0e32\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e16\u0e37\u0e2d\u0e44\u0e14\u0e49",
+  "mining.referralNote": "\u0e25\u0e34\u0e07\u0e01\u0e4c\u0e17\u0e35\u0e48\u0e21\u0e35\u0e1b\u0e49\u0e32\u0e22\u0e41\u0e19\u0e30\u0e41\u0e19\u0e30\u0e08\u0e30\u0e0a\u0e48\u0e27\u0e2a\u0e19\u0e38\u0e19\u0e2a\u0e19\u0e38\u0e19 Voicescape \u0e42\u0e14\u0e22\u0e04\u0e38\u0e13\u0e44\u0e21\u0e48\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e04\u0e48\u0e32\u0e40\u0e2a\u0e35\u0e48\u0e22\u0e04\u0e48\u0e32\u0e40\u0e1e\u0e34\u0e48\u0e21",
+  "mining.referralAvailable": "\u0e21\u0e35\u0e42\u0e1b\u0e23\u0e41\u0e01\u0e23\u0e21\u0e41\u0e19\u0e30\u0e19\u0e33",
   "txproof.title": "หลักฐานทิปบนเชน",
   "txproof.kicker": "หลักฐานสาธารณะ",
   "txproof.sender": "ผู้ส่ง",
@@ -3496,6 +3676,7 @@ const tl: Record<I18nKey, string> = {
   "nav.builder": "Gumawa ng blockpage",
   "nav.newToWeb3": "Bago sa Web3",
   "nav.fundraiser": "Paglikom",
+  "nav.miningDePIN": "Pagmimina & DePIN",
   "lang.label": "Wika",
   "wallet.signInWithWallet": "Ikonekta",
   "wallet.myPage": "Aking blockpage",
@@ -3661,6 +3842,20 @@ const tl: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "Magtakda ng layunin sa paglikom sa iyong blockpage at lalabas ito dito.",
   "fundraiser.loading": "Naglo-load ng mga paglikom…",
   "fundraiser.error": "Hindi ma-load ang mga paglikom — subukan ulit mamaya.",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "Pagmimina & DePIN",
+  "mining.subtitle": "Sulok ng mga bihasa. Bawat proyekto sa ibaba ay sinuri nang live \u2014 tunay na mining operations at DePIN networks, tunay na links, walang hype.",
+  "mining.miningTitle": "Pagmimina ng crypto",
+  "mining.miningSub": "Kumita ng block rewards gamit ang sarili mong hardware \u2014 o ituro ito sa pinagkakatiwalaang pool.",
+  "mining.depinTitle": "DePIN \u2014 kumita gamit ang hardware",
+  "mining.depinSub": "Desentralisadong pisikal na imprastruktura: bayad ka ng crypto sa pagbabahagi ng bandwidth, storage, compute, o sensor data.",
+  "mining.verifiedOn": "Na-verify noong {date}",
+  "mining.visitSite": "Bisitahin ang site",
+  "mining.referralVisit": "Bisitahin gamit ang referral",
+  "mining.whyTrusted": "Bakit ito mapagkakatiwalaan",
+  "mining.referralNote": "Ang mga link na may referral badge ay sumusuporta sa Voicescape nang walang dagdag na gastos sa iyo.",
+  "mining.referralAvailable": "May referral program",
   "txproof.title": "On-chain na patunay ng tip",
   "txproof.kicker": "Pampublikong patunay",
   "txproof.sender": "Nagpadala",
@@ -3761,6 +3956,7 @@ const tr: Record<I18nKey, string> = {
   "nav.builder": "Blockpage oluştur",
   "nav.newToWeb3": "Web3'e yeni",
   "nav.fundraiser": "Bağış kampanyası",
+  "nav.miningDePIN": "Madencilik ve DePIN",
   "lang.label": "Dil",
   "wallet.signInWithWallet": "Bağlan",
   "wallet.myPage": "Blockpage'im",
@@ -3926,6 +4122,20 @@ const tr: Record<I18nKey, string> = {
   "fundraiser.emptyBody": "Blockpage'inde bir fon toplama hedefi belirle, burada görünsün.",
   "fundraiser.loading": "Kampanyalar yükleniyor…",
   "fundraiser.error": "Kampanyalar yüklenemedi — daha sonra tekrar dene.",
+
+  // Mining & DePIN — experienced corner
+  "mining.title": "Madencilik ve DePIN",
+  "mining.subtitle": "Deneyimlilerin k\u00f6\u015fesi. A\u015fa\u011f\u0131daki her proje canl\u0131 olarak kontrol edildi ve do\u011fruland\u0131 \u2014 ger\u00e7ek madencilik operasyonlar\u0131 ve DePIN a\u011flar\u0131, ger\u00e7ek ba\u011flant\u0131lar, hype yok.",
+  "mining.miningTitle": "Kripto madencili\u011fi",
+  "mining.miningSub": "Kendi donan\u0131m\u0131nla blok \u00f6d\u00fclleri kazan \u2014 ya da g\u00fcvenilir bir havuza y\u00f6nlendir.",
+  "mining.depinTitle": "DePIN \u2014 donan\u0131mla kazan",
+  "mining.depinSub": "Merkeziyetsiz fiziksel altyap\u0131: bant geni\u015fli\u011fi, depolama, i\u015flem g\u00fcc\u00fc veya sens\u00f6r verisi payla\u015farak kripto kazan.",
+  "mining.verifiedOn": "{date} tarihinde do\u011fruland\u0131",
+  "mining.visitSite": "Siteyi ziyaret et",
+  "mining.referralVisit": "Referansla ziyaret et",
+  "mining.whyTrusted": "Neden g\u00fcvenilir",
+  "mining.referralNote": "Referans rozetli ba\u011flant\u0131lar, sana ekstra maliyet \u00e7\u0131karmadan Voicescape\u2019i destekler.",
+  "mining.referralAvailable": "Referans program\u0131 mevcut",
   "txproof.title": "Zincir üstü bahşiş kanıtı",
   "txproof.kicker": "Herkese açık kanıt",
   "txproof.sender": "Gönderen",

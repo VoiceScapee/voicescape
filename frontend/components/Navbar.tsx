@@ -57,6 +57,13 @@ export default function Navbar({ right }: NavbarProps) {
             <T k="nav.newToWeb3" />
           </Link>
           <Link
+            href="/mining-depin"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.miningDePIN" />
+          </Link>
+          <Link
             href="/forum"
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}
