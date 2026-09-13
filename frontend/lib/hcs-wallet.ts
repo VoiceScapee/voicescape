@@ -1,5 +1,7 @@
 "use client";
 
+import { toMirrorTxId } from "./tx-confirm";
+
 /**
  * Client-side HCS message submit via the user's wallet.
  *
@@ -66,7 +68,9 @@ async function checkHcsTxLanded(
         : network === "testnet"
           ? "https://testnet.mirrornode.hedera.com/api/v1"
           : "https://previewnet.mirrornode.hedera.com/api/v1";
-    const res = await fetch(`${base}/transactions/${encodeURIComponent(txId)}`);
+    // txId is the SDK @ form (0.0.x@seconds.nanos); the mirror only
+    // answers the dash form, so normalize before querying.
+    const res = await fetch(`${base}/transactions/${encodeURIComponent(toMirrorTxId(txId))}`);
     if (!res.ok) return "unknown";
     const data = (await res.json()) as { transactions?: Array<{ result?: string }> };
     const result = data.transactions?.[0]?.result;

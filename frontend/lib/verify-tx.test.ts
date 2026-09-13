@@ -111,3 +111,26 @@ describe("verifyPurchaseOnChain", () => {
     expect(result.status).toBe("unknown");
   });
 });
+
+describe("verifyContractResult wallet txId regression", () => {
+  it("queries contract-results with dashes when given a wallet @-form txId", async () => {
+    const { verifyTipOnChain } = await import("./verify-tx");
+    const { TIPSENT_TOPIC } = await import("./verify-tx");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          status: "0x1",
+          amount: "1000000",
+          logs: [{ topics: [TIPSENT_TOPIC] }],
+        }),
+      }),
+    );
+    const result = await verifyTipOnChain("0.0.10857409@1789339017.871111290", 1, 1);
+    expect(result.status).toBe("confirmed");
+    const url = String(vi.mocked(fetch).mock.calls[0][0]);
+    expect(url).toContain("0.0.10857409-1789339017-871111290");
+    expect(url).not.toContain("@");
+  });
+});

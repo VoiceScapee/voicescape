@@ -312,7 +312,11 @@ export class RealMirrorPort implements MirrorPort {
         };
       }
     }
-    const url = `${mirrorBaseUrl()}/api/v1/transactions/${encodeURIComponent(dustFeeTxId)}`;
+    // The mirror node only answers the dash form (0.0.x-seconds-nanos);
+    // wallets hand us the @ form, so normalize before querying.
+    const [dustPayerPart, dustTimePart] = dustFeeTxId.split("@");
+    const mirrorDustFeeTxId = `${dustPayerPart}-${dustTimePart.replace(".", "-")}`;
+    const url = `${mirrorBaseUrl()}/api/v1/transactions/${encodeURIComponent(mirrorDustFeeTxId)}`;
     let res: Response;
     try {
       res = await fetchMirrorWithRetry(url);

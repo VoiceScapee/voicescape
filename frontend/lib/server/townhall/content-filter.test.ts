@@ -86,6 +86,20 @@ describe("checkContent", () => {
     expect(checkContent("contract 0.0.10854058, call me at 555-123-4567").allowed).toBe(false);
   });
 
+  it("does not mistake Hedera transaction IDs for phone numbers", () => {
+    // Regression: a HashScan transaction link (0.0.x@seconds.nanos) was
+    // blocked as a "phone number" — the timestamp's digit groups look like
+    // a dotted phone number once the 0.0.x part is stripped.
+    expect(
+      checkContent("https://hashscan.io/mainnet/transaction/0.0.10857409@1789337585.565068647")
+        .allowed,
+    ).toBe(true);
+    // But a real phone number next to a tx ID is still blocked.
+    expect(
+      checkContent("tx 0.0.10857409@1789337585.565068647, call 555-123-4567").allowed,
+    ).toBe(false);
+  });
+
   it("blocks email addresses", () => {
     const r = checkContent("email me at bob@example.com for details");
     expect(r.allowed).toBe(false);

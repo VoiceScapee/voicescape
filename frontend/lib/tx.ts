@@ -25,6 +25,7 @@ import {
 } from "@hiero-ledger/sdk";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
+import { toMirrorTxId } from "./tx-confirm";
 
 /* ------------------------------------------------------------------ */
 /* ABIs (human-readable; verified against                            */
@@ -176,8 +177,9 @@ export function createHederaTxSender(
    */
   async function checkTxLanded(txId: string): Promise<"success" | "failed" | "unknown"> {
     try {
+      // txId is the SDK @ form; the mirror only answers the dash form.
       const res = await fetch(
-        `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${encodeURIComponent(txId)}`,
+        `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${encodeURIComponent(toMirrorTxId(txId))}`,
       );
       if (!res.ok) return "unknown";
       const data = (await res.json()) as { status?: string; results?: Array<{ status?: string }> };

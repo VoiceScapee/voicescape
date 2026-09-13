@@ -121,3 +121,34 @@ describe("finality formatting", () => {
     expect(formatFinalizedAt(d)).toMatch(/7:40:50/);
   });
 });
+
+describe("toMirrorTxId", () => {
+  it("converts the wallet @ form to the mirror's dash form", async () => {
+    const { toMirrorTxId } = await import("./tx-confirm");
+    expect(toMirrorTxId("0.0.10857409@1789339017.871111290")).toBe(
+      "0.0.10857409-1789339017-871111290",
+    );
+  });
+
+  it("passes dash-form ids and EVM hashes through untouched", async () => {
+    const { toMirrorTxId } = await import("./tx-confirm");
+    expect(toMirrorTxId("0.0.10424063-1789255516-411663562")).toBe(
+      "0.0.10424063-1789255516-411663562",
+    );
+    expect(toMirrorTxId("0xabc123")).toBe("0xabc123");
+  });
+});
+
+describe("pollTransactionStatus wallet txId regression", () => {
+  it("queries the mirror with dashes when given a wallet @-form txId", async () => {
+    mockFetchSequence([{ ok: true, body: { transactions: [{ result: "SUCCESS" }] } }]);
+    const outcome = await pollTransactionStatus("0.0.10857409@1789339017.871111290", {
+      timeoutMs: 1000,
+      baseDelayMs: 5,
+    });
+    expect(outcome).toBe("confirmed");
+    const url = String(vi.mocked(fetch).mock.calls[0][0]);
+    expect(url).toContain("0.0.10857409-1789339017-871111290");
+    expect(url).not.toContain("@");
+  });
+});

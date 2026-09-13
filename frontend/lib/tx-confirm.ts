@@ -47,6 +47,23 @@ export interface TxPollOptions {
 
 const DEFAULT_MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 
+/**
+ * Normalize a transaction id to the mirror node's format.
+ *
+ * Wallets and the SDK produce `0.0.x@seconds.nanos`, but the mirror node's
+ * `/transactions/{id}` endpoint only answers the dash form
+ * (`0.0.x-seconds-nanos`). Passing the @ form through silently finds
+ * nothing — every caller polling a wallet-produced txId would spin until
+ * timeout. EVM hashes (`0x…`) pass through untouched.
+ */
+export function toMirrorTxId(txId: string): string {
+  const at = txId.indexOf("@");
+  if (at === -1) return txId;
+  const payer = txId.slice(0, at);
+  const rest = txId.slice(at + 1).replace(".", "-");
+  return `${payer}-${rest}`;
+}
+
 interface MirrorTransaction {
   result?: string;
 }
@@ -87,7 +104,7 @@ export async function pollTransactionStatus(
     signal,
   } = opts;
   const deadline = Date.now() + timeoutMs;
-  const url = `${mirrorBase}/transactions/${encodeURIComponent(txId)}`;
+  const url = `${mirrorBase}/transactions/${encodeURIComponent(toMirrorTxId(txId))}`;
   let attempt = 0;
 
   for (;;) {

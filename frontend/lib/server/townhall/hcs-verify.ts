@@ -77,21 +77,22 @@ export async function verifyHcsTransaction(
   if (!txId || typeof txId !== "string") return null;
   if (!expectedTopicId || !expectedPayer) return null;
 
-  // Normalize to mirror node format: 0.0.x@seconds.nanos
-  const normalized = txId.trim().replace(/-/g, (m, offset, str) => {
-    // Only replace dashes that are separators, not in the account ID
-    // Format: 0.0.1234-1234567890-123456789 -> 0.0.1234@1234567890.123456789
-    return offset > 6 ? (str[offset - 1] === "@" ? "." : "@") : m;
-  });
-  // Simpler: handle both formats explicitly
+  // Normalize to the mirror node's transaction-ID format: 0.0.x-seconds-nanos
+  // (dashes). Wallets and the SDK produce 0.0.x@seconds.nanos — passing the
+  // @ form to the mirror returns nothing, which silently broke every
+  // user-signed Town Hall write (chat, forum, votes, listings, events).
   let mirrorTxId: string;
-  const atForm = /^0\.0\.\d+@\d+\.\d+$/.test(txId.trim());
-  const dashForm = /^0\.0\.\d+-\d+-\d+$/.test(txId.trim());
+  let payerFromTxId: string;
+  const trimmed = txId.trim();
+  const atForm = /^0\.0\.\d+@\d+\.\d+$/.test(trimmed);
+  const dashForm = /^0\.0\.\d+-\d+-\d+$/.test(trimmed);
   if (atForm) {
-    mirrorTxId = txId.trim();
+    const [payerPart, timePart] = trimmed.split("@");
+    payerFromTxId = payerPart;
+    mirrorTxId = `${payerPart}-${timePart.replace(".", "-")}`;
   } else if (dashForm) {
-    const parts = txId.trim().split("-");
-    mirrorTxId = `${parts[0]}@${parts[1]}.${parts[2]}`;
+    payerFromTxId = trimmed.split("-")[0];
+    mirrorTxId = trimmed;
   } else {
     return null;
   }
@@ -118,15 +119,12 @@ export async function verifyHcsTransaction(
     // Must be to the expected topic
     if (tx.entity_id !== expectedTopicId) return null;
 
-    // Payer must match the authenticated user
-    // The mirror node provides payer_account_id; fall back to transfers
-    let payer: string | null = tx.payer_account_id ?? null;
-    if (!payer && tx.transfers) {
-      // The payer is the account with the negative HTS transfer for the fee,
-      // but simpler: find the account that paid (negative amount, not the fee collector)
-      // Actually, the first transfer with a negative amount that's not tiny is likely the payer.
-      // For robustness, we use payer_account_id when available.
-    }
+    // Payer must match the authenticated user.
+    // The mirror's transactions list endpoint omits payer_account_id, so
+    // fall back to the payer embedded in the transaction ID itself
+    // (0.0.x@seconds.nanos) — authoritative by Hedera protocol: a txId
+    // naming another payer can never match expectedPayer here.
+    const payer: string | null = tx.payer_account_id ?? payerFromTxId ?? null;
     if (!payer) return null;
     if (payer !== expectedPayer) return null;
 

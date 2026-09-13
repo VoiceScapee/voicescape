@@ -186,6 +186,29 @@ export function friendlyWalletError(e: unknown): string {
   if (/cannot read propert\w+ of undefined \(reading ['"]call['"]\)/i.test(msg)) {
     return "HashPack didn't finish initializing — reopen or reconnect HashPack, then try again.";
   }
+  // WalletConnect wraps Hedera precheck failures as error 9000 with the
+  // ResponseCodeEnum name in the message. Map the common ones to human
+  // copy instead of leaking raw status text to a phone user mid-tip.
+  if (/INSUFFICIENT_PAYER_BALANCE/i.test(msg)) {
+    return "Not enough HBAR in your wallet to cover this transaction (including network fees).";
+  }
+  if (/INSUFFICIENT_TX_FEE/i.test(msg)) {
+    return "The transaction fee was too low to be accepted — try again.";
+  }
+  if (/TRANSACTION_EXPIRED/i.test(msg)) {
+    return "The transaction expired before it could be submitted — try again.";
+  }
+  if (/DUPLICATE_TRANSACTION/i.test(msg)) {
+    return "This transaction was already submitted — check HashScan before retrying.";
+  }
+  if (/INVALID_SIGNATURE|INVALID_PAYER_SIGNATURE/i.test(msg)) {
+    return "The wallet's signature was rejected — reconnect your wallet and try again.";
+  }
+  // User rejection surfaces variously ("rejected", "declined", "cancelled",
+  // WalletConnect 4001).
+  if (/\b(4001|user rejected|request rejected|transaction (was )?rejected|declined|cancelled|canceled)\b/i.test(msg)) {
+    return "You declined the transaction in your wallet — nothing was sent.";
+  }
   return msg;
 }
 
@@ -263,6 +286,8 @@ let _connector: DAppConnector | null = null;
 let _connectorPromise: Promise<DAppConnector> | null = null;
 let _initialized = false;
 let hcAccountId: string | null = null;
+/** Full HIP-30 session account ("hedera:<network>:<account>") for change detection. */
+let hcSessionAccount: string | null = null;
 /**
  * Generation counter: every dropConnector() invalidates in-flight builds.
  * If the page-load restore is still importing the wallet library when the
@@ -273,6 +298,24 @@ let _generation = 0;
 
 /** React-side listeners for wallet-initiated session loss (see below). */
 const pairingLostListeners = new Set<() => void>();
+/** Fired when the wallet switches to a different account mid-session. */
+const accountChangedListeners = new Set<(newAccount: string) => void>();
+
+/**
+ * Subscribe to wallet-side account switches. When the user changes accounts
+ * in HashPack (or any HIP-820 wallet), the SignClient fires session_update
+ * with the new account list. The dApp's pairing and 7-day sign-in session
+ * are both bound to the OLD address, so the only safe move is to drop the
+ * pairing and have the user reconnect — otherwise the UI would show one
+ * account while the wallet signs as another.
+ * Returns an unsubscribe function.
+ */
+export function onAccountChanged(cb: (newAccount: string) => void): () => void {
+  accountChangedListeners.add(cb);
+  return () => {
+    accountChangedListeners.delete(cb);
+  };
+}
 
 /**
  * Subscribe to wallet-side session loss. When the user disconnects in
@@ -305,6 +348,12 @@ function dropConnector(): void {
   _connectorPromise = null;
   _initialized = false;
   hcAccountId = null;
+  hcSessionAccount = null;
+}
+
+/** Record the pairing's full HIP-30 identity for change detection. */
+function trackSessionAccount(session: { namespaces?: Record<string, { accounts?: string[] }> }): void {
+  hcSessionAccount = rawSessionAccount(session);
 }
 
 async function disconnectHedera(): Promise<void> {
@@ -329,14 +378,47 @@ export function getHederaPairing(): { hc: DAppConnector; accountId: string } | n
 }
 
 /**
+ * "hedera-mainnet" → "mainnet". Matches the network segment in WalletConnect
+ * HIP-30 account strings ("hedera:mainnet:0.0.12345").
+ */
+export function networkFromChainKey(key: string): string {
+  return key.replace(/^hedera-/, "");
+}
+
+/** Raw first HIP-30 account string from a session ("hedera:<network>:<account>"). */
+function rawSessionAccount(session: {
+  namespaces?: Record<string, { accounts?: string[] }>;
+}): string | null {
+  const accounts = session.namespaces?.hedera?.accounts;
+  return accounts && accounts.length > 0 ? accounts[0] : null;
+}
+
+/**
  * Extract the account ID from a WalletConnect session.
  * Session accounts look like "hedera:mainnet:0.0.12345" (HIP-30 format).
+ *
+ * When `expectedNetwork` is given ("mainnet" | "testnet"), the session's
+ * network is validated against it and a mismatch throws a user-actionable
+ * error. Without this check a wallet sitting on testnet would pair as if
+ * it were on mainnet — every subsequent transaction would be built for the
+ * wrong network.
  */
-function accountIdFromSession(session: { namespaces?: Record<string, { accounts?: string[] }> }): string | null {
+export function accountIdFromSession(
+  session: { namespaces?: Record<string, { accounts?: string[] }> },
+  expectedNetwork?: string,
+): string | null {
   const accounts = session.namespaces?.hedera?.accounts;
   if (!accounts || accounts.length === 0) return null;
   // Format: "hedera:<network>:<accountId>" → take the last part
   const parts = accounts[0].split(":");
+  if (expectedNetwork && parts.length >= 3) {
+    const sessionNetwork = parts[1].toLowerCase();
+    if (sessionNetwork !== expectedNetwork.toLowerCase()) {
+      throw new Error(
+        `Your wallet is on Hedera ${sessionNetwork}, but this app uses Hedera ${expectedNetwork}. Switch networks in your wallet and connect again.`,
+      );
+    }
+  }
   const raw = parts[parts.length - 1] || null;
   if (!raw) return null;
   // KISS: Normalize to 0.0.x form. Some wallets return the EVM address
@@ -505,6 +587,25 @@ function subscribeSessionEvents(connector: DAppConnector): void {
   };
   client.on("session_delete", onSessionGone);
   client.on("session_expire", onSessionGone);
+  // Account OR network switch in the wallet: drop the pairing (it's bound to
+  // the old address/network) and let listeners show a "reconnect" message.
+  // Compares the full "hedera:<network>:<account>" string so a network
+  // switch with the same account number is also caught.
+  client.on("session_update", ({ params }: { params?: { namespaces?: Record<string, { accounts?: string[] }> } }) => {
+    if (_connector !== connector || !hcSessionAccount) return; // stale instance or not paired
+    const next = rawSessionAccount({ namespaces: params?.namespaces });
+    if (next && next !== hcSessionAccount) {
+      const newAccount = accountIdFromSession({ namespaces: params?.namespaces });
+      dropConnector();
+      for (const cb of accountChangedListeners) {
+        try {
+          cb(newAccount ?? next);
+        } catch {
+          /* listener failure must not break other listeners */
+        }
+      }
+    }
+  });
 }
 
 /**
@@ -559,6 +660,9 @@ export async function restoreHederaPairing(): Promise<string | null> {
     const accountId = signer?.getAccountId?.()?.toString?.() ?? null;
     if (!accountId || !/^0\.0\.\d+$/.test(accountId)) return null;
     hcAccountId = accountId;
+    // No session object here (signer-derived) — reconstruct the HIP-30
+    // identity from the active chain for change detection.
+    hcSessionAccount = `hedera:${networkFromChainKey(getActiveChain().key)}:${accountId}`;
     return accountId;
   } catch {
     // Stale storage / relay unreachable / HashPack #291: not connected.
@@ -687,11 +791,12 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
       );
     }
 
-    const accountId = accountIdFromSession(session);
+    const accountId = accountIdFromSession(session, networkFromChainKey(chain.key));
     if (!accountId) {
       throw new Error("Pairing succeeded but no Hedera account was returned.");
     }
     hcAccountId = accountId;
+    trackSessionAccount(session);
     return accountId;
   }
 
@@ -720,11 +825,12 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     );
   }
 
-  const accountId = accountIdFromSession(session);
+  const accountId = accountIdFromSession(session, networkFromChainKey(chain.key));
   if (!accountId) {
     throw new Error("Pairing succeeded but no Hedera account was returned.");
   }
   hcAccountId = accountId;
+  trackSessionAccount(session);
   return accountId;
 }
 
@@ -877,6 +983,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setAccount(null);
       setChainId(null);
       setAdapterName(null);
+    });
+  }, []);
+
+  /* Wallet-side account switch (changed accounts in HashPack mid-session):
+     clear the pairing and tell the user to reconnect — the old sign-in
+     session is bound to the previous address. */
+  useEffect(() => {
+    return onAccountChanged(() => {
+      senderGetter.current = null;
+      setAccount(null);
+      setChainId(null);
+      setAdapterName(null);
+      writeStoredAdapterId(null);
+      setError(
+        "Your wallet switched accounts. Reconnect to continue with the new account.",
+      );
     });
   }, []);
 

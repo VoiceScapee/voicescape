@@ -7,13 +7,16 @@
  *
  * Uses the Hedera mainnet Mirror Node contract-results endpoint, which
  * accepts both SDK-format transaction IDs (0.0.x-...) and EVM transaction
- * hashes (0x...).
+ * hashes (0x...). Wallet @-form ids (0.0.x@...) are normalized to dashes
+ * before querying.
  */
+
+import { toMirrorTxId } from "./tx-confirm";
 
 const MIRROR_NODE = "https://mainnet.mirrornode.hedera.com/api/v1";
 
 // TipSent(string,address,address,uint256,uint256)
-const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
+export const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
 // PurchaseCompleted(address,address,string,uint256,uint256)
 const PURCHASE_COMPLETED_TOPIC = "0x8555727c6813e10ae0b5a9b0a53a88a93176679845f5a005a248cdb9f1c05f2e";
 
@@ -45,7 +48,9 @@ export async function verifyContractResult(
   intervalMs = 2500,
 ): Promise<VerificationResult> {
   const topic = expectedTopic === "tip" ? TIPSENT_TOPIC : PURCHASE_COMPLETED_TOPIC;
-  const url = `${MIRROR_NODE}/contracts/results/${txIdOrHash}`;
+  // Wallets hand us the @ form (0.0.x@seconds.nanos); the mirror only
+  // answers the dash form, so normalize before querying.
+  const url = `${MIRROR_NODE}/contracts/results/${toMirrorTxId(txIdOrHash)}`;
 
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {

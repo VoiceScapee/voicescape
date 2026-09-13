@@ -311,7 +311,9 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
   // Hedera entity IDs (0.0.xxxxxxxx) are the platform's native identifiers —
   // contracts, accounts, treasury — and their dotted digit groups must not
   // be mistaken for phone numbers. Strip them before the phone scan.
-  const textSansHederaIds = text.replace(/\b0\.0\.\d+\b/g, "");
+  // Transaction IDs (0.0.x@seconds.nanos) get the same treatment: the
+  // timestamp's digit groups look like a dotted phone number otherwise.
+  const textSansHederaIds = text.replace(/\b0\.0\.\d+(?:@\d+\.\d+)?\b/g, "");
   const phoneRe = new RegExp(PHONE_RE.source, "g");
   let pm: RegExpExecArray | null;
   while ((pm = phoneRe.exec(textSansHederaIds)) !== null) {
