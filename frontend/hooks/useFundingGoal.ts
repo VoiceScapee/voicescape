@@ -4,7 +4,8 @@
  * useFundingGoal — shared funding-goal state for a blockpage.
  *
  * Fetches the owner's public funding goal (/api/goals) and the all-time
- * on-chain tipped total (/api/earnings), and derives whether the goal is
+ * on-chain tipped total (/api/earnings), and derives the campaign progress
+ * (all-time minus the goal's baseline snapshot) and whether the goal is
  * reached. Used by <GoalBar> (public progress section) and by the page
  * itself to pause the tip flow when the fundraiser limit is hit.
  *
@@ -26,19 +27,21 @@ export interface FundingGoalInfo {
   username: string;
   targetHbar: number;
   title: string | null;
+  /** All-time proceeds snapshot at campaign start; progress = all-time − baseline. */
+  baselineHbar: number;
 }
 
 export interface FundingGoalState {
   goal: FundingGoalInfo | null;
-  /** All-time tipped HBAR (creator's 98% share), null until loaded. */
+  /** Campaign progress in HBAR (all-time tipped total minus the baseline), null until loaded. */
   raised: number | null;
-  /** True once the on-chain raised total meets the target. */
+  /** True once the campaign's raised total meets the target. */
   reached: boolean;
   loading: boolean;
 }
 
 /**
- * Pure fundraiser-limit check: donations pause once the on-chain raised
+ * Pure fundraiser-limit check: donations pause once the campaign's raised
  * total meets the goal target. Kept pure so the boundary logic is
  * unit-testable without a DOM.
  */
@@ -84,7 +87,10 @@ export function useFundingGoal(
           const eJson = (await eRes.json()) as { hbarAllTime?: string };
           if (!mountedRef.current) return;
           const n = Number(eJson.hbarAllTime);
-          setRaised(Number.isFinite(n) ? n : 0);
+          // Campaign progress: the slice of the all-time total raised since
+          // this campaign started. Never negative.
+          const baseline = typeof g.baselineHbar === "number" && Number.isFinite(g.baselineHbar) ? g.baselineHbar : 0;
+          setRaised(Number.isFinite(n) ? Math.max(0, n - baseline) : 0);
         } catch {
           if (mountedRef.current) setRaised(0);
         }

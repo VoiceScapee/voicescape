@@ -18,12 +18,13 @@ import {
 const OWNER_A = "0x" + "aa".repeat(20);
 const OWNER_B = "0x" + "bb".repeat(20);
 
-function goalRecord(username: string, owner: string, createdAt: string): FundingGoal {
+function goalRecord(username: string, owner: string, createdAt: string, baselineHbar = 0): FundingGoal {
   return {
     username,
     owner,
     targetHbar: 100,
     title: `${username} fund`,
+    baselineHbar,
     createdAt,
     updatedAt: createdAt,
   };
@@ -108,6 +109,25 @@ describe("listFundraisers", () => {
     const store = createMemoryKvStore();
     const list = await listFundraisers(depsFor(store));
     expect(list).toEqual([]);
+  });
+
+  it("measures progress from the campaign baseline, not all-time", async () => {
+    // A second campaign started after 500 all-time HBAR: with 560 all-time
+    // now, progress is 60 — not 560 — so it stays on the board and is not
+    // instantly "completed".
+    const store = await seed(
+      ["second"],
+      {
+        second: goalRecord("second", OWNER_A, "2026-09-12T00:00:00.000Z", 500),
+      },
+    );
+    const deps = depsFor(store, {
+      owners: { second: OWNER_A },
+      raised: { [OWNER_A]: 560 },
+    });
+    const list = await listFundraisers(deps);
+    expect(list.map((f) => f.username)).toEqual(["second"]);
+    expect(list[0].raisedHbar).toBe(60);
   });
 
   it("never throws when deps throw", async () => {

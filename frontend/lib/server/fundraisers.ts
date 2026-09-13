@@ -6,14 +6,15 @@
  * (lib/server/goals.ts) — no new money movement, no contract changes.
  * Donations are ordinary on-chain tips to the creator's blockpage (the
  * proven 98/2 Tips contract path); the board just aggregates the public
- * goal + the creator's all-time tipped total from the mirror node.
+ * goal + the campaign's progress (all-time tipped total from the mirror
+ * node, minus the campaign baseline).
  *
  * Storage: the `fundraisers:index` key holds the usernames with goals.
  * Reads are public. Stale index entries (goal cleared) are skipped.
  */
 import type { KvStore } from "./store";
 import { getKvStore } from "./store";
-import { readFundraiserUsernames, readGoal, type FundingGoal } from "./goals";
+import { readFundraiserUsernames, readGoal, campaignRaised, type FundingGoal } from "./goals";
 
 export interface FundraiserEntry {
   username: string;
@@ -21,7 +22,7 @@ export interface FundraiserEntry {
   targetHbar: number;
   /** Owner EVM address (lowercase). */
   owner: string;
-  /** All-time tips to the owner, HBAR. 0 when unreadable. */
+  /** Campaign progress in HBAR (all-time tips minus the campaign baseline). 0 when unreadable. */
   raisedHbar: number;
   createdAt: string;
   updatedAt: string;
@@ -85,12 +86,13 @@ export async function listFundraisers(deps: FundraiserDeps): Promise<FundraiserE
     } catch {
       raised = null;
     }
-    const raisedHbar = raised ?? 0;
+    const raisedHbar = campaignRaised(goal, raised);
     // Completion rule: a fundraiser that reached its goal leaves the board —
-    // it is not needed there anymore. Derived at read time from on-chain
-    // totals, so there is no cron and no state machine. The blockpage keeps
-    // its permanent "Goal reached" record, and the creator can set a new
-    // goal at any time to return to the board.
+    // it is not needed there anymore. Derived at read time from the
+    // campaign progress (on-chain all-time minus the campaign baseline),
+    // so there is no cron and no state machine. The blockpage keeps its
+    // permanent "Goal reached" record, and the creator can set a new goal
+    // at any time to return to the board with progress restarted at zero.
     if (raisedHbar >= goal.targetHbar) continue;
     out.push({
       username: goal.username,

@@ -5,11 +5,13 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryKvStore, type KvStore } from "./store";
 import {
+  campaignRaised,
   clearGoal,
   defaultGoalDeps,
   FUNDRAISER_INDEX_KEY,
   GOAL_MAX_HBAR,
   goalKey,
+  isCampaignReached,
   parseGoalValue,
   readFundraiserUsernames,
   readGoal,
@@ -21,10 +23,16 @@ import {
 const OWNER = "0x" + "aa".repeat(20);
 const OTHER = "0x" + "bb".repeat(20);
 
-/** Deps with a memory store and canned auth/ownership answers. */
-function testDeps(opts?: { sessionAddress?: string | null; owner?: string | null }): GoalDeps {
+/** Deps with a memory store and canned auth/ownership/earnings answers. */
+function testDeps(opts?: {
+  sessionAddress?: string | null;
+  owner?: string | null;
+  /** Canned all-time HBAR for the baseline snapshot (default 0). */
+  allTime?: number | null;
+}): GoalDeps {
   const sessionAddress = opts?.sessionAddress === undefined ? OWNER : opts.sessionAddress;
   const owner = opts?.owner === undefined ? OWNER : opts.owner;
+  const allTime = opts?.allTime === undefined ? 0 : opts.allTime;
   return {
     store: createMemoryKvStore(),
     verifySession: async (cred: unknown) =>
@@ -32,6 +40,7 @@ function testDeps(opts?: { sessionAddress?: string | null; owner?: string | null
         ? { ok: true as const, address: sessionAddress }
         : { ok: false as const, error: "no session" },
     resolveOwner: async () => owner,
+    readAllTimeHbar: async () => allTime,
   };
 }
 
@@ -75,6 +84,40 @@ describe("parseGoalValue", () => {
     expect(parseGoalValue("not json")).toBeNull();
     expect(parseGoalValue(JSON.stringify({ targetHbar: -5 }))).toBeNull();
   });
+
+  it("defaults baselineHbar to 0 for legacy records", () => {
+    const legacy = {
+      username: "old",
+      owner: OWNER,
+      targetHbar: 100,
+      title: null,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(parseGoalValue(JSON.stringify(legacy))).toMatchObject({ baselineHbar: 0 });
+    expect(
+      parseGoalValue(JSON.stringify({ ...legacy, baselineHbar: 42.5 })),
+    ).toMatchObject({ baselineHbar: 42.5 });
+    // Garbage baselines fall back to 0 rather than corrupting the record.
+    expect(
+      parseGoalValue(JSON.stringify({ ...legacy, baselineHbar: -3 })),
+    ).toMatchObject({ baselineHbar: 0 });
+  });
+});
+
+describe("campaignRaised / isCampaignReached", () => {
+  it("measures progress from the baseline, floored at zero", () => {
+    expect(campaignRaised({ baselineHbar: 500, targetHbar: 100 }, 560)).toBe(60);
+    expect(campaignRaised({ baselineHbar: 500, targetHbar: 100 }, 400)).toBe(0);
+    expect(campaignRaised({ baselineHbar: 0, targetHbar: 100 }, null)).toBe(0);
+  });
+
+  it("reaches only on campaign progress, not all-time", () => {
+    expect(isCampaignReached({ baselineHbar: 500, targetHbar: 100 }, 599.99)).toBe(false);
+    expect(isCampaignReached({ baselineHbar: 500, targetHbar: 100 }, 600)).toBe(true);
+    // Legacy record (no baseline): old all-time behavior.
+    expect(isCampaignReached({ baselineHbar: 0, targetHbar: 100 }, 100)).toBe(true);
+  });
 });
 
 describe("writeGoal / readGoal / clearGoal", () => {
@@ -106,6 +149,66 @@ describe("writeGoal / readGoal / clearGoal", () => {
     };
     expect(second.goal.createdAt).toBe(first.goal.createdAt);
     expect(second.goal.targetHbar).toBe(200);
+  });
+
+  it("snapshots the all-time total as the baseline for a new campaign", async () => {
+    const deps = testDeps({ allTime: 12.5 });
+    const set = (await writeGoal(deps, "creator1", { targetHbar: 100 }, "cred")).json as {
+      goal: { baselineHbar: number; createdAt: string };
+    };
+    expect(set.goal.baselineHbar).toBe(12.5);
+  });
+
+  it("editing a live campaign keeps its baseline and createdAt", async () => {
+    const deps = testDeps({ allTime: 10 });
+    const first = (await writeGoal(deps, "creator1", { targetHbar: 100, title: "v1" }, "cred")).json as {
+      goal: { baselineHbar: number; createdAt: string };
+    };
+    expect(first.goal.baselineHbar).toBe(10);
+    // Tips arrive (all-time 60 < baseline 10 + target 100 → still live),
+    // then the owner tweaks the title: progress must not reset.
+    const deps2 = { ...deps, store: deps.store, readAllTimeHbar: async () => 60 };
+    const second = (await writeGoal(deps2, "creator1", { targetHbar: 100, title: "v2" }, "cred")).json as {
+      goal: { baselineHbar: number; createdAt: string; title: string };
+    };
+    expect(second.goal.baselineHbar).toBe(10);
+    expect(second.goal.createdAt).toBe(first.goal.createdAt);
+    expect(second.goal.title).toBe("v2");
+  });
+
+  it("saving after the previous campaign completed starts a new campaign", async () => {
+    // Campaign 1: baseline 10, target 100 → completes at all-time 110.
+    const store = createMemoryKvStore();
+    const mkDeps = (allTime: number): GoalDeps => ({
+      ...testDeps(),
+      store,
+      readAllTimeHbar: async () => allTime,
+    });
+    await writeGoal(mkDeps(10), "creator1", { targetHbar: 100 }, "cred");
+    // All-time is now 115: campaign 1 reached (115 − 10 ≥ 100).
+    // A new goal reopens donations with progress restarted at zero.
+    const second = (await writeGoal(mkDeps(115), "creator1", { targetHbar: 50 }, "cred")).json as {
+      goal: { baselineHbar: number; createdAt: string; targetHbar: number };
+    };
+    expect(second.goal.baselineHbar).toBe(115);
+    expect(second.goal.targetHbar).toBe(50);
+    expect(campaignRaised(second.goal, 115)).toBe(0);
+    expect(isCampaignReached(second.goal, 115)).toBe(false);
+  });
+
+  it("clear + set restarts the campaign from the current all-time total", async () => {
+    const store = createMemoryKvStore();
+    const mkDeps = (allTime: number): GoalDeps => ({
+      ...testDeps(),
+      store,
+      readAllTimeHbar: async () => allTime,
+    });
+    await writeGoal(mkDeps(10), "creator1", { targetHbar: 100 }, "cred");
+    await clearGoal(mkDeps(10), "creator1", "cred");
+    const again = (await writeGoal(mkDeps(40), "creator1", { targetHbar: 100 }, "cred")).json as {
+      goal: { baselineHbar: number };
+    };
+    expect(again.goal.baselineHbar).toBe(40);
   });
 
   it("401s without a session", async () => {

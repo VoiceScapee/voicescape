@@ -3,10 +3,16 @@
  *
  * A page owner can set one public funding goal (target HBAR + optional
  * title). It is shown publicly on their blockpage with a progress bar
- * counting all tips ever sent on-chain to the page (the creator's 98%
- * share recorded by the Tips contract). Goals never touch funds —
- * Voicescape holds nothing; tipping stays direct wallet-to-wallet
- * through the on-chain Tips contract.
+ * counting the tips raised *for this campaign*: the creator's all-time
+ * 98% share recorded by the Tips contract, minus the `baselineHbar`
+ * snapshot taken when the campaign started. A new campaign (first goal,
+ * or a goal set after the previous one completed) snapshots the current
+ * all-time total as its baseline, so progress starts at zero and a
+ * replacement goal can never look instantly completed. Editing a live
+ * (unreached) campaign keeps its baseline, so a title/target tweak never
+ * wipes visible progress. Goals never touch funds — Voicescape holds
+ * nothing; tipping stays direct wallet-to-wallet through the on-chain
+ * Tips contract.
  *
  * Storage: KV `goals:<username>` → JSON, 1-year TTL (refreshed on every
  * write). Owner-only writes: the session wallet must own the username on
@@ -34,6 +40,12 @@ export interface FundingGoal {
   owner: string;
   targetHbar: number;
   title: string | null;
+  /**
+   * All-time creator tip proceeds (HBAR) at the moment this campaign
+   * started. Campaign progress = current all-time − baselineHbar.
+   * Legacy records predate the field and read as 0 (old behavior).
+   */
+  baselineHbar: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,10 +98,39 @@ export function parseGoalValue(raw: string | null): FundingGoal | null {
     ) {
       return null;
     }
-    return g as FundingGoal;
+    // Legacy records predate baselineHbar — read as 0 (old all-time behavior).
+    const baselineHbar =
+      typeof g.baselineHbar === "number" && Number.isFinite(g.baselineHbar) && g.baselineHbar >= 0
+        ? g.baselineHbar
+        : 0;
+    return { ...g, baselineHbar } as FundingGoal;
   } catch {
     return null;
   }
+}
+
+/**
+ * Campaign progress: the slice of the creator's all-time tipped total
+ * that belongs to this campaign. Never negative.
+ */
+export function campaignRaised(
+  goal: Pick<FundingGoal, "baselineHbar" | "targetHbar">,
+  allTimeHbar: number | null,
+): number {
+  const base =
+    typeof goal.baselineHbar === "number" && Number.isFinite(goal.baselineHbar) && goal.baselineHbar >= 0
+      ? goal.baselineHbar
+      : 0;
+  const all = typeof allTimeHbar === "number" && Number.isFinite(allTimeHbar) ? allTimeHbar : 0;
+  return Math.max(0, all - base);
+}
+
+/** True once this campaign's raised total meets its target. */
+export function isCampaignReached(
+  goal: Pick<FundingGoal, "baselineHbar" | "targetHbar">,
+  allTimeHbar: number | null,
+): boolean {
+  return goal.targetHbar > 0 && campaignRaised(goal, allTimeHbar) >= goal.targetHbar;
 }
 
 /** Public read: the goal for a username, or null. */
@@ -163,6 +204,24 @@ export interface GoalDeps {
   store: KvStore;
   verifySession: (cred: unknown) => Promise<{ ok: true; address: string } | { ok: false; error: string }>;
   resolveOwner: (username: string) => Promise<string | null>;
+  /**
+   * All-time tipped HBAR (creator's 98% share) for an owner EVM address;
+   * null when unreadable. Optional in tests — writeGoal falls back to the
+   * mirror-node reader. Used to snapshot the campaign baseline.
+   */
+  readAllTimeHbar?: (ownerAddress: string) => Promise<number | null>;
+}
+
+async function mirrorAllTimeHbar(ownerAddress: string): Promise<number | null> {
+  try {
+    const { fetchEarningsSummary } = await import("./earnings");
+    const res = await fetchEarningsSummary(ownerAddress.toLowerCase());
+    if (!res.ok) return null;
+    const n = res.summary.hbarAllTime;
+    return Number.isFinite(n) ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 export function defaultGoalDeps(): GoalDeps {
@@ -177,6 +236,7 @@ export function defaultGoalDeps(): GoalDeps {
       const { resolveUsernameWallet } = await import("./townhall/badges");
       return resolveUsernameWallet(username);
     },
+    readAllTimeHbar: mirrorAllTimeHbar,
   };
 }
 
@@ -226,17 +286,34 @@ export async function writeGoal(deps: GoalDeps, usernameRaw: unknown, body: unkn
   const validated = validateGoalInput(body);
   if (!validated.ok) return err(400, validated.error);
   const now = new Date().toISOString();
-  let createdAt = now;
+  let existing: FundingGoal | null = null;
   try {
-    createdAt = (await readGoal(deps.store, gate.username))?.createdAt ?? now;
+    existing = await readGoal(deps.store, gate.username);
   } catch {
-    /* keep now */
+    /* treat as new campaign */
   }
+  // Snapshot the current all-time total (best-effort; 0 when unreadable).
+  let allTime: number | null = null;
+  try {
+    allTime = await (deps.readAllTimeHbar ?? mirrorAllTimeHbar)(gate.owner);
+  } catch {
+    /* best-effort */
+  }
+  // A save after the previous campaign completed starts a NEW campaign:
+  // fresh baseline (progress restarts at zero) and fresh createdAt, so the
+  // board and the blockpage treat it as a new fundraiser. Editing a live
+  // (unreached) campaign keeps its baseline and createdAt — a title or
+  // target tweak must never wipe visible progress.
+  const prevReached = existing ? isCampaignReached(existing, allTime) : false;
+  const isNewCampaign = !existing || prevReached;
+  const baselineHbar = isNewCampaign ? (allTime ?? 0) : (existing?.baselineHbar ?? 0);
+  const createdAt = isNewCampaign ? now : (existing?.createdAt ?? now);
   const goal: FundingGoal = {
     username: gate.username,
     owner: gate.owner,
     targetHbar: validated.targetHbar,
     title: validated.title,
+    baselineHbar,
     createdAt,
     updatedAt: now,
   };
