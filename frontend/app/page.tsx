@@ -41,6 +41,10 @@ export default function LandingPage() {
 
         {/* What is Voicescape */}
         <section className="vs-section" style={{ textAlign: "center" }}>
+          <div className="vs-hero-logo-wrap" aria-hidden="true">
+            <div className="vs-hero-logo-glow" />
+            <Logo size={64} />
+          </div>
           <p className="vs-label"><T k="landing.whatIs" /></p>
           <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 20px" }}>
             <T k="landing.hero1" /> <span className="vs-gradient-text"><T k="landing.hero2" /></span>

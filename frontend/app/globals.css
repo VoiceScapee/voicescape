@@ -601,6 +601,44 @@ a {
   animation: vsSpinSlow 14s linear infinite;
 }
 
+/* Landing hero: logo with the same spinning glow as blockpage avatars.
+   The glow is a soft rotating conic wash behind the wide lockup (the sharp
+   ring treatment only fits the circular avatar). */
+.vs-hero-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px auto 22px;
+  padding: 30px 44px;
+}
+
+.vs-hero-logo-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: conic-gradient(
+    from 180deg,
+    var(--vs-violet, #8259ef),
+    var(--vs-cyan, #91a8ff),
+    var(--vs-magenta, #e879f9),
+    var(--vs-violet, #8259ef)
+  );
+  filter: blur(30px);
+  opacity: 0.5;
+  animation: vsSpinSlow 12s linear infinite;
+}
+
+.vs-hero-logo-wrap img {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vs-hero-logo-glow {
+    animation: none;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Reactive transaction states (confirming animation + success receipt) */
 /* ------------------------------------------------------------------ */
