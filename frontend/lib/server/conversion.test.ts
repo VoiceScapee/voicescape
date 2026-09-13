@@ -30,9 +30,9 @@ describe("recordConversion", () => {
   test("increments daily counters per event", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    expect(await recordConversion(store, "tip_attempt", t0)).toBe(true);
-    expect(await recordConversion(store, "tip_attempt", t0)).toBe(true);
-    expect(await recordConversion(store, "tip_confirmed", t0)).toBe(true);
+    expect(await recordConversion(store, "tip_attempt", { nowMs: t0 })).toBe(true);
+    expect(await recordConversion(store, "tip_attempt", { nowMs: t0 })).toBe(true);
+    expect(await recordConversion(store, "tip_confirmed", { nowMs: t0 })).toBe(true);
     const raw = await store.get("metrics:daily:2026-09-11:tip_attempt");
     expect(raw).toBe("2");
     expect(await store.get("metrics:daily:2026-09-11:tip_confirmed")).toBe("1");
@@ -62,7 +62,7 @@ describe("recordConversion", () => {
 
   test("stored keys carry no identity — only date + allowlisted event name", async () => {
     const store = mem();
-    await recordConversion(store, "tip_attempt", Date.UTC(2026, 8, 11, 12, 0, 0));
+    await recordConversion(store, "tip_attempt", { nowMs: Date.UTC(2026, 8, 11, 12, 0, 0) });
     // The memory store exposes keys only via get; assert the exact key shape.
     const val = await store.get("metrics:daily:2026-09-11:tip_attempt");
     expect(val).toBe("1");
@@ -73,15 +73,44 @@ describe("recordConversion", () => {
       expect(e).not.toMatch(/0x[0-9a-f]{2,}|0\.0\.\d+|\d+\.\d+\.\d+\.\d+/i);
     }
   });
+
+  test("context increments a per-surface counter alongside the plain total", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    await recordConversion(store, "tip_attempt", { context: "blockpage", nowMs: t0 });
+    await recordConversion(store, "tip_attempt", { context: "post", nowMs: t0 });
+    await recordConversion(store, "tip_attempt", { nowMs: t0 });
+    expect(await store.get("metrics:daily:2026-09-11:tip_attempt")).toBe("3");
+    expect(await store.get("metrics:daily:2026-09-11:tip_attempt:blockpage")).toBe("1");
+    expect(await store.get("metrics:daily:2026-09-11:tip_attempt:post")).toBe("1");
+  });
+
+  test("invalid context is ignored — plain total still recorded", async () => {
+    const store = mem();
+    await recordConversion(store, "tip_attempt", { context: "evil-surface" });
+    await recordConversion(store, "tip_attempt", { context: null });
+    const day = new Date().toISOString().slice(0, 10);
+    expect(await store.get(`metrics:daily:${day}:tip_attempt`)).toBe("2");
+    expect(await store.get(`metrics:daily:${day}:tip_attempt:evil-surface`)).toBe(null);
+  });
+
+  test("isConversionContext allowlist is tight", async () => {
+    const { isConversionContext } = await import("./conversion");
+    expect(isConversionContext("blockpage")).toBe(true);
+    expect(isConversionContext("post")).toBe(true);
+    expect(isConversionContext("0.0.12345")).toBe(false);
+    expect(isConversionContext("blockpage; DROP")).toBe(false);
+    expect(isConversionContext(null)).toBe(false);
+  });
 });
 
 describe("getConversionStats", () => {
   test("returns last-7-day per-event totals, newest first", async () => {
     const store = mem();
     const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
-    await recordConversion(store, "tip_attempt", t0);
-    await recordConversion(store, "tip_attempt", t0);
-    await recordConversion(store, "chat_sent", t0 - 86400_000);
+    await recordConversion(store, "tip_attempt", { nowMs: t0 });
+    await recordConversion(store, "tip_attempt", { nowMs: t0 });
+    await recordConversion(store, "chat_sent", { nowMs: t0 - 86400_000 });
     const days = await getConversionStats(store, 7, t0);
     expect(days).toHaveLength(7);
     expect(days[0].date).toBe("2026-09-11");
@@ -89,6 +118,21 @@ describe("getConversionStats", () => {
     expect(days[1].date).toBe("2026-09-10");
     expect(days[1].events).toEqual({ chat_sent: 1 });
     expect(days[2].events).toEqual({});
+  });
+
+  test("stats include the per-surface context breakdown", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    await recordConversion(store, "tip_attempt", { context: "blockpage", nowMs: t0 });
+    await recordConversion(store, "tip_attempt", { context: "blockpage", nowMs: t0 });
+    await recordConversion(store, "tip_confirmed", { context: "post", nowMs: t0 });
+    const days = await getConversionStats(store, 7, t0);
+    expect(days[0].events).toEqual({ tip_attempt: 2, tip_confirmed: 1 });
+    expect(days[0].contexts).toEqual({
+      "tip_attempt:blockpage": 2,
+      "tip_confirmed:post": 1,
+    });
+    expect(days[1].contexts).toEqual({});
   });
 });
 

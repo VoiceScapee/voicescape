@@ -77,10 +77,10 @@ function TipBox({
     if (confirmStatus === "confirmed") {
       setFinalizedAt(new Date());
       setTxHash(confirmTxId);
-      recordConversionEvent("tip_confirmed");
+      recordConversionEvent("tip_confirmed", "blockpage");
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent — check the explorer for details.");
-      recordConversionEvent("tip_failed");
+      recordConversionEvent("tip_failed", "blockpage");
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
@@ -134,7 +134,7 @@ function TipBox({
     }
     setBusy(true);
     setWaitingLong(false);
-    recordConversionEvent("tip_attempt");
+    recordConversionEvent("tip_attempt", "blockpage");
     // HashPack sometimes goes silent after the user approves (the tx still
     // lands on-chain; the wallet layer recovers via the mirror node after a
     // 90s timeout). Without a progress hint the UI looks frozen on
@@ -174,7 +174,7 @@ function TipBox({
         // attempt, and map known wallet-library TypeErrors to actionable
         // copy instead of the cryptic raw message.
         setError(`Tip failed: ${friendlyWalletError(e)}`);
-        recordConversionEvent("tip_failed");
+        recordConversionEvent("tip_failed", "blockpage");
       }
     } finally {
       clearTimeout(waitingNote);

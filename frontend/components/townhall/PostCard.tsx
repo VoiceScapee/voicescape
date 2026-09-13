@@ -53,10 +53,10 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     if (confirmStatus === "confirmed") {
       setFinalizedAt(new Date());
       setTxId(confirmTxId);
-      recordConversionEvent("tip_confirmed");
+      recordConversionEvent("tip_confirmed", "post");
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent.");
-      recordConversionEvent("tip_failed");
+      recordConversionEvent("tip_failed", "post");
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
@@ -79,7 +79,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     // first so the user never signs a transaction that cannot succeed.
     setBusy(true);
     setWaitingLong(false);
-    recordConversionEvent("tip_attempt");
+    recordConversionEvent("tip_attempt", "post");
     // HashPack sometimes goes silent after the user approves — reassure
     // after 15s so users don't abandon the page.
     const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
@@ -113,7 +113,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         // outcome so the funnel never shows a bare attempt, and map known
         // wallet-library TypeErrors to actionable copy.
         setError(`Tip failed: ${friendlyWalletError(e)}`);
-        recordConversionEvent("tip_failed");
+        recordConversionEvent("tip_failed", "post");
       }
     } finally {
       clearTimeout(waitingNote);

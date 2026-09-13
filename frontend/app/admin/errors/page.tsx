@@ -41,6 +41,7 @@ function fmtTime(ms: number): string {
 interface MetricsDay {
   date: string;
   events: Record<string, number>;
+  contexts: Record<string, number>;
 }
 
 export default function AdminErrorsPage() {
@@ -198,6 +199,7 @@ export default function AdminErrorsPage() {
           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
             {metrics.map((d) => {
               const names = Object.keys(d.events);
+              const ctxNames = Object.keys(d.contexts ?? {});
               if (names.length === 0) return null;
               return (
                 <div key={d.date} className="vs-card" style={{ padding: 12 }}>
@@ -217,6 +219,28 @@ export default function AdminErrorsPage() {
                       </span>
                     ))}
                   </div>
+                  {ctxNames.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                      {ctxNames.sort().map((name) => {
+                        const [event, surface] = name.split(":");
+                        return (
+                          <span
+                            key={name}
+                            style={{
+                              fontSize: 11,
+                              background: "rgba(130,89,239,0.14)",
+                              border: "1px solid rgba(130,89,239,0.35)",
+                              borderRadius: 999,
+                              padding: "2px 10px",
+                              color: "#cfc2ff",
+                            }}
+                          >
+                            <code>{event}</code> · {surface} ×{d.contexts[name]}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -230,8 +254,10 @@ export default function AdminErrorsPage() {
 /** 7-day funnel totals with attempt → confirmed rates for paid actions. */
 function FunnelSummary({ days }: { days: MetricsDay[] }) {
   const total = (name: string) => days.reduce((n, d) => n + (d.events[name] ?? 0), 0);
-  const rows: { label: string; attempts: number; confirmed: number }[] = [
-    { label: "Tips", attempts: total("tip_attempt"), confirmed: total("tip_confirmed") },
+  const ctxTotal = (key: string) => days.reduce((n, d) => n + (d.contexts?.[key] ?? 0), 0);
+  const tipSurfaceDetail = `blockpage ${ctxTotal("tip_attempt:blockpage")} · post ${ctxTotal("tip_attempt:post")}`;
+  const rows: { label: string; attempts: number; confirmed: number; detail?: string }[] = [
+    { label: "Tips", attempts: total("tip_attempt"), confirmed: total("tip_confirmed"), detail: tipSurfaceDetail },
     { label: "Purchases", attempts: total("purchase_attempt"), confirmed: total("purchase_confirmed") },
     { label: "Votes", attempts: total("vote_submitted") + total("vote_failed"), confirmed: total("vote_submitted") },
     { label: "Proposals", attempts: total("proposal_submitted") + total("proposal_failed"), confirmed: total("proposal_submitted") },
@@ -243,7 +269,14 @@ function FunnelSummary({ days }: { days: MetricsDay[] }) {
         const rate = r.attempts > 0 ? Math.round((r.confirmed / r.attempts) * 100) : null;
         return (
           <div key={r.label} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "3px 0" }}>
-            <span>{r.label}</span>
+            <span>
+              {r.label}
+              {r.detail && (
+                <span className="th-muted" style={{ fontSize: 11, marginLeft: 8 }}>
+                  {r.detail}
+                </span>
+              )}
+            </span>
             <span className="th-muted">
               {r.confirmed}/{r.attempts}{rate !== null ? ` · ${rate}%` : ""}
             </span>

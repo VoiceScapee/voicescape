@@ -7,11 +7,14 @@
  * So this module stores AGGREGATE COUNTERS ONLY:
  *
  *   metrics:daily:<YYYY-MM-DD>:<event> → count (7-day TTL)
+ *   metrics:daily:<YYYY-MM-DD>:<event>:<context> → count (7-day TTL)
  *
- * Never stored: wallet addresses, IPs, user agents, pages, tx ids, or any
- * per-user/per-session record. The event name comes from a strict allowlist;
- * anything else is dropped. IP is used transiently for rate limiting only
- * (see the /api/metrics route) and never persisted.
+ * The optional <context> is a coarse surface label ("blockpage" vs "post")
+ * so a failed tip can be attributed to a tip button without identifying
+ * anyone. Never stored: wallet addresses, IPs, user agents, specific page
+ * URLs, tx ids, or any per-user/per-session record. The event name comes
+ * from a strict allowlist; anything else is dropped. IP is used transiently
+ * for rate limiting only (see the /api/metrics route) and never persisted.
  *
  * Telemetry always fails open: recording never throws and never affects the
  * payment UX — a metrics failure is silently dropped.
@@ -39,6 +42,23 @@ export const CONVERSION_EVENTS = [
 
 export type ConversionEvent = (typeof CONVERSION_EVENTS)[number];
 
+/**
+ * Coarse surface dimension for tip events — the ONLY page-level detail we
+ * store, as an aggregate counter. "blockpage" = the /[username] tip panel,
+ * "post" = the town-hall PostCard tip button. Still anonymous: no wallet,
+ * no IP, no specific page URL, no session.
+ */
+export const CONVERSION_CONTEXTS = ["blockpage", "post"] as const;
+
+export type ConversionContext = (typeof CONVERSION_CONTEXTS)[number];
+
+export function isConversionContext(v: unknown): v is ConversionContext {
+  return (
+    typeof v === "string" &&
+    (CONVERSION_CONTEXTS as readonly string[]).includes(v)
+  );
+}
+
 /** Aggregates expire after 7 days — same window as client error reports. */
 export const CONVERSION_TTL_MS = 7 * 24 * 3600 * 1000;
 
@@ -58,17 +78,27 @@ function utcDate(d: Date): string {
 
 /**
  * Increment the daily counter for an allowlisted event. Returns false for
- * non-allowlisted events (dropped silently). Never throws — telemetry
- * failure must never affect the paid-action UX.
+ * non-allowlisted events (dropped silently). When `opts.context` is a valid
+ * ConversionContext, a second per-surface counter is incremented alongside
+ * the plain total. Never throws — telemetry failure must never affect the
+ * paid-action UX.
  */
 export async function recordConversion(
   store: KvStore,
   eventRaw: unknown,
-  nowMs: number = Date.now(),
+  opts?: { context?: unknown; nowMs?: number },
 ): Promise<boolean> {
   if (!isConversionEvent(eventRaw)) return false;
+  const nowMs = opts?.nowMs ?? Date.now();
   try {
-    await store.incr(metricKey(utcDate(new Date(nowMs)), eventRaw), CONVERSION_TTL_MS);
+    const date = utcDate(new Date(nowMs));
+    await store.incr(metricKey(date, eventRaw), CONVERSION_TTL_MS);
+    if (isConversionContext(opts?.context)) {
+      await store.incr(
+        `${metricKey(date, eventRaw)}:${opts.context}`,
+        CONVERSION_TTL_MS,
+      );
+    }
     return true;
   } catch {
     return false;
@@ -79,6 +109,8 @@ export async function recordConversion(
 export interface ConversionDayStats {
   date: string;
   events: Partial<Record<ConversionEvent, number>>;
+  /** Per-surface breakdown, e.g. { "tip_attempt:blockpage": 2 }. */
+  contexts: Record<string, number>;
 }
 
 export async function getConversionStats(
@@ -90,16 +122,27 @@ export async function getConversionStats(
   for (let i = 0; i < days; i++) {
     const date = utcDate(new Date(nowMs - i * 86400_000));
     const events: Partial<Record<ConversionEvent, number>> = {};
+    const contexts: Record<string, number> = {};
     for (const event of CONVERSION_EVENTS) {
+      const base = metricKey(date, event);
       try {
-        const raw = await store.get(metricKey(date, event));
+        const raw = await store.get(base);
         const n = raw == null ? 0 : parseInt(raw, 10);
         if (Number.isFinite(n) && n > 0) events[event] = n;
       } catch {
         /* skip unreadable counters */
       }
+      for (const context of CONVERSION_CONTEXTS) {
+        try {
+          const raw = await store.get(`${base}:${context}`);
+          const n = raw == null ? 0 : parseInt(raw, 10);
+          if (Number.isFinite(n) && n > 0) contexts[`${event}:${context}`] = n;
+        } catch {
+          /* skip unreadable counters */
+        }
+      }
     }
-    out.push({ date, events });
+    out.push({ date, events, contexts });
   }
   return out;
 }

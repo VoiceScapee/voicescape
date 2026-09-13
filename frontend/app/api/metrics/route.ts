@@ -7,11 +7,14 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/metrics
- * { event: string }
+ * { event: string, context?: string }
  *
  * Privacy-safe aggregate conversion telemetry. The event name must be on
- * the allowlist (lib/server/conversion.ts); only a daily counter is
- * incremented — no wallet, IP, user agent, page, or tx id is ever stored.
+ * the allowlist (lib/server/conversion.ts); only daily counters are
+ * incremented — no wallet, IP, user agent, specific page, or tx id is ever
+ * stored. The optional context is a coarse surface label ("blockpage" |
+ * "post", allowlisted too), so a failed tip can be attributed to a tip
+ * button without identifying anyone.
  * Always answers 200 (fail-open): telemetry must never break the paid
  * action it measures.
  *
@@ -39,10 +42,10 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: true });
   }
-  const b = (body ?? {}) as { event?: unknown };
+  const b = (body ?? {}) as { event?: unknown; context?: unknown };
 
   try {
-    await recordConversion(getKvStore(), b.event);
+    await recordConversion(getKvStore(), b.event, { context: b.context });
   } catch {
     /* telemetry must never break the page */
   }
