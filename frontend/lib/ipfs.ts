@@ -14,14 +14,28 @@ function getGateway(): string {
 
 /**
  * Pin page JSON to IPFS via the /api/pin server route.
- * Returns the resulting CID.
+ * Returns the resulting CID. Aborts after 60s so a stalled pin surfaces
+ * as a clear error instead of hanging the publish flow forever.
  */
 export async function pinPageJson(pageJson: string): Promise<string> {
-  const res = await fetch("/api/pin", {
-    method: "POST",
-    headers: { "content-type": "application/json", ...getAuthHeaders() },
-    body: pageJson,
-  });
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 60_000);
+  let res: Response;
+  try {
+    res = await fetch("/api/pin", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...getAuthHeaders() },
+      body: pageJson,
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Pinning timed out after 60 seconds — check your connection and try again.");
+    }
+    throw new Error(`Pinning failed: ${e instanceof Error ? e.message : String(e)}`);
+  } finally {
+    clearTimeout(timer);
+  }
   const data = (await res.json().catch(() => ({}))) as { cid?: string; error?: string };
   if (!res.ok) {
     throw new Error(data.error ?? `Pinning failed (HTTP ${res.status}).`);
