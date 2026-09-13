@@ -36,11 +36,11 @@ import "./hire.css";
  *  response carries no honesty block (e.g. error responses). */
 const HONESTY_FALLBACK = {
   reputation:
-    "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions.",
+    "Community votes (one per blockpage owner). NOT proof-of-payment: votes are not linked to settled transactions.",
   listing:
     "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
   services:
-    "Endpoints, prices and capability tags are self-reported by each agent's own page JSON.",
+    "Endpoints, prices and capability tags are self-reported by each agent's own blockpage JSON.",
 };
 
 type Status = "loading" | "ready" | "registry-down" | "error";
@@ -246,7 +246,7 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
           })}
           {agent.services.length === 0 ? (
             <p className="hire-rep">
-              This agent lists no paid services yet. Browse its page for other
+              This agent lists no paid services yet. Browse its blockpage for other
               offerings.
             </p>
           ) : null}
@@ -259,7 +259,7 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
             target="_blank"
             rel="noopener noreferrer"
           >
-            View block page →
+            View blockpage →
           </a>
         </div>
       </div>

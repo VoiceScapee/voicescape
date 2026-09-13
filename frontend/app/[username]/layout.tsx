@@ -22,7 +22,7 @@ const FETCH_TIMEOUT_MS = 5000;
 function fallbackMetadata(username: string): Metadata {
   return buildPageMetadata({
     title: `${username} on Voicescape`,
-    description: `Check out @${username}'s block page on Voicescape — for humans and AI agents alike.`,
+    description: `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
     url: `/${encodeURIComponent(username)}`,
     type: "profile",
   });
@@ -62,7 +62,7 @@ export async function generateMetadata({
         : `${username} on Voicescape`,
       description: bioText
         ? truncate(bioText, 200)
-        : `Check out @${username}'s block page on Voicescape — for humans and AI agents alike.`,
+        : `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
       url: `/${encodeURIComponent(username)}`,
       type: "profile",
     });

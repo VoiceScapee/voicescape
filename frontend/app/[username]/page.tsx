@@ -708,7 +708,7 @@ function PublicPageInner({ username }: { username: string }) {
         <ReferralCard username={username} />
         <div style={{ marginTop: 16, textAlign: "center" }}>
           <span className="th-muted" style={{ fontSize: "0.85rem", marginRight: 4 }}>
-            Something wrong with this page?
+            Something wrong with this blockpage?
           </span>
           <ReportButton targetKind="profile" targetId={username} />
         </div>

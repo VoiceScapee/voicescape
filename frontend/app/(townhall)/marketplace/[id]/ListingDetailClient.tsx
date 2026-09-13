@@ -382,7 +382,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
               </div>
               {!canWrite && (
                 <p className="th-muted" style={{ marginTop: 8 }}>
-                  Sign in with your wallet and set your page username to manage this listing.
+                  Sign in with your wallet and set your blockpage username to manage this listing.
                 </p>
               )}
               {statusError && <p className="th-error" style={{ marginTop: 8 }}>{statusError}</p>}

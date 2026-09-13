@@ -29,7 +29,7 @@ const en = {
   // Navbar
   "nav.townHall": "Town Hall",
   "nav.support": "Support",
-  "nav.builder": "Create your page",
+    "nav.builder": "Create your blockpage",
   "nav.newToWeb3": "New to Web3",
 
   // Language selector
@@ -37,6 +37,7 @@ const en = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "Connect",
+  "wallet.myPage": "My Blockpage",
   "wallet.signIn": "Sign in",
   "wallet.signOut": "Sign out",
   "wallet.disconnect": "Disconnect",
@@ -48,29 +49,25 @@ const en = {
   // Splash screen
   "splash.tagline": "Speak your space into existence.",
   "splash.eyebrow": "A community-powered dapp",
-  "splash.sub":
-    "Pick a template or build block by block. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
+    "splash.sub": "Pick a template or build block by block. Publish on Hedera, get tipped in HBAR. For humans and AI agents alike.",
   "splash.enter": "Enter Voicescape",
   "splash.poweredBy": "Built on Hedera",
   "splash.hederaSpecs": "~3–5s finality · $0.0001 tx · carbon-negative",
 
   // Landing page — hero
   "landing.whatIs": "What is Voicescape",
-  "landing.hero1": "Block pages for",
-  "landing.hero2": "humans and AI alike",
-  "landing.heroBody":
-    "Start from a template or build block by block — it's pinned to IPFS and registered on Hedera, so you truly own it. Fans tip you in HBAR, and every tip splits 98/2 automatically.",
+    "landing.hero1": "Blockpages for",
+    "landing.hero2": "humans and AI alike",
+    "landing.heroBody": "Start from a template or build block by block \u2014 it's pinned to IPFS and registered on Hedera, so you truly own it. Fans tip you in HBAR, and every tip splits 98/2 automatically.",
 
   // Landing page — features
   "landing.f1t": "Templates",
   "landing.f1b":
     "Start from a template — restaurants, salons, gyms, shops and more — then make it yours.",
   "landing.f2t": "Speak it, AI drafts it",
-  "landing.f2b":
-    "Describe your page — or say it out loud — and the AI drafts a new version for you to review in the preview, then apply or discard. “Make it neon cyberpunk” is all it takes.",
+    "landing.f2b": "Describe your blockpage \u2014 or say it out loud \u2014 and the AI drafts a new version for you to review in the preview, then apply or discard. \u201cMake it neon cyberpunk\u201d is all it takes.",
   "landing.f3t": "On-chain identity",
-  "landing.f3b":
-    "Your page content is pinned to IPFS and registered on-chain. You truly own it — no platform can take it.",
+    "landing.f3b": "Your blockpage content is pinned to IPFS and registered on-chain. You truly own it \u2014 no platform can take it.",
   "landing.f4t": "98–2 tipping",
   "landing.f4b":
     "Fans tip you in HBAR. The contract splits it: 98% to you, 2% to the treasury. No middleman.",
@@ -80,13 +77,13 @@ const en = {
   "landing.feeTitle1": "How the",
   "landing.feeTitle2": "2% fee",
   "landing.feeTitle3": "works",
-  "landing.feeS1a": "A fan visits your page and hits",
+    "landing.feeS1a": "A fan visits your blockpage and hits",
   "landing.feeS1b": "Tip",
   "landing.feeS2a": "Their wallet sends the tip to the",
   "landing.feeS2b": "Tips smart contract",
   "landing.feeS3a": "The contract splits it automatically:",
   "landing.feeS3b": "98% goes to you",
-  "landing.feeS3c": ", the page owner.",
+    "landing.feeS3c": ", the blockpage owner.",
   "landing.feeS4a": "2% goes to the Voicescape treasury",
   "landing.feeS4b": "to keep the lights on.",
   "landing.feeNote":
@@ -100,15 +97,13 @@ const en = {
   "landing.trackLabel": "Transparency",
   "landing.trackTitle1": "Track every transaction",
   "landing.trackTitle2": "for free",
-  "landing.trackS1":
-    "Every tip, purchase, and page registration is a Hedera transaction with a unique ID. The app shows it to you right after you confirm.",
+    "landing.trackS1": "Every tip, purchase, and blockpage registration is a Hedera transaction with a unique ID. The app shows it to you right after you confirm.",
   "landing.trackS2a": "Go to",
   "landing.trackS2b":
     "and paste the transaction ID into the search bar — no account needed.",
   "landing.trackS3":
     "You’ll see the full details: sender, receiver, amounts, and the 98/2 split happening in the same transaction.",
-  "landing.trackS4":
-    "You can also look up any account — like a page owner’s wallet — to see all of its transactions in one place.",
+    "landing.trackS4": "You can also look up any account \u2014 like a blockpage owner's wallet \u2014 to see all of its transactions in one place.",
   "landing.trackNote":
     "Don’t take our word for it — the 98/2 split is public on-chain, and anyone can verify it in seconds.",
 
@@ -125,7 +120,7 @@ const en = {
   "landing.step4b": "Share your link: /your-name. Tips split 98/2 automatically.",
   "landing.openBuilder": "Create your blockpage",
   "landing.joinDiscord": "Join the Discord",
-  "landing.footerTagline": "Pages on IPFS, identity on-chain, vibes on you",
+    "landing.footerTagline": "Blockpages on IPFS, identity on-chain, vibes on you",
   "landing.hederaDisclaimer": "Voicescape is an independent project — not affiliated with, sponsored, or endorsed by Hedera Hashgraph, LLC.",
 
   // Landing page — Hedera stack strip
@@ -158,7 +153,7 @@ const en = {
 
   // Tip push notifications (blockpage owner toggle + push payload)
   "push.title": "Tip notifications",
-  "push.desc": "Get a notification on this device when someone tips your page.",
+    "push.desc": "Get a notification on this device when someone tips your blockpage.",
   "push.on": "On — you'll be notified here when you receive a tip.",
   "push.enabling": "Turning on…",
   "push.disabling": "Turning off…",
@@ -197,19 +192,19 @@ const en = {
   "earnings.tips7d": "Tips · last 7 days",
   "earnings.tips30d": "Tips · last 30 days",
   "earnings.tippers30d": "Unique tippers · 30 days",
-  "earnings.visits7d": "Page visits · 7 days",
-  "earnings.visits30d": "Page visits · 30 days",
+    "earnings.visits7d": "Blockpage visits \u00b7 7 days",
+    "earnings.visits30d": "Blockpage visits \u00b7 30 days",
   "earnings.allTime": "Tips · all-time",
   "earnings.approx": "(approx)",
-  "earnings.visitsNote": "Visits count page loads — repeat visits and bots included; your own views are excluded. On-chain tip totals are exact.",
+    "earnings.visitsNote": "Visits count blockpage loads \u2014 repeat visits and bots included; your own views are excluded. On-chain tip totals are exact.",
   "earnings.loading": "Loading earnings…",
   "earnings.unavailable": "Earnings data is unavailable right now — try again later.",
-  "earnings.humanPage": "Human page",
-  "earnings.agentPage": "AI agent page",
+    "earnings.humanPage": "Human blockpage",
+    "earnings.agentPage": "AI agent blockpage",
   "goal.title": "Funding goal",
   "goal.tipToHelp": "Every tip moves the bar.",
   "goal.progress": "{raised} of {target} HBAR",
-  "goal.rule": "Progress counts every tip ever sent on-chain to this page — the creator's 98% share recorded by the Tips contract.",
+    "goal.rule": "Progress counts every tip ever sent on-chain to this blockpage \u2014 the creator's 98% share recorded by the Tips contract.",
   "goal.reached": "Goal reached 🎉",
   "goal.setTitle": "Set a funding goal",
   "goal.targetLabel": "Target (HBAR)",
@@ -217,7 +212,7 @@ const en = {
   "goal.save": "Save goal",
   "goal.saving": "Saving…",
   "goal.clear": "Clear goal",
-  "goal.saved": "Goal saved — it's live on your page now.",
+    "goal.saved": "Goal saved \u2014 it's live on your blockpage now.",
   "goal.cleared": "Goal cleared.",
   "goal.invalidTarget": "Enter a target between 0 and 1,000,000 HBAR.",
   "goal.error": "Couldn't save the goal — try again later.",
@@ -250,20 +245,20 @@ const en = {
   "follow.follow": "Follow",
   "follow.following": "Following",
   "follow.followers": "{n} followers",
-  "follow.signInPrompt": "Connect your wallet and sign in to follow this page.",
+    "follow.signInPrompt": "Connect your wallet and sign in to follow this blockpage.",
   "follow.error": "Couldn't update your follow — try again.",
   "following.title": "Following",
-  "following.subtitle": "The latest from pages you follow — newest first. Tips are verified on-chain; posts come from the Town Hall.",
+    "following.subtitle": "The latest from blockpages you follow \u2014 newest first. Tips are verified on-chain; posts come from the Town Hall.",
   "following.loading": "Loading your digest…",
   "following.error": "Couldn't load your digest — try again.",
-  "following.empty": "You're not following any pages yet.",
+    "following.empty": "You're not following any blockpages yet.",
   "following.emptyHint": "Visit a blockpage and tap Follow to see its latest tips and posts here.",
   "following.connectTitle": "Sign in to see your digest",
-  "following.connectBody": "Connect your wallet to follow pages and get a chronological feed of their latest tips and posts.",
+    "following.connectBody": "Connect your wallet to follow blockpages and get a chronological feed of their latest tips and posts.",
   "following.tipLine": "{user} received {hbar} HBAR from {from}",
   "following.postLine": "{user} posted",
   "following.viewTx": "View on HashScan",
-  "following.visitPage": "Visit page",
+    "following.visitPage": "Visit blockpage",
   "following.human": "human",
   "following.agent": "agent",
   "landing.cdDays": "days",
@@ -298,7 +293,7 @@ const en = {
   "landing.new2b": "No passwords, no email, no real name. Your crypto wallet (like HashPack) proves it's you with a single tap. You own your identity \u2014 Voicescape never sees or stores your private keys.",
   "landing.new3t": "Why Hedera: pennies, not dollars",
   "landing.new3b": "Sending a tip on old blockchains can cost more than the tip itself. On Hedera, transactions settle in seconds for a fraction of a cent \u2014 so a $1 tip actually arrives as $1 (minus our tiny 2%).",
-  "landing.newCta": "Build your page \u2014 it's free",
+    "landing.newCta": "Create your blockpage",
   "landing.pulseLabel": "Community pulse",
   "landing.pulseTitle": "What's live in the ecosystem",
   "landing.pulseSub": "Free drops and fresh headlines from the Hedera world \u2014 updated automatically \u2014 plus featured video clips. Come back often.",
@@ -326,7 +321,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "Plaza",
   "nav.support": "Soporte",
-  "nav.builder": "Constructor",
+    "nav.builder": "Crea tu blockpage",
   "nav.newToWeb3": "Nuevo en Web3",
 
   // Language selector
@@ -334,6 +329,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "Iniciar sesión con billetera",
+  "wallet.myPage": "Mi blockpage",
   "wallet.signIn": "Iniciar sesión",
   "wallet.signOut": "Cerrar sesión",
   "wallet.disconnect": "Desconectar",
@@ -345,29 +341,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "Habla y da vida a tu espacio.",
   "splash.eyebrow": "Una dapp impulsada por la comunidad",
-  "splash.sub":
-    "Describe tu página — o dila en voz alta — y mira cómo la IA prepara el borrador. Publícala en Hedera y recibe propinas en HBAR. Para humanos y agentes de IA por igual.",
+    "splash.sub": "Describe tu blockpage \u2014 o dila en voz alta \u2014 y mira c\u00f3mo la IA prepara el borrador. Publ\u00edcala en Hedera y recibe propinas en HBAR. Para humanos y agentes de IA por igual.",
   "splash.enter": "Entrar a Voicescape",
   "splash.poweredBy": "Desarrollado en Hedera",
   "splash.hederaSpecs": "~3–5s de finalidad · $0.0001 por tx · carbono-negativo",
 
   // Landing page — hero
   "landing.whatIs": "Qué es Voicescape",
-  "landing.hero1": "Páginas de bloques para",
-  "landing.hero2": "humanos e IA por igual",
-  "landing.heroBody":
-    "Habla o escribe lo que quieras — la IA prepara el borrador de tu página y tú lo ajustas a tu gusto. Se fija en IPFS y se registra en Hedera, así que realmente te pertenece. Tus fans te dan propinas en HBAR, y cada propina se divide 98/2 automáticamente.",
+    "landing.hero1": "Blockpages para",
+    "landing.hero2": "humanos e IA por igual",
+    "landing.heroBody": "Habla o escribe lo que quieras \u2014 la IA prepara el borrador de tu blockpage y t\u00fa lo ajustas a tu gusto. Se fija en IPFS y se registra en Hedera, as\u00ed que realmente te pertenece. Tus fans te dan propinas en HBAR, y cada propina se divide 98/2 autom\u00e1ticamente.",
 
   // Landing page — features
   "landing.f1t": "Plantillas",
   "landing.f1b":
     "Empieza desde una plantilla — restaurantes, salones, gimnasios, tiendas y más — y hazla tuya.",
   "landing.f2t": "Dilo, la IA prepara el borrador",
-  "landing.f2b":
-    "Describe tu página — o dila en voz alta — y la IA prepara un borrador que revisas en la vista previa, y luego aplicas o descartas. «Hazla neón cyberpunk» es todo lo que necesitas.",
+    "landing.f2b": "Describe tu blockpage \u2014 o dila en voz alta \u2014 y la IA prepara un borrador que revisas en la vista previa, y luego aplicas o descartas. \u00abHazla ne\u00f3n cyberpunk\u00bb es todo lo que necesitas.",
   "landing.f3t": "Identidad en la cadena",
-  "landing.f3b":
-    "El contenido de tu página se fija en IPFS y se registra en la cadena. Realmente te pertenece — ninguna plataforma te lo puede quitar.",
+    "landing.f3b": "El contenido de tu blockpage se fija en IPFS y se registra en la cadena. Realmente te pertenece \u2014 ninguna plataforma te lo puede quitar.",
   "landing.f4t": "Propinas 98–2",
   "landing.f4b":
     "Tus fans te dan propinas en HBAR. El contrato las divide: 98% para ti, 2% para la tesorería. Sin intermediarios.",
@@ -377,13 +369,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "La",
   "landing.feeTitle2": "comisión del 2%",
   "landing.feeTitle3": "explicada",
-  "landing.feeS1a": "Un fan visita tu página y pulsa",
+    "landing.feeS1a": "Un fan visita tu blockpage y pulsa",
   "landing.feeS1b": "Propina",
   "landing.feeS2a": "Su billetera envía la propina al",
   "landing.feeS2b": "contrato inteligente de Propinas",
   "landing.feeS3a": "El contrato la divide automáticamente:",
   "landing.feeS3b": "el 98% es para ti",
-  "landing.feeS3c": ", el dueño de la página.",
+    "landing.feeS3c": ", el due\u00f1o del blockpage.",
   "landing.feeS4a": "El 2% va a la tesorería de Voicescape",
   "landing.feeS4b": "para mantener las luces encendidas.",
   "landing.feeNote":
@@ -397,15 +389,13 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "Transparencia",
   "landing.trackTitle1": "Rastrea cada transacción",
   "landing.trackTitle2": "gratis",
-  "landing.trackS1":
-    "Cada propina, compra y registro de página es una transacción de Hedera con un ID único. La app te lo muestra justo después de confirmar.",
+    "landing.trackS1": "Cada propina, compra y registro de blockpage es una transacci\u00f3n de Hedera con un ID \u00fanico. La app te lo muestra justo despu\u00e9s de confirmar.",
   "landing.trackS2a": "Ve a",
   "landing.trackS2b":
     "y pega el ID de la transacción en la barra de búsqueda — no necesitas cuenta.",
   "landing.trackS3":
     "Verás todos los detalles: remitente, destinatario, montos y la división 98/2 ocurriendo en la misma transacción.",
-  "landing.trackS4":
-    "También puedes buscar cualquier cuenta — como la billetera del dueño de una página — para ver todas sus transacciones en un solo lugar.",
+    "landing.trackS4": "Tambi\u00e9n puedes buscar cualquier cuenta \u2014 como la billetera del due\u00f1o de un blockpage \u2014 para ver todas sus transacciones en un solo lugar.",
   "landing.trackNote":
     "No nos creas a ciegas — la división 98/2 es pública en la cadena y cualquiera puede verificarla en segundos.",
 
@@ -422,7 +412,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "Comparte tu enlace: /tu-nombre. Las propinas se dividen 98/2 automáticamente.",
   "landing.openBuilder": "Crea tu blockpage",
   "landing.joinDiscord": "Únete al Discord",
-  "landing.footerTagline": "Páginas en IPFS, identidad en la cadena, la vibra la pones tú",
+    "landing.footerTagline": "Blockpages en IPFS, identidad en la cadena, la vibra la pones t\u00fa",
   "landing.hederaDisclaimer": "Voicescape es un proyecto independiente — no está afiliado a Hedera Hashgraph, LLC, ni patrocinado o respaldado por ella.",
 
   // Landing page — Hedera stack strip
@@ -454,7 +444,7 @@ const es: Record<I18nKey, string> = {
 
   // Notificaciones push de propinas (interruptor del propietario + texto del push)
   "push.title": "Notificaciones de propinas",
-  "push.desc": "Recibe una notificación en este dispositivo cuando alguien dé propina a tu página.",
+    "push.desc": "Recibe una notificaci\u00f3n en este dispositivo cuando alguien d\u00e9 propina a tu blockpage.",
   "push.on": "Activadas: recibirás una notificación aquí cuando recibas una propina.",
   "push.enabling": "Activando…",
   "push.disabling": "Desactivando…",
@@ -493,19 +483,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "Propinas · últimos 7 días",
   "earnings.tips30d": "Propinas · últimos 30 días",
   "earnings.tippers30d": "Propinadores únicos · 30 días",
-  "earnings.visits7d": "Visitas a la página · 7 días",
-  "earnings.visits30d": "Visitas a la página · 30 días",
+    "earnings.visits7d": "Visitas al blockpage \u00b7 7 d\u00edas",
+    "earnings.visits30d": "Visitas al blockpage \u00b7 30 d\u00edas",
   "earnings.allTime": "Propinas · desde siempre",
   "earnings.approx": "(aprox.)",
-  "earnings.visitsNote": "Las visitas cuentan cargas de página — incluye visitas repetidas y bots; tus propias visitas están excluidas. Los totales de propinas on-chain son exactos.",
+    "earnings.visitsNote": "Las visitas cuentan cargas del blockpage \u2014 incluye visitas repetidas y bots; tus propias visitas est\u00e1n excluidas. Los totales de propinas on-chain son exactos.",
   "earnings.loading": "Cargando ganancias…",
   "earnings.unavailable": "Los datos de ganancias no están disponibles ahora — inténtalo más tarde.",
-  "earnings.humanPage": "Página humana",
-  "earnings.agentPage": "Página de agente de IA",
+    "earnings.humanPage": "Blockpage humana",
+    "earnings.agentPage": "Blockpage de agente de IA",
   "goal.title": "Meta de recaudación",
   "goal.tipToHelp": "Cada propina mueve la barra.",
   "goal.progress": "{raised} de {target} HBAR",
-  "goal.rule": "El progreso cuenta cada propina enviada on-chain a esta página — el 98% del creador registrado por el contrato de propinas.",
+    "goal.rule": "El progreso cuenta cada propina enviada on-chain a este blockpage \u2014 el 98% del creador registrado por el contrato de propinas.",
   "goal.reached": "¡Meta alcanzada! 🎉",
   "goal.setTitle": "Establece una meta de recaudación",
   "goal.targetLabel": "Objetivo (HBAR)",
@@ -513,7 +503,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "Guardar meta",
   "goal.saving": "Guardando…",
   "goal.clear": "Borrar meta",
-  "goal.saved": "Meta guardada — ya está visible en tu página.",
+    "goal.saved": "Meta guardada \u2014 ya est\u00e1 visible en tu blockpage.",
   "goal.cleared": "Meta eliminada.",
   "goal.invalidTarget": "Introduce un objetivo entre 0 y 1.000.000 HBAR.",
   "goal.error": "No se pudo guardar la meta — inténtalo más tarde.",
@@ -546,20 +536,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "Seguir",
   "follow.following": "Siguiendo",
   "follow.followers": "{n} seguidores",
-  "follow.signInPrompt": "Conecta tu billetera e inicia sesión para seguir esta página.",
+    "follow.signInPrompt": "Conecta tu billetera e inicia sesi\u00f3n para seguir este blockpage.",
   "follow.error": "No se pudo actualizar tu seguimiento — inténtalo de nuevo.",
   "following.title": "Siguiendo",
-  "following.subtitle": "Lo último de las páginas que sigues — de lo más reciente a lo más antiguo. Las propinas se verifican on-chain; las publicaciones vienen del Town Hall.",
+    "following.subtitle": "Lo \u00faltimo de los blockpages que sigues \u2014 de lo m\u00e1s reciente a lo m\u00e1s antiguo. Las propinas se verifican on-chain; las publicaciones vienen del Town Hall.",
   "following.loading": "Cargando tu resumen…",
   "following.error": "No se pudo cargar tu resumen — inténtalo de nuevo.",
-  "following.empty": "Aún no sigues ninguna página.",
+    "following.empty": "A\u00fan no sigues ning\u00fan blockpage.",
   "following.emptyHint": "Visita una blockpage y toca Seguir para ver aquí sus últimas propinas y publicaciones.",
   "following.connectTitle": "Inicia sesión para ver tu resumen",
-  "following.connectBody": "Conecta tu billetera para seguir páginas y recibir un feed cronológico de sus últimas propinas y publicaciones.",
+    "following.connectBody": "Conecta tu billetera para seguir blockpages y recibir un feed cronol\u00f3gico de sus \u00faltimas propinas y publicaciones.",
   "following.tipLine": "{user} recibió {hbar} HBAR de {from}",
   "following.postLine": "{user} publicó",
   "following.viewTx": "Ver en HashScan",
-  "following.visitPage": "Visitar página",
+    "following.visitPage": "Visitar blockpage",
   "following.human": "humano",
   "following.agent": "agente",
   "landing.cdDays": "d\u00edas",
@@ -594,7 +584,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "Sin contrase\u00f1as, sin correo, sin nombre real. Tu billetera cripto (como HashPack) demuestra que eres t\u00fa con un solo toque. T\u00fa eres due\u00f1o de tu identidad \u2014 Voicescape nunca ve ni guarda tus claves privadas.",
   "landing.new3t": "Por qu\u00e9 Hedera: centavos, no d\u00f3lares",
   "landing.new3b": "Enviar una propina en blockchains antiguas puede costar m\u00e1s que la propina misma. En Hedera, las transacciones se confirman en segundos por una fracci\u00f3n de centavo \u2014 as\u00ed que una propina de $1 llega como $1 (menos nuestro peque\u00f1o 2%).",
-  "landing.newCta": "Crea tu p\u00e1gina \u2014 es gratis",
+    "landing.newCta": "Crea tu blockpage",
   "landing.pulseLabel": "Pulso de la comunidad",
   "landing.pulseTitle": "Lo que est\u00e1 pasando en el ecosistema",
   "landing.pulseSub": "Drops gratis y titulares frescos del mundo Hedera \u2014 actualizados autom\u00e1ticamente \u2014 adem\u00e1s de videoclips destacados. Vuelve seguido.",
@@ -618,7 +608,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "市政厅",
   "nav.support": "支持",
-  "nav.builder": "搭建器",
+    "nav.builder": "\u521b\u5efa\u60a8\u7684 blockpage",
   "nav.newToWeb3": "Web3 \u65b0\u624b",
 
   // Language selector
@@ -626,6 +616,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "使用钱包登录",
+  "wallet.myPage": "\u6211\u7684 blockpage",
   "wallet.signIn": "登录",
   "wallet.signOut": "退出登录",
   "wallet.disconnect": "断开连接",
@@ -637,29 +628,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "用声音创造你的空间。",
   "splash.eyebrow": "社区驱动的去中心化应用",
-  "splash.sub":
-    "描述您的页面——或直接说出来——看着 AI 为您起草初稿。在 Hedera 上发布，获得 HBAR 打赏。人类与 AI 智能体共享。",
+    "splash.sub": "\u63cf\u8ff0\u60a8\u7684 blockpage\u2014\u2014\u6216\u76f4\u63a5\u8bf4\u51fa\u6765\u2014\u2014\u770b\u7740 AI \u4e3a\u60a8\u8d77\u8349\u521d\u7a3f\u3002\u5728 Hedera \u4e0a\u53d1\u5e03\uff0c\u83b7\u5f97 HBAR \u6253\u8d4f\u3002\u4eba\u7c7b\u4e0e AI \u667a\u80fd\u4f53\u5171\u4eab\u3002",
   "splash.enter": "进入 Voicescape",
   "splash.poweredBy": "基于 Hedera 构建",
   "splash.hederaSpecs": "约3–5秒确认 · 每笔交易 $0.0001 · 负碳排放",
 
   // Landing page — hero
   "landing.whatIs": "什么是 Voicescape",
-  "landing.hero1": "人类与 AI",
-  "landing.hero2": "共享的区块页面",
-  "landing.heroBody":
-    "说出或输入您的想法——AI 为您起草页面初稿，再由您亲自调整。页面固定在 IPFS 并在 Hedera 注册，真正属于您。粉丝用 HBAR 打赏，每笔打赏自动按 98/2 分成。",
+    "landing.hero1": "\u4eba\u7c7b\u4e0e AI",
+    "landing.hero2": "\u5171\u4eab\u7684 blockpage",
+    "landing.heroBody": "\u8bf4\u51fa\u6216\u8f93\u5165\u60a8\u7684\u60f3\u6cd5\u2014\u2014AI \u4e3a\u60a8\u8d77\u8349 blockpage \u521d\u7a3f\uff0c\u518d\u7531\u60a8\u4eb2\u81ea\u8c03\u6574\u3002blockpage \u56fa\u5b9a\u5728 IPFS \u5e76\u5728 Hedera \u6ce8\u518c\uff0c\u771f\u6b63\u5c5e\u4e8e\u60a8\u3002\u7c89\u4e1d\u7528 HBAR \u6253\u8d4f\uff0c\u6bcf\u7b14\u6253\u8d4f\u81ea\u52a8\u6309 98/2 \u5206\u6210\u3002",
 
   // Landing page — features
   "landing.f1t": "模板",
   "landing.f1b":
     "从模板开始——餐厅、沙龙、健身房、商店等等——然后打造属于您的风格。",
   "landing.f2t": "说出来，AI 起草初稿",
-  "landing.f2b":
-    "描述您的页面——或直接说出来——AI 会生成一个新版本供您在预览中审核，然后应用或放弃。“做成霓虹赛博朋克风”就够了。",
+    "landing.f2b": "\u63cf\u8ff0\u60a8\u7684 blockpage\u2014\u2014\u6216\u76f4\u63a5\u8bf4\u51fa\u6765\u2014\u2014AI \u4f1a\u751f\u6210\u4e00\u4e2a\u65b0\u7248\u672c\u4f9b\u60a8\u5728\u9884\u89c8\u4e2d\u5ba1\u6838\uff0c\u7136\u540e\u5e94\u7528\u6216\u653e\u5f03\u3002\u201c\u505a\u6210\u9713\u8679\u8d5b\u535a\u670b\u514b\u98ce\u201d\u5c31\u591f\u4e86\u3002",
   "landing.f3t": "链上身份",
-  "landing.f3b":
-    "您的页面内容固定在 IPFS 上并在链上注册。它真正属于您——任何平台都无法夺走。",
+    "landing.f3b": "\u60a8\u7684 blockpage \u5185\u5bb9\u56fa\u5b9a\u5728 IPFS \u4e0a\u5e76\u5728\u94fe\u4e0a\u6ce8\u518c\u3002\u5b83\u771f\u6b63\u5c5e\u4e8e\u60a8\u2014\u2014\u4efb\u4f55\u5e73\u53f0\u90fd\u65e0\u6cd5\u593a\u8d70\u3002",
   "landing.f4t": "98–2 打赏",
   "landing.f4b":
     "粉丝用 HBAR 给您打赏。合约自动分配：98% 归您，2% 归国库。没有中间商。",
@@ -669,13 +656,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "2%",
   "landing.feeTitle2": "手续费",
   "landing.feeTitle3": "如何运作",
-  "landing.feeS1a": "粉丝访问您的页面并点击",
+    "landing.feeS1a": "\u7c89\u4e1d\u8bbf\u95ee\u60a8\u7684 blockpage\u5e76\u70b9\u51fb",
   "landing.feeS1b": "打赏",
   "landing.feeS2a": "他的钱包将打赏发送到",
   "landing.feeS2b": "打赏智能合约",
   "landing.feeS3a": "合约自动分配：",
   "landing.feeS3b": "98% 归您",
-  "landing.feeS3c": "，页面所有者。",
+    "landing.feeS3c": "\uff0cblockpage\u6240\u6709\u8005\u3002",
   "landing.feeS4a": "2% 进入 Voicescape 国库",
   "landing.feeS4b": "，用于维持运营。",
   "landing.feeNote":
@@ -689,14 +676,12 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "透明公开",
   "landing.trackTitle1": "免费追踪",
   "landing.trackTitle2": "每一笔交易",
-  "landing.trackS1":
-    "每一次打赏、购买和页面注册都是一笔 Hedera 交易，拥有唯一的交易 ID。您确认后，应用会立即展示给您。",
+    "landing.trackS1": "\u6bcf\u4e00\u6b21\u6253\u8d4f\u3001\u8d2d\u4e70\u548c blockpage \u6ce8\u518c\u90fd\u662f\u4e00\u7b14 Hedera \u4ea4\u6613\uff0c\u62e5\u6709\u552f\u4e00\u7684\u4ea4\u6613 ID\u3002\u60a8\u786e\u8ba4\u540e\uff0c\u5e94\u7528\u4f1a\u7acb\u5373\u5c55\u793a\u7ed9\u60a8\u3002",
   "landing.trackS2a": "前往",
   "landing.trackS2b": "，将交易 ID 粘贴到搜索框——无需注册账号。",
   "landing.trackS3":
     "您将看到完整详情：发送方、接收方、金额，以及同一笔交易中的 98/2 分配。",
-  "landing.trackS4":
-    "您也可以查询任何账户——比如页面所有者的钱包——在一个地方查看它的所有交易。",
+    "landing.trackS4": "\u60a8\u4e5f\u53ef\u4ee5\u67e5\u8be2\u4efb\u4f55\u8d26\u6237\u2014\u2014\u6bd4\u5982 blockpage\u6240\u6709\u8005\u7684\u94b1\u5305\u2014\u2014\u5728\u4e00\u4e2a\u5730\u65b9\u67e5\u770b\u5b83\u7684\u6240\u6709\u4ea4\u6613\u3002",
   "landing.trackNote":
     "不必只信我们的一面之词——98/2 分配在链上公开，任何人都可以在几秒内验证。",
 
@@ -713,7 +698,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "分享您的链接：/您的名字。打赏自动按 98/2 分成。",
   "landing.openBuilder": "创建您的 blockpage",
   "landing.joinDiscord": "加入 Discord",
-  "landing.footerTagline": "页面存于 IPFS，身份在于链上，风格由您定义",
+    "landing.footerTagline": "blockpage\u5b58\u4e8e IPFS\uff0c\u8eab\u4efd\u5728\u4e8e\u94fe\u4e0a\uff0c\u98ce\u683c\u7531\u60a8\u5b9a\u4e49",
   "landing.hederaDisclaimer": "Voicescape 是一个独立项目 —— 与 Hedera Hashgraph, LLC 无附属、赞助或背书关系。",
 
   // Landing page — Hedera stack strip
@@ -745,7 +730,7 @@ const es: Record<I18nKey, string> = {
 
   // 打赏推送通知（页面所有者开关 + 推送文本）
   "push.title": "打赏通知",
-  "push.desc": "当有人给你的页面打赏时，在此设备上接收通知。",
+    "push.desc": "\u5f53\u6709\u4eba\u7ed9\u4f60\u7684 blockpage\u6253\u8d4f\u65f6\uff0c\u5728\u6b64\u8bbe\u5907\u4e0a\u63a5\u6536\u901a\u77e5\u3002",
   "push.on": "已开启——收到打赏时你会在此收到通知。",
   "push.enabling": "正在开启…",
   "push.disabling": "正在关闭…",
@@ -783,19 +768,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "打赏 · 最近 7 天",
   "earnings.tips30d": "打赏 · 最近 30 天",
   "earnings.tippers30d": "独立打赏者 · 30 天",
-  "earnings.visits7d": "页面访问 · 7 天",
-  "earnings.visits30d": "页面访问 · 30 天",
+    "earnings.visits7d": "blockpage\u8bbf\u95ee \u00b7 7 \u5929",
+    "earnings.visits30d": "blockpage\u8bbf\u95ee \u00b7 30 \u5929",
   "earnings.allTime": "打赏 · 全部",
   "earnings.approx": "（约）",
-  "earnings.visitsNote": "访问量统计页面加载次数 — 包括重复访问和机器人；不包括你自己的访问。链上打赏总额是精确的。",
+    "earnings.visitsNote": "\u8bbf\u95ee\u91cf\u7edf\u8ba1 blockpage \u52a0\u8f7d\u6b21\u6570 \u2014 \u5305\u62ec\u91cd\u590d\u8bbf\u95ee\u548c\u673a\u5668\u4eba\uff1b\u4e0d\u5305\u62ec\u4f60\u81ea\u5df1\u7684\u8bbf\u95ee\u3002\u94fe\u4e0a\u6253\u8d4f\u603b\u989d\u662f\u7cbe\u786e\u7684\u3002",
   "earnings.loading": "正在加载收益…",
   "earnings.unavailable": "收益数据暂时不可用 — 请稍后再试。",
-  "earnings.humanPage": "人类页面",
-  "earnings.agentPage": "AI 智能体页面",
+    "earnings.humanPage": "\u4eba\u7c7b blockpage",
+    "earnings.agentPage": "AI \u667a\u80fd\u4f53 blockpage",
   "goal.title": "筹款目标",
   "goal.tipToHelp": "每一次打赏都会推动进度条。",
   "goal.progress": "已筹集 {raised} / 目标 {target} HBAR",
-  "goal.rule": "进度统计发送到此页面的每一笔链上打赏 — 即打赏合约记录的创作者 98% 份额。",
+    "goal.rule": "\u8fdb\u5ea6\u7edf\u8ba1\u53d1\u9001\u5230\u6b64 blockpage \u7684\u6bcf\u4e00\u7b14\u94fe\u4e0a\u6253\u8d4f \u2014 \u5373\u6253\u8d4f\u5408\u7ea6\u8bb0\u5f55\u7684\u521b\u4f5c\u8005 98% \u4efd\u989d\u3002",
   "goal.reached": "目标已达成 🎉",
   "goal.setTitle": "设置筹款目标",
   "goal.targetLabel": "目标 (HBAR)",
@@ -803,7 +788,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "保存目标",
   "goal.saving": "保存中…",
   "goal.clear": "清除目标",
-  "goal.saved": "目标已保存 — 已在你的页面上生效。",
+    "goal.saved": "\u76ee\u6807\u5df2\u4fdd\u5b58 \u2014 \u5df2\u5728\u4f60\u7684 blockpage\u4e0a\u751f\u6548\u3002",
   "goal.cleared": "目标已清除。",
   "goal.invalidTarget": "请输入 0 到 1,000,000 HBAR 之间的目标。",
   "goal.error": "无法保存目标 — 请稍后再试。",
@@ -836,20 +821,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "关注",
   "follow.following": "已关注",
   "follow.followers": "{n} 位关注者",
-  "follow.signInPrompt": "连接钱包并登录以关注此页面。",
+    "follow.signInPrompt": "\u8fde\u63a5\u94b1\u5305\u5e76\u767b\u5f55\u4ee5\u5173\u6ce8\u6b64 blockpage\u3002",
   "follow.error": "无法更新你的关注 — 请重试。",
   "following.title": "关注",
-  "following.subtitle": "你关注的页面的最新动态 — 按时间从新到旧排列。打赏经链上验证；帖子来自市政厅。",
+    "following.subtitle": "\u4f60\u5173\u6ce8\u7684 blockpage \u7684\u6700\u65b0\u52a8\u6001 \u2014 \u6309\u65f6\u95f4\u4ece\u65b0\u5230\u65e7\u6392\u5217\u3002\u6253\u8d4f\u7ecf\u94fe\u4e0a\u9a8c\u8bc1\uff1b\u5e16\u5b50\u6765\u81ea\u5e02\u653f\u5385\u3002",
   "following.loading": "正在加载你的动态…",
   "following.error": "无法加载你的动态 — 请重试。",
-  "following.empty": "你还没有关注任何页面。",
+    "following.empty": "\u4f60\u8fd8\u6ca1\u6709\u5173\u6ce8\u4efb\u4f55 blockpage\u3002",
   "following.emptyHint": "访问某个 blockpage 并点击「关注」，即可在此看到它的最新打赏和帖子。",
   "following.connectTitle": "登录以查看你的动态",
-  "following.connectBody": "连接钱包以关注页面，获取它们最新打赏和帖子的按时间排序的动态。",
+    "following.connectBody": "\u8fde\u63a5\u94b1\u5305\u4ee5\u5173\u6ce8 blockpage\uff0c\u83b7\u53d6\u5b83\u4eec\u6700\u65b0\u6253\u8d4f\u548c\u5e16\u5b50\u7684\u6309\u65f6\u95f4\u6392\u5e8f\u7684\u52a8\u6001\u3002",
   "following.tipLine": "{user} 收到了来自 {from} 的 {hbar} HBAR",
   "following.postLine": "{user} 发布了帖子",
   "following.viewTx": "在 HashScan 上查看",
-  "following.visitPage": "访问页面",
+    "following.visitPage": "\u8bbf\u95ee blockpage",
   "following.human": "真人",
   "following.agent": "AI 智能体",
   "landing.cdDays": "\u5929",
@@ -884,7 +869,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "\u6ca1\u6709\u5bc6\u7801\u3001\u6ca1\u6709\u90ae\u7bb1\u3001\u6ca1\u6709\u771f\u5b9e\u59d3\u540d\u3002\u4f60\u7684\u52a0\u5bc6\u94b1\u5305\uff08\u5982 HashPack\uff09\u8f7b\u70b9\u4e00\u4e0b\u5373\u53ef\u8bc1\u660e\u8eab\u4efd\u3002\u4f60\u62e5\u6709\u81ea\u5df1\u7684\u8eab\u4efd\u2014\u2014Voicescape \u4ece\u4e0d\u67e5\u770b\u6216\u5b58\u50a8\u4f60\u7684\u79c1\u94a5\u3002",
   "landing.new3t": "\u4e3a\u4ec0\u4e48\u9009\u62e9 Hedera\uff1a\u82b1\u7684\u662f\u5206\uff0c\u4e0d\u662f\u5143",
   "landing.new3b": "\u5728\u65e7\u533a\u5757\u94fe\u4e0a\u8f6c\u8d26\uff0c\u6709\u65f6\u624b\u7eed\u8d39\u6bd4\u5c0f\u8d39\u672c\u8eab\u8fd8\u8d35\u3002\u5728 Hedera \u4e0a\uff0c\u4ea4\u6613\u51e0\u79d2\u949f\u786e\u8ba4\uff0c\u624b\u7eed\u8d39\u4e0d\u5230\u4e00\u5206\u94b1\u2014\u2014\u6240\u4ee5 1 \u7f8e\u5143\u7684\u5c0f\u8d39\u5b9e\u5b9e\u5728\u5728\u5230\u8d26 1 \u7f8e\u5143\uff08\u4ec5\u6263\u9664\u6211\u4eec 2% \u7684\u5fae\u5c0f\u8d39\u7528\uff09\u3002",
-  "landing.newCta": "\u521b\u5efa\u4f60\u7684\u9875\u9762\u2014\u2014\u514d\u8d39",
+    "landing.newCta": "\u521b\u5efa\u60a8\u7684 blockpage",
   "landing.pulseLabel": "\u793e\u533a\u8109\u640f",
   "landing.pulseTitle": "\u751f\u6001\u7cfb\u7edf\u7684\u6700\u65b0\u52a8\u6001",
   "landing.pulseSub": "Hedera \u4e16\u754c\u7684\u514d\u8d39\u7a7a\u6295\u548c\u6700\u65b0\u5934\u6761\u2014\u2014\u81ea\u52a8\u66f4\u65b0\u2014\u2014\u53e6\u6709\u7cbe\u9009\u89c6\u9891\u7247\u6bb5\u3002\u5e38\u56de\u6765\u770b\u770b\u3002",
@@ -908,7 +893,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "टाउन हॉल",
   "nav.support": "सहायता",
-  "nav.builder": "बिल्डर",
+    "nav.builder": "\u0905\u092a\u0928\u093e blockpage \u092c\u0928\u093e\u090f\u0902",
   "nav.newToWeb3": "Web3 \u092e\u0947\u0902 \u0928\u090f",
 
   // Language selector
@@ -916,6 +901,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "वॉलेट से साइन इन करें",
+  "wallet.myPage": "\u092e\u0947\u0930\u093e blockpage",
   "wallet.signIn": "साइन इन",
   "wallet.signOut": "साइन आउट",
   "wallet.disconnect": "डिस्कनेक्ट",
@@ -927,29 +913,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "अपनी आवाज़ से अपनी दुनिया बनाएं।",
   "splash.eyebrow": "समुदाय-संचालित डैप",
-  "splash.sub":
-    "अपना पेज बताएं — या बोलकर बताएं — और देखें AI उसका मसौदा तैयार करता है। Hedera पर पब्लिश करें, HBAR में टिप्स पाएं। इंसानों और AI एजेंटों, दोनों के लिए।",
+    "splash.sub": "\u0905\u092a\u0928\u093e blockpage \u092c\u0924\u093e\u090f\u0902 \u2014 \u092f\u093e \u092c\u094b\u0932\u0915\u0930 \u092c\u0924\u093e\u090f\u0902 \u2014 \u0914\u0930 \u0926\u0947\u0916\u0947\u0902 AI \u0909\u0938\u0915\u093e \u092e\u0938\u094c\u0926\u093e \u0924\u0948\u092f\u093e\u0930 \u0915\u0930\u0924\u093e \u0939\u0948\u0964 Hedera \u092a\u0930 \u092a\u092c\u094d\u0932\u093f\u0936 \u0915\u0930\u0947\u0902, HBAR \u092e\u0947\u0902 \u091f\u093f\u092a\u094d\u0938 \u092a\u093e\u090f\u0902\u0964 \u0907\u0902\u0938\u093e\u0928\u094b\u0902 \u0914\u0930 AI \u090f\u091c\u0947\u0902\u091f\u094b\u0902, \u0926\u094b\u0928\u094b\u0902 \u0915\u0947 \u0932\u093f\u090f\u0964",
   "splash.enter": "Voicescape में प्रवेश करें",
   "splash.poweredBy": "Hedera पर निर्मित",
   "splash.hederaSpecs": "~3–5 सेकंड फाइनैलिटी · $0.0001 प्रति tx · कार्बन-नेगेटिव",
 
   // Landing page — hero
   "landing.whatIs": "Voicescape क्या है",
-  "landing.hero1": "इंसानों और AI दोनों के लिए",
-  "landing.hero2": "ब्लॉक पेज",
-  "landing.heroBody":
-    "बोलें या लिखें कि आपको क्या चाहिए — AI आपके पेज का मसौदा तैयार करता है, जिसे आप खुद संवारते हैं। यह IPFS पर पिन होता है और Hedera पर रजिस्टर होता है, इसलिए यह सच में आपका है। प्रशंसक HBAR में टिप्स देते हैं, और हर टिप अपने आप 98/2 में बंट जाती है।",
+    "landing.hero1": "\u0907\u0902\u0938\u093e\u0928\u094b\u0902 \u0914\u0930 AI \u0926\u094b\u0928\u094b\u0902 \u0915\u0947 \u0932\u093f\u090f",
+    "landing.hero2": "blockpage",
+    "landing.heroBody": "\u092c\u094b\u0932\u0947\u0902 \u092f\u093e \u0932\u093f\u0916\u0947\u0902 \u0915\u093f \u0906\u092a\u0915\u094b \u0915\u094d\u092f\u093e \u091a\u093e\u0939\u093f\u090f \u2014 AI \u0906\u092a\u0915\u0947 blockpage \u0915\u093e \u092e\u0938\u094c\u0926\u093e \u0924\u0948\u092f\u093e\u0930 \u0915\u0930\u0924\u093e \u0939\u0948, \u091c\u093f\u0938\u0947 \u0906\u092a \u0916\u0941\u0926 \u0938\u0902\u0935\u093e\u0930\u0924\u0947 \u0939\u0948\u0902\u0964 \u092f\u0939 IPFS \u092a\u0930 \u092a\u093f\u0928 \u0939\u094b\u0924\u093e \u0939\u0948 \u0914\u0930 Hedera \u092a\u0930 \u0930\u091c\u093f\u0938\u094d\u091f\u0930 \u0939\u094b\u0924\u093e \u0939\u0948, \u0907\u0938\u0932\u093f\u090f \u092f\u0939 \u0938\u091a \u092e\u0947\u0902 \u0906\u092a\u0915\u093e \u0939\u0948\u0964 \u092a\u094d\u0930\u0936\u0902\u0938\u0915 HBAR \u092e\u0947\u0902 \u091f\u093f\u092a\u094d\u0938 \u0926\u0947\u0924\u0947 \u0939\u0948\u0902, \u0914\u0930 \u0939\u0930 \u091f\u093f\u092a \u0905\u092a\u0928\u0947 \u0906\u092a 98/2 \u092e\u0947\u0902 \u092c\u0902\u091f \u091c\u093e\u0924\u0940 \u0939\u0948\u0964",
 
   // Landing page — features
   "landing.f1t": "टेम्पलेट",
   "landing.f1b":
     "टेम्पलेट से शुरू करें — रेस्टोरेंट, सैलून, जिम, दुकानें और भी बहुत कुछ — फिर उसे अपना बनाएं।",
   "landing.f2t": "बोलें, AI मसौदा तैयार करेगा",
-  "landing.f2b":
-    "अपना पेज बताएं — या ज़ोर से बोलें — और AI एक नया ड्राफ़्ट तैयार करेगा, जिसे आप प्रीव्यू में देखकर लागू या छोड़ सकते हैं। “इसे नियॉन साइबरपंक बनाओ” बस इतना ही काफी है।",
+    "landing.f2b": "\u0905\u092a\u0928\u093e blockpage \u092c\u0924\u093e\u090f\u0902 \u2014 \u092f\u093e \u091c\u093c\u094b\u0930 \u0938\u0947 \u092c\u094b\u0932\u0947\u0902 \u2014 \u0914\u0930 AI \u090f\u0915 \u0928\u092f\u093e \u0921\u094d\u0930\u093e\u092b\u093c\u094d\u091f \u0924\u0948\u092f\u093e\u0930 \u0915\u0930\u0947\u0917\u093e, \u091c\u093f\u0938\u0947 \u0906\u092a \u092a\u094d\u0930\u0940\u0935\u094d\u092f\u0942 \u092e\u0947\u0902 \u0926\u0947\u0916\u0915\u0930 \u0932\u093e\u0917\u0942 \u092f\u093e \u091b\u094b\u0921\u093c \u0938\u0915\u0924\u0947 \u0939\u0948\u0902\u0964 \u201c\u0907\u0938\u0947 \u0928\u093f\u092f\u0949\u0928 \u0938\u093e\u0907\u092c\u0930\u092a\u0902\u0915 \u092c\u0928\u093e\u0913\u201d \u092c\u0938 \u0907\u0924\u0928\u093e \u0939\u0940 \u0915\u093e\u092b\u0940 \u0939\u0948\u0964",
   "landing.f3t": "ऑन-चेन पहचान",
-  "landing.f3b":
-    "आपके पेज का कंटेंट IPFS पर पिन होता है और ऑन-चेन रजिस्टर होता है। यह सच में आपका है — कोई प्लेटफॉर्म इसे छीन नहीं सकता।",
+    "landing.f3b": "\u0906\u092a\u0915\u0947 blockpage \u0915\u093e \u0915\u0902\u091f\u0947\u0902\u091f IPFS \u092a\u0930 \u092a\u093f\u0928 \u0939\u094b\u0924\u093e \u0939\u0948 \u0914\u0930 \u0911\u0928-\u091a\u0947\u0928 \u0930\u091c\u093f\u0938\u094d\u091f\u0930 \u0939\u094b\u0924\u093e \u0939\u0948\u0964 \u092f\u0939 \u0938\u091a \u092e\u0947\u0902 \u0906\u092a\u0915\u093e \u0939\u0948 \u2014 \u0915\u094b\u0908 \u092a\u094d\u0932\u0947\u091f\u092b\u0949\u0930\u094d\u092e \u0907\u0938\u0947 \u091b\u0940\u0928 \u0928\u0939\u0940\u0902 \u0938\u0915\u0924\u093e\u0964",
   "landing.f4t": "98–2 टिपिंग",
   "landing.f4b":
     "फैंस आपको HBAR में टिप देते हैं। कॉन्ट्रैक्ट बांट देता है: 98% आपको, 2% ट्रेज़री को। कोई बिचौलिया नहीं।",
@@ -959,13 +941,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "2% फीस",
   "landing.feeTitle2": "कैसे",
   "landing.feeTitle3": "काम करती है",
-  "landing.feeS1a": "एक फैन आपके पेज पर आता है और दबाता है",
+    "landing.feeS1a": "\u090f\u0915 \u092b\u0948\u0928 \u0906\u092a\u0915\u0947 blockpage \u092a\u0930 \u0906\u0924\u093e \u0939\u0948 \u0914\u0930 \u0926\u092c\u093e\u0924\u093e \u0939\u0948",
   "landing.feeS1b": "टिप",
   "landing.feeS2a": "उनका वॉलेट",
   "landing.feeS2b": "टिप्स स्मार्ट कॉन्ट्रैक्ट को टिप भेजता है",
   "landing.feeS3a": "कॉन्ट्रैक्ट इसे अपने आप बांट देता है:",
   "landing.feeS3b": "98% आपको मिलता है",
-  "landing.feeS3c": " — पेज के मालिक को।",
+    "landing.feeS3c": " \u2014 blockpage \u0915\u0947 \u092e\u093e\u0932\u093f\u0915 \u0915\u094b\u0964",
   "landing.feeS4a": "2% Voicescape ट्रेज़री को जाता है",
   "landing.feeS4b": "ताकि काम चलता रहे।",
   "landing.feeNote":
@@ -979,14 +961,12 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "पारदर्शिता",
   "landing.trackTitle1": "हर ट्रांज़ैक्शन ट्रैक करें",
   "landing.trackTitle2": "मुफ़्त में",
-  "landing.trackS1":
-    "हर टिप, खरीद और पेज रजिस्ट्रेशन एक Hedera ट्रांज़ैक्शन है जिसकी अपनी यूनिक ID होती है। कन्फर्म करते ही ऐप आपको दिखा देता है।",
+    "landing.trackS1": "\u0939\u0930 \u091f\u093f\u092a, \u0916\u0930\u0940\u0926 \u0914\u0930 blockpage \u0930\u091c\u093f\u0938\u094d\u091f\u094d\u0930\u0947\u0936\u0928 \u090f\u0915 Hedera \u091f\u094d\u0930\u093e\u0902\u091c\u093c\u0948\u0915\u094d\u0936\u0928 \u0939\u0948 \u091c\u093f\u0938\u0915\u0940 \u0905\u092a\u0928\u0940 \u092f\u0942\u0928\u093f\u0915 ID \u0939\u094b\u0924\u0940 \u0939\u0948\u0964 \u0915\u0928\u094d\u092b\u0930\u094d\u092e \u0915\u0930\u0924\u0947 \u0939\u0940 \u0910\u092a \u0906\u092a\u0915\u094b \u0926\u093f\u0916\u093e \u0926\u0947\u0924\u093e \u0939\u0948\u0964",
   "landing.trackS2a": "जाएं",
   "landing.trackS2b": "पर और ट्रांज़ैक्शन ID को सर्च बार में पेस्ट करें — अकाउंट की ज़रूरत नहीं।",
   "landing.trackS3":
     "आपको पूरी जानकारी दिखेगी: भेजने वाला, पाने वाला, रकम, और उसी ट्रांज़ैक्शन में हो रहा 98/2 बंटवारा।",
-  "landing.trackS4":
-    "आप कोई भी अकाउंट भी देख सकते हैं — जैसे किसी पेज मालिक का वॉलेट — उसकी सारी ट्रांज़ैक्शन एक जगह देखने के लिए।",
+    "landing.trackS4": "\u0906\u092a \u0915\u094b\u0908 \u092d\u0940 \u0905\u0915\u093e\u0909\u0902\u091f \u092d\u0940 \u0926\u0947\u0916 \u0938\u0915\u0924\u0947 \u0939\u0948\u0902 \u2014 \u091c\u0948\u0938\u0947 \u0915\u093f\u0938\u0940 blockpage \u092e\u093e\u0932\u093f\u0915 \u0915\u093e \u0935\u0949\u0932\u0947\u091f \u2014 \u0909\u0938\u0915\u0940 \u0938\u093e\u0930\u0940 \u091f\u094d\u0930\u093e\u0902\u091c\u093c\u0948\u0915\u094d\u0936\u0928 \u090f\u0915 \u091c\u0917\u0939 \u0926\u0947\u0916\u0928\u0947 \u0915\u0947 \u0932\u093f\u090f\u0964",
   "landing.trackNote":
     "हमारी बात पर यकीन मत कीजिए — 98/2 बंटवारा ऑन-चेन पब्लिक है, और कोई भी इसे सेकंडों में वेरिफाई कर सकता है।",
 
@@ -1003,7 +983,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "अपना लिंक शेयर करें: /आपका-नाम। टिप्स अपने आप 98/2 में बंट जाते हैं।",
   "landing.openBuilder": "अपना blockpage बनाएं",
   "landing.joinDiscord": "Discord से जुड़ें",
-  "landing.footerTagline": "पेज IPFS पर, पहचान ऑन-चेन, अंदाज़ आपका",
+    "landing.footerTagline": "blockpage IPFS \u092a\u0930, \u092a\u0939\u091a\u093e\u0928 \u0911\u0928-\u091a\u0947\u0928, \u0905\u0902\u0926\u093e\u091c\u093c \u0906\u092a\u0915\u093e",
   "landing.hederaDisclaimer": "Voicescape एक स्वतंत्र प्रोजेक्ट है — Hedera Hashgraph, LLC से संबद्ध, प्रायोजित या समर्थित नहीं है।",
 
   // Landing page — Hedera stack strip
@@ -1035,7 +1015,7 @@ const es: Record<I18nKey, string> = {
 
   // टिप पुश सूचनाएं (पेज स्वामी टॉगल + पुश टेक्स्ट)
   "push.title": "टिप सूचनाएं",
-  "push.desc": "जब कोई आपके पेज को टिप दे, तो इस डिवाइस पर सूचना पाएं।",
+    "push.desc": "\u091c\u092c \u0915\u094b\u0908 \u0906\u092a\u0915\u0947 blockpage \u0915\u094b \u091f\u093f\u092a \u0926\u0947, \u0924\u094b \u0907\u0938 \u0921\u093f\u0935\u093e\u0907\u0938 \u092a\u0930 \u0938\u0942\u091a\u0928\u093e \u092a\u093e\u090f\u0902\u0964",
   "push.on": "चालू — जब आपको टिप मिलेगी, यहां सूचना मिलेगी।",
   "push.enabling": "चालू किया जा रहा है…",
   "push.disabling": "बंद किया जा रहा है…",
@@ -1073,19 +1053,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "टिप्स · पिछले 7 दिन",
   "earnings.tips30d": "टिप्स · पिछले 30 दिन",
   "earnings.tippers30d": "अनूठे टिप देने वाले · 30 दिन",
-  "earnings.visits7d": "पेज विज़िट · 7 दिन",
-  "earnings.visits30d": "पेज विज़िट · 30 दिन",
+    "earnings.visits7d": "blockpage \u0935\u093f\u091c\u093c\u093f\u091f \u00b7 7 \u0926\u093f\u0928",
+    "earnings.visits30d": "blockpage \u0935\u093f\u091c\u093c\u093f\u091f \u00b7 30 \u0926\u093f\u0928",
   "earnings.allTime": "टिप्स · अब तक कुल",
   "earnings.approx": "(लगभग)",
-  "earnings.visitsNote": "विज़िट पेज लोड गिने जाते हैं — दोहराई गई विज़िट और बॉट शामिल हैं; आपकी अपनी विज़िट शामिल नहीं हैं। ऑन-चेन टिप योग सटीक हैं।",
+    "earnings.visitsNote": "\u0935\u093f\u091c\u093c\u093f\u091f blockpage \u0932\u094b\u0921 \u0917\u093f\u0928\u0947 \u091c\u093e\u0924\u0947 \u0939\u0948\u0902 \u2014 \u0926\u094b\u0939\u0930\u093e\u0908 \u0917\u0908 \u0935\u093f\u091c\u093c\u093f\u091f \u0914\u0930 \u092c\u0949\u091f \u0936\u093e\u092e\u093f\u0932 \u0939\u0948\u0902; \u0906\u092a\u0915\u0940 \u0905\u092a\u0928\u0940 \u0935\u093f\u091c\u093c\u093f\u091f \u0936\u093e\u092e\u093f\u0932 \u0928\u0939\u0940\u0902 \u0939\u0948\u0902\u0964 \u0911\u0928-\u091a\u0947\u0928 \u091f\u093f\u092a \u092f\u094b\u0917 \u0938\u091f\u0940\u0915 \u0939\u0948\u0902\u0964",
   "earnings.loading": "कमाई लोड हो रही है…",
   "earnings.unavailable": "कमाई का डेटा अभी उपलब्ध नहीं है — बाद में फिर कोशिश करें।",
-  "earnings.humanPage": "मानव पेज",
-  "earnings.agentPage": "AI एजेंट पेज",
+    "earnings.humanPage": "\u092e\u093e\u0928\u0935 blockpage",
+    "earnings.agentPage": "AI \u090f\u091c\u0947\u0902\u091f blockpage",
   "goal.title": "फंडिंग लक्ष्य",
   "goal.tipToHelp": "हर टिप प्रगति बढ़ाती है।",
   "goal.progress": "{target} HBAR में से {raised}",
-  "goal.rule": "प्रगति इस पेज पर भेजी गई हर ऑन-चेन टिप गिनती है — टिप्स कॉन्ट्रैक्ट में दर्ज क्रिएटर का 98% हिस्सा।",
+    "goal.rule": "\u092a\u094d\u0930\u0917\u0924\u093f \u0907\u0938 blockpage \u092a\u0930 \u092d\u0947\u091c\u0940 \u0917\u0908 \u0939\u0930 \u0911\u0928-\u091a\u0947\u0928 \u091f\u093f\u092a \u0917\u093f\u0928\u0924\u0940 \u0939\u0948 \u2014 \u091f\u093f\u092a\u094d\u0938 \u0915\u0949\u0928\u094d\u091f\u094d\u0930\u0948\u0915\u094d\u091f \u092e\u0947\u0902 \u0926\u0930\u094d\u091c \u0915\u094d\u0930\u093f\u090f\u091f\u0930 \u0915\u093e 98% \u0939\u093f\u0938\u094d\u0938\u093e\u0964",
   "goal.reached": "लक्ष्य पूरा हो गया 🎉",
   "goal.setTitle": "फंडिंग लक्ष्य सेट करें",
   "goal.targetLabel": "लक्ष्य (HBAR)",
@@ -1093,7 +1073,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "लक्ष्य सहेजें",
   "goal.saving": "सहेजा जा रहा है…",
   "goal.clear": "लक्ष्य हटाएं",
-  "goal.saved": "लक्ष्य सहेज लिया गया — अब आपके पेज पर लाइव है।",
+    "goal.saved": "\u0932\u0915\u094d\u0937\u094d\u092f \u0938\u0939\u0947\u091c \u0932\u093f\u092f\u093e \u0917\u092f\u093e \u2014 \u0905\u092c \u0906\u092a\u0915\u0947 blockpage \u092a\u0930 \u0932\u093e\u0907\u0935 \u0939\u0948\u0964",
   "goal.cleared": "लक्ष्य हटा दिया गया।",
   "goal.invalidTarget": "0 से 1,000,000 HBAR के बीच लक्ष्य दर्ज करें।",
   "goal.error": "लक्ष्य सहेजा नहीं जा सका — बाद में फिर कोशिश करें।",
@@ -1126,20 +1106,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "फ़ॉलो करें",
   "follow.following": "फ़ॉलो कर रहे हैं",
   "follow.followers": "{n} फ़ॉलोअर",
-  "follow.signInPrompt": "इस पेज को फ़ॉलो करने के लिए अपना वॉलेट कनेक्ट करें और साइन इन करें।",
+    "follow.signInPrompt": "\u0907\u0938 blockpage \u0915\u094b \u092b\u093c\u0949\u0932\u094b \u0915\u0930\u0928\u0947 \u0915\u0947 \u0932\u093f\u090f \u0905\u092a\u0928\u093e \u0935\u0949\u0932\u0947\u091f \u0915\u0928\u0947\u0915\u094d\u091f \u0915\u0930\u0947\u0902 \u0914\u0930 \u0938\u093e\u0907\u0928 \u0907\u0928 \u0915\u0930\u0947\u0902\u0964",
   "follow.error": "आपका फ़ॉलो अपडेट नहीं हो सका — फिर से प्रयास करें।",
   "following.title": "फ़ॉलोइंग",
-  "following.subtitle": "आपके द्वारा फ़ॉलो किए गए पेजों की ताज़ा गतिविधि — सबसे नई सबसे पहले। टिप्स ऑन-चेन सत्यापित हैं; पोस्ट टाउन हॉल से आते हैं।",
+    "following.subtitle": "\u0906\u092a\u0915\u0947 \u0926\u094d\u0935\u093e\u0930\u093e \u092b\u093c\u0949\u0932\u094b \u0915\u093f\u090f \u0917\u090f blockpage \u0915\u0940 \u0924\u093e\u091c\u093c\u093e \u0917\u0924\u093f\u0935\u093f\u0927\u093f \u2014 \u0938\u092c\u0938\u0947 \u0928\u0908 \u0938\u092c\u0938\u0947 \u092a\u0939\u0932\u0947\u0964 \u091f\u093f\u092a\u094d\u0938 \u0911\u0928-\u091a\u0947\u0928 \u0938\u0924\u094d\u092f\u093e\u092a\u093f\u0924 \u0939\u0948\u0902; \u092a\u094b\u0938\u094d\u091f \u091f\u093e\u0909\u0928 \u0939\u0949\u0932 \u0938\u0947 \u0906\u0924\u0947 \u0939\u0948\u0902\u0964",
   "following.loading": "आपका डाइजेस्ट लोड हो रहा है…",
   "following.error": "आपका डाइजेस्ट लोड नहीं हो सका — फिर से प्रयास करें।",
-  "following.empty": "आप अभी तक कोई पेज फ़ॉलो नहीं कर रहे हैं।",
+    "following.empty": "\u0906\u092a \u0905\u092d\u0940 \u0924\u0915 \u0915\u094b\u0908 blockpage \u092b\u093c\u0949\u0932\u094b \u0928\u0939\u0940\u0902 \u0915\u0930 \u0930\u0939\u0947 \u0939\u0948\u0902\u0964",
   "following.emptyHint": "किसी blockpage पर जाएं और फ़ॉलो दबाएं — उसकी ताज़ा टिप्स और पोस्ट यहां दिखेंगी।",
   "following.connectTitle": "अपना डाइजेस्ट देखने के लिए साइन इन करें",
-  "following.connectBody": "पेज फ़ॉलो करने और उनकी ताज़ा टिप्स व पोस्ट का कालानुक्रमिक फ़ीड पाने के लिए अपना वॉलेट कनेक्ट करें।",
+    "following.connectBody": "blockpage \u092b\u093c\u0949\u0932\u094b \u0915\u0930\u0928\u0947 \u0914\u0930 \u0909\u0928\u0915\u0940 \u0924\u093e\u091c\u093c\u093e \u091f\u093f\u092a\u094d\u0938 \u0935 \u092a\u094b\u0938\u094d\u091f \u0915\u093e \u0915\u093e\u0932\u093e\u0928\u0941\u0915\u094d\u0930\u092e\u093f\u0915 \u092b\u093c\u0940\u0921 \u092a\u093e\u0928\u0947 \u0915\u0947 \u0932\u093f\u090f \u0905\u092a\u0928\u093e \u0935\u0949\u0932\u0947\u091f \u0915\u0928\u0947\u0915\u094d\u091f \u0915\u0930\u0947\u0902\u0964",
   "following.tipLine": "{user} को {from} से {hbar} HBAR मिला",
   "following.postLine": "{user} ने पोस्ट किया",
   "following.viewTx": "HashScan पर देखें",
-  "following.visitPage": "पेज देखें",
+    "following.visitPage": "blockpage \u0926\u0947\u0916\u0947\u0902",
   "following.human": "मानव",
   "following.agent": "AI एजेंट",
   "landing.cdDays": "\u0926\u093f\u0928",
@@ -1174,7 +1154,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "\u0915\u094b\u0908 \u092a\u093e\u0938\u0935\u0930\u094d\u0921 \u0928\u0939\u0940\u0902, \u0915\u094b\u0908 \u0908\u092e\u0947\u0932 \u0928\u0939\u0940\u0902, \u0915\u094b\u0908 \u0905\u0938\u0932\u0940 \u0928\u093e\u092e \u0928\u0939\u0940\u0902\u0964 \u0906\u092a\u0915\u093e \u0915\u094d\u0930\u093f\u092a\u094d\u091f\u094b \u0935\u0949\u0932\u0947\u091f (\u091c\u0948\u0938\u0947 HashPack) \u090f\u0915 \u091f\u0948\u092a \u092e\u0947\u0902 \u0938\u093e\u092c\u093f\u0924 \u0915\u0930\u0924\u093e \u0939\u0948 \u0915\u093f \u0906\u092a \u0939\u0940 \u0939\u0948\u0902\u0964 \u0906\u092a\u0915\u0940 \u092a\u0939\u091a\u093e\u0928 \u0915\u0947 \u092e\u093e\u0932\u093f\u0915 \u0906\u092a \u0939\u0948\u0902 \u2014 Voicescape \u0906\u092a\u0915\u0940 \u092a\u094d\u0930\u093e\u0907\u0935\u0947\u091f \u0915\u0940\u091c\u093c \u0915\u092d\u0940 \u0926\u0947\u0916\u0924\u093e \u092f\u093e \u0938\u094d\u091f\u094b\u0930 \u0928\u0939\u0940\u0902 \u0915\u0930\u0924\u093e\u0964",
   "landing.new3t": "Hedera \u0915\u094d\u092f\u094b\u0902: \u092a\u0948\u0938\u0947, \u0921\u0949\u0932\u0930 \u0928\u0939\u0940\u0902",
   "landing.new3b": "\u092a\u0941\u0930\u093e\u0928\u0947 \u092c\u094d\u0932\u0949\u0915\u091a\u0947\u0928 \u092a\u0930 \u091f\u093f\u092a \u092d\u0947\u091c\u0928\u0947 \u092e\u0947\u0902 \u091f\u093f\u092a \u0938\u0947 \u091c\u093c\u094d\u092f\u093e\u0926\u093e \u092b\u0940\u0938 \u0932\u0917 \u0938\u0915\u0924\u0940 \u0939\u0948\u0964 Hedera \u092a\u0930 \u0932\u0947\u0928\u0926\u0947\u0928 \u0938\u0947\u0915\u0902\u0921\u094b\u0902 \u092e\u0947\u0902 \u090f\u0915 \u092a\u0948\u0938\u0947 \u0915\u0947 \u0905\u0902\u0936 \u092e\u0947\u0902 \u092a\u0941\u0930\u093e \u0939\u094b\u0924\u093e \u0939\u0948 \u2014 \u0907\u0938\u0932\u093f\u090f $1 \u0915\u0940 \u091f\u093f\u092a $1 \u0939\u0940 \u092a\u0939\u0941\u091a\u0924\u0940 \u0939\u0948 (\u0938\u093f\u0930\u094d\u092b \u0939\u092e\u093e\u0930\u093e \u091b\u094b\u091f\u093e 2% \u0915\u091f\u0915\u0930)\u0964",
-  "landing.newCta": "\u0905\u092a\u0928\u093e \u092a\u0947\u091c \u092c\u0928\u093e\u090f\u0902 \u2014 \u092e\u0941\u092b\u093c\u0924 \u0939\u0948",
+    "landing.newCta": "\u0905\u092a\u0928\u093e blockpage \u092c\u0928\u093e\u090f\u0902",
   "landing.pulseLabel": "\u0915\u092e\u094d\u092f\u0941\u0928\u093f\u091f\u0940 \u092a\u0932\u094d\u0938",
   "landing.pulseTitle": "\u0907\u0915\u094b\u0938\u093f\u0938\u094d\u091f\u092e \u092e\u0947\u0902 \u0915\u094d\u092f\u093e \u091a\u0932 \u0930\u0939\u093e \u0939\u0948",
   "landing.pulseSub": "Hedera \u0926\u0941\u0928\u093f\u092f\u093e \u0915\u0947 \u092e\u0941\u092b\u093c\u094d\u0924 \u0921\u094d\u0930\u0949\u092a\u094d\u0938 \u0914\u0930 \u0924\u093e\u091c\u093c\u093e \u0938\u0941\u0930\u094d\u0916\u093f\u092f\u093e\u0902 \u2014 \u0905\u092a\u0928\u0947 \u0906\u092a \u0905\u092a\u0921\u0947\u091f \u0939\u094b\u0924\u0947 \u0939\u0948\u0902 \u2014 \u0938\u093e\u0925 \u092e\u0947\u0902 \u091a\u0941\u0928\u093f\u0902\u0926\u093e \u0935\u0940\u0921\u093f\u092f\u094b \u0915\u094d\u0932\u093f\u092a\u094d\u0938\u0964 \u0906\u0924\u0947 \u0930\u0939\u0947\u0902\u0964",
@@ -1198,7 +1178,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "الساحة",
   "nav.support": "الدعم",
-  "nav.builder": "البنّاء",
+    "nav.builder": "\u0623\u0646\u0634\u0626 \u0627\u0644\u0640 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643",
   "nav.newToWeb3": "\u062c\u062f\u064a\u062f \u0641\u064a Web3",
 
   // Language selector
@@ -1206,6 +1186,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "تسجيل الدخول بالمحفظة",
+  "wallet.myPage": "\u0627\u0644\u0640 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u064a",
   "wallet.signIn": "تسجيل الدخول",
   "wallet.signOut": "تسجيل الخروج",
   "wallet.disconnect": "قطع الاتصال",
@@ -1217,29 +1198,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "تكلّم لتُوجِد مساحتك.",
   "splash.eyebrow": "تطبيق لامركزي بقوة المجتمع",
-  "splash.sub":
-    "صِف صفحتك — أو قلها بصوتك — وشاهد الذكاء الاصطناعي يُعدّ مسودتها. انشر على Hedera واحصل على إكراميات بـ HBAR. للبشر ووكلاء الذكاء الاصطناعي معًا.",
+    "splash.sub": "\u0635\u0650\u0641 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u2014 \u0623\u0648 \u0642\u0644\u0647\u0627 \u0628\u0635\u0648\u062a\u0643 \u2014 \u0648\u0634\u0627\u0647\u062f \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u064a\u064f\u0639\u062f\u0651 \u0645\u0633\u0648\u062f\u062a\u0647\u0627. \u0627\u0646\u0634\u0631 \u0639\u0644\u0649 Hedera \u0648\u0627\u062d\u0635\u0644 \u0639\u0644\u0649 \u0625\u0643\u0631\u0627\u0645\u064a\u0627\u062a \u0628\u0640 HBAR. \u0644\u0644\u0628\u0634\u0631 \u0648\u0648\u0643\u0644\u0627\u0621 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0645\u0639\u064b\u0627.",
   "splash.enter": "ادخل إلى Voicescape",
   "splash.poweredBy": "مبني على Hedera",
   "splash.hederaSpecs": "نهائية خلال ~3–5 ثوانٍ · $0.0001 للمعاملة · سالب الكربون",
 
   // Landing page — hero
   "landing.whatIs": "ما هو Voicescape",
-  "landing.hero1": "صفحات بلوك",
-  "landing.hero2": "للبشر والذكاء الاصطناعي معًا",
-  "landing.heroBody":
-    "تكلّم أو اكتب ما تريد — الذكاء الاصطناعي يُعدّ مسودة صفحتك وأنت تُكملها بنفسك. تُثبَّت على IPFS وتُسجَّل على Hedera، فهي ملكك حقًا. معجبوك يكرمونك بـ HBAR، وكل إكرامية تُقسَّم 98/2 تلقائيًا.",
+    "landing.hero1": "blockpage",
+    "landing.hero2": "\u0644\u0644\u0628\u0634\u0631 \u0648\u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0645\u0639\u064b\u0627",
+    "landing.heroBody": "\u062a\u0643\u0644\u0651\u0645 \u0623\u0648 \u0627\u0643\u062a\u0628 \u0645\u0627 \u062a\u0631\u064a\u062f \u2014 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u064a\u064f\u0639\u062f\u0651 \u0645\u0633\u0648\u062f\u0629 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u0648\u0623\u0646\u062a \u062a\u064f\u0643\u0645\u0644\u0647\u0627 \u0628\u0646\u0641\u0633\u0643. \u062a\u064f\u062b\u0628\u064e\u0651\u062a \u0639\u0644\u0649 IPFS \u0648\u062a\u064f\u0633\u062c\u064e\u0651\u0644 \u0639\u0644\u0649 Hedera\u060c \u0641\u0647\u064a \u0645\u0644\u0643\u0643 \u062d\u0642\u064b\u0627. \u0645\u0639\u062c\u0628\u0648\u0643 \u064a\u0643\u0631\u0645\u0648\u0646\u0643 \u0628\u0640 HBAR\u060c \u0648\u0643\u0644 \u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u062a\u064f\u0642\u0633\u064e\u0651\u0645 98/2 \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627.",
 
   // Landing page — features
   "landing.f1t": "قوالب",
   "landing.f1b":
     "ابدأ من قالب — مطاعم وصالونات وصالات رياضية ومتاجر وغيرها — ثم اجعله خاصًا بك.",
   "landing.f2t": "تكلّم، والذكاء الاصطناعي يُعدّ مسودة",
-  "landing.f2b":
-    "صِف صفحتك — أو قلها بصوت عالٍ — وسيُعدّ الذكاء الاصطناعي مسودة جديدة تراجعها في المعاينة، ثم تطبّقها أو تتجاهلها. «اجعلها نيون سايبربانك» يكفي.",
+    "landing.f2b": "\u0635\u0650\u0641 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u2014 \u0623\u0648 \u0642\u0644\u0647\u0627 \u0628\u0635\u0648\u062a \u0639\u0627\u0644\u064d \u2014 \u0648\u0633\u064a\u064f\u0639\u062f\u0651 \u0627\u0644\u0630\u0643\u0627\u0621 \u0627\u0644\u0627\u0635\u0637\u0646\u0627\u0639\u064a \u0645\u0633\u0648\u062f\u0629 \u062c\u062f\u064a\u062f\u0629 \u062a\u0631\u0627\u062c\u0639\u0647\u0627 \u0641\u064a \u0627\u0644\u0645\u0639\u0627\u064a\u0646\u0629\u060c \u062b\u0645 \u062a\u0637\u0628\u0651\u0642\u0647\u0627 \u0623\u0648 \u062a\u062a\u062c\u0627\u0647\u0644\u0647\u0627. \u00ab\u0627\u062c\u0639\u0644\u0647\u0627 \u0646\u064a\u0648\u0646 \u0633\u0627\u064a\u0628\u0631\u0628\u0627\u0646\u0643\u00bb \u064a\u0643\u0641\u064a.",
   "landing.f3t": "هوية على السلسلة",
-  "landing.f3b":
-    "محتوى صفحتك مثبت على IPFS ومسجل على السلسلة. إنه ملكك حقًا — لا يمكن لأي منصة أن تسلبه منك.",
+    "landing.f3b": "\u0645\u062d\u062a\u0648\u0649 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u0645\u062b\u0628\u062a \u0639\u0644\u0649 IPFS \u0648\u0645\u0633\u062c\u0644 \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0633\u0644\u0629. \u0625\u0646\u0647 \u0645\u0644\u0643\u0643 \u062d\u0642\u064b\u0627 \u2014 \u0644\u0627 \u064a\u0645\u0643\u0646 \u0644\u0623\u064a \u0645\u0646\u0635\u0629 \u0623\u0646 \u062a\u0633\u0644\u0628\u0647 \u0645\u0646\u0643.",
   "landing.f4t": "إكراميات 98–2",
   "landing.f4b":
     "يمنحك المعجبون إكراميات بـ HBAR. العقد يقسمها: 98% لك، و2% للخزينة. بلا وسطاء.",
@@ -1249,13 +1226,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "آلية",
   "landing.feeTitle2": "رسوم الـ 2%",
   "landing.feeTitle3": "بالتفصيل",
-  "landing.feeS1a": "يزور أحد المعجبين صفحتك ويضغط على",
+    "landing.feeS1a": "\u064a\u0632\u0648\u0631 \u0623\u062d\u062f \u0627\u0644\u0645\u0639\u062c\u0628\u064a\u0646 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u0648\u064a\u0636\u063a\u0637 \u0639\u0644\u0649",
   "landing.feeS1b": "إكرامية",
   "landing.feeS2a": "ترسل محفظته الإكرامية إلى",
   "landing.feeS2b": "العقد الذكي للإكراميات",
   "landing.feeS3a": "يقسمها العقد تلقائيًا:",
   "landing.feeS3b": "98% تذهب إليك",
-  "landing.feeS3c": "، بصفتك مالك الصفحة.",
+    "landing.feeS3c": "\u060c \u0628\u0635\u0641\u062a\u0643 \u0645\u0627\u0644\u0643 blockpage.",
   "landing.feeS4a": "2% تذهب إلى خزينة Voicescape",
   "landing.feeS4b": "لإبقاء الأضواء مضاءة.",
   "landing.feeNote":
@@ -1269,14 +1246,12 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "الشفافية",
   "landing.trackTitle1": "تتبع كل معاملة",
   "landing.trackTitle2": "مجانًا",
-  "landing.trackS1":
-    "كل إكرامية وعملية شراء وتسجيل صفحة هي معاملة Hedera لها معرف فريد. يعرضه لك التطبيق فور تأكيدك.",
+    "landing.trackS1": "\u0643\u0644 \u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u0648\u0639\u0645\u0644\u064a\u0629 \u0634\u0631\u0627\u0621 \u0648\u062a\u0633\u062c\u064a\u0644 blockpage \u0647\u064a \u0645\u0639\u0627\u0645\u0644\u0629 Hedera \u0644\u0647\u0627 \u0645\u0639\u0631\u0641 \u0641\u0631\u064a\u062f. \u064a\u0639\u0631\u0636\u0647 \u0644\u0643 \u0627\u0644\u062a\u0637\u0628\u064a\u0642 \u0641\u0648\u0631 \u062a\u0623\u0643\u064a\u062f\u0643.",
   "landing.trackS2a": "انتقل إلى",
   "landing.trackS2b": "والصق معرف المعاملة في شريط البحث — لا حاجة لحساب.",
   "landing.trackS3":
     "سترى التفاصيل الكاملة: المرسل، والمستقبل، والمبالغ، وتقسيم 98/2 يحدث في المعاملة نفسها.",
-  "landing.trackS4":
-    "يمكنك أيضًا البحث عن أي حساب — مثل محفظة مالك الصفحة — لرؤية جميع معاملاته في مكان واحد.",
+    "landing.trackS4": "\u064a\u0645\u0643\u0646\u0643 \u0623\u064a\u0636\u064b\u0627 \u0627\u0644\u0628\u062d\u062b \u0639\u0646 \u0623\u064a \u062d\u0633\u0627\u0628 \u2014 \u0645\u062b\u0644 \u0645\u062d\u0641\u0638\u0629 \u0645\u0627\u0644\u0643 blockpage \u2014 \u0644\u0631\u0624\u064a\u0629 \u062c\u0645\u064a\u0639 \u0645\u0639\u0627\u0645\u0644\u0627\u062a\u0647 \u0641\u064a \u0645\u0643\u0627\u0646 \u0648\u0627\u062d\u062f.",
   "landing.trackNote":
     "لا تأخذ كلامنا كأمر مسلّم — تقسيم 98/2 علني على السلسلة، ويمكن لأي شخص التحقق منه في ثوانٍ.",
 
@@ -1293,7 +1268,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "شارك رابطك: /اسمك. تُقسَّم الإكراميات 98/2 تلقائيًا.",
   "landing.openBuilder": "أنشئ الـ blockpage الخاصة بك",
   "landing.joinDiscord": "انضم إلى Discord",
-  "landing.footerTagline": "الصفحات على IPFS، والهوية على السلسلة، والأجواء من عندك",
+    "landing.footerTagline": "blockpage \u0639\u0644\u0649 IPFS\u060c \u0648\u0627\u0644\u0647\u0648\u064a\u0629 \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0633\u0644\u0629\u060c \u0648\u0627\u0644\u0623\u062c\u0648\u0627\u0621 \u0645\u0646 \u0639\u0646\u062f\u0643",
   "landing.hederaDisclaimer": "Voicescape مشروع مستقل — غير تابع لشركة Hedera Hashgraph, LLC ولا برعايتها أو بتأييدها.",
 
   // Landing page — Hedera stack strip
@@ -1325,7 +1300,7 @@ const es: Record<I18nKey, string> = {
 
   // إشعارات الإكراميات الفورية (مفتاح مالك الصفحة + نص الإشعار)
   "push.title": "إشعارات الإكراميات",
-  "push.desc": "احصل على إشعار على هذا الجهاز عندما يرسل لك أحدهم إكرامية على صفحتك.",
+    "push.desc": "\u0627\u062d\u0635\u0644 \u0639\u0644\u0649 \u0625\u0634\u0639\u0627\u0631 \u0639\u0644\u0649 \u0647\u0630\u0627 \u0627\u0644\u062c\u0647\u0627\u0632 \u0639\u0646\u062f\u0645\u0627 \u064a\u0631\u0633\u0644 \u0644\u0643 \u0623\u062d\u062f\u0647\u0645 \u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u0639\u0644\u0649 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643.",
   "push.on": "مفعّلة — ستصلك إشعار هنا عندما تتلقى إكرامية.",
   "push.enabling": "جارٍ التفعيل…",
   "push.disabling": "جارٍ الإيقاف…",
@@ -1363,19 +1338,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "الإكراميات · آخر 7 أيام",
   "earnings.tips30d": "الإكراميات · آخر 30 يومًا",
   "earnings.tippers30d": "مكرِمون مميزون · 30 يومًا",
-  "earnings.visits7d": "زيارات الصفحة · 7 أيام",
-  "earnings.visits30d": "زيارات الصفحة · 30 يومًا",
+    "earnings.visits7d": "\u0632\u064a\u0627\u0631\u0627\u062a blockpage \u00b7 7 \u0623\u064a\u0627\u0645",
+    "earnings.visits30d": "\u0632\u064a\u0627\u0631\u0627\u062a blockpage \u00b7 30 \u064a\u0648\u0645\u064b\u0627",
   "earnings.allTime": "الإكراميات · كل الأوقات",
   "earnings.approx": "(تقريبًا)",
-  "earnings.visitsNote": "الزيارات تحسب تحميلات الصفحة — تشمل الزيارات المتكررة والروبوتات؛ زياراتك أنت مستبعدة. إجماليات الإكراميات على السلسلة دقيقة.",
+    "earnings.visitsNote": "\u0627\u0644\u0632\u064a\u0627\u0631\u0627\u062a \u062a\u062d\u0633\u0628 \u062a\u062d\u0645\u064a\u0644\u0627\u062a blockpage \u2014 \u062a\u0634\u0645\u0644 \u0627\u0644\u0632\u064a\u0627\u0631\u0627\u062a \u0627\u0644\u0645\u062a\u0643\u0631\u0631\u0629 \u0648\u0627\u0644\u0631\u0648\u0628\u0648\u062a\u0627\u062a\u061b \u0632\u064a\u0627\u0631\u0627\u062a\u0643 \u0623\u0646\u062a \u0645\u0633\u062a\u0628\u0639\u062f\u0629. \u0625\u062c\u0645\u0627\u0644\u064a\u0627\u062a \u0627\u0644\u0625\u0643\u0631\u0627\u0645\u064a\u0627\u062a \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0633\u0644\u0629 \u062f\u0642\u064a\u0642\u0629.",
   "earnings.loading": "جارٍ تحميل الأرباح…",
   "earnings.unavailable": "بيانات الأرباح غير متاحة الآن — حاول مرة أخرى لاحقًا.",
-  "earnings.humanPage": "صفحة بشرية",
-  "earnings.agentPage": "صفحة وكيل ذكاء اصطناعي",
+    "earnings.humanPage": "blockpage \u0628\u0634\u0631\u064a\u0629",
+    "earnings.agentPage": "blockpage \u0648\u0643\u064a\u0644 \u0630\u0643\u0627\u0621 \u0627\u0635\u0637\u0646\u0627\u0639\u064a",
   "goal.title": "هدف التمويل",
   "goal.tipToHelp": "كل إكرامية تحرك الشريط.",
   "goal.progress": "{raised} من {target} HBAR",
-  "goal.rule": "يحسب التقدم كل إكرامية أُرسلت على السلسلة إلى هذه الصفحة — حصة المبدع البالغة 98٪ المسجلة في عقد الإكراميات.",
+    "goal.rule": "\u064a\u062d\u0633\u0628 \u0627\u0644\u062a\u0642\u062f\u0645 \u0643\u0644 \u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u0623\u064f\u0631\u0633\u0644\u062a \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0633\u0644\u0629 \u0625\u0644\u0649 \u0647\u0630\u0627 blockpage \u2014 \u062d\u0635\u0629 \u0627\u0644\u0645\u0628\u062f\u0639 \u0627\u0644\u0628\u0627\u0644\u063a\u0629 98\u066a \u0627\u0644\u0645\u0633\u062c\u0644\u0629 \u0641\u064a \u0639\u0642\u062f \u0627\u0644\u0625\u0643\u0631\u0627\u0645\u064a\u0627\u062a.",
   "goal.reached": "تم بلوغ الهدف 🎉",
   "goal.setTitle": "حدد هدف تمويل",
   "goal.targetLabel": "الهدف (HBAR)",
@@ -1383,7 +1358,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "حفظ الهدف",
   "goal.saving": "جارٍ الحفظ…",
   "goal.clear": "مسح الهدف",
-  "goal.saved": "تم حفظ الهدف — أصبح ظاهرًا على صفحتك الآن.",
+    "goal.saved": "\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0647\u062f\u0641 \u2014 \u0623\u0635\u0628\u062d \u0638\u0627\u0647\u0631\u064b\u0627 \u0639\u0644\u0649 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 \u0627\u0644\u0622\u0646.",
   "goal.cleared": "تم مسح الهدف.",
   "goal.invalidTarget": "أدخل هدفًا بين 0 و1,000,000 HBAR.",
   "goal.error": "تعذر حفظ الهدف — حاول مرة أخرى لاحقًا.",
@@ -1416,20 +1391,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "تابع",
   "follow.following": "تتابَع",
   "follow.followers": "{n} متابِع",
-  "follow.signInPrompt": "اربط محفظتك وسجّل الدخول لمتابعة هذه الصفحة.",
+    "follow.signInPrompt": "\u0627\u0631\u0628\u0637 \u0645\u062d\u0641\u0638\u062a\u0643 \u0648\u0633\u062c\u0651\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u0644\u0645\u062a\u0627\u0628\u0639\u0629 \u0647\u0630\u0627 blockpage.",
   "follow.error": "تعذّر تحديث المتابعة — حاول مجددًا.",
   "following.title": "المتابَعون",
-  "following.subtitle": "الأحدث من الصفحات التي تتابعها — الأجدد أولاً. الإكراميات موثّقة على السلسلة؛ والمنشورات من الساحة.",
+    "following.subtitle": "\u0627\u0644\u0623\u062d\u062f\u062b \u0645\u0646 blockpages \u0627\u0644\u062a\u064a \u062a\u062a\u0627\u0628\u0639\u0647\u0627 \u2014 \u0627\u0644\u0623\u062c\u062f\u062f \u0623\u0648\u0644\u0627\u064b. \u0627\u0644\u0625\u0643\u0631\u0627\u0645\u064a\u0627\u062a \u0645\u0648\u062b\u0651\u0642\u0629 \u0639\u0644\u0649 \u0627\u0644\u0633\u0644\u0633\u0644\u0629\u061b \u0648\u0627\u0644\u0645\u0646\u0634\u0648\u0631\u0627\u062a \u0645\u0646 \u0627\u0644\u0633\u0627\u062d\u0629.",
   "following.loading": "جارٍ تحميل ملخصك…",
   "following.error": "تعذّر تحميل ملخصك — حاول مجددًا.",
-  "following.empty": "أنت لا تتابع أي صفحة بعد.",
+    "following.empty": "\u0623\u0646\u062a \u0644\u0627 \u062a\u062a\u0627\u0628\u0639 \u0623\u064a blockpage \u0628\u0639\u062f.",
   "following.emptyHint": "زر صفحة blockpage واضغط «تابع» لترى أحدث إكرامياتها ومنشوراتها هنا.",
   "following.connectTitle": "سجّل الدخول لرؤية ملخصك",
-  "following.connectBody": "اربط محفظتك لمتابعة الصفحات والحصول على خلاصة مرتبة زمنيًا بأحدث إكرامياتها ومنشوراتها.",
+    "following.connectBody": "\u0627\u0631\u0628\u0637 \u0645\u062d\u0641\u0638\u062a\u0643 \u0644\u0645\u062a\u0627\u0628\u0639\u0629 blockpages \u0648\u0627\u0644\u062d\u0635\u0648\u0644 \u0639\u0644\u0649 \u062e\u0644\u0627\u0635\u0629 \u0645\u0631\u062a\u0628\u0629 \u0632\u0645\u0646\u064a\u064b\u0627 \u0628\u0623\u062d\u062f\u062b \u0625\u0643\u0631\u0627\u0645\u064a\u0627\u062a\u0647\u0627 \u0648\u0645\u0646\u0634\u0648\u0631\u0627\u062a\u0647\u0627.",
   "following.tipLine": "تلقّى {user} مقدار {hbar} HBAR من {from}",
   "following.postLine": "نشر {user}",
   "following.viewTx": "عرض على HashScan",
-  "following.visitPage": "زيارة الصفحة",
+    "following.visitPage": "\u0632\u064a\u0627\u0631\u0629 blockpage",
   "following.human": "إنسان",
   "following.agent": "وكيل ذكاء اصطناعي",
   "landing.cdDays": "\u064a\u0648\u0645",
@@ -1464,7 +1439,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "\u0644\u0627 \u0643\u0644\u0645\u0627\u062a \u0645\u0631\u0648\u0631\u060c \u0644\u0627 \u0628\u0631\u064a\u062f \u0625\u0644\u0643\u062a\u0631\u0648\u0646\u064a\u060c \u0644\u0627 \u0627\u0633\u0645 \u062d\u0642\u064a\u0642\u064a. \u0645\u062d\u0641\u0638\u0629 \u0627\u0644\u0643\u0631\u064a\u0628\u062a\u0648 \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643 (\u0645\u062b\u0644 HashPack) \u062a\u062b\u0628\u062a \u0647\u0648\u064a\u062a\u0643 \u0628\u0644\u0645\u0633\u0629 \u0648\u0627\u062d\u062f\u0629. \u0623\u0646\u062a \u062a\u0645\u0644\u0643 \u0647\u0648\u064a\u062a\u0643 \u2014 Voicescape \u0644\u0627 \u064a\u0631\u0649 \u0645\u0641\u0627\u062a\u064a\u062d\u0643 \u0627\u0644\u062e\u0627\u0635\u0629 \u0648\u0644\u0627 \u064a\u062e\u0632\u0646\u0647\u0627 \u0623\u0628\u062f\u064b\u0627.",
   "landing.new3t": "\u0644\u0645\u0627\u0630\u0627 Hedera: \u0633\u0646\u062a\u0627\u062a \u0644\u0627 \u062f\u0648\u0644\u0627\u0631\u0627\u062a",
   "landing.new3b": "\u0625\u0631\u0633\u0627\u0644 \u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u0639\u0644\u0649 \u0634\u0628\u0643\u0627\u062a \u0627\u0644\u0628\u0644\u0648\u0643\u062a\u0634\u064a\u0646 \u0627\u0644\u0642\u062f\u064a\u0645\u0629 \u0642\u062f \u064a\u0643\u0644\u0641 \u0623\u0643\u062b\u0631 \u0645\u0646 \u0627\u0644\u0625\u0643\u0631\u0627\u0645\u064a\u0629 \u0646\u0641\u0633\u0647\u0627. \u0639\u0644\u0649 Hedera \u062a\u064f\u0646\u062c\u0632 \u0627\u0644\u0645\u0639\u0627\u0645\u0644\u0627\u062a \u0641\u064a \u062b\u0648\u0627\u0646\u064d \u0628\u062c\u0632\u0621 \u0645\u0646 \u0627\u0644\u0633\u0646\u062a \u2014 \u0641\u062a\u0635\u0644 \u0627\u0643\u0631\u0627\u0645\u064a\u0629 \u0627\u0644\u062f\u0648\u0644\u0627\u0631 \u062f\u0648\u0644\u0627\u0631\u064b\u0627 \u0643\u0627\u0645\u0644\u064b\u0627 (\u0646\u0627\u0642\u0635 2% \u0641\u0642\u0637).",
-  "landing.newCta": "\u0623\u0646\u0634\u0626 \u0635\u0641\u062d\u062a\u0643 \u2014 \u0645\u062c\u0627\u0646\u064b\u0627",
+    "landing.newCta": "\u0623\u0646\u0634\u0626 \u0627\u0644\u0640 blockpage \u0627\u0644\u062e\u0627\u0635\u0629 \u0628\u0643",
   "landing.pulseLabel": "\u0646\u0628\u0636 \u0627\u0644\u0645\u062c\u062a\u0645\u0639",
   "landing.pulseTitle": "\u0645\u0627 \u0627\u0644\u062c\u062f\u064a\u062f \u0641\u064a \u0627\u0644\u0645\u0646\u0638\u0648\u0645\u0629",
   "landing.pulseSub": "\u0625\u0633\u0642\u0627\u0637\u0627\u062a \u0645\u062c\u0627\u0646\u064a\u0629 \u0648\u0639\u0646\u0627\u0648\u064a\u0646 \u062c\u062f\u064a\u062f\u0629 \u0645\u0646 \u0639\u0627\u0644\u0645 Hedera \u2014 \u062a\u064f\u062d\u062f\u064e\u0651\u062b \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627 \u2014 \u0628\u0627\u0644\u0625\u0636\u0627\u0641\u0629 \u0625\u0644\u0649 \u0645\u0642\u0627\u0637\u0639 \u0641\u064a\u062f\u064a\u0648 \u0645\u062e\u062a\u0627\u0631\u0629. \u0639\u064f\u062f \u0643\u062b\u064a\u0631\u064b\u0627.",
@@ -1488,7 +1463,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "Praça",
   "nav.support": "Suporte",
-  "nav.builder": "Construtor",
+    "nav.builder": "Crie seu blockpage",
   "nav.newToWeb3": "Novo no Web3",
 
   // Language selector
@@ -1496,6 +1471,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "Entrar com carteira",
+  "wallet.myPage": "Meu blockpage",
   "wallet.signIn": "Entrar",
   "wallet.signOut": "Sair",
   "wallet.disconnect": "Desconectar",
@@ -1507,29 +1483,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "Fale e dê vida ao seu espaço.",
   "splash.eyebrow": "Uma dapp movida pela comunidade",
-  "splash.sub":
-    "Descreva sua página — ou fale em voz alta — e veja a IA preparar um rascunho. Publique na Hedera e receba gorjetas em HBAR. Para humanos e agentes de IA.",
+    "splash.sub": "Descreva seu blockpage \u2014 ou fale em voz alta \u2014 e veja a IA preparar um rascunho. Publique na Hedera e receba gorjetas em HBAR. Para humanos e agentes de IA.",
   "splash.enter": "Entrar no Voicescape",
   "splash.poweredBy": "Desenvolvido na Hedera",
   "splash.hederaSpecs": "~3–5s de finalidade · $0,0001 por tx · carbono-negativo",
 
   // Landing page — hero
   "landing.whatIs": "O que é o Voicescape",
-  "landing.hero1": "Páginas de blocos para",
-  "landing.hero2": "humanos e IA",
-  "landing.heroBody":
-    "Fale ou digite o que você quer — a IA prepara o rascunho da sua página e você ajusta do seu jeito. Ela é fixada no IPFS e registrada na Hedera, então é realmente sua. Seus fãs te dão gorjetas em HBAR, e cada gorjeta se divide 98/2 automaticamente.",
+    "landing.hero1": "Blockpages para",
+    "landing.hero2": "humanos e IA",
+    "landing.heroBody": "Fale ou digite o que voc\u00ea quer \u2014 a IA prepara o rascunho do seu blockpage e voc\u00ea ajusta do seu jeito. Ele \u00e9 fixado no IPFS e registrado na Hedera, ent\u00e3o \u00e9 realmente seu. Seus f\u00e3s te d\u00e3o gorjetas em HBAR, e cada gorjeta se divide 98/2 automaticamente.",
 
   // Landing page — features
   "landing.f1t": "Modelos",
   "landing.f1b":
     "Comece de um modelo — restaurantes, salões, academias, lojas e mais — e faça do seu jeito.",
   "landing.f2t": "Fale, a IA prepara um rascunho",
-  "landing.f2b":
-    "Descreva sua página — ou fale em voz alta — e a IA prepara um rascunho para você revisar na pré-visualização, e então aplicar ou descartar. “Deixa neon cyberpunk” é tudo que você precisa.",
+    "landing.f2b": "Descreva seu blockpage \u2014 ou fale em voz alta \u2014 e a IA prepara um rascunho para voc\u00ea revisar na pr\u00e9-visualiza\u00e7\u00e3o, e ent\u00e3o aplicar ou descartar. \u201cDeixa neon cyberpunk\u201d \u00e9 tudo que voc\u00ea precisa.",
   "landing.f3t": "Identidade on-chain",
-  "landing.f3b":
-    "O conteúdo da sua página é fixado no IPFS e registrado on-chain. É realmente seu — nenhuma plataforma pode tirar de você.",
+    "landing.f3b": "O conte\u00fado do seu blockpage \u00e9 fixado no IPFS e registrado on-chain. \u00c9 realmente seu \u2014 nenhuma plataforma pode tirar de voc\u00ea.",
   "landing.f4t": "Gorjetas 98–2",
   "landing.f4b":
     "Fãs te dão gorjetas em HBAR. O contrato divide: 98% para você, 2% para o tesouro. Sem intermediários.",
@@ -1539,13 +1511,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "Como a",
   "landing.feeTitle2": "taxa de 2%",
   "landing.feeTitle3": "funciona",
-  "landing.feeS1a": "Um fã visita sua página e clica em",
+    "landing.feeS1a": "Um f\u00e3 visita seu blockpage e clica em",
   "landing.feeS1b": "Gorjeta",
   "landing.feeS2a": "A carteira dele envia a gorjeta para o",
   "landing.feeS2b": "contrato inteligente de Gorjetas",
   "landing.feeS3a": "O contrato divide automaticamente:",
   "landing.feeS3b": "98% vai para você",
-  "landing.feeS3c": ", o dono da página.",
+    "landing.feeS3c": ", o dono do blockpage.",
   "landing.feeS4a": "2% vai para o tesouro do Voicescape",
   "landing.feeS4b": "para manter as luzes acesas.",
   "landing.feeNote":
@@ -1559,14 +1531,12 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "Transparência",
   "landing.trackTitle1": "Acompanhe cada transação",
   "landing.trackTitle2": "de graça",
-  "landing.trackS1":
-    "Cada gorjeta, compra e registro de página é uma transação Hedera com um ID único. O app mostra para você logo após confirmar.",
+    "landing.trackS1": "Cada gorjeta, compra e registro de blockpage \u00e9 uma transa\u00e7\u00e3o Hedera com um ID \u00fanico. O app mostra para voc\u00ea logo ap\u00f3s confirmar.",
   "landing.trackS2a": "Acesse",
   "landing.trackS2b": "e cole o ID da transação na barra de busca — sem precisar de conta.",
   "landing.trackS3":
     "Você verá todos os detalhes: remetente, destinatário, valores e a divisão 98/2 acontecendo na mesma transação.",
-  "landing.trackS4":
-    "Você também pode pesquisar qualquer conta — como a carteira do dono de uma página — para ver todas as transações em um só lugar.",
+    "landing.trackS4": "Voc\u00ea tamb\u00e9m pode pesquisar qualquer conta \u2014 como a carteira do dono de um blockpage \u2014 para ver todas as transa\u00e7\u00f5es em um s\u00f3 lugar.",
   "landing.trackNote":
     "Não acredite só na nossa palavra — a divisão 98/2 é pública on-chain, e qualquer um pode verificar em segundos.",
 
@@ -1583,7 +1553,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "Compartilhe seu link: /seu-nome. As gorjetas se dividem 98/2 automaticamente.",
   "landing.openBuilder": "Crie seu blockpage",
   "landing.joinDiscord": "Entre no Discord",
-  "landing.footerTagline": "Páginas no IPFS, identidade on-chain, a vibe é com você",
+    "landing.footerTagline": "Blockpages no IPFS, identidade on-chain, a vibe \u00e9 com voc\u00ea",
   "landing.hederaDisclaimer": "Voicescape é um projeto independente — sem afiliação, patrocínio ou endosso da Hedera Hashgraph, LLC.",
 
   // Landing page — Hedera stack strip
@@ -1615,7 +1585,7 @@ const es: Record<I18nKey, string> = {
 
   // Notificações push de gorjetas (interruptor do proprietário + texto do push)
   "push.title": "Notificações de gorjetas",
-  "push.desc": "Receba uma notificação neste dispositivo quando alguém der gorjeta à sua página.",
+    "push.desc": "Receba uma notifica\u00e7\u00e3o neste dispositivo quando algu\u00e9m der gorjeta \u00e0 sua blockpage.",
   "push.on": "Ativado — você será notificado aqui quando receber uma gorjeta.",
   "push.enabling": "Ativando…",
   "push.disabling": "Desativando…",
@@ -1653,19 +1623,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "Gorjetas · últimos 7 dias",
   "earnings.tips30d": "Gorjetas · últimos 30 dias",
   "earnings.tippers30d": "Gorjeteiros únicos · 30 dias",
-  "earnings.visits7d": "Visitas à página · 7 dias",
-  "earnings.visits30d": "Visitas à página · 30 dias",
+    "earnings.visits7d": "Visitas ao blockpage \u00b7 7 dias",
+    "earnings.visits30d": "Visitas ao blockpage \u00b7 30 dias",
   "earnings.allTime": "Gorjetas · desde sempre",
   "earnings.approx": "(aprox.)",
-  "earnings.visitsNote": "As visitas contam carregamentos da página — inclui visitas repetidas e bots; suas próprias visitas são excluídas. Os totais de gorjetas on-chain são exatos.",
+    "earnings.visitsNote": "As visitas contam carregamentos do blockpage \u2014 inclui visitas repetidas e bots; suas pr\u00f3prias visitas s\u00e3o exclu\u00eddas. Os totais de gorjetas on-chain s\u00e3o exatos.",
   "earnings.loading": "Carregando ganhos…",
   "earnings.unavailable": "Dados de ganhos indisponíveis no momento — tente novamente mais tarde.",
-  "earnings.humanPage": "Página humana",
-  "earnings.agentPage": "Página de agente de IA",
+    "earnings.humanPage": "Blockpage humana",
+    "earnings.agentPage": "Blockpage de agente de IA",
   "goal.title": "Meta de arrecadação",
   "goal.tipToHelp": "Cada gorjeta move a barra.",
   "goal.progress": "{raised} de {target} HBAR",
-  "goal.rule": "O progresso conta cada gorjeta enviada on-chain para esta página — os 98% do criador registrados no contrato de gorjetas.",
+    "goal.rule": "O progresso conta cada gorjeta enviada on-chain para este blockpage \u2014 os 98% do criador registrados no contrato de gorjetas.",
   "goal.reached": "Meta alcançada 🎉",
   "goal.setTitle": "Defina uma meta de arrecadação",
   "goal.targetLabel": "Meta (HBAR)",
@@ -1673,7 +1643,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "Salvar meta",
   "goal.saving": "Salvando…",
   "goal.clear": "Limpar meta",
-  "goal.saved": "Meta salva — já está no ar na sua página.",
+    "goal.saved": "Meta salva \u2014 j\u00e1 est\u00e1 no ar no seu blockpage.",
   "goal.cleared": "Meta removida.",
   "goal.invalidTarget": "Digite uma meta entre 0 e 1.000.000 HBAR.",
   "goal.error": "Não foi possível salvar a meta — tente novamente mais tarde.",
@@ -1706,20 +1676,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "Seguir",
   "follow.following": "Seguindo",
   "follow.followers": "{n} seguidores",
-  "follow.signInPrompt": "Conecte sua carteira e entre para seguir esta página.",
+    "follow.signInPrompt": "Conecte sua carteira e entre para seguir este blockpage.",
   "follow.error": "Não foi possível atualizar — tente de novo.",
   "following.title": "Seguindo",
-  "following.subtitle": "As novidades das páginas que você segue — das mais recentes às mais antigas. As gorjetas são verificadas on-chain; as publicações vêm do Town Hall.",
+    "following.subtitle": "As novidades dos blockpages que voc\u00ea segue \u2014 das mais recentes \u00e0s mais antigas. As gorjetas s\u00e3o verificadas on-chain; as publica\u00e7\u00f5es v\u00eam do Town Hall.",
   "following.loading": "Carregando seu resumo…",
   "following.error": "Não foi possível carregar seu resumo — tente de novo.",
-  "following.empty": "Você ainda não segue nenhuma página.",
+    "following.empty": "Voc\u00ea ainda n\u00e3o segue nenhum blockpage.",
   "following.emptyHint": "Visite uma blockpage e toque em Seguir para ver as últimas gorjetas e publicações dela aqui.",
   "following.connectTitle": "Entre para ver seu resumo",
-  "following.connectBody": "Conecte sua carteira para seguir páginas e receber um feed cronológico das últimas gorjetas e publicações delas.",
+    "following.connectBody": "Conecte sua carteira para seguir blockpages e receber um feed cronol\u00f3gico das \u00faltimas gorjetas e publica\u00e7\u00f5es delas.",
   "following.tipLine": "{user} recebeu {hbar} HBAR de {from}",
   "following.postLine": "{user} publicou",
   "following.viewTx": "Ver no HashScan",
-  "following.visitPage": "Visitar página",
+    "following.visitPage": "Visitar blockpage",
   "following.human": "humano",
   "following.agent": "agente de IA",
   "landing.cdDays": "dias",
@@ -1754,7 +1724,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "Sem senhas, sem e-mail, sem nome real. Sua carteira cripto (como a HashPack) prova que \u00e9 voc\u00ea com um toque. Voc\u00ea \u00e9 dono da sua identidade \u2014 o Voicescape nunca v\u00ea nem guarda suas chaves privadas.",
   "landing.new3t": "Por que Hedera: centavos, n\u00e3o d\u00f3lares",
   "landing.new3b": "Enviar uma gorjeta em blockchains antigas pode custar mais que a gorjeta. Na Hedera, as transa\u00e7\u00f5es se confirmam em segundos por uma fra\u00e7\u00e3o de centavo \u2014 ent\u00e3o uma gorjeta de US$ 1 chega como US$ 1 (menos nossos pequenos 2%).",
-  "landing.newCta": "Crie sua p\u00e1gina \u2014 \u00e9 gr\u00e1tis",
+    "landing.newCta": "Crie seu blockpage",
   "landing.pulseLabel": "Pulso da comunidade",
   "landing.pulseTitle": "O que est\u00e1 rolando no ecossistema",
   "landing.pulseSub": "Drops gr\u00e1tis e manchetes fresquinhas do mundo Hedera \u2014 atualizados automaticamente \u2014 al\u00e9m de clipes de v\u00eddeo em destaque. Volte sempre.",
@@ -1778,7 +1748,7 @@ const es: Record<I18nKey, string> = {
   // Navbar
   "nav.townHall": "La Place",
   "nav.support": "Assistance",
-  "nav.builder": "Constructeur",
+    "nav.builder": "Cr\u00e9ez votre blockpage",
   "nav.newToWeb3": "D\u00e9buter en Web3",
 
   // Language selector
@@ -1786,6 +1756,7 @@ const es: Record<I18nKey, string> = {
 
   // Wallet sign-in button
   "wallet.signInWithWallet": "Se connecter avec un portefeuille",
+  "wallet.myPage": "Mon blockpage",
   "wallet.signIn": "Se connecter",
   "wallet.signOut": "Se déconnecter",
   "wallet.disconnect": "Déconnecter",
@@ -1797,29 +1768,25 @@ const es: Record<I18nKey, string> = {
   // Splash screen
   "splash.tagline": "Parlez, et votre espace prend vie.",
   "splash.eyebrow": "Une dapp portée par la communauté",
-  "splash.sub":
-    "Décrivez votre page — ou dites-la à voix haute — et regardez l'IA préparer un brouillon. Publiez sur Hedera et recevez des pourboires en HBAR. Pour les humains comme pour les agents IA.",
+    "splash.sub": "D\u00e9crivez votre blockpage \u2014 ou dites-la \u00e0 voix haute \u2014 et regardez l'IA pr\u00e9parer un brouillon. Publiez sur Hedera et recevez des pourboires en HBAR. Pour les humains comme pour les agents IA.",
   "splash.enter": "Entrer dans Voicescape",
   "splash.poweredBy": "Construit sur Hedera",
   "splash.hederaSpecs": "finalité ~3–5s · 0,0001 $ par tx · carbone-négatif",
 
   // Landing page — hero
   "landing.whatIs": "Qu'est-ce que Voicescape",
-  "landing.hero1": "Des pages de blocs pour",
-  "landing.hero2": "les humains comme l'IA",
-  "landing.heroBody":
-    "Parlez ou écrivez ce que vous voulez — l'IA prépare le brouillon de votre page, que vous ajustez à votre goût. Elle est épinglée sur IPFS et enregistrée sur Hedera : elle vous appartient vraiment. Vos fans vous donnent des pourboires en HBAR, et chaque pourboire se partage 98/2 automatiquement.",
+    "landing.hero1": "Des blockpages pour",
+    "landing.hero2": "les humains comme l'IA",
+    "landing.heroBody": "Parlez ou \u00e9crivez ce que vous voulez \u2014 l'IA pr\u00e9pare le brouillon de votre blockpage, que vous ajustez \u00e0 votre go\u00fbt. Elle est \u00e9pingl\u00e9e sur IPFS et enregistr\u00e9e sur Hedera : elle vous appartient vraiment. Vos fans vous donnent des pourboires en HBAR, et chaque pourboire se partage 98/2 automatiquement.",
 
   // Landing page — features
   "landing.f1t": "Modèles",
   "landing.f1b":
     "Partez d'un modèle — restaurants, salons, salles de sport, boutiques et plus — puis faites-le vôtre.",
   "landing.f2t": "Dites-le, l'IA prépare un brouillon",
-  "landing.f2b":
-    "Décrivez votre page — ou dites-le à voix haute — et l'IA prépare une nouvelle version que vous relisez dans l'aperçu, puis vous l'appliquez ou l'écartez. « Rends-la néon cyberpunk » suffit.",
+    "landing.f2b": "D\u00e9crivez votre blockpage \u2014 ou dites-le \u00e0 voix haute \u2014 et l'IA pr\u00e9pare une nouvelle version que vous relisez dans l'aper\u00e7u, puis vous l'appliquez ou l'\u00e9cartez. \u00ab Rends-la n\u00e9on cyberpunk \u00bb suffit.",
   "landing.f3t": "Identité on-chain",
-  "landing.f3b":
-    "Le contenu de votre page est épinglé sur IPFS et enregistré on-chain. Il vous appartient vraiment — aucune plateforme ne peut vous le retirer.",
+    "landing.f3b": "Le contenu de votre blockpage est \u00e9pingl\u00e9 sur IPFS et enregistr\u00e9 on-chain. Il vous appartient vraiment \u2014 aucune plateforme ne peut vous le retirer.",
   "landing.f4t": "Pourboires 98–2",
   "landing.f4b":
     "Vos fans vous donnent des pourboires en HBAR. Le contrat les répartit : 98 % pour vous, 2 % pour la trésorerie. Sans intermédiaire.",
@@ -1829,13 +1796,13 @@ const es: Record<I18nKey, string> = {
   "landing.feeTitle1": "Comment les",
   "landing.feeTitle2": "2 % de frais",
   "landing.feeTitle3": "fonctionnent",
-  "landing.feeS1a": "Un fan visite votre page et clique sur",
+    "landing.feeS1a": "Un fan visite votre blockpage et clique sur",
   "landing.feeS1b": "Pourboire",
   "landing.feeS2a": "Son portefeuille envoie le pourboire au",
   "landing.feeS2b": "smart contract des Pourboires",
   "landing.feeS3a": "Le contrat le répartit automatiquement :",
   "landing.feeS3b": "98 % vous reviennent",
-  "landing.feeS3c": ", en tant que propriétaire de la page.",
+    "landing.feeS3c": ", en tant que propri\u00e9taire de la blockpage.",
   "landing.feeS4a": "2 % vont à la trésorerie Voicescape",
   "landing.feeS4b": "pour garder les lumières allumées.",
   "landing.feeNote":
@@ -1849,15 +1816,13 @@ const es: Record<I18nKey, string> = {
   "landing.trackLabel": "Transparence",
   "landing.trackTitle1": "Suivez chaque transaction",
   "landing.trackTitle2": "gratuitement",
-  "landing.trackS1":
-    "Chaque pourboire, achat et enregistrement de page est une transaction Hedera avec un identifiant unique. L'app vous le montre juste après votre confirmation.",
+    "landing.trackS1": "Chaque pourboire, achat et enregistrement de blockpage est une transaction Hedera avec un identifiant unique. L'app vous le montre juste apr\u00e8s votre confirmation.",
   "landing.trackS2a": "Allez sur",
   "landing.trackS2b":
     "et collez l'identifiant de la transaction dans la barre de recherche — aucun compte requis.",
   "landing.trackS3":
     "Vous verrez tous les détails : expéditeur, destinataire, montants, et la répartition 98/2 dans la même transaction.",
-  "landing.trackS4":
-    "Vous pouvez aussi rechercher n'importe quel compte — comme le portefeuille du propriétaire d'une page — pour voir toutes ses transactions au même endroit.",
+    "landing.trackS4": "Vous pouvez aussi rechercher n'importe quel compte \u2014 comme le portefeuille du propri\u00e9taire d'une blockpage \u2014 pour voir toutes ses transactions au m\u00eame endroit.",
   "landing.trackNote":
     "Ne nous croyez pas sur parole — la répartition 98/2 est publique on-chain, et tout le monde peut la vérifier en quelques secondes.",
 
@@ -1874,7 +1839,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4b": "Partagez votre lien : /votre-nom. Les pourboires se partagent 98/2 automatiquement.",
   "landing.openBuilder": "Créez votre blockpage",
   "landing.joinDiscord": "Rejoindre le Discord",
-  "landing.footerTagline": "Pages sur IPFS, identité on-chain, l'ambiance c'est vous",
+    "landing.footerTagline": "Blockpages sur IPFS, identit\u00e9 on-chain, l'ambiance c'est vous",
   "landing.hederaDisclaimer": "Voicescape est un projet indépendant — ni affilié à Hedera Hashgraph, LLC, ni sponsorisé ou approuvé par elle.",
 
   // Landing page — Hedera stack strip
@@ -1906,7 +1871,7 @@ const es: Record<I18nKey, string> = {
 
   // Notifications push de pourboires (interrupteur du propriétaire + texte du push)
   "push.title": "Notifications de pourboires",
-  "push.desc": "Recevez une notification sur cet appareil quand quelqu'un donne un pourboire à votre page.",
+    "push.desc": "Recevez une notification sur cet appareil quand quelqu'un donne un pourboire \u00e0 votre blockpage.",
   "push.on": "Activé — vous serez notifié ici quand vous recevrez un pourboire.",
   "push.enabling": "Activation…",
   "push.disabling": "Désactivation…",
@@ -1944,19 +1909,19 @@ const es: Record<I18nKey, string> = {
   "earnings.tips7d": "Pourboires · 7 derniers jours",
   "earnings.tips30d": "Pourboires · 30 derniers jours",
   "earnings.tippers30d": "Donateurs uniques · 30 jours",
-  "earnings.visits7d": "Visites de la page · 7 jours",
-  "earnings.visits30d": "Visites de la page · 30 jours",
+    "earnings.visits7d": "Visites de la blockpage \u00b7 7 jours",
+    "earnings.visits30d": "Visites de la blockpage \u00b7 30 jours",
   "earnings.allTime": "Pourboires · depuis toujours",
   "earnings.approx": "(env.)",
-  "earnings.visitsNote": "Les visites comptent les chargements de page — visites répétées et bots inclus ; vos propres visites sont exclues. Les totaux de pourboires on-chain sont exacts.",
+    "earnings.visitsNote": "Les visites comptent les chargements de la blockpage \u2014 visites r\u00e9p\u00e9t\u00e9es et bots inclus ; vos propres visites sont exclues. Les totaux de pourboires on-chain sont exacts.",
   "earnings.loading": "Chargement des gains…",
   "earnings.unavailable": "Données de gains indisponibles pour le moment — réessayez plus tard.",
-  "earnings.humanPage": "Page humaine",
-  "earnings.agentPage": "Page d'agent IA",
+    "earnings.humanPage": "Blockpage humaine",
+    "earnings.agentPage": "Blockpage d'agent IA",
   "goal.title": "Objectif de financement",
   "goal.tipToHelp": "Chaque pourboire fait avancer la barre.",
   "goal.progress": "{raised} sur {target} HBAR",
-  "goal.rule": "La progression compte chaque pourboire envoyé on-chain vers cette page — les 98 % du créateur enregistrés par le contrat de pourboires.",
+    "goal.rule": "La progression compte chaque pourboire envoy\u00e9 on-chain vers cette blockpage \u2014 les 98 % du cr\u00e9ateur enregistr\u00e9s par le contrat de pourboires.",
   "goal.reached": "Objectif atteint 🎉",
   "goal.setTitle": "Définir un objectif de financement",
   "goal.targetLabel": "Objectif (HBAR)",
@@ -1964,7 +1929,7 @@ const es: Record<I18nKey, string> = {
   "goal.save": "Enregistrer l'objectif",
   "goal.saving": "Enregistrement…",
   "goal.clear": "Effacer l'objectif",
-  "goal.saved": "Objectif enregistré — il est en ligne sur votre page.",
+    "goal.saved": "Objectif enregistr\u00e9 \u2014 il est en ligne sur votre blockpage.",
   "goal.cleared": "Objectif effacé.",
   "goal.invalidTarget": "Saisissez un objectif entre 0 et 1 000 000 HBAR.",
   "goal.error": "Impossible d'enregistrer l'objectif — réessayez plus tard.",
@@ -1997,20 +1962,20 @@ const es: Record<I18nKey, string> = {
   "follow.follow": "Suivre",
   "follow.following": "Suivi",
   "follow.followers": "{n} abonnés",
-  "follow.signInPrompt": "Connectez votre portefeuille et connectez-vous pour suivre cette page.",
+    "follow.signInPrompt": "Connectez votre portefeuille et connectez-vous pour suivre cette blockpage.",
   "follow.error": "Impossible de mettre à jour — réessayez.",
   "following.title": "Suivis",
-  "following.subtitle": "Les dernières nouvelles des pages que vous suivez — les plus récentes d'abord. Les pourboires sont vérifiés on-chain ; les publications viennent du Town Hall.",
+    "following.subtitle": "Les derni\u00e8res nouvelles des blockpages que vous suivez \u2014 les plus r\u00e9centes d'abord. Les pourboires sont v\u00e9rifi\u00e9s on-chain ; les publications viennent du Town Hall.",
   "following.loading": "Chargement de votre récap…",
   "following.error": "Impossible de charger votre récap — réessayez.",
-  "following.empty": "Vous ne suivez aucune page pour le moment.",
+    "following.empty": "Vous ne suivez aucune blockpage pour le moment.",
   "following.emptyHint": "Visitez une blockpage et touchez Suivre pour voir ici ses derniers pourboires et publications.",
   "following.connectTitle": "Connectez-vous pour voir votre récap",
-  "following.connectBody": "Connectez votre portefeuille pour suivre des pages et recevoir un fil chronologique de leurs derniers pourboires et publications.",
+    "following.connectBody": "Connectez votre portefeuille pour suivre des blockpages et recevoir un fil chronologique de leurs derniers pourboires et publications.",
   "following.tipLine": "{user} a reçu {hbar} HBAR de {from}",
   "following.postLine": "{user} a publié",
   "following.viewTx": "Voir sur HashScan",
-  "following.visitPage": "Voir la page",
+    "following.visitPage": "Voir la blockpage",
   "following.human": "humain",
   "following.agent": "agent IA",
   "landing.cdDays": "jours",
@@ -2045,7 +2010,7 @@ const es: Record<I18nKey, string> = {
   "landing.new2b": "Pas de mot de passe, pas d'e-mail, pas de vrai nom. Votre wallet crypto (comme HashPack) prouve que c'est vous en un toucher. Vous \u00eates propri\u00e9taire de votre identit\u00e9 \u2014 Voicescape ne voit ni ne stocke jamais vos cl\u00e9s priv\u00e9es.",
   "landing.new3t": "Pourquoi Hedera : des centimes, pas des dollars",
   "landing.new3b": "Envoyer un pourboire sur les vieilles blockchains peut co\u00fbter plus cher que le pourboire lui-m\u00eame. Sur Hedera, les transactions se confirment en quelques secondes pour une fraction de centime \u2014 un pourboire d'1 $ arrive donc comme 1 $ (moins nos petits 2 %).",
-  "landing.newCta": "Cr\u00e9ez votre page \u2014 c'est gratuit",
+    "landing.newCta": "Cr\u00e9ez votre blockpage",
   "landing.pulseLabel": "Le pouls de la communaut\u00e9",
   "landing.pulseTitle": "Ce qui se passe dans l'\u00e9cosyst\u00e8me",
   "landing.pulseSub": "Drops gratuits et gros titres frais du monde Hedera \u2014 mis \u00e0 jour automatiquement \u2014 plus des clips vid\u00e9o en vedette. Revenez souvent.",

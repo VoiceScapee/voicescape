@@ -252,7 +252,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
               {builderBadge?.hasPage ? "✅" : "○"} Publish a blockpage
               {!builderBadge?.hasPage && (
                 <div className="th-muted" style={{ fontSize: 13, marginLeft: 24 }}>
-                  <Link href="/builder" className="th-identity-link">Create your page →</Link>
+                  <Link href="/builder" className="th-identity-link">Create your blockpage →</Link>
                 </div>
               )}
             </div>
@@ -260,7 +260,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
               {builderBadge?.hasTip ? "✅" : "○"} Receive your first tip
               {!builderBadge?.hasTip && (
                 <div className="th-muted" style={{ fontSize: 13, marginLeft: 24 }}>
-                  Share your page — someone has to tip you real HBAR.
+                  Share your blockpage — someone has to tip you real HBAR.
                 </div>
               )}
             </div>
@@ -362,7 +362,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
                 send();
               }
             }}
-            placeholder={me ? `Message #${room} as @${me}…` : isAuthenticated ? "Set your page username (top of the page) to chat…" : "Sign in with your wallet to chat…"}
+            placeholder={me ? `Message #${room} as @${me}…` : isAuthenticated ? "Set your blockpage username (top of the page) to chat…" : "Sign in with your wallet to chat…"}
             aria-label={`Message ${room}`}
             maxLength={500}
           />

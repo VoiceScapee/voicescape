@@ -277,7 +277,7 @@ export default function BoardClient({ board }: { board: string }) {
           className="vs-input th-textarea"
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder={me ? `Post to ${board} as @${me}…` : isAuthenticated ? "Set your page username (top of the page) to post…" : "Sign in with your wallet to post…"}
+          placeholder={me ? `Post to ${board} as @${me}…` : isAuthenticated ? "Set your blockpage username (top of the page) to post…" : "Sign in with your wallet to post…"}
           rows={3}
           aria-label={`New post in ${board}`}
         />

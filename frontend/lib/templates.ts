@@ -14,7 +14,7 @@ function base(username: string): Omit<VoicescapePage, "theme"> {
     username,
     blocks: [
       { type: "hero", title: username || "Your Name", subtitle: "Welcome to my corner of the internet", avatarEmoji: "🌐" },
-      { type: "bio", text: "This is my Voicescape page. Customize me!" },
+      { type: "bio", text: "This is my Voicescape blockpage. Customize me!" },
       { type: "links", items: [{ label: "My Website", url: "https://example.com" }] },
       { type: "tipJar", message: "Enjoying my content? Drop a tip — it goes straight on-chain." },
     ],
@@ -123,7 +123,7 @@ export const TEMPLATES: Template[] = [
           items: [
             {
               name: "Vibecode edit",
-              description: "AI-applied edit to a Voicescape page. POST { pageJson, instruction }.",
+              description: "AI-applied edit to a Voicescape blockpage. POST { pageJson, instruction }.",
               priceUsdCents: 1,
               endpoint: "https://example.com/vibecode",
             },
@@ -520,7 +520,7 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "aurora.wav", subtitle: "chasing light, making sound", avatarEmoji: "🌠" },
         { type: "bio", text: "currently: somewhere between a daydream and a deadline ✨ send good playlists, not small talk." },
-        { type: "bio", text: "i make things that glow — music, visuals, weird little web experiments. this page is my sketchbook and my stage. come back often, it changes when i do." },
+        { type: "bio", text: "i make things that glow — music, visuals, weird little web experiments. this blockpage is my sketchbook and my stage. come back often, it changes when i do." },
         { type: "music", title: "what i'm making 🎧", tracks: [] },
         {
           type: "top8",
@@ -537,7 +537,7 @@ export const TEMPLATES: Template[] = [
         {
           type: "guestbook",
           entries: [
-            { name: "lumen", message: "this page feels like the sky at 2am. never change it. (okay, change it, that's the point)", date: "2026-09-01" },
+            { name: "lumen", message: "this blockpage feels like the sky at 2am. never change it. (okay, change it, that's the point)", date: "2026-09-01" },
           ],
         },
         {
@@ -613,7 +613,7 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "the lofi room", subtitle: "beats, tea & slow mornings", avatarEmoji: "🎧" },
         { type: "bio", text: "currently: rain sounds + unfinished songs 🌧️ the kettle's on, the loop is looping, you're welcome to stay a while." },
-        { type: "bio", text: "i make quiet music for loud minds. everything here is recorded in one room, mostly after midnight, always with feeling. put this page on in the background and get cozy." },
+        { type: "bio", text: "i make quiet music for loud minds. everything here is recorded in one room, mostly after midnight, always with feeling. put this blockpage on in the background and get cozy." },
         { type: "music", title: "bedroom tapes 📼", tracks: [] },
         {
           type: "top8",
@@ -644,7 +644,7 @@ export const TEMPLATES: Template[] = [
   {
     id: "solarpunk-garden",
     name: "Solarpunk Garden",
-    description: "Sunlit and hopeful — growing a kinder internet, one page at a time.",
+    description: "Sunlit and hopeful — growing a kinder internet, one blockpage at a time.",
     category: "personal",
     page: {
       ...base("the-garden"),
@@ -657,7 +657,7 @@ export const TEMPLATES: Template[] = [
       },
       blocks: [
         { type: "hero", title: "the garden", subtitle: "growing a kinder internet 🌱", avatarEmoji: "🌱" },
-        { type: "bio", text: "currently: planting seeds, digital & otherwise 🌻 this page runs on sunlight and good intentions." },
+        { type: "bio", text: "currently: planting seeds, digital & otherwise 🌻 this blockpage runs on sunlight and good intentions." },
         { type: "bio", text: "i believe the internet can be a garden, not a strip mall. i grow open-source projects, community spaces, and actual tomatoes. everything here is tended by hand." },
         { type: "music", title: "morning garden mix 🌻", tracks: [] },
         {
@@ -734,7 +734,7 @@ export const TEMPLATES: Template[] = [
   {
     id: "wanderer-atlas",
     name: "Wanderer Atlas",
-    description: "A travel journal in page form. Collecting places, not things.",
+    description: "A travel journal in blockpage form. Collecting places, not things.",
     category: "personal",
     page: {
       ...base("atlas-in-progress"),
@@ -748,7 +748,7 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "atlas in progress", subtitle: "collecting places, not things 🧭", avatarEmoji: "🧭" },
         { type: "bio", text: "currently: somewhere with unfamiliar stars ✦ last stamped: somewhere i can't pronounce yet." },
-        { type: "bio", text: "field notes from a life in motion. i go slow, stay long, and learn the names of things. this page is my journal, my map, and my postcard to everyone back home." },
+        { type: "bio", text: "field notes from a life in motion. i go slow, stay long, and learn the names of things. this blockpage is my journal, my map, and my postcard to everyone back home." },
         { type: "music", title: "road songs 🚂", tracks: [] },
         {
           type: "top8",

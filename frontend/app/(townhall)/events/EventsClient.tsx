@@ -146,7 +146,7 @@ function NewEventForm({ onCreated }: { onCreated: () => void }) {
             Cancel
           </button>
         </div>
-        {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your page username (top of the page) first." : "Sign in with your wallet first."}</p>}
+        {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your blockpage username (top of the page) first." : "Sign in with your wallet first."}</p>}
         <p className="th-note">Event creation is moderator-only — the server enforces it. If you&apos;re not a mod, the request will be rejected.</p>
         {error && <p className="th-error">{error}</p>}
       </div>

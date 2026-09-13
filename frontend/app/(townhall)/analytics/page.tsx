@@ -168,7 +168,7 @@ export default function AnalyticsPage() {
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 18px 72px" }}>
         <h1>📊 Analytics</h1>
         <p className="th-muted">
-          Set your page username to view analytics —{" "}
+          Set your blockpage username to view analytics —{" "}
           <Link href="/builder" className="th-identity-link">
             no page yet? build one
           </Link>

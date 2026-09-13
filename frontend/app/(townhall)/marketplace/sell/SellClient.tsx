@@ -58,12 +58,12 @@ export default function SellClient() {
         setVerifyError(
           ownerOk === "mismatch"
             ? `Your wallet does not own the "@${me}" page — sign in with the page owner's wallet to list.`
-            : `Could not verify your page ownership on-chain — try again in a moment.`,
+            : `Could not verify your blockpage ownership on-chain — try again in a moment.`,
         );
         return;
       }
     } catch {
-      setVerifyError("Could not verify your page ownership on-chain — try again in a moment.");
+      setVerifyError("Could not verify your blockpage ownership on-chain — try again in a moment.");
       return;
     }
     const t = title.trim();
@@ -212,7 +212,7 @@ export default function SellClient() {
             {hcs.phase.kind === "submitting" ? "Sign in wallet…" : `List for $${Number.isFinite(priceCents) && priceCents > 0 ? (priceCents / 100).toFixed(2) : "0.00"}`}
           </button>
           {!account && <p className="th-muted">Connect a wallet — buyers pay out to it.</p>}
-          {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your page username (top of the page) — buyers see who you are." : "Sign in with your wallet to list an item."}</p>}
+          {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your blockpage username (top of the page) — buyers see who you are." : "Sign in with your wallet to list an item."}</p>}
           {hcs.phase.kind === "error" && (
             <p className="th-error" style={{ marginTop: 8 }}>Failed to submit: {hcs.phase.message}</p>
           )}

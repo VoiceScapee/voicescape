@@ -89,7 +89,7 @@ export default function ChatRoomsClient() {
       return;
     }
     if (!me) {
-      setFormError("Sign in and set your page username first.");
+      setFormError("Sign in and set your blockpage username first.");
       return;
     }
     let newRoomId: string | null = null;
@@ -153,7 +153,7 @@ export default function ChatRoomsClient() {
         <div className="th-card" style={{ marginBottom: 16 }}>
           <h3 style={{ marginTop: 0 }}>Create a chatroom</h3>
           <p className="th-muted" style={{ marginTop: 0 }}>
-            Rooms are permanent and public. Your page name will show as the creator.
+            Rooms are permanent and public. Your blockpage name will show as the creator.
             {title.trim() && (
               <> Room id: <code className="vs-mono">#{slugify(title.trim()) || "…"}</code></>
             )}
@@ -231,7 +231,7 @@ export default function ChatRoomsClient() {
       {!canWrite && (
         <p className="th-muted" style={{ marginTop: 12 }}>
           {isAuthenticated
-            ? "Set your page username (top of the page) to create rooms."
+            ? "Set your blockpage username (top of the page) to create rooms."
             : "Sign in with your wallet to create rooms."}
         </p>
       )}

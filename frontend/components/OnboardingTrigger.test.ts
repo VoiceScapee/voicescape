@@ -5,7 +5,7 @@
  * then the landing page, then the navbar (Brandon's call, 2026-09-13).
  * This component never redirects anywhere. Its only job:
  *   - wallet owns a page (local storage or on-chain) → nothing. The
- *     owner navigates from the navbar (wallet menu → My Page).
+ *     owner navigates from the navbar (wallet menu → My Blockpage).
  *   - wallet owns NO page → the skippable first-blockpage wizard shows.
  *
  * Guards:

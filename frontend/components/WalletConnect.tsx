@@ -139,7 +139,7 @@ export function WalletConnect() {
             className="vs-btn vs-btn-ghost"
             style={{ padding: "6px 14px", fontSize: 13, textDecoration: "none" }}
           >
-            My Page
+            {t("wallet.myPage")}
           </Link>
         )}
         <span
@@ -208,7 +208,7 @@ export function WalletConnect() {
             className="vs-btn vs-btn-ghost"
             style={{ padding: "6px 14px", fontSize: 13, textDecoration: "none" }}
           >
-            My Page
+            {t("wallet.myPage")}
           </Link>
         )}
         <span

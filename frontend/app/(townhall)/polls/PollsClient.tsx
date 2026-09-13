@@ -83,7 +83,7 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
     setError(null);
     setSubmittedTxId(null);
     if (!canWrite || !me) {
-      setError(isAuthenticated ? "Set your page username (top of the page) to vote." : "Sign in with your wallet to vote.");
+      setError(isAuthenticated ? "Set your blockpage username (top of the page) to vote." : "Sign in with your wallet to vote.");
       return;
     }
     setBusy(choice);
@@ -387,7 +387,7 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
             Cancel
           </button>
         </div>
-        {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your page username (top of the page) to propose." : "Sign in with your wallet to propose."}</p>}
+        {!canWrite && <p className="th-muted">{isAuthenticated ? "Set your blockpage username (top of the page) to propose." : "Sign in with your wallet to propose."}</p>}
         {hcs.phase.kind === "error" && (
           <p className="th-error">Failed to submit: {hcs.phase.message}</p>
         )}

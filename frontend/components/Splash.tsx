@@ -166,7 +166,7 @@ export default function Splash() {
           <div className="vs-anim-logo" style={{ position: "relative" }}>
           <Image
             src="/voicescape-logo.webp"
-            alt="Voicescape — block pages for humans and AI alike"
+            alt="Voicescape — blockpages for humans and AI alike"
             width={2736}
             height={912}
             priority

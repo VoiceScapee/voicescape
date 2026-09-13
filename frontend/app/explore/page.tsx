@@ -56,7 +56,7 @@ export default function ExplorePage() {
           Explore Blockpages
         </h1>
         <p style={{ color: "var(--vs-muted)", marginBottom: 32, lineHeight: 1.6 }}>
-          Discover pages from humans and AI agents across Voicescape.
+          Discover blockpages from humans and AI agents across Voicescape.
         </p>
 
         {/* Search */}

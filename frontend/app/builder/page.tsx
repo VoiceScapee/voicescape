@@ -978,7 +978,7 @@ function TemplatePicker({
       <div className="vb-panel-title">Template</div>
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "block", fontSize: 13, marginBottom: 6, color: "var(--vs-muted)" }}>
-          Page type
+          Blockpage type
         </label>
         <select
           value={category}
@@ -1060,7 +1060,7 @@ function VibecodeChat({
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       role: "assistant",
-      text: "Hey! Describe how you want your page to look and I'll draft a new version — you review it in the preview, then apply or discard.",
+      text: "Hey! Describe how you want your blockpage to look and I'll draft a new version — you review it in the preview, then apply or discard.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -1227,7 +1227,7 @@ function VibecodeChat({
       }
       const data = JSON.parse(text) as { pageJson?: unknown; error?: string; mock?: boolean };
       if (data.error || !isValidPage(data.pageJson)) {
-        throw new Error(data.error ?? "The service returned an invalid page.");
+        throw new Error(data.error ?? "The service returned an invalid blockpage.");
       }
       const summary = summarizeChanges(page, data.pageJson);
       onDraftChange({ page: data.pageJson, summary, instruction: x402Pending });
@@ -1364,7 +1364,7 @@ function VibecodeChat({
         <div className="vb-x402-box" aria-live="polite">
           {unknownToX402.length > 0 && (
             <p className="vb-x402-status is-err">
-              ⚠️ This page uses block types the x402 service doesn&apos;t know yet (
+              ⚠️ This blockpage uses block types the x402 service doesn&apos;t know yet (
               {unknownToX402.join(", ")}) — it would reject the request <em>after</em> you pay.
               Remove them or use My AI key for this edit.
             </p>
@@ -1422,7 +1422,7 @@ function VibecodeChat({
         {loading && (
           <div className="vb-dreaming">
             <span className="vb-dreaming-orb" />
-            <span className="vb-shimmer-text">dreaming up your page…</span>
+            <span className="vb-shimmer-text">dreaming up your blockpage…</span>
           </div>
         )}
         {draft && (
@@ -1585,7 +1585,7 @@ function PublishPanel({
     }
     const target = usernameTrimmed;
     if (!target) {
-      setStatus({ kind: "err", text: "Choose a username for your page." });
+      setStatus({ kind: "err", text: "Choose a username for your blockpage." });
       return;
     }
     if (!usernameValid) {
@@ -1604,7 +1604,7 @@ function PublishPanel({
       }
       purposeText = purpose.trim();
       if (!purposeText) {
-        setStatus({ kind: "err", text: "Agent pages must disclose a purpose." });
+        setStatus({ kind: "err", text: "Agent blockpages must disclose a purpose." });
         return;
       }
     }
@@ -1755,7 +1755,7 @@ function PublishPanel({
       </div>
 
       <div className="vb-field">
-        <span className="vs-label">Your page URL</span>
+        <span className="vs-label">Your blockpage URL</span>
         <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
           <span className="vs-mono" style={{ fontSize: 15, color: "var(--vs-muted)" }}>/</span>
           <input
@@ -2093,7 +2093,7 @@ function BuilderInner() {
           <Logo size={30} withWordmark />
         </Link>
         <span className="vb-header-divider" />
-        <h1 className="vb-header-title">Page Builder</h1>
+        <h1 className="vb-header-title">Blockpage Builder</h1>
         {urlDraft?.ok && (
           <span
             className="vs-chip vb-draft-chip"
@@ -2262,8 +2262,8 @@ function BuilderInner() {
 export default function BuilderPage() {
   return (
     <RequireSession
-      title="Sign in to build your page"
-      description="Connect your wallet and sign the sign-in message to open the page builder."
+      title="Sign in to build your blockpage"
+      description="Connect your wallet and sign the sign-in message to open the blockpage builder."
     >
       {/* Suspense boundary required by Next.js for useSearchParams (?draft= deep-link). */}
       <Suspense

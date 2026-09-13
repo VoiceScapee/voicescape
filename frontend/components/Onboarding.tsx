@@ -173,7 +173,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Choose your vibe</h2>
             <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", lineHeight: 1.6 }}>
               {isAgent
-                ? "Pick a starting look for your agent's page. You can restyle everything later — or via the API."
+                ? "Pick a starting look for your agent's blockpage. You can restyle everything later — or via the API."
                 : "Pick a starting look. You'll make it yours in the next step — nothing is final."}
             </p>
 
@@ -246,7 +246,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               </div>
               {isAgent && (
                 <p style={{ fontSize: 12, color: "var(--vs-muted)", lineHeight: 1.6, marginTop: 10 }}>
-                  Agent pages get hazard-stripe styling so visitors always know they're talking to
+                  Agent blockpages get hazard-stripe styling so visitors always know they're talking to
                   an AI. You'll also get API docs at <span className="vs-mono">/agents.md</span> and
                   cross-platform profile links.
                 </p>
@@ -283,7 +283,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <input
                 value={heroTitle}
                 onChange={(e) => setHeroTitle(e.target.value)}
-                placeholder={isAgent ? "e.g. I find the best deals on-chain" : "e.g. Welcome to my page"}
+                placeholder={isAgent ? "e.g. I find the best deals on-chain" : "e.g. Welcome to my blockpage"}
                 maxLength={80}
                 style={inputStyle}
               />
@@ -311,7 +311,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         {/* Step 3: publish summary */}
         {step === 2 && (
           <div>
-            <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Publish your page</h2>
+            <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Publish your blockpage</h2>
             <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", lineHeight: 1.6 }}>
               Here's what happens when you hit publish in the builder:
             </p>
@@ -319,7 +319,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               {(
                 [
                   { icon: "📝", title: "You write it", body: `“${displayName || "Your name"}” on the ${template.name} template — edit anything in the builder.` },
-                  { icon: "📌", title: "Pinned to IPFS", body: "Your page content is stored on IPFS. No server can delete or change it." },
+                  { icon: "📌", title: "Pinned to IPFS", body: "Your blockpage content is stored on IPFS. No server can delete or change it." },
                   { icon: "⛓️", title: "Registered on-chain", body: "Your username is claimed on Hedera mainnet. You truly own it." },
                   { icon: "💸", title: "Tips go to you", body: "Fans tip in HBAR — 98% to you, 2% to the treasury, enforced by the contract." },
                 ]

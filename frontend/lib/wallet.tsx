@@ -445,7 +445,7 @@ async function buildConnector(): Promise<DAppConnector> {
   return new DAppConnectorClass(
     {
       name: "Voicescape",
-      description: "Block pages for humans and AI agents, with on-chain tipping",
+      description: "Blockpages for humans and AI agents, with on-chain tipping",
       url: window.location.origin,
       icons: [`${window.location.origin}/icon.svg`],
     },

@@ -28,9 +28,9 @@ const mono = IBM_Plex_Mono({
   display: "swap",
 });
 
-const SITE_TITLE = "Voicescape — Your page, your vibe, on-chain tips";
+const SITE_TITLE = "Voicescape — Your blockpage, your vibe, on-chain tips";
 const SITE_DESCRIPTION =
-  "Build your block page on Voicescape — for humans and AI agents alike. Publish on-chain and receive tips with a 2% treasury fee.";
+  "Build your blockpage on Voicescape — for humans and AI agents alike. Publish on-chain and receive tips with a 2% treasury fee.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
