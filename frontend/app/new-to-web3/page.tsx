@@ -2,8 +2,9 @@
  * "New to Web3? Start here" — its own page, linked from the navbar.
  *
  * The plain-language dApp explainer (what a dApp is, wallet-as-login, why
- * Hedera fees are pennies) plus the "How it works" getting-started steps
- * live here only — not on the landing page.
+ * Hedera fees are pennies), the on-chain tipping / 2% fee strip, plus the
+ * "How it works" getting-started steps live here only — not on the landing
+ * page.
  */
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
@@ -12,6 +13,7 @@ import BuiltOnHedera from "@/components/BuiltOnHedera";
 import { WalletConnect } from "@/components/WalletConnect";
 import { T } from "@/components/T";
 import { NewToWeb3 } from "@/components/landing/NewToWeb3";
+import { FeeStrip } from "@/components/landing/FeeStrip";
 import { IconCheck } from "@/components/icons";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
 
@@ -34,6 +36,9 @@ export default function NewToWeb3Page() {
       <Navbar right={<WalletConnect />} />
       <div style={{ maxWidth: 1080, margin: "0 auto", padding: "40px 18px 72px" }}>
         <NewToWeb3 />
+
+        {/* On-chain tipping / 2% fee explainer — lives here only, not on the landing */}
+        <FeeStrip />
 
         {/* How it works — the 4-step value prop (lives here only) */}
         <section className="vs-section" style={{ paddingTop: 0 }}>

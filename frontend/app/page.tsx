@@ -168,25 +168,6 @@ export default function LandingPage() {
           </div>
         </section>
 
-        {/* 2% fee — compact strip */}
-        <section style={{ background: "var(--vs-bg2)", borderTop: "1px solid var(--vs-border)", borderBottom: "1px solid var(--vs-border)" }}>
-          <div className="vs-section" style={{ textAlign: "center", paddingTop: 40, paddingBottom: 40 }}>
-            <p className="vs-label"><T k="landing.feeLabel" /></p>
-            <p style={{ fontSize: "clamp(1.2rem, 3.5vw, 1.6rem)", fontWeight: 700, margin: "12px 0 8px" }}>
-              <T k="landing.feeTitle1" /> <span className="vs-gradient-text"><T k="landing.feeTitle2" /></span> <T k="landing.feeTitle3" />
-            </p>
-            <p style={{ fontSize: 17, fontWeight: 600, margin: "0 0 12px", color: "var(--vs-text)" }}>
-              <T k="landing.feeWedge" />
-            </p>
-            <p style={{ lineHeight: 1.7, color: "var(--vs-muted)", fontSize: 15, margin: 0, maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
-              <T k="landing.feeNote" />
-            </p>
-            <p style={{ lineHeight: 1.7, color: "var(--vs-muted)", fontSize: 15, margin: "12px 0 0", maxWidth: 640, marginLeft: "auto", marginRight: "auto" }}>
-              <T k="landing.feeCompare" />
-            </p>
-          </div>
-        </section>
-
         {/* Closing CTA */}
         <section
           className="vs-section"
