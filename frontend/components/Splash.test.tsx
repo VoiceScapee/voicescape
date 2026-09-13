@@ -2,9 +2,10 @@
  * Splash behavior regression tests (source assertions, mirroring the
  * design-system test pattern).
  *
- * The splash is the first viewport of a SCROLLABLE landing flow:
- *   - it renders in normal page flow (no fixed overlay trapping scroll)
- *   - a scroll cue invites users down into the landing content
+ * The splash is a FIXED full-viewport overlay — not a scrollable part of
+ * the landing flow:
+ *   - it renders as a fixed overlay that locks page scroll while up
+ *   - no scroll cue invites users down; the landing is unreachable until Enter
  *   - only an explicit Enter click dismisses it (no auto-dismiss timer)
  */
 import { describe, expect, it } from "vitest";
@@ -16,13 +17,19 @@ const here = dirname(fileURLToPath(import.meta.url));
 const splash = readFileSync(join(here, "Splash.tsx"), "utf8");
 
 describe("splash scroll behavior", () => {
-  it("renders in normal page flow — never a fixed overlay", () => {
-    expect(splash).not.toMatch(/position:\s*["']?fixed["']?/);
+  it("renders as a fixed overlay covering the viewport", () => {
+    expect(splash).toMatch(/position:\s*["']?fixed["']?/);
+    expect(splash).toMatch(/inset:\s*0/);
   });
 
-  it("shows a scroll cue inviting users down into the landing content", () => {
-    expect(splash).toContain("IconChevronDown");
-    expect(splash).toMatch(/scroll/i);
+  it("locks page scroll while the splash is up and releases it on enter", () => {
+    expect(splash).toMatch(/document\.body\.style\.overflow\s*=\s*["']hidden["']/);
+    // cleanup restores the previous overflow value
+    expect(splash).toMatch(/document\.body\.style\.overflow\s*=\s*prev/);
+  });
+
+  it("offers no scroll cue into the landing content", () => {
+    expect(splash).not.toContain("IconChevronDown");
   });
 
   it("dismisses only on explicit Enter — no auto-dismiss timer", () => {

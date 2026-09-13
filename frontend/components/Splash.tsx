@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import Lattice from "./Lattice";
-import { IconArrowRight, IconChevronDown } from "./icons";
+import { IconArrowRight } from "./icons";
 import { T } from "./T";
 
 const ENTERED_KEY = "vs_splash_entered";
@@ -21,10 +21,10 @@ function hasEntered(): boolean {
  * Opening screen: lattice canvas, blurred gradient orbs, the official
  * Voicescape logo lockup, staggered hero copy and an Enter CTA.
  *
- * The splash is the first viewport of the landing flow — not a gate. The
- * user can scroll DOWN into the landing content and back UP to the splash
- * freely; only an explicit Enter click dismisses the splash (it unmounts
- * and is skipped for the rest of the session).
+ * The splash is a fixed full-viewport overlay — not a scrollable part of
+ * the landing flow. Page scroll is locked while it is up, and only an
+ * explicit Enter click dismisses it (it unmounts and is skipped for the
+ * rest of the session).
  */
 export default function Splash() {
   const [entered, setEntered] = useState(false);
@@ -34,6 +34,17 @@ export default function Splash() {
   useEffect(() => {
     if (hasEntered()) setEntered(true);
   }, []);
+
+  // Lock page scroll while the splash overlay is up; release it the
+  // moment the user enters.
+  useEffect(() => {
+    if (entered) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [entered]);
 
   if (entered) return null;
 
@@ -57,12 +68,15 @@ export default function Splash() {
   return (
     <section
       style={{
-        position: "relative",
-        minHeight: "100svh",
+        position: "fixed",
+        inset: 0,
+        zIndex: 60,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         overflow: "hidden",
+        background:
+          "radial-gradient(circle at 12% 5%, rgba(130, 89, 239, 0.18), transparent 26rem), radial-gradient(circle at 92% 18%, rgba(0, 49, 255, 0.13), transparent 30rem), linear-gradient(180deg, #0b0e16 0, #090b12 46%, #0c0f18 100%)",
       }}
       aria-label="Voicescape splash"
     >
@@ -174,29 +188,6 @@ export default function Splash() {
         </div>
       </div>
 
-      {/* Scroll cue: the splash is the first viewport of a scrollable flow. */}
-      <div
-        aria-hidden="true"
-        className="vs-anim-fade-up"
-        style={{
-          ...stagger(5),
-          position: "absolute",
-          bottom: 20,
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 2,
-          color: "var(--vs-muted)",
-          opacity: 0.75,
-          pointerEvents: "none",
-        }}
-      >
-        <span className="vs-anim-float" style={{ display: "inline-flex" }}>
-          <IconChevronDown size={28} />
-        </span>
-      </div>
     </section>
   );
 }
