@@ -78,6 +78,13 @@ export default function Navbar({ right }: NavbarProps) {
             Explore
           </Link>
           <Link
+            href="/fundraiser"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.fundraiser" />
+          </Link>
+          <Link
             href="/leaderboard"
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}

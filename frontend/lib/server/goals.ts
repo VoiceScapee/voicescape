@@ -19,6 +19,8 @@ import { checkContent } from "./townhall/content-filter";
 
 /** KV key prefix for funding goals. */
 export const GOAL_KEY_PREFIX = "goals:";
+/** KV key for the fundraiser board index: JSON array of usernames with goals. */
+export const FUNDRAISER_INDEX_KEY = "fundraisers:index";
 /** 365 days — a goal survives long past the 30-day analytics window. */
 export const GOAL_TTL_MS = 365 * 24 * 3600 * 1000;
 /** Sanity ceiling: 1M HBAR is far above any realistic creator goal. */
@@ -98,6 +100,62 @@ export async function readGoal(store: KvStore, usernameRaw: unknown): Promise<Fu
     return parseGoalValue(await store.get(goalKey(username)));
   } catch {
     return null;
+  }
+}
+
+/**
+ * Read the fundraiser board index: usernames that have (or had) funding
+ * goals. The index is best-effort — readers always re-read the goal record
+ * and skip stale entries, so a goal cleared without index cleanup simply
+ * disappears from the board.
+ */
+export async function readFundraiserUsernames(store: KvStore): Promise<string[]> {
+  let raw: string | null = null;
+  try {
+    raw = await store.get(FUNDRAISER_INDEX_KEY);
+  } catch {
+    return [];
+  }
+  if (!raw) return [];
+  try {
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((u): u is string => typeof u === "string" && u.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function writeFundraiserIndex(store: KvStore, usernames: string[]): Promise<void> {
+  await store.set(FUNDRAISER_INDEX_KEY, JSON.stringify(usernames), GOAL_TTL_MS);
+}
+
+/**
+ * Best-effort: add a username to the fundraiser board index. Never throws —
+ * the goal itself is already saved by the time this runs.
+ */
+export async function indexFundraiser(store: KvStore, username: string): Promise<void> {
+  try {
+    const list = await readFundraiserUsernames(store);
+    if (!list.includes(username)) list.push(username);
+    // Always rewrite: refreshes the index TTL on every goal save.
+    await writeFundraiserIndex(store, list);
+  } catch {
+    /* index is best-effort */
+  }
+}
+
+/**
+ * Best-effort: remove a username from the fundraiser board index. Never
+ * throws.
+ */
+export async function unindexFundraiser(store: KvStore, username: string): Promise<void> {
+  try {
+    const list = await readFundraiserUsernames(store);
+    const next = list.filter((u) => u !== username);
+    if (next.length !== list.length) await writeFundraiserIndex(store, next);
+  } catch {
+    /* index is best-effort */
   }
 }
 
@@ -187,6 +245,8 @@ export async function writeGoal(deps: GoalDeps, usernameRaw: unknown, body: unkn
   } catch {
     return err(503, "temporarily unavailable — please retry in a moment");
   }
+  // Show it on the fundraiser board (best-effort; never fails the save).
+  await indexFundraiser(deps.store, gate.username);
   return ok({ ok: true, goal });
 }
 
@@ -199,5 +259,7 @@ export async function clearGoal(deps: GoalDeps, usernameRaw: unknown, cred: unkn
   } catch {
     return err(503, "temporarily unavailable — please retry in a moment");
   }
+  // Drop it from the fundraiser board (best-effort; never fails the clear).
+  await unindexFundraiser(deps.store, gate.username);
   return ok({ ok: true, goal: null });
 }

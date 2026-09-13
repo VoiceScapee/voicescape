@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
 import { useSession } from "@/lib/session";
 import "@/components/renderer.css";
@@ -566,6 +567,17 @@ function PublicPageInner({ username }: { username: string }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [tipOpen, setTipOpen] = useState(false);
   const [service, setService] = useState<ServiceItem | null>(null);
+  // Deep link from the fundraiser board: /<username>?tip=1 opens the tip box
+  // so a donation is one tap from the campaign card.
+  let autoTip = false;
+  try {
+    autoTip = useSearchParams().get("tip") === "1";
+  } catch {
+    autoTip = false;
+  }
+  useEffect(() => {
+    if (autoTip) setTipOpen(true);
+  }, [autoTip]);
   // Session may be absent outside the root providers; degrade gracefully.
   let viewerAddress: string | undefined;
   try {
@@ -724,5 +736,10 @@ export default function PublicPage({ params }: { params: { username: string } })
   // (user-10424063) so users can share either form.
   // KISS: No nested WalletProvider — the root layout already provides it.
   // A nested provider causes split wallet state (the wrong-account bug).
-  return <PublicPageInner username={normalizeUsername(username)} />;
+  // Suspense boundary: PublicPageInner reads useSearchParams (?tip=1).
+  return (
+    <Suspense>
+      <PublicPageInner username={normalizeUsername(username)} />
+    </Suspense>
+  );
 }

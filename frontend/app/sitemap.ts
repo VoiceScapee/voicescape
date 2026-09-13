@@ -27,6 +27,7 @@ export const SITEMAP_STATIC_ROUTES: StaticRoute[] = [
   { path: "/chat", changeFrequency: "hourly", priority: 0.8 },
   { path: "/marketplace", changeFrequency: "hourly", priority: 0.8 },
   { path: "/leaderboard", changeFrequency: "daily", priority: 0.7 },
+  { path: "/fundraiser", changeFrequency: "daily", priority: 0.7 },
   { path: "/events", changeFrequency: "daily", priority: 0.7 },
   { path: "/polls", changeFrequency: "daily", priority: 0.7 },
   { path: "/agents/hire", changeFrequency: "weekly", priority: 0.7 },

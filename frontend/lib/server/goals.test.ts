@@ -7,9 +7,11 @@ import { createMemoryKvStore, type KvStore } from "./store";
 import {
   clearGoal,
   defaultGoalDeps,
+  FUNDRAISER_INDEX_KEY,
   GOAL_MAX_HBAR,
   goalKey,
   parseGoalValue,
+  readFundraiserUsernames,
   readGoal,
   validateGoalInput,
   writeGoal,
@@ -154,5 +156,27 @@ describe("writeGoal / readGoal / clearGoal", () => {
     const deps = defaultGoalDeps();
     expect(typeof deps.verifySession).toBe("function");
     expect(typeof deps.resolveOwner).toBe("function");
+  });
+
+  it("writeGoal adds the username to the fundraiser index; clearGoal removes it", async () => {
+    const deps = testDeps();
+    expect(await readFundraiserUsernames(deps.store)).toEqual([]);
+    await writeGoal(deps, "creator1", { targetHbar: 100 }, "cred");
+    await writeGoal(deps, "creator2", { targetHbar: 50 }, "cred");
+    expect(await readFundraiserUsernames(deps.store)).toEqual(["creator1", "creator2"]);
+    // Re-saving the same goal does not duplicate the index entry.
+    await writeGoal(deps, "creator1", { targetHbar: 150 }, "cred");
+    expect(await readFundraiserUsernames(deps.store)).toEqual(["creator1", "creator2"]);
+    await clearGoal(deps, "creator1", "cred");
+    expect(await readFundraiserUsernames(deps.store)).toEqual(["creator2"]);
+  });
+
+  it("readFundraiserUsernames returns [] for missing or corrupt index values", async () => {
+    const store = createMemoryKvStore();
+    expect(await readFundraiserUsernames(store)).toEqual([]);
+    await store.set(FUNDRAISER_INDEX_KEY, "not json", 60000);
+    expect(await readFundraiserUsernames(store)).toEqual([]);
+    await store.set(FUNDRAISER_INDEX_KEY, JSON.stringify({ nope: true }), 60000);
+    expect(await readFundraiserUsernames(store)).toEqual([]);
   });
 });
