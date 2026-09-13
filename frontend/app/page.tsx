@@ -62,7 +62,7 @@ export default function LandingPage() {
               className="vs-btn vs-btn-ghost"
               style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
             >
-              Explore Blockpages
+              <T k="landing.exploreBlockpages" />
             </Link>
             <a
               href="https://discord.gg/2KGzPduUN5"
