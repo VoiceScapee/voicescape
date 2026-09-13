@@ -50,6 +50,13 @@ export default function Navbar({ right }: NavbarProps) {
           }}
         >
           <Link
+            href="/new-to-web3"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.newToWeb3" />
+          </Link>
+          <Link
             href="/forum"
             className="vs-btn vs-btn-ghost"
             style={{ padding: "8px 20px", fontSize: 14 }}

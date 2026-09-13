@@ -30,6 +30,7 @@ const en = {
   "nav.townHall": "Town Hall",
   "nav.support": "Support",
   "nav.builder": "Create your page",
+  "nav.newToWeb3": "New to Web3",
 
   // Language selector
   "lang.label": "Language",
@@ -326,6 +327,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "Plaza",
   "nav.support": "Soporte",
   "nav.builder": "Constructor",
+  "nav.newToWeb3": "Nuevo en Web3",
 
   // Language selector
   "lang.label": "Idioma",
@@ -617,6 +619,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "市政厅",
   "nav.support": "支持",
   "nav.builder": "搭建器",
+  "nav.newToWeb3": "Web3 \u65b0\u624b",
 
   // Language selector
   "lang.label": "语言",
@@ -906,6 +909,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "टाउन हॉल",
   "nav.support": "सहायता",
   "nav.builder": "बिल्डर",
+  "nav.newToWeb3": "Web3 \u092e\u0947\u0902 \u0928\u090f",
 
   // Language selector
   "lang.label": "भाषा",
@@ -1195,6 +1199,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "الساحة",
   "nav.support": "الدعم",
   "nav.builder": "البنّاء",
+  "nav.newToWeb3": "\u062c\u062f\u064a\u062f \u0641\u064a Web3",
 
   // Language selector
   "lang.label": "اللغة",
@@ -1484,6 +1489,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "Praça",
   "nav.support": "Suporte",
   "nav.builder": "Construtor",
+  "nav.newToWeb3": "Novo no Web3",
 
   // Language selector
   "lang.label": "Idioma",
@@ -1773,6 +1779,7 @@ const es: Record<I18nKey, string> = {
   "nav.townHall": "La Place",
   "nav.support": "Assistance",
   "nav.builder": "Constructeur",
+  "nav.newToWeb3": "D\u00e9buter en Web3",
 
   // Language selector
   "lang.label": "Langue",

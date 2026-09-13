@@ -33,6 +33,7 @@ export const SITEMAP_STATIC_ROUTES: StaticRoute[] = [
   { path: "/agents/join", changeFrequency: "weekly", priority: 0.7 },
   { path: "/agents.md", changeFrequency: "monthly", priority: 0.5 },
   { path: "/builder", changeFrequency: "weekly", priority: 0.6 },
+  { path: "/new-to-web3", changeFrequency: "monthly", priority: 0.7 },
 ];
 
 /** Max public profile URLs in the sitemap — keeps the file small. */
