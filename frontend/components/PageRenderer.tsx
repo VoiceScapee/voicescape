@@ -8,7 +8,7 @@ import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
-import { safeExternalUrl } from "@/lib/url";
+import { safeExternalUrl, openExternalUrl } from "@/lib/url";
 import {
   MUSIC_SOURCE_LABELS,
   trackEmbedHeight,
@@ -258,19 +258,30 @@ function BlockView({
     case "links":
       return (
         <section className="pv-block pv-links" aria-label="Links">
-          {block.items.map((item, i) => (
-            <a
-              key={i}
-              className="pv-link-btn"
-              href={safeExternalUrl(item.url) ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <IconLink size={18} />
-              <span className="pv-link-label">{item.label}</span>
-              <IconExternal size={14} className="pv-link-ext" />
-            </a>
-          ))}
+          {block.items.map((item, i) => {
+            const url = safeExternalUrl(item.url);
+            return (
+              <a
+                key={i}
+                className="pv-link-btn"
+                href={url ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => {
+                  // Wallet dapp browsers (in-app WebViews) silently swallow
+                  // target="_blank". Open via script so a blocked popup falls
+                  // back to same-tab navigation — the tap always lands.
+                  if (!url) return;
+                  e.preventDefault();
+                  openExternalUrl(url);
+                }}
+              >
+                <IconLink size={18} />
+                <span className="pv-link-label">{item.label}</span>
+                <IconExternal size={14} className="pv-link-ext" />
+              </a>
+            );
+          })}
         </section>
       );
     case "tipJar":
@@ -305,18 +316,43 @@ function BlockView({
       );
     case "music":
       return <MusicBlock block={block} profileTrackIndex={profileTrackIndex} />;
-    case "gallery":
+    case "gallery": {
+      const effect =
+        block.effect === "dance" || block.effect === "marquee" || block.effect === "float"
+          ? block.effect
+          : undefined;
+      // Marquee needs a doubled strip for a seamless loop.
+      const tiles = effect === "marquee" ? [...block.images, ...block.images] : block.images;
+      const base = effect === "marquee" ? "pv-gallery-marquee" : "pv-gallery";
+      const renderTile = (img: string, i: number, delay?: string) => (
+        <div key={i} className="pv-gallery-tile" style={delay ? { animationDelay: delay } : undefined}>
+          {img === ":logo:" ? (
+            <img src="/voicescape-logo.webp" alt="Voicescape logo" className="pv-gallery-logo" />
+          ) : (
+            img
+          )}
+        </div>
+      );
       return (
         <section className="pv-block" aria-label="Gallery">
-          <div className="pv-gallery">
-            {block.images.map((img, i) => (
-              <div key={i} className="pv-gallery-tile" aria-hidden="true">
-                {img}
+          <div className={effect ? `${base} pv-gallery-${effect}` : base} aria-hidden="true">
+            {effect === "marquee" ? (
+              <div className="pv-gallery-marquee-track">
+                {tiles.map((img, i) => renderTile(img, i))}
               </div>
-            ))}
+            ) : (
+              tiles.map((img, i) =>
+                renderTile(
+                  img,
+                  i,
+                  effect === "dance" ? `${(i % Math.max(block.images.length, 1)) * 0.14}s` : undefined
+                )
+              )
+            )}
           </div>
         </section>
       );
+    }
     case "top8": {
       const title = block.title || "Top 8";
       return (

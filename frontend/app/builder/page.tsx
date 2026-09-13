@@ -580,7 +580,7 @@ function BlockEditor({
                 className="vs-input"
                 style={{ flex: 1 }}
                 value={img}
-                placeholder="Emoji"
+                placeholder="Emoji (or :logo: for the Voicescape logo)"
                 onChange={(e) => {
                   const images = [...block.images];
                   images[i] = e.target.value;
@@ -605,6 +605,26 @@ function BlockEditor({
           >
             <IconPlus size={16} /> Add image
           </button>
+          <div className="vb-row" style={{ marginTop: 8, alignItems: "center" }}>
+            <span className="vs-label" style={{ margin: 0 }}>
+              Motion
+            </span>
+            <select
+              className="vs-input"
+              style={{ flex: 1 }}
+              value={block.effect ?? ""}
+              onChange={(e) => {
+                const v = e.target.value as "" | "dance" | "marquee" | "float";
+                onChange({ ...block, effect: v || undefined });
+              }}
+              aria-label="Gallery motion effect"
+            >
+              <option value="">None</option>
+              <option value="dance">Dance</option>
+              <option value="marquee">Marquee</option>
+              <option value="float">Float</option>
+            </select>
+          </div>
         </>
       )}
 

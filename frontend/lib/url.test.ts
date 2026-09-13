@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { safeExternalUrl } from "./url";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { safeExternalUrl, openExternalUrl } from "./url";
 
 describe("safeExternalUrl", () => {
   it("allows https URLs", () => {
@@ -46,5 +46,58 @@ describe("safeExternalUrl", () => {
     expect(safeExternalUrl(null)).toBeNull();
     expect(safeExternalUrl(undefined)).toBeNull();
     expect(safeExternalUrl(42)).toBeNull();
+  });
+});
+
+describe("openExternalUrl", () => {
+  let openSpy: ReturnType<typeof vi.fn>;
+  let assignSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    openSpy = vi.fn();
+    assignSpy = vi.fn();
+    vi.stubGlobal("window", { open: openSpy, location: { assign: assignSpy } });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a new tab when the popup succeeds", () => {
+    openSpy.mockReturnValue({ closed: false });
+    openExternalUrl("https://example.com/page");
+    expect(openSpy).toHaveBeenCalledWith(
+      "https://example.com/page",
+      "_blank",
+      "noopener,noreferrer"
+    );
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it("falls back to same-tab navigation when the popup is blocked (dapp WebView)", () => {
+    openSpy.mockReturnValue(null);
+    openExternalUrl("https://example.com/page");
+    expect(assignSpy).toHaveBeenCalledWith("https://example.com/page");
+  });
+
+  it("falls back to same-tab navigation when window.open throws", () => {
+    openSpy.mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    openExternalUrl("https://example.com/page");
+    expect(assignSpy).toHaveBeenCalledWith("https://example.com/page");
+  });
+
+  it("never opens javascript: URLs", () => {
+    openSpy.mockReturnValue({ closed: false });
+    openExternalUrl("javascript:alert(1)");
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
+  });
+
+  it("does nothing for empty input", () => {
+    openExternalUrl("");
+    expect(openSpy).not.toHaveBeenCalled();
+    expect(assignSpy).not.toHaveBeenCalled();
   });
 });

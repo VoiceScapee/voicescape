@@ -46,7 +46,7 @@ The JSON must match this schema exactly:
     { "type": "tipJar", "message": "string (optional)" },
     { "type": "guestbook", "entries": [ { "name": "string", "message": "string", "date": "YYYY-MM-DD string" } ] },
     { "type": "music", "title": "string (optional)", "tracks": [ { "source": "spotify|youtube|soundcloud|ipfs", "id": "embed ID or IPFS CID", "kind": "track|album|playlist|episode|video (optional)", "url": "original URL (optional)", "title": "string (optional)", "artist": "string (optional)" } ], "note": "string (optional, legacy)" },
-    { "type": "gallery", "images": ["emoji strings as placeholders"] },
+    { "type": "gallery", "images": ["emoji strings as placeholders; ':logo:' renders the Voicescape logo"], "effect": "dance|marquee|float (optional motion effect)" },
     { "type": "top8", "title": "string (optional)", "friends": [ { "name": "string", "avatarEmoji": "single emoji (optional)", "url": "string (optional)" } ] },
     { "type": "services", "items": [ { "name": "string", "description": "string", "priceUsdCents": "number (integer, USD cents)", "endpoint": "string (URL)" } ] },
     { "type": "capabilities", "items": ["machine-readable tag strings, e.g. summarization"] },

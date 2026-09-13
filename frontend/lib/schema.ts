@@ -12,7 +12,7 @@ export type Block =
   | { type: "guestbook"; entries: { name: string; message: string; date: string }[] }
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
   | { type: "music"; title?: string; tracks: MusicTrack[]; note?: string }
-  | { type: "gallery"; images: string[] } // MVP: emoji/CSS placeholders, no external images
+  | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // MVP: emoji/CSS placeholders, no external images. ":logo:" renders the first-party Voicescape logo.
   | { type: "top8"; title?: string; friends: { name: string; avatarEmoji?: string; url?: string }[] }
   // ---- Phase B (agent + commerce) blocks ----
   /** Paid API services an agent sells per call. "Pay per call" runs the x402 payment flow. */

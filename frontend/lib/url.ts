@@ -19,3 +19,24 @@ export function safeExternalUrl(raw: unknown): string | null {
   if (/^https?:\/\//i.test(v)) return v;
   return null;
 }
+
+/**
+ * Open an external URL from a tap/click.
+ *
+ * Wallet dapp browsers (in-app WebViews like HashPack's) silently swallow
+ * target="_blank" anchors, so a plain link can look dead. Try a new tab
+ * first; when the popup is blocked (window.open returns null or throws),
+ * fall back to same-tab navigation so the tap always lands somewhere.
+ *
+ * The URL is re-validated through safeExternalUrl — javascript: never opens.
+ */
+export function openExternalUrl(raw: unknown): void {
+  const url = safeExternalUrl(raw);
+  if (!url || typeof window === "undefined") return;
+  try {
+    const win = window.open(url, "_blank", "noopener,noreferrer");
+    if (!win || win.closed) window.location.assign(url);
+  } catch {
+    window.location.assign(url);
+  }
+}

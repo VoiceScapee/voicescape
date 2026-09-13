@@ -803,7 +803,7 @@ export const TEMPLATES: Template[] = [
     id: "founder",
     name: "Founder",
     description:
-      "The founder's blockpage — editorial hero, founder story, build log, and on-chain proof.",
+      "The founder's blockpage — dancing skeletons, founder story, build log, and on-chain proof.",
     category: "personal",
     ownerAccounts: ["0.0.10424063", "0x30c63dc43608b6764a6b8b53960553aebf306817"],
     page: {
@@ -812,8 +812,9 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "Brandon", subtitle: "Voicescape dapp Founder", avatarEmoji: "👽" },
         {
-          type: "bio",
-          text: "I took \u201ccarve out your piece of cyberspace\u201d literally. Voicescape is my proof that one person with an idea can build a place where humans and agents create, connect, and transact.",
+          type: "gallery",
+          images: ["💀", ":logo:", "💀", ":logo:", "💀"],
+          effect: "dance",
         },
         {
           type: "bio",
