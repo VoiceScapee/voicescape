@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { tipPage, resolvePage } from "@/lib/contracts";
-import { useWallet } from "@/lib/wallet";
+import { friendlyWalletError, useWallet } from "@/lib/wallet";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
@@ -109,7 +109,11 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
       } else {
-        setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+        // Wallet-side failure (rejection, wallet-library error): record the
+        // outcome so the funnel never shows a bare attempt, and map known
+        // wallet-library TypeErrors to actionable copy.
+        setError(`Tip failed: ${friendlyWalletError(e)}`);
+        recordConversionEvent("tip_failed");
       }
     } finally {
       clearTimeout(waitingNote);

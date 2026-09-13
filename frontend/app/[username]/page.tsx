@@ -8,7 +8,7 @@ import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schem
 import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
-import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, useWallet } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
@@ -169,7 +169,12 @@ function TipBox({
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
       } else {
-        setError(`Tip failed: ${e instanceof Error ? e.message : String(e)}`);
+        // Wallet-side failure (rejection, wallet-library error, validation
+        // guardrail): record the outcome so the funnel never shows a bare
+        // attempt, and map known wallet-library TypeErrors to actionable
+        // copy instead of the cryptic raw message.
+        setError(`Tip failed: ${friendlyWalletError(e)}`);
+        recordConversionEvent("tip_failed");
       }
     } finally {
       clearTimeout(waitingNote);
