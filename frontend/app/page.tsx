@@ -67,6 +67,15 @@ export default function LandingPage() {
             >
               Explore Blockpages
             </Link>
+            <a
+              href="https://discord.gg/2KGzPduUN5"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="vs-btn vs-btn-ghost"
+              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+            >
+              <T k="landing.joinDiscord" />
+            </a>
           </div>
           <div style={{ marginTop: 20 }}>
             <a

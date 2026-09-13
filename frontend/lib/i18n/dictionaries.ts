@@ -117,6 +117,7 @@ const en = {
   "landing.step4t": "Get tipped",
   "landing.step4b": "Share your link: /your-name. Tips split 98/2 automatically.",
   "landing.openBuilder": "Create your page — free to build, a little HBAR for network fees",
+  "landing.joinDiscord": "Join the Discord",
   "landing.footerTagline": "Pages on IPFS, identity on-chain, vibes on you",
   "landing.hederaDisclaimer": "Voicescape is an independent project — not affiliated with, sponsored, or endorsed by Hedera Hashgraph, LLC.",
 
@@ -243,6 +244,7 @@ const es: Record<I18nKey, string> = {
   "landing.step4t": "Recibe propinas",
   "landing.step4b": "Comparte tu enlace: /tu-nombre. Las propinas se dividen 98/2 automáticamente.",
   "landing.openBuilder": "Crea tu página — gratis de construir, un poco de HBAR para las tarifas de red",
+  "landing.joinDiscord": "Únete al Discord",
   "landing.footerTagline": "Páginas en IPFS, identidad en la cadena, la vibra la pones tú",
   "landing.hederaDisclaimer": "Voicescape es un proyecto independiente — no está afiliado a Hedera Hashgraph, LLC, ni patrocinado o respaldado por ella.",
 
@@ -365,6 +367,7 @@ const zh: Record<I18nKey, string> = {
   "landing.step4t": "获得打赏",
   "landing.step4b": "分享您的链接：/您的名字。打赏自动按 98/2 分成。",
   "landing.openBuilder": "创建您的页面——构建免费,网络费用需少量 HBAR",
+  "landing.joinDiscord": "加入 Discord",
   "landing.footerTagline": "页面存于 IPFS，身份在于链上，风格由您定义",
   "landing.hederaDisclaimer": "Voicescape 是一个独立项目 —— 与 Hedera Hashgraph, LLC 无附属、赞助或背书关系。",
 
@@ -487,6 +490,7 @@ const hi: Record<I18nKey, string> = {
   "landing.step4t": "टिप पाएं",
   "landing.step4b": "अपना लिंक शेयर करें: /आपका-नाम। टिप्स अपने आप 98/2 में बंट जाते हैं।",
   "landing.openBuilder": "अपना पेज बनाएं — बनाना मुफ्त, नेटवर्क फीस के लिए थोड़ा HBAR",
+  "landing.joinDiscord": "Discord से जुड़ें",
   "landing.footerTagline": "पेज IPFS पर, पहचान ऑन-चेन, अंदाज़ आपका",
   "landing.hederaDisclaimer": "Voicescape एक स्वतंत्र प्रोजेक्ट है — Hedera Hashgraph, LLC से संबद्ध, प्रायोजित या समर्थित नहीं है।",
 
@@ -609,6 +613,7 @@ const ar: Record<I18nKey, string> = {
   "landing.step4t": "احصل على إكراميات",
   "landing.step4b": "شارك رابطك: /اسمك. تُقسَّم الإكراميات 98/2 تلقائيًا.",
   "landing.openBuilder": "أنشئ صفحتك — البناء مجاني, ورسوم الشبكة تحتاج القليل من HBAR",
+  "landing.joinDiscord": "انضم إلى Discord",
   "landing.footerTagline": "الصفحات على IPFS، والهوية على السلسلة، والأجواء من عندك",
   "landing.hederaDisclaimer": "Voicescape مشروع مستقل — غير تابع لشركة Hedera Hashgraph, LLC ولا برعايتها أو بتأييدها.",
 
@@ -731,6 +736,7 @@ const pt: Record<I18nKey, string> = {
   "landing.step4t": "Receba gorjetas",
   "landing.step4b": "Compartilhe seu link: /seu-nome. As gorjetas se dividem 98/2 automaticamente.",
   "landing.openBuilder": "Crie sua página — grátis para construir, um pouco de HBAR para taxas de rede",
+  "landing.joinDiscord": "Entre no Discord",
   "landing.footerTagline": "Páginas no IPFS, identidade on-chain, a vibe é com você",
   "landing.hederaDisclaimer": "Voicescape é um projeto independente — sem afiliação, patrocínio ou endosso da Hedera Hashgraph, LLC.",
 
@@ -854,6 +860,7 @@ const fr: Record<I18nKey, string> = {
   "landing.step4t": "Recevez des pourboires",
   "landing.step4b": "Partagez votre lien : /votre-nom. Les pourboires se partagent 98/2 automatiquement.",
   "landing.openBuilder": "Créez votre page — gratuit à construire, un peu de HBAR pour les frais réseau",
+  "landing.joinDiscord": "Rejoindre le Discord",
   "landing.footerTagline": "Pages sur IPFS, identité on-chain, l'ambiance c'est vous",
   "landing.hederaDisclaimer": "Voicescape est un projet indépendant — ni affilié à Hedera Hashgraph, LLC, ni sponsorisé ou approuvé par elle.",
 
