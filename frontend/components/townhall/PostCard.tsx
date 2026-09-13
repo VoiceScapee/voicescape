@@ -18,6 +18,7 @@ import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
+import TipCelebration from "@/components/TipCelebration";
 import ReputationBadge from "./Reputation";
 import ModHideButton from "./ModHideButton";
 import ReportButton from "./ReportButton";
@@ -29,7 +30,6 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
   const [usd, setUsd] = useState(5);
   const [price, setPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [waitingLong, setWaitingLong] = useState(false);
   const [txId, setTxId] = useState<string | null>(null);
   const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,11 +78,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     // contract reverts for unregistered pages — pre-check the registry
     // first so the user never signs a transaction that cannot succeed.
     setBusy(true);
-    setWaitingLong(false);
     recordConversionEvent("tip_attempt", "post");
-    // HashPack sometimes goes silent after the user approves — reassure
-    // after 15s so users don't abandon the page.
-    const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
     try {
       const registered = await resolvePage(author, getActiveChain());
       if (!registered) {
@@ -116,9 +112,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         recordConversionEvent("tip_failed", "post");
       }
     } finally {
-      clearTimeout(waitingNote);
       setBusy(false);
-      setWaitingLong(false);
     }
   };
 
@@ -152,17 +146,24 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
           </button>
         </div>
         {txId ? (
-          <TxReceipt
-            title="Tip confirmed"
-            approvedAt={approvedAt}
-            finalizedAt={finalizedAt}
-            txId={txId}
-            explorerBase={chain.blockExplorer}
-            lines={receiptLines}
-            nextStep={`It's live on @${author}'s page — they'll see your tip right away.`}
-            onAgain={reset}
-            onDone={onClose}
-          />
+          <>
+            <TipCelebration
+              usd={usd.toFixed(2)}
+              hbar={price ? (usd / price).toFixed(4) : null}
+              username={author}
+            />
+            <TxReceipt
+              title="Tip confirmed"
+              approvedAt={approvedAt}
+              finalizedAt={finalizedAt}
+              txId={txId}
+              explorerBase={chain.blockExplorer}
+              lines={receiptLines}
+              nextStep={`It's live on @${author}'s page — they'll see your tip right away.`}
+              onAgain={reset}
+              onDone={onClose}
+            />
+          </>
         ) : submittedTxId ? (
           <div className="th-tip-done">
             <IconCheck size={28} />
@@ -218,15 +219,19 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
                   ? "Tipping…"
                   : `Tip $${usd}`}
             </button>
-            {busy && waitingLong && (
-              <p className="th-muted" role="status">
-                Still working — if you already approved in your wallet, the network is confirming.
-                This can take up to ~90 seconds; please keep this page open.
-              </p>
+            {busy && !confirmTxId && (
+              <TxConfirming
+                title="Waiting on your wallet…"
+                sub="Nothing has left your wallet yet — approve the transaction in HashPack. Taking a while? Reopen HashPack and look for the prompt."
+              />
             )}
             {confirmStatus === "confirming" && (
               <div style={{ marginTop: 4 }}>
-                <TxConfirming sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)." />
+                <TxConfirming
+                  sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)."
+                  txId={confirmTxId}
+                  explorerBase={chain.blockExplorer}
+                />
               </div>
             )}
             {error && (

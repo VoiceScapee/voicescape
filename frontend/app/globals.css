@@ -667,6 +667,138 @@ a {
   max-width: 300px;
 }
 
+/* In-flight proof: the broadcast transaction id plus a track-live link,
+   so a long confirmation never feels like the money vanished. */
+.tx-confirm-tx {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+
+.tx-confirm-txid {
+  display: inline-block;
+  max-width: 100%;
+  font-size: 11.5px;
+  opacity: 0.75;
+  word-break: break-all;
+}
+
+.tx-confirm-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--vs-cyan, #91a8ff);
+}
+
+/* Post-tip celebration: a sound-wave ripple bursting from the megaphone
+   with the tip amount. Shared by the blockpage and townhall tip flows —
+   pure CSS, plays on mount, infinite while the receipt is open, silenced
+   for reduced-motion users. */
+.pv-tip-celebration {
+  text-align: center;
+  padding: 6px 0 2px;
+  animation: pvCelebrateIn 0.45s ease both;
+}
+
+@keyframes pvCelebrateIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.pv-ripple-stage {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pv-ripple-core {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  color: #fff;
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--vs-cyan, #91a8ff));
+  box-shadow: 0 0 32px rgba(130, 89, 239, 0.55);
+  animation: pvCorePop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+@keyframes pvCorePop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.pv-ripple-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--vs-cyan, #91a8ff);
+  animation: pvRipple 2.1s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes pvRipple {
+  0% {
+    transform: scale(0.32);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.12);
+    opacity: 0;
+  }
+}
+
+.pv-tip-celebration-amount {
+  font-family: var(--vs-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.pv-tip-celebration-hbar {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--vs-cyan, #91a8ff);
+  letter-spacing: 0.04em;
+  margin-top: 4px;
+}
+
+.pv-tip-celebration-sub {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--vs-muted, #9b9b9d);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-tip-celebration,
+  .pv-ripple-core,
+  .pv-ripple-ring {
+    animation: none;
+  }
+}
+
 /* Success receipt — exact finality proof, breakdown, HashScan, next step. */
 .tx-receipt {
   text-align: center;

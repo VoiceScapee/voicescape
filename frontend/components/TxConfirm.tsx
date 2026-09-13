@@ -11,6 +11,7 @@
  * prominent VIEW ON HASHSCAN button, and what happens next.
  */
 import { IconCheck, IconExternal } from "@/components/icons";
+import ExternalLink from "@/components/ExternalLink";
 import { formatFinalitySecs, formatFinalizedAt } from "@/lib/tx-confirm";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import Link from "next/link";
@@ -18,9 +19,20 @@ import Link from "next/link";
 export function TxConfirming({
   title = "Confirming on Hedera…",
   sub,
+  txId,
+  explorerBase,
 }: {
   title?: string;
   sub?: string;
+  /**
+   * Transaction id, once the wallet has broadcast it. Shown as in-flight
+   * proof with a "track live" link — the antidote to the "rug pull"
+   * feeling: the user can watch their money confirm instead of staring
+   * at a dead spinner.
+   */
+  txId?: string | null;
+  /** Explorer base URL for the track-live link. */
+  explorerBase?: string;
 }) {
   return (
     <div className="tx-confirm" role="status" aria-live="polite">
@@ -36,6 +48,17 @@ export function TxConfirming({
         {title}
       </p>
       {sub && <p className="th-muted tx-confirm-sub">{sub}</p>}
+      {txId && explorerBase && (
+        <p className="tx-confirm-tx">
+          <span className="vs-mono tx-confirm-txid">{txId}</span>
+          <ExternalLink
+            className="tx-confirm-track"
+            href={`${explorerBase}/transaction/${txId}`}
+          >
+            Track on HashScan <IconExternal size={12} />
+          </ExternalLink>
+        </p>
+      )}
     </div>
   );
 }

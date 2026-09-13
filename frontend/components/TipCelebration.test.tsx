@@ -14,7 +14,9 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const compSrc = readFileSync(join(here, "TipCelebration.tsx"), "utf8");
-const cssSrc = readFileSync(join(here, "renderer.css"), "utf8");
+// Celebration styles live in app/globals.css (shared by the blockpage and
+// townhall tip flows), next to the tx-confirm styles.
+const cssSrc = readFileSync(join(here, "..", "app", "globals.css"), "utf8");
 const pageSrc = readFileSync(join(here, "..", "app", "[username]", "page.tsx"), "utf8");
 
 describe("TipCelebration", () => {

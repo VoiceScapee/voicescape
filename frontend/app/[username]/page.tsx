@@ -71,9 +71,6 @@ function TipBox({
   const [txHash, setTxHash] = useState<string | null>(null);
   const [submittedHash, setSubmittedHash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // True once the wallet has been open >15s — show the reassurance note so
-  // the user doesn't abandon the page while HashPack is slow or silent.
-  const [waitingLong, setWaitingLong] = useState(false);
   // Set once the wallet approves: the hook polls the mirror node until the
   // transaction reaches consensus, so the UI reacts to the real outcome
   // instead of sitting frozen on "Tipping…".
@@ -150,13 +147,7 @@ function TipBox({
       return;
     }
     setBusy(true);
-    setWaitingLong(false);
     recordConversionEvent("tip_attempt", "blockpage");
-    // HashPack sometimes goes silent after the user approves (the tx still
-    // lands on-chain; the wallet layer recovers via the mirror node after a
-    // 90s timeout). Without a progress hint the UI looks frozen on
-    // "Tipping…" — reassure after 15s so users don't abandon the page.
-    const waitingNote = setTimeout(() => setWaitingLong(true), 15000);
     try {
       if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
       // Guardrail: never prompt a wallet signature for a doomed tip. The
@@ -195,9 +186,7 @@ function TipBox({
         recordConversionEvent("tip_failed", "blockpage");
       }
     } finally {
-      clearTimeout(waitingNote);
       setBusy(false);
-      setWaitingLong(false);
     }
   };
 
@@ -337,14 +326,24 @@ function TipBox({
               <IconTip size={20} />
               {confirmStatus === "confirming" ? "Confirming on Hedera…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : `Tip $${usdValid ? usdNum.toFixed(2) : "0.00"}`}
             </button>
-            {busy && waitingLong && (
-              <p className="pv-fee-note" role="status">
-                Still working — if you already approved in your wallet, the network is confirming.
-                This can take up to ~90 seconds; please keep this page open.
-              </p>
+            {/* Phase A: wallet hasn't returned a hash yet — nothing has left
+                the wallet. Alive animation + the honest reassurance, never
+                a dead "Tipping…". */}
+            {busy && !confirmTxId && (
+              <TxConfirming
+                title="Waiting on your wallet…"
+                sub="Nothing has left your wallet yet — approve the transaction in HashPack. Taking a while? Reopen HashPack and look for the prompt."
+              />
             )}
+            {/* Phase B: hash in hand, polling for consensus — show the
+                in-flight transaction as proof so the wait never feels
+                like the money vanished. */}
             {confirmStatus === "confirming" && (
-              <TxConfirming sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)." />
+              <TxConfirming
+                sub="Approved in your wallet — waiting for Hedera to reach consensus (usually a few seconds)."
+                txId={confirmTxId}
+                explorerBase={chain.blockExplorer}
+              />
             )}
 
             <p className="pv-fee-note">
