@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { resolveUsernameForOwner } from "@/lib/registry-reverse";
 
 /**
  * GET /api/activity/recent
@@ -7,7 +8,9 @@ import { NextResponse } from "next/server";
  * Queries Hedera Mirror Node for TipSent event logs, newest first.
  * Only verified TipSent events are returned (not marketplace purchases).
  *
- * Response: { tips: [{ txHash, from, to, amountHbar, timestamp }] }
+ * Response: { tips: [{ txHash, from, to, fromUsername, toUsername, amountHbar, timestamp }] }
+ * Usernames are resolved from the on-chain Registry where possible;
+ * null when the address owns no registered page.
  */
 
 // TipSent(string,address,address,uint256,uint256) event signature
@@ -84,7 +87,19 @@ export async function GET() {
       if (tips.length >= 5) break;
     }
 
-    return NextResponse.json({ tips });
+    // Resolve blockpage usernames from the on-chain Registry where possible.
+    // Usernames are a display nicety — resolution failures degrade to null.
+    const withUsernames = await Promise.all(
+      tips.map(async (tip) => {
+        const [fromUsername, toUsername] = await Promise.all([
+          resolveUsernameForOwner(tip.from),
+          resolveUsernameForOwner(tip.to),
+        ]);
+        return { ...tip, fromUsername, toUsername };
+      }),
+    );
+
+    return NextResponse.json({ tips: withUsernames });
   } catch (err) {
     console.error("[activity] Error fetching recent activity:", err);
     return NextResponse.json({ tips: [], error: "Failed to fetch activity" });

@@ -162,6 +162,30 @@ const en = {
   "push.unsupported": "This browser doesn't support push notifications.",
   "push.receivedTitle": "New tip received",
   "push.receivedBody": "You received {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "Leaderboard",
+  "activity.title": "Recent tips",
+  "activity.subtitle": "The latest on-chain tips, newest first.",
+  "activity.empty": "No tips yet — be the first to tip a creator.",
+  "activity.loading": "Loading recent activity…",
+  "activity.viewOnHashScan": "View on HashScan",
+  "activity.timeJustNow": "just now",
+  "activity.timeMinAgo": "{n} min ago",
+  "activity.timeHourAgo": "{n} h ago",
+  "activity.timeDayAgo": "{n} d ago",
+  "leaderboard.title": "Most tipped this week",
+  "leaderboard.subtitle":
+    "Human creators ranked by tips received in the last 7 days — straight from Hedera, no algorithms.",
+  "leaderboard.empty": "No tips this week yet — be the first.",
+  "leaderboard.loading": "Loading leaderboard…",
+  "leaderboard.humansOnly": "Human creators only",
+  "leaderboard.rank": "Rank",
+  "leaderboard.creator": "Creator",
+  "leaderboard.total": "Total tipped",
+  "leaderboard.tips": "Tips",
+  "leaderboard.tipCountSingular": "{n} tip",
+  "leaderboard.tipCountPlural": "{n} tips",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -302,6 +326,30 @@ const es: Record<I18nKey, string> = {
   "push.unsupported": "Este navegador no admite notificaciones push.",
   "push.receivedTitle": "Nueva propina recibida",
   "push.receivedBody": "Recibiste {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "Clasificación",
+  "activity.title": "Propinas recientes",
+  "activity.subtitle": "Las últimas propinas on-chain, de las más recientes a las más antiguas.",
+  "activity.empty": "Aún no hay propinas — sé la primera persona en dar una a un creador.",
+  "activity.loading": "Cargando actividad reciente…",
+  "activity.viewOnHashScan": "Ver en HashScan",
+  "activity.timeJustNow": "ahora mismo",
+  "activity.timeMinAgo": "hace {n} min",
+  "activity.timeHourAgo": "hace {n} h",
+  "activity.timeDayAgo": "hace {n} d",
+  "leaderboard.title": "Más propinas esta semana",
+  "leaderboard.subtitle":
+    "Creadores humanos clasificados por las propinas recibidas en los últimos 7 días — directamente de Hedera, sin algoritmos.",
+  "leaderboard.empty": "Aún no hay propinas esta semana — sé la primera persona.",
+  "leaderboard.loading": "Cargando clasificación…",
+  "leaderboard.humansOnly": "Solo creadores humanos",
+  "leaderboard.rank": "Puesto",
+  "leaderboard.creator": "Creador",
+  "leaderboard.total": "Total recibido",
+  "leaderboard.tips": "Propinas",
+  "leaderboard.tipCountSingular": "{n} propina",
+  "leaderboard.tipCountPlural": "{n} propinas",
 };
 
 const zh: Record<I18nKey, string> = {
@@ -439,6 +487,29 @@ const zh: Record<I18nKey, string> = {
   "push.unsupported": "此浏览器不支持推送通知。",
   "push.receivedTitle": "收到新的打赏",
   "push.receivedBody": "你收到了 {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "排行榜",
+  "activity.title": "最新打赏",
+  "activity.subtitle": "最新的链上打赏，按时间从新到旧排列。",
+  "activity.empty": "还没有打赏 — 成为第一个打赏创作者的人。",
+  "activity.loading": "正在加载最新动态…",
+  "activity.viewOnHashScan": "在 HashScan 上查看",
+  "activity.timeJustNow": "刚刚",
+  "activity.timeMinAgo": "{n}分钟前",
+  "activity.timeHourAgo": "{n}小时前",
+  "activity.timeDayAgo": "{n}天前",
+  "leaderboard.title": "本周获赏最多",
+  "leaderboard.subtitle": "按过去 7 天收到的链上打赏排名的人类创作者 — 直接来自 Hedera，无算法干预。",
+  "leaderboard.empty": "本周还没有打赏 — 成为第一个打赏的人。",
+  "leaderboard.loading": "正在加载排行榜…",
+  "leaderboard.humansOnly": "仅人类创作者",
+  "leaderboard.rank": "排名",
+  "leaderboard.creator": "创作者",
+  "leaderboard.total": "打赏总额",
+  "leaderboard.tips": "打赏次数",
+  "leaderboard.tipCountSingular": "{n} 次打赏",
+  "leaderboard.tipCountPlural": "{n} 次打赏",
 };
 
 const hi: Record<I18nKey, string> = {
@@ -576,6 +647,29 @@ const hi: Record<I18nKey, string> = {
   "push.unsupported": "यह ब्राउज़र पुश सूचनाओं का समर्थन नहीं करता।",
   "push.receivedTitle": "नई टिप मिली",
   "push.receivedBody": "आपको {amount} HBAR मिला",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "लीडरबोर्ड",
+  "activity.title": "हाल की टिप्स",
+  "activity.subtitle": "नवीनतम ऑन-चेन टिप्स, सबसे नई सबसे पहले।",
+  "activity.empty": "अभी तक कोई टिप नहीं — किसी क्रिएटर को टिप देने वाले सबसे पहले बनें।",
+  "activity.loading": "हाल की गतिविधि लोड हो रही है…",
+  "activity.viewOnHashScan": "HashScan पर देखें",
+  "activity.timeJustNow": "अभी",
+  "activity.timeMinAgo": "{n} मिनट पहले",
+  "activity.timeHourAgo": "{n} घंटे पहले",
+  "activity.timeDayAgo": "{n} दिन पहले",
+  "leaderboard.title": "इस सप्ताह सबसे ज़्यादा टिप्स",
+  "leaderboard.subtitle": "पिछले 7 दिनों में मिली ऑन-चेन टिप्स के अनुसार मानव क्रिएटर्स की रैंकिंग — सीधे Hedera से, कोई एल्गोरिदम नहीं।",
+  "leaderboard.empty": "इस सप्ताह अभी तक कोई टिप नहीं — सबसे पहले बनें।",
+  "leaderboard.loading": "लीडरबोर्ड लोड हो रहा है…",
+  "leaderboard.humansOnly": "केवल मानव क्रिएटर्स",
+  "leaderboard.rank": "रैंक",
+  "leaderboard.creator": "क्रिएटर",
+  "leaderboard.total": "कुल टिप्स",
+  "leaderboard.tips": "टिप्स",
+  "leaderboard.tipCountSingular": "{n} टिप",
+  "leaderboard.tipCountPlural": "{n} टिप्स",
 };
 
 const ar: Record<I18nKey, string> = {
@@ -713,6 +807,29 @@ const ar: Record<I18nKey, string> = {
   "push.unsupported": "هذا المتصفح لا يدعم الإشعارات الفورية.",
   "push.receivedTitle": "تم استلام إكرامية جديدة",
   "push.receivedBody": "تلقيت {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "لوحة الصدارة",
+  "activity.title": "أحدث الإكراميات",
+  "activity.subtitle": "أحدث الإكراميات على السلسلة، الأجدد أولاً.",
+  "activity.empty": "لا توجد إكراميات بعد — كن أول من يكرم مبدعًا.",
+  "activity.loading": "جارٍ تحميل النشاط الأخير…",
+  "activity.viewOnHashScan": "عرض على HashScan",
+  "activity.timeJustNow": "الآن",
+  "activity.timeMinAgo": "منذ {n} دقيقة",
+  "activity.timeHourAgo": "منذ {n} ساعة",
+  "activity.timeDayAgo": "منذ {n} يوم",
+  "leaderboard.title": "الأكثر إكرامية هذا الأسبوع",
+  "leaderboard.subtitle": "المبدعون البشريون مرتبون حسب الإكراميات المستلمة في آخر 7 أيام — مباشرة من Hedera، بدون خوارزميات.",
+  "leaderboard.empty": "لا توجد إكراميات هذا الأسبوع بعد — كن الأول.",
+  "leaderboard.loading": "جارٍ تحميل لوحة الصدارة…",
+  "leaderboard.humansOnly": "المبدعون البشريون فقط",
+  "leaderboard.rank": "الترتيب",
+  "leaderboard.creator": "المبدع",
+  "leaderboard.total": "إجمالي الإكراميات",
+  "leaderboard.tips": "الإكراميات",
+  "leaderboard.tipCountSingular": "{n} إكرامية",
+  "leaderboard.tipCountPlural": "{n} إكراميات",
 };
 
 const pt: Record<I18nKey, string> = {
@@ -850,6 +967,29 @@ const pt: Record<I18nKey, string> = {
   "push.unsupported": "Este navegador não suporta notificações push.",
   "push.receivedTitle": "Nova gorjeta recebida",
   "push.receivedBody": "Você recebeu {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "Classificação",
+  "activity.title": "Gorjetas recentes",
+  "activity.subtitle": "As gorjetas on-chain mais recentes, das mais novas para as mais antigas.",
+  "activity.empty": "Ainda não há gorjetas — seja a primeira pessoa a dar uma a um criador.",
+  "activity.loading": "A carregar atividade recente…",
+  "activity.viewOnHashScan": "Ver no HashScan",
+  "activity.timeJustNow": "agora mesmo",
+  "activity.timeMinAgo": "há {n} min",
+  "activity.timeHourAgo": "há {n} h",
+  "activity.timeDayAgo": "há {n} d",
+  "leaderboard.title": "Mais gorjetas esta semana",
+  "leaderboard.subtitle": "Criadores humanos classificados pelas gorjetas recebidas nos últimos 7 dias — direto da Hedera, sem algoritmos.",
+  "leaderboard.empty": "Ainda não há gorjetas esta semana — seja a primeira pessoa.",
+  "leaderboard.loading": "A carregar classificação…",
+  "leaderboard.humansOnly": "Apenas criadores humanos",
+  "leaderboard.rank": "Posição",
+  "leaderboard.creator": "Criador",
+  "leaderboard.total": "Total recebido",
+  "leaderboard.tips": "Gorjetas",
+  "leaderboard.tipCountSingular": "{n} gorjeta",
+  "leaderboard.tipCountPlural": "{n} gorjetas",
 };
 
 const fr: Record<I18nKey, string> = {
@@ -988,6 +1128,29 @@ const fr: Record<I18nKey, string> = {
   "push.unsupported": "Ce navigateur ne prend pas en charge les notifications push.",
   "push.receivedTitle": "Nouveau pourboire reçu",
   "push.receivedBody": "Vous avez reçu {amount} HBAR",
+
+  // Public activity stream + weekly leaderboard (Slice 2)
+  "nav.leaderboard": "Classement",
+  "activity.title": "Pourboires récents",
+  "activity.subtitle": "Les derniers pourboires on-chain, du plus récent au plus ancien.",
+  "activity.empty": "Aucun pourboire pour l'instant — soyez la première personne à en donner un à un créateur.",
+  "activity.loading": "Chargement de l'activité récente…",
+  "activity.viewOnHashScan": "Voir sur HashScan",
+  "activity.timeJustNow": "à l'instant",
+  "activity.timeMinAgo": "il y a {n} min",
+  "activity.timeHourAgo": "il y a {n} h",
+  "activity.timeDayAgo": "il y a {n} j",
+  "leaderboard.title": "Les plus tipés cette semaine",
+  "leaderboard.subtitle": "Créateurs humains classés par pourboires reçus au cours des 7 derniers jours — directement depuis Hedera, sans algorithme.",
+  "leaderboard.empty": "Aucun pourboire cette semaine pour l'instant — soyez le premier.",
+  "leaderboard.loading": "Chargement du classement…",
+  "leaderboard.humansOnly": "Créateurs humains uniquement",
+  "leaderboard.rank": "Rang",
+  "leaderboard.creator": "Créateur",
+  "leaderboard.total": "Total reçu",
+  "leaderboard.tips": "Pourboires",
+  "leaderboard.tipCountSingular": "{n} pourboire",
+  "leaderboard.tipCountPlural": "{n} pourboires",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr };

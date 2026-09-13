@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getJson } from "@/lib/townhall";
 import BadgeRow from "@/components/townhall/BadgeRow";
+import { WeeklyLeaderboard } from "@/components/WeeklyLeaderboard";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import type { Badge } from "@/lib/server/townhall/badges";
 
 interface LeaderEntry {
@@ -29,7 +31,7 @@ interface MarketBoards {
 
 const RANK_MEDAL = ["🥇", "🥈", "🥉"];
 
-type Tab = "activity" | "tippers" | "buyers" | "sellers";
+type Tab = "activity" | "tippers" | "buyers" | "sellers" | "mostTipped";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "activity", label: "🏆 Activity" },
@@ -91,6 +93,7 @@ function MarketBoard({
 }
 
 export default function LeaderboardClient() {
+  const { t } = useLanguage();
   const [tab, setTab] = useState<Tab>("activity");
   const [leaders, setLeaders] = useState<LeaderEntry[] | null>(null);
   const [boards, setBoards] = useState<MarketBoards | null>(null);
@@ -113,7 +116,7 @@ export default function LeaderboardClient() {
 
   // Market boards load lazily on first tab open — on-chain scan, cached 10 min.
   useEffect(() => {
-    if (tab === "activity" || boards !== null) return;
+    if (tab === "activity" || tab === "mostTipped" || boards !== null) return;
     let live = true;
     getJson<MarketBoards>("/api/townhall/leaderboard/market")
       .then((d) => {
@@ -134,6 +137,10 @@ export default function LeaderboardClient() {
     };
   }, [tab, boards]);
 
+  // The "Most tipped" tab label is translated (slice 2 requirement);
+  // the legacy tabs keep their hardcoded labels.
+  const tabs = [...TABS, { id: "mostTipped" as Tab, label: `⭐ ${t("leaderboard.title")}` }];
+
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: "24px 18px 72px" }}>
       <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>🏆 Leaderboard</h1>
@@ -144,7 +151,7 @@ export default function LeaderboardClient() {
       </p>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }} role="tablist">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             type="button"
@@ -210,7 +217,9 @@ export default function LeaderboardClient() {
         </>
       )}
 
-      {tab !== "activity" && (
+      {tab === "mostTipped" && <WeeklyLeaderboard />}
+
+      {tab !== "activity" && tab !== "mostTipped" && (
         <>
           {marketError && <p style={{ color: "#f87171" }}>{marketError}</p>}
           {boards === null && !marketError && <p style={{ opacity: 0.6 }}>Scanning Hedera mainnet…</p>}

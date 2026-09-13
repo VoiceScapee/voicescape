@@ -66,6 +66,13 @@ export default function Navbar({ right }: NavbarProps) {
           >
             Explore
           </Link>
+          <Link
+            href="/leaderboard"
+            className="vs-btn vs-btn-ghost"
+            style={{ padding: "8px 20px", fontSize: 14 }}
+          >
+            <T k="nav.leaderboard" />
+          </Link>
           <a
             href="https://discord.gg/2KGzPduUN5"
             target="_blank"

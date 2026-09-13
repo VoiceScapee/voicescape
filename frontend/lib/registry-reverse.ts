@@ -27,23 +27,62 @@ export interface ContractResultShape {
 }
 
 /**
- * Decode the username (first arg) from registerPage calldata.
+ * On-chain registry owner type. 0 = HUMAN, 1 = AGENT
+ * (matches the VoicescapeRegistry contract interface).
+ */
+export type PageOwnerType = "human" | "agent";
+
+/** A successfully registered page: its username plus its on-chain owner type. */
+export interface RegisteredPage {
+  username: string;
+  ownerType: PageOwnerType;
+}
+
+/**
+ * Decode the username (first arg) and ownerType (third arg, uint8) from
+ * registerPage calldata. The registry is the on-chain source of truth for
+ * whether a page belongs to a human or an AI agent.
  * Null when the calldata isn't a registerPage call or is malformed.
  */
-export function decodeUsernameFromCalldata(calldata: string | null | undefined): string | null {
+export function decodePageFromCalldata(calldata: string | null | undefined): RegisteredPage | null {
   try {
     if (typeof calldata !== "string" || !calldata.toLowerCase().startsWith(REGISTERPAGE_SELECTOR)) {
       return null;
     }
-    const [username] = ethers.AbiCoder.defaultAbiCoder().decode(
+    const [username, , ownerType] = ethers.AbiCoder.defaultAbiCoder().decode(
       ["string", "string", "uint8", "address", "string"],
       "0x" + calldata.slice(REGISTERPAGE_SELECTOR.length),
     );
     const name = String(username ?? "").trim().toLowerCase();
-    return /^[a-z0-9_-]{3,32}$/.test(name) ? name : null;
+    if (!/^[a-z0-9_-]{3,32}$/.test(name)) return null;
+    const typeNum = typeof ownerType === "bigint" ? Number(ownerType) : Number(ownerType);
+    if (typeNum !== 0 && typeNum !== 1) return null;
+    return { username: name, ownerType: typeNum === 1 ? "agent" : "human" };
   } catch {
     return null;
   }
+}
+
+/**
+ * Decode the username (first arg) from registerPage calldata.
+ * Null when the calldata isn't a registerPage call or is malformed.
+ */
+export function decodeUsernameFromCalldata(calldata: string | null | undefined): string | null {
+  return decodePageFromCalldata(calldata)?.username ?? null;
+}
+
+/**
+ * Newest-first scan of an account's registry calls for the latest
+ * successful registerPage — returns that page (username + owner type).
+ * Null when the account never registered (reverted calls don't count).
+ */
+export function findLatestRegisteredPage(results: ContractResultShape[]): RegisteredPage | null {
+  for (const r of results) {
+    if (!r || r.error_message) continue;
+    const page = decodePageFromCalldata(r.function_parameters);
+    if (page) return page;
+  }
+  return null;
 }
 
 /**
@@ -52,12 +91,7 @@ export function decodeUsernameFromCalldata(calldata: string | null | undefined):
  * never registered (reverted calls don't count).
  */
 export function findLatestRegisteredUsername(results: ContractResultShape[]): string | null {
-  for (const r of results) {
-    if (!r || r.error_message) continue;
-    const username = decodeUsernameFromCalldata(r.function_parameters);
-    if (username) return username;
-  }
-  return null;
+  return findLatestRegisteredPage(results)?.username ?? null;
 }
 
 /**
@@ -80,10 +114,11 @@ async function evmAddressFor(owner: string): Promise<string | null> {
 
 /**
  * Resolve a wallet account ("0.0.x" or "0x…") to its latest registered page
- * username via the on-chain Registry. Returns null when it owns no page or
- * the lookup fails (never throws — callers treat null as "unknown").
+ * (username + on-chain owner type) via the on-chain Registry. Returns null
+ * when it owns no page or the lookup fails (never throws — callers treat
+ * null as "unknown").
  */
-export async function resolveUsernameForOwner(owner: string): Promise<string | null> {
+export async function resolvePageForOwner(owner: string): Promise<RegisteredPage | null> {
   try {
     const evm = await evmAddressFor(owner);
     if (!evm) return null;
@@ -94,8 +129,17 @@ export async function resolveUsernameForOwner(owner: string): Promise<string | n
     if (!res.ok) return null;
     const json = (await res.json().catch(() => null)) as { results?: unknown } | null;
     const results = Array.isArray(json?.results) ? (json.results as ContractResultShape[]) : [];
-    return findLatestRegisteredUsername(results);
+    return findLatestRegisteredPage(results);
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve a wallet account ("0.0.x" or "0x…") to its latest registered page
+ * username via the on-chain Registry. Returns null when it owns no page or
+ * the lookup fails (never throws — callers treat null as "unknown").
+ */
+export async function resolveUsernameForOwner(owner: string): Promise<string | null> {
+  return (await resolvePageForOwner(owner))?.username ?? null;
 }
