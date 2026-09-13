@@ -12,6 +12,8 @@
  */
 import { IconCheck, IconExternal } from "@/components/icons";
 import { formatFinalitySecs, formatFinalizedAt } from "@/lib/tx-confirm";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import Link from "next/link";
 
 export function TxConfirming({
   title = "Confirming on Hedera…",
@@ -54,6 +56,10 @@ export function TxReceipt({
   onAgain,
   againLabel = "Tip again",
   onDone,
+  /** Internal link to the on-chain proof page (/tx/<hash>). Renders the "View on-chain proof" button when set. */
+  proofHref,
+  /** X share-intent URL for the shareable receipt card. Renders the "Share on X" button when set. */
+  shareIntentUrl,
 }: {
   title: string;
   /** ms timestamp of wallet approval (start of the finality clock). */
@@ -67,7 +73,10 @@ export function TxReceipt({
   onAgain?: () => void;
   againLabel?: string;
   onDone: () => void;
+  proofHref?: string;
+  shareIntentUrl?: string;
 }) {
+  const { t } = useLanguage();
   const elapsed =
     approvedAt != null && finalizedAt != null
       ? formatFinalitySecs(finalizedAt.getTime() - approvedAt)
@@ -99,6 +108,26 @@ export function TxReceipt({
       >
         View on HashScan <IconExternal size={14} />
       </a>
+      {proofHref && (
+        <Link
+          className="vs-btn vs-btn-ghost tx-hashscan"
+          href={proofHref}
+          style={{ marginTop: 8 }}
+        >
+          {t("receipt.proofLink")} <IconExternal size={14} />
+        </Link>
+      )}
+      {shareIntentUrl && (
+        <a
+          className="vs-btn vs-btn-ghost tx-hashscan"
+          href={shareIntentUrl}
+          target="_blank"
+          rel="noreferrer"
+          style={{ marginTop: 8 }}
+        >
+          {t("receipt.shareX")} <IconExternal size={14} />
+        </a>
+      )}
       {nextStep && <p className="tx-next">{nextStep}</p>}
       <div className="tx-actions">
         {onAgain && (

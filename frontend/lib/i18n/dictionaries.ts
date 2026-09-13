@@ -90,6 +90,10 @@ const en = {
   "landing.feeS4b": "to keep the lights on.",
   "landing.feeNote":
     "The split is enforced by the contract itself — no middleman, no trust required. Runs on Hedera (HBAR).",
+  "landing.feeWedge":
+    "The tip jar Stripe can't do",
+  "landing.feeCompare":
+    "A $1 tip loses ~$0.33 to card fees. On Hedera the same tip costs ~$0.0001 to move — 98¢ of every dollar still reaches the creator. Tips as small as $0.01 stay intact, settle in seconds, and the 98/2 split is public on-chain for anyone to verify.",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "Transparency",
@@ -217,6 +221,28 @@ const en = {
   "goal.invalidTarget": "Enter a target between 0 and 1,000,000 HBAR.",
   "goal.error": "Couldn't save the goal — try again later.",
   "goal.signIn": "Sign in with your wallet to set a funding goal.",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "On-chain tip proof",
+  "txproof.kicker": "Public proof",
+  "txproof.sender": "Sender",
+  "txproof.recipient": "Recipient",
+  "txproof.gross": "Tip amount (gross)",
+  "txproof.creator": "Creator share (98%)",
+  "txproof.fee": "Platform fee (2%)",
+  "txproof.timestamp": "Confirmed at",
+  "txproof.hashscan": "View on HashScan",
+  "txproof.exact": "Exact 98/2 split, enforced by the contract.",
+  "txproof.loading": "Reading the chain…",
+  "txproof.errMalformed": "That doesn't look like a Hedera transaction ID. Expected: 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "Transaction not found — it may still be propagating. Try again in a minute.",
+  "txproof.errNotTip": "This transaction isn't a Voicescape tip.",
+  "txproof.errReverted": "This transaction reverted on-chain — no tip was sent.",
+  "txproof.errNetwork": "Couldn't reach the Hedera mirror node. Check your connection and try again.",
+  "txproof.errDecode": "The chain answered, but the tip data was unreadable.",
+  "receipt.proofLink": "View on-chain proof",
+  "receipt.shareX": "Share on X",
+  "receipt.shareTextTemplate": "I tipped {hbar} HBAR to @{username} on Voicescape — 98% went straight to the creator, verifiable on-chain: {url}",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -286,6 +312,10 @@ const es: Record<I18nKey, string> = {
   "landing.feeS4b": "para mantener las luces encendidas.",
   "landing.feeNote":
     "La división la aplica el propio contrato — sin intermediarios, sin necesidad de confianza. Funciona en Hedera (HBAR).",
+  "landing.feeWedge":
+    "La alcancía que Stripe no puede hacer",
+  "landing.feeCompare":
+    "Una propina de $1 pierde ~$0.33 en comisiones de tarjeta. En Hedera, mover esa misma propina cuesta ~$0.0001 — y 98¢ de cada dólar llegan al creador. Las propinas desde $0.01 llegan intactas, se confirman en segundos y la división 98/2 es pública en cadena para que cualquiera la verifique.",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "Transparencia",
@@ -412,6 +442,28 @@ const es: Record<I18nKey, string> = {
   "goal.invalidTarget": "Introduce un objetivo entre 0 y 1.000.000 HBAR.",
   "goal.error": "No se pudo guardar la meta — inténtalo más tarde.",
   "goal.signIn": "Conecta tu billetera para establecer una meta de recaudación.",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "Prueba de propina en cadena",
+  "txproof.kicker": "Prueba pública",
+  "txproof.sender": "Remitente",
+  "txproof.recipient": "Destinatario",
+  "txproof.gross": "Propina (bruto)",
+  "txproof.creator": "Parte del creador (98%)",
+  "txproof.fee": "Comisión de la plataforma (2%)",
+  "txproof.timestamp": "Confirmado el",
+  "txproof.hashscan": "Ver en HashScan",
+  "txproof.exact": "División exacta 98/2, aplicada por el contrato.",
+  "txproof.loading": "Leyendo la cadena…",
+  "txproof.errMalformed": "Eso no parece un ID de transacción de Hedera. Formato esperado: 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "Transacción no encontrada — puede que aún se esté propagando. Inténtalo de nuevo en un minuto.",
+  "txproof.errNotTip": "Esta transacción no es una propina de Voicescape.",
+  "txproof.errReverted": "Esta transacción fue revertida en cadena — no se envió ninguna propina.",
+  "txproof.errNetwork": "No se pudo contactar el mirror node de Hedera. Revisa tu conexión e inténtalo de nuevo.",
+  "txproof.errDecode": "La cadena respondió, pero los datos de la propina no se pudieron leer.",
+  "receipt.proofLink": "Ver prueba en cadena",
+  "receipt.shareX": "Compartir en X",
+  "receipt.shareTextTemplate": "Di {hbar} HBAR de propina a @{username} en Voicescape — el 98% fue directo al creador, verificable en cadena: {url}",
 };
 
 const zh: Record<I18nKey, string> = {
@@ -479,6 +531,10 @@ const zh: Record<I18nKey, string> = {
   "landing.feeS4b": "，用于维持运营。",
   "landing.feeNote":
     "分配由合约本身强制执行——没有中间商，无需信任。运行在 Hedera（HBAR）上。",
+  "landing.feeWedge":
+    "Stripe 做不到的打赏罐",
+  "landing.feeCompare":
+    "$1 的打赏会被卡手续费吃掉约 $0.33。在 Hedera 上，转移同样的打赏只需约 $0.0001——每 1 美元仍有 98 美分到达创作者手中。低至 $0.01 的打赏也能完整送达、几秒内结算，98/2 分成在链上公开，任何人均可验证。",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "透明公开",
@@ -603,6 +659,28 @@ const zh: Record<I18nKey, string> = {
   "goal.invalidTarget": "请输入 0 到 1,000,000 HBAR 之间的目标。",
   "goal.error": "无法保存目标 — 请稍后再试。",
   "goal.signIn": "连接你的钱包以设置筹款目标。",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "链上打赏凭证",
+  "txproof.kicker": "公开凭证",
+  "txproof.sender": "打赏者",
+  "txproof.recipient": "接收者",
+  "txproof.gross": "打赏金额（总额）",
+  "txproof.creator": "创作者分成（98%）",
+  "txproof.fee": "平台费用（2%）",
+  "txproof.timestamp": "确认时间",
+  "txproof.hashscan": "在 HashScan 上查看",
+  "txproof.exact": "精确的 98/2 分成，由合约强制执行。",
+  "txproof.loading": "正在读取链上数据…",
+  "txproof.errMalformed": "这不像是 Hedera 交易 ID。正确格式：0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "未找到该交易——可能仍在传播中。请一分钟后再试。",
+  "txproof.errNotTip": "这笔交易不是 Voicescape 的打赏。",
+  "txproof.errReverted": "该交易已在链上回滚——没有发出任何打赏。",
+  "txproof.errNetwork": "无法连接到 Hedera 镜像节点。请检查网络后重试。",
+  "txproof.errDecode": "链已返回数据，但打赏数据无法解析。",
+  "receipt.proofLink": "查看链上凭证",
+  "receipt.shareX": "分享到 X",
+  "receipt.shareTextTemplate": "我在 Voicescape 给 @{username} 打赏了 {hbar} HBAR——98% 直接给了创作者，链上可验证：{url}",
 };
 
 const hi: Record<I18nKey, string> = {
@@ -670,6 +748,10 @@ const hi: Record<I18nKey, string> = {
   "landing.feeS4b": "ताकि काम चलता रहे।",
   "landing.feeNote":
     "यह बंटवारा खुद कॉन्ट्रैक्ट लागू करता है — कोई बिचौलिया नहीं, किसी भरोसे की ज़रूरत नहीं। Hedera (HBAR) पर चलता है।",
+  "landing.feeWedge":
+    "वह टिप जार जो Stripe नहीं बना सकता",
+  "landing.feeCompare":
+    "$1 की टिप पर कार्ड शुल्क में ~$0.33 कट जाता है। Hedera पर वही टिप भेजने में ~$0.0001 लगता है — हर डॉलर के 98¢ क्रिएटर तक पहुचते हैं। $0.01 जितनी छोटी टिप भी पूरी पहुचती है, सेकंडों में सेटल होती है, और 98/2 बंटवारा ऑन-चेन सार्वजनिक है — कोई भी सत्यापित कर सकता है।",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "पारदर्शिता",
@@ -794,6 +876,28 @@ const hi: Record<I18nKey, string> = {
   "goal.invalidTarget": "0 से 1,000,000 HBAR के बीच लक्ष्य दर्ज करें।",
   "goal.error": "लक्ष्य सहेजा नहीं जा सका — बाद में फिर कोशिश करें।",
   "goal.signIn": "फंडिंग लक्ष्य सेट करने के लिए अपना वॉलेट कनेक्ट करें।",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "ऑन-चेन टिप प्रमाण",
+  "txproof.kicker": "सार्वजनिक प्रमाण",
+  "txproof.sender": "भेजने वाला",
+  "txproof.recipient": "प्राप्तकर्ता",
+  "txproof.gross": "टिप राशि (कुल)",
+  "txproof.creator": "क्रिएटर हिस्सा (98%)",
+  "txproof.fee": "प्लेटफॉर्म शुल्क (2%)",
+  "txproof.timestamp": "पुष्टि समय",
+  "txproof.hashscan": "HashScan पर देखें",
+  "txproof.exact": "सटीक 98/2 बंटवारा, कॉन्ट्रैक्ट द्वारा लागू।",
+  "txproof.loading": "चेन पढ़ी जा रही है…",
+  "txproof.errMalformed": "यह Hedera ट्रांज़ैक्शन ID जैसा नहीं लगता। अपेक्षित प्रारूप: 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "ट्रांज़ैक्शन नहीं मिला — यह अभी फैल रहा हो सकता है। एक मिनट में फिर कोशिश करें।",
+  "txproof.errNotTip": "यह ट्रांज़ैक्शन Voicescape टिप नहीं है।",
+  "txproof.errReverted": "यह ट्रांज़ैक्शन ऑन-चेन रिवर्ट हो गया — कोई टिप नहीं भेजी गई।",
+  "txproof.errNetwork": "Hedera मिरर नोड से संपर्क नहीं हो सका। अपना कनेक्शन जांचें और फिर कोशिश करें।",
+  "txproof.errDecode": "चेन ने जवाब दिया, लेकिन टिप डेटा पढ़ा नहीं जा सका।",
+  "receipt.proofLink": "ऑन-चेन प्रमाण देखें",
+  "receipt.shareX": "X पर शेयर करें",
+  "receipt.shareTextTemplate": "मैंने Voicescape पर @{username} को {hbar} HBAR टिप दिया — 98% सीधे क्रिएटर को गया, ऑन-चेन सत्यापित: {url}",
 };
 
 const ar: Record<I18nKey, string> = {
@@ -861,6 +965,10 @@ const ar: Record<I18nKey, string> = {
   "landing.feeS4b": "لإبقاء الأضواء مضاءة.",
   "landing.feeNote":
     "التقسيم يفرضه العقد نفسه — بلا وسيط، وبلا حاجة للثقة. يعمل على Hedera (HBAR).",
+  "landing.feeWedge":
+    "حصّالة الإكراميات التي لا يستطيع Stripe تقديمها",
+  "landing.feeCompare":
+    "إكرامية بقيمة $1 تخسر ~$0.33 كرسوم بطاقة. على Hedera، تكلفة تحويل الإكرامية نفسها ~$0.0001 — ويصل 98¢ من كل دولار إلى المبدع. إكراميات صغيرة حتى $0.01 تصل كاملة، وتُسوّى خلال ثوانٍ، وتقسيم 98/2 علني على السلسلة ليتحقق منه أي شخص.",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "الشفافية",
@@ -985,6 +1093,28 @@ const ar: Record<I18nKey, string> = {
   "goal.invalidTarget": "أدخل هدفًا بين 0 و1,000,000 HBAR.",
   "goal.error": "تعذر حفظ الهدف — حاول مرة أخرى لاحقًا.",
   "goal.signIn": "اربط محفظتك لتحديد هدف تمويل.",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "إثبات الإكرامية على السلسلة",
+  "txproof.kicker": "إثبات عام",
+  "txproof.sender": "المرسِل",
+  "txproof.recipient": "المستلِم",
+  "txproof.gross": "مبلغ الإكرامية (الإجمالي)",
+  "txproof.creator": "حصة المبدع (98%)",
+  "txproof.fee": "رسوم المنصة (2%)",
+  "txproof.timestamp": "وقت التأكيد",
+  "txproof.hashscan": "عرض على HashScan",
+  "txproof.exact": "تقسيم دقيق 98/2، يفرضه العقد.",
+  "txproof.loading": "جارٍ قراءة السلسلة…",
+  "txproof.errMalformed": "هذا لا يبدو كمعرّف معاملة Hedera. الصيغة المتوقعة: 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "لم يتم العثور على المعاملة — قد تكون ما تزال قيد الانتشار. حاول مجددًا بعد دقيقة.",
+  "txproof.errNotTip": "هذه المعاملة ليست إكرامية على Voicescape.",
+  "txproof.errReverted": "تم التراجع عن هذه المعاملة على السلسلة — لم تُرسَل أي إكرامية.",
+  "txproof.errNetwork": "تعذّر الوصول إلى عقدة المرآة في Hedera. تحقق من اتصالك وحاول مجددًا.",
+  "txproof.errDecode": "ردّت السلسلة، لكن تعذّرت قراءة بيانات الإكرامية.",
+  "receipt.proofLink": "عرض الإثبات على السلسلة",
+  "receipt.shareX": "مشاركة على X",
+  "receipt.shareTextTemplate": "أرسلت إكرامية {hbar} HBAR إلى @{username} على Voicescape — 98% ذهبت مباشرة إلى المبدع، ويمكن التحقق على السلسلة: {url}",
 };
 
 const pt: Record<I18nKey, string> = {
@@ -1052,6 +1182,10 @@ const pt: Record<I18nKey, string> = {
   "landing.feeS4b": "para manter as luzes acesas.",
   "landing.feeNote":
     "A divisão é aplicada pelo próprio contrato — sem intermediários, sem necessidade de confiança. Roda na Hedera (HBAR).",
+  "landing.feeWedge":
+    "O pote de gorjetas que a Stripe não consegue fazer",
+  "landing.feeCompare":
+    "Uma gorjeta de $1 perde ~$0.33 em taxas de cartão. Na Hedera, mover a mesma gorjeta custa ~$0.0001 — e 98¢ de cada dólar chegam ao criador. Gorjetas de até $0.01 chegam intactas, são liquidadas em segundos, e a divisão 98/2 é pública on-chain para qualquer um verificar.",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "Transparência",
@@ -1176,6 +1310,28 @@ const pt: Record<I18nKey, string> = {
   "goal.invalidTarget": "Digite uma meta entre 0 e 1.000.000 HBAR.",
   "goal.error": "Não foi possível salvar a meta — tente novamente mais tarde.",
   "goal.signIn": "Conecte sua carteira para definir uma meta de arrecadação.",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "Prova de gorjeta on-chain",
+  "txproof.kicker": "Prova pública",
+  "txproof.sender": "Remetente",
+  "txproof.recipient": "Destinatário",
+  "txproof.gross": "Gorjeta (bruto)",
+  "txproof.creator": "Parte do criador (98%)",
+  "txproof.fee": "Taxa da plataforma (2%)",
+  "txproof.timestamp": "Confirmado em",
+  "txproof.hashscan": "Ver no HashScan",
+  "txproof.exact": "Divisão exata de 98/2, aplicada pelo contrato.",
+  "txproof.loading": "Lendo a cadeia…",
+  "txproof.errMalformed": "Isso não parece um ID de transação da Hedera. Formato esperado: 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "Transação não encontrada — pode ainda estar se propagando. Tente de novo em um minuto.",
+  "txproof.errNotTip": "Esta transação não é uma gorjeta do Voicescape.",
+  "txproof.errReverted": "Esta transação foi revertida on-chain — nenhuma gorjeta foi enviada.",
+  "txproof.errNetwork": "Não foi possível alcançar o mirror node da Hedera. Verifique sua conexão e tente de novo.",
+  "txproof.errDecode": "A cadeia respondeu, mas os dados da gorjeta não puderam ser lidos.",
+  "receipt.proofLink": "Ver prova on-chain",
+  "receipt.shareX": "Compartilhar no X",
+  "receipt.shareTextTemplate": "Dei {hbar} HBAR de gorjeta para @{username} no Voicescape — 98% foi direto para o criador, verificável on-chain: {url}",
 };
 
 const fr: Record<I18nKey, string> = {
@@ -1243,6 +1399,10 @@ const fr: Record<I18nKey, string> = {
   "landing.feeS4b": "pour garder les lumières allumées.",
   "landing.feeNote":
     "La répartition est appliquée par le contrat lui-même — sans intermédiaire, sans confiance requise. Fonctionne sur Hedera (HBAR).",
+  "landing.feeWedge":
+    "La tirelire à pourboires que Stripe ne peut pas faire",
+  "landing.feeCompare":
+    "Un pourboire de 1 $ perd ~0,33 $ en frais de carte. Sur Hedera, déplacer le même pourboire coûte ~0,0001 $ — et 98 ¢ de chaque dollar parviennent au créateur. Les pourboires dès 0,01 $ arrivent intacts, sont réglés en quelques secondes, et la répartition 98/2 est publique on-chain pour que chacun puisse la vérifier.",
 
   // Landing page — transaction tracking
   "landing.trackLabel": "Transparence",
@@ -1368,6 +1528,28 @@ const fr: Record<I18nKey, string> = {
   "goal.invalidTarget": "Saisissez un objectif entre 0 et 1 000 000 HBAR.",
   "goal.error": "Impossible d'enregistrer l'objectif — réessayez plus tard.",
   "goal.signIn": "Connectez votre portefeuille pour définir un objectif de financement.",
+
+  // On-chain tip proof — split explorer + shareable receipts (Slice 4)
+  "txproof.title": "Preuve de pourboire on-chain",
+  "txproof.kicker": "Preuve publique",
+  "txproof.sender": "Expéditeur",
+  "txproof.recipient": "Destinataire",
+  "txproof.gross": "Pourboire (brut)",
+  "txproof.creator": "Part du créateur (98 %)",
+  "txproof.fee": "Frais de la plateforme (2 %)",
+  "txproof.timestamp": "Confirmé le",
+  "txproof.hashscan": "Voir sur HashScan",
+  "txproof.exact": "Répartition exacte 98/2, appliquée par le contrat.",
+  "txproof.loading": "Lecture de la chaîne…",
+  "txproof.errMalformed": "Ceci ne ressemble pas à un ID de transaction Hedera. Format attendu : 0.0.1234@1700000000.123456789",
+  "txproof.errNotFound": "Transaction introuvable — elle est peut-être encore en propagation. Réessayez dans une minute.",
+  "txproof.errNotTip": "Cette transaction n'est pas un pourboire Voicescape.",
+  "txproof.errReverted": "Cette transaction a été annulée on-chain — aucun pourboire n'a été envoyé.",
+  "txproof.errNetwork": "Impossible de joindre le mirror node Hedera. Vérifiez votre connexion et réessayez.",
+  "txproof.errDecode": "La chaîne a répondu, mais les données du pourboire sont illisibles.",
+  "receipt.proofLink": "Voir la preuve on-chain",
+  "receipt.shareX": "Partager sur X",
+  "receipt.shareTextTemplate": "J'ai donné {hbar} HBAR de pourboire à @{username} sur Voicescape — 98 % sont allés directement au créateur, vérifiable on-chain : {url}",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr };

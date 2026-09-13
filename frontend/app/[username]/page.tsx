@@ -12,6 +12,12 @@ import { friendlyWalletError, getHederaPairing, useWallet } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
+import {
+  buildTipProofUrl,
+  buildTipShareIntentUrl,
+  fillTipShareText,
+} from "@/lib/tx-proof";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import PageBadges from "@/components/townhall/PageBadges";
@@ -55,6 +61,7 @@ function TipBox({
 }) {
   const { account, connect, getTxSender } = useWallet();
   const { session } = useSession();
+  const { t } = useLanguage();
   const [usd, setUsd] = useState("5");
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +80,8 @@ function TipBox({
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
   const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
+  // HBAR string for the shareable receipt card (snapshotted with the lines).
+  const [shareHbar, setShareHbar] = useState<string | null>(null);
   const chain = getActiveChain();
 
   // Mirror-node verdict landed — move to the matching end state.
@@ -99,6 +108,7 @@ function TipBox({
     setApprovedAt(null);
     setFinalizedAt(null);
     setReceiptLines([]);
+    setShareHbar(null);
     setError(null);
   };
 
@@ -161,6 +171,7 @@ function TipBox({
         { label: `${username} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
         { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
       ]);
+      setShareHbar(hbarAmt.toFixed(4));
       const hash = await tipPage(username, wei, sender);
       // Approved — start the finality clock. The hook now confirms the real
       // on-chain outcome; the UI reacts (success / failed / submitted)
@@ -209,6 +220,19 @@ function TipBox({
             nextStep={`It's live on @${username}'s page — they'll see your tip right away.`}
             onAgain={resetTip}
             onDone={onClose}
+            proofHref={`/tx/${encodeURIComponent(txHash)}`}
+            shareIntentUrl={
+              shareHbar && typeof window !== "undefined"
+                ? buildTipShareIntentUrl(
+                    fillTipShareText(
+                      t("receipt.shareTextTemplate"),
+                      shareHbar,
+                      username,
+                      buildTipProofUrl(window.location.origin, txHash),
+                    ),
+                  )
+                : undefined
+            }
           />
         ) : submittedHash ? (
           <div className="pv-tip-confirm">
