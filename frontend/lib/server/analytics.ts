@@ -265,23 +265,26 @@ export interface TipsReceived {
  * Sum of completed on-chain payments TO a wallet: TipSent (toOwner =
  * topic3) + PurchaseCompleted (seller = topic2). Bounded pages;
  * fail-open → zeros.
+ *
+ * NOTE (verified 2026-09-13): mirror-node topic query filters silently match
+ * nothing on /contracts/{id}/results/logs, so we fetch the contract's logs
+ * unfiltered (bounded) and filter by topic0 + wallet topic in code.
  */
 export async function getTipsForWallet(wallet: string): Promise<TipsReceived> {
   const contract = tipsContract();
   if (!contract) return { totalTinybar: 0n, count: 0 };
-  const walletTopic = paddedTopic(wallet);
+  const walletTopic = paddedTopic(wallet).toLowerCase();
+  const tipSig = TIPSENT_IFACE.getEvent("TipSent")!.topicHash.toLowerCase();
+  const saleSig = PURCHASE_IFACE.getEvent("PurchaseCompleted")!.topicHash.toLowerCase();
   const base = `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs`;
   try {
-    const [tips, sales] = await Promise.all([
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: "100", topic0: TIPSENT_IFACE.getEvent("TipSent")!.topicHash, topic3: walletTopic })}`,
-        5,
-      ),
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: "100", topic0: PURCHASE_IFACE.getEvent("PurchaseCompleted")!.topicHash, topic2: walletTopic })}`,
-        5,
-      ),
-    ]);
+    const all = await fetchLogPages(`${base}?${new URLSearchParams({ order: "asc", limit: "100" })}`, 10);
+    const tips = all.filter(
+      (log) => log.topics?.[0]?.toLowerCase() === tipSig && log.topics?.[3]?.toLowerCase() === walletTopic,
+    );
+    const sales = all.filter(
+      (log) => log.topics?.[0]?.toLowerCase() === saleSig && log.topics?.[2]?.toLowerCase() === walletTopic,
+    );
     let total = 0n;
     let count = 0;
     for (const log of tips) {

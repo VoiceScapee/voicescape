@@ -525,30 +525,52 @@ async function fetchLogPages(firstUrl: string, cap: number): Promise<NonNullable
   return out;
 }
 
+type TipsLog = { topics?: string[]; timestamp?: string; data?: string };
+
 /**
- * Count contract logs for one event filtered by a wallet in one topic slot.
- * Bounded pages; fail-open → 0.
+ * Fetch the tips-contract's logs unfiltered (bounded pages); fail-open → [].
+ * NOTE (verified 2026-09-13): mirror-node topic query filters silently match
+ * nothing on /contracts/{id}/results/logs — callers must filter by topic in
+ * code (see the note on fetchLogPages in market-leaders.ts).
  */
-async function countLogs(
-  topic0: string,
-  topicKey: "topic1" | "topic2" | "topic3",
-  wallet: string,
-): Promise<number> {
+async function fetchTipsContractLogs(): Promise<TipsLog[]> {
   const contract = tipsContract();
-  if (!contract) return 0;
+  if (!contract) return [];
   const base = `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs`;
-  const params: Record<string, string> = {
-    order: "asc",
-    limit: "100",
-    topic0,
-    [topicKey]: paddedTopic(wallet),
-  };
+  const params: Record<string, string> = { order: "asc", limit: "100" };
   try {
-    const logs = await fetchLogPages(`${base}?${new URLSearchParams(params)}`, LOG_PAGE_CAP);
-    return logs.length;
+    return await fetchLogPages(`${base}?${new URLSearchParams(params)}`, LOG_PAGE_CAP);
   } catch {
-    return 0;
+    return [];
   }
+}
+
+/** Pure count of logs matching one event signature with the wallet in one topic slot. */
+function countWalletLogs(logs: TipsLog[], topic0: string, slot: number, walletTopic: string): number {
+  const sig = topic0.toLowerCase();
+  return logs.filter((l) => {
+    const t = l.topics?.[slot];
+    return l.topics?.[0]?.toLowerCase() === sig && typeof t === "string" && t.toLowerCase() === walletTopic;
+  }).length;
+}
+
+/** All four wallet counters from a single log list — one bounded mirror scan. */
+export function countWalletActivity(
+  logs: TipsLog[],
+  wallet: string,
+): { received: number; sent: number; bought: number; sold: number } {
+  const wantTopic = paddedTopic(wallet).toLowerCase();
+  const tipSig = TIPSENT_TOPIC0;
+  const saleSig = PURCHASE_TOPIC0;
+  return {
+    // TipSent: from = topic2, toOwner = topic3
+    received:
+      countWalletLogs(logs, tipSig, 3, wantTopic) + countWalletLogs(logs, saleSig, 2, wantTopic),
+    sent: countWalletLogs(logs, tipSig, 2, wantTopic),
+    // PurchaseCompleted: buyer = topic1, seller = topic2
+    bought: countWalletLogs(logs, saleSig, 1, wantTopic),
+    sold: countWalletLogs(logs, saleSig, 2, wantTopic),
+  };
 }
 
 /**
@@ -556,66 +578,75 @@ async function countLogs(
  * + PurchaseCompleted (seller = topic2). Bounded pages; fail-open → 0.
  */
 export async function countPaymentsReceived(wallet: string): Promise<number> {
-  const [tips, sales] = await Promise.all([
-    countLogs(TIPSENT_TOPIC0, "topic3", wallet),
-    countLogs(PURCHASE_TOPIC0, "topic2", wallet),
-  ]);
-  return tips + sales;
+  const logs = await fetchTipsContractLogs();
+  return countWalletActivity(logs, wallet).received;
 }
 
 /** Count TipSent events FROM a wallet (topic2). Bounded; fail-open → 0. */
 export async function countTipsSent(wallet: string): Promise<number> {
-  return countLogs(TIPSENT_TOPIC0, "topic2", wallet);
+  const logs = await fetchTipsContractLogs();
+  return countWalletActivity(logs, wallet).sent;
 }
 
 /** Count PurchaseCompleted events with the wallet as buyer (topic1). Bounded; fail-open → 0. */
 export async function countPurchasesBought(wallet: string): Promise<number> {
-  return countLogs(PURCHASE_TOPIC0, "topic1", wallet);
+  const logs = await fetchTipsContractLogs();
+  return countWalletActivity(logs, wallet).bought;
 }
 
 /** Count PurchaseCompleted events with the wallet as seller (topic2). Bounded; fail-open → 0. */
 export async function countPurchasesSold(wallet: string): Promise<number> {
-  return countLogs(PURCHASE_TOPIC0, "topic2", wallet);
+  const logs = await fetchTipsContractLogs();
+  return countWalletActivity(logs, wallet).sold;
+}
+
+type RegistryLog = { topics?: string[]; timestamp?: string; data?: string };
+
+/**
+ * Fetch registry-contract logs unfiltered (bounded pages); fail-open → [].
+ * NOTE (verified 2026-09-13): mirror-node topic query filters silently match
+ * nothing on /contracts/{id}/results/logs — callers must filter by topic in
+ * code (see the same note on the tips-contract counters above).
+ */
+async function fetchRegistryLogs(pages: number): Promise<RegistryLog[]> {
+  const contract = registryContract();
+  if (!contract) return [];
+  const url =
+    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
+    new URLSearchParams({ order: "asc", limit: "100" });
+  try {
+    return await fetchLogPages(url, pages);
+  } catch {
+    return [];
+  }
 }
 
 /**
  * True when the wallet owns at least one registered blockpage (any
- * OwnerType). Mirror-node PageRegistered logs filtered by owner = topic2.
+ * OwnerType). PageRegistered logs filtered by owner = topic2 in code.
  * Bounded scan; fail-open → false.
  */
 export async function ownsRegisteredPage(wallet: string): Promise<boolean> {
-  const contract = registryContract();
-  if (!contract) return false;
-  const url =
-    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
-    new URLSearchParams({ order: "asc", limit: "100", topic0: PAGE_REGISTERED_TOPIC0, topic2: paddedTopic(wallet) });
-  try {
-    const logs = await fetchLogPages(url, 2);
-    return logs.length > 0;
-  } catch {
-    return false;
-  }
+  const want = paddedTopic(wallet).toLowerCase();
+  const logs = await fetchRegistryLogs(2);
+  return logs.some(
+    (l) => l.topics?.[0]?.toLowerCase() === PAGE_REGISTERED_TOPIC0.toLowerCase() && l.topics?.[2]?.toLowerCase() === want,
+  );
 }
 
 /** True when the wallet owns a page registered as AGENT (OwnerType = 1). */
 export async function isAgentWallet(wallet: string): Promise<boolean> {
-  const contract = registryContract();
-  if (!contract) return false;
-  const url =
-    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
-    new URLSearchParams({ order: "asc", limit: "100", topic0: PAGE_REGISTERED_TOPIC0, topic2: paddedTopic(wallet) });
-  try {
-    const logs = await fetchLogPages(url, 2);
-    for (const log of logs) {
-      try {
-        const parsed = PAGE_REGISTERED_IFACE.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
-        if (Number(parsed.ownerType) === 1) return true;
-      } catch {
-        /* undecodable log — skip */
-      }
+  const want = paddedTopic(wallet).toLowerCase();
+  const logs = await fetchRegistryLogs(2);
+  for (const log of logs) {
+    if (log.topics?.[0]?.toLowerCase() !== PAGE_REGISTERED_TOPIC0.toLowerCase()) continue;
+    if (log.topics?.[2]?.toLowerCase() !== want) continue;
+    try {
+      const parsed = PAGE_REGISTERED_IFACE.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
+      if (Number(parsed.ownerType) === 1) return true;
+    } catch {
+      /* undecodable log — skip */
     }
-  } catch {
-    /* fail-open */
   }
   return false;
 }
@@ -626,29 +657,21 @@ export async function isAgentWallet(wallet: string): Promise<boolean> {
  * agents are long settled by the time the cap matters.
  */
 export async function agentPioneerRank(username: string): Promise<number | null> {
-  const contract = registryContract();
-  if (!contract) return null;
   const want = ethers.id(username.toLowerCase());
-  const url =
-    `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +
-    new URLSearchParams({ order: "asc", limit: "100", topic0: PAGE_REGISTERED_TOPIC0 });
+  const logs = await fetchRegistryLogs(AGENT_SCAN_PAGES);
   const agents: { usernameTopic: string; ts: number }[] = [];
-  try {
-    const logs = await fetchLogPages(url, AGENT_SCAN_PAGES);
-    for (const log of logs) {
-      try {
-        const parsed = PAGE_REGISTERED_IFACE.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
-        const t1 = (log.topics ?? [])[1];
-        if (Number(parsed.ownerType) === 1 && t1) {
-          const ts = log.timestamp ? Math.floor(Number(log.timestamp) * 1000) : 0;
-          agents.push({ usernameTopic: t1.toLowerCase(), ts });
-        }
-      } catch {
-        /* skip */
+  for (const log of logs) {
+    if (log.topics?.[0]?.toLowerCase() !== PAGE_REGISTERED_TOPIC0.toLowerCase()) continue;
+    try {
+      const parsed = PAGE_REGISTERED_IFACE.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
+      const t1 = (log.topics ?? [])[1];
+      if (Number(parsed.ownerType) === 1 && t1) {
+        const ts = log.timestamp ? Math.floor(Number(log.timestamp) * 1000) : 0;
+        agents.push({ usernameTopic: t1.toLowerCase(), ts });
       }
+    } catch {
+      /* skip */
     }
-  } catch {
-    return null;
   }
   agents.sort((a, b) => a.ts - b.ts);
   const idx = agents.findIndex((a) => a.usernameTopic === want.toLowerCase());
@@ -739,22 +762,20 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     ownsPage: false,
   };
   if (wallet) {
-    const [tips, agent, violations, ownsPage, tipsSent, bought, sold] = await Promise.all([
-      countPaymentsReceived(wallet),
+    const [logs, agent, violations, ownsPage] = await Promise.all([
+      fetchTipsContractLogs(),
       isAgentWallet(wallet),
       countViolations(hcs, wallet),
       ownsRegisteredPage(wallet),
-      countTipsSent(wallet),
-      countPurchasesBought(wallet),
-      countPurchasesSold(wallet),
     ]);
-    enrichment.tipsReceived = tips;
+    const activity = countWalletActivity(logs, wallet);
+    enrichment.tipsReceived = activity.received;
     enrichment.isAgent = agent;
     enrichment.violations = violations;
     enrichment.ownsPage = ownsPage;
-    enrichment.tipsSent = tipsSent;
-    enrichment.purchasesBought = bought;
-    enrichment.purchasesSold = sold;
+    enrichment.tipsSent = activity.sent;
+    enrichment.purchasesBought = activity.bought;
+    enrichment.purchasesSold = activity.sold;
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
     // Founder bypass: the founder wallet always qualifies for the Builder badge.
     applyFounderEnrichment(wallet, enrichment);

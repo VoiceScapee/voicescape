@@ -1,5 +1,6 @@
 /** Builder badge tests — mocked Mirror Node, in-memory KV. */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ethers } from "ethers";
 import {
   BUILDERS_ROOM_ID,
   BUILDER_UNLOCK_MESSAGE,
@@ -12,6 +13,13 @@ const WALLET = "0x000000000000000000000000000000000000a11c";
 const TIPS = "0.0.10854060";
 const REGISTRY = "0.0.10854058";
 
+// Real event topic hashes — the code filters by topic in code because the
+// mirror node ignores topic query filters (verified 2026-09-13).
+const TIPSENT_TOPIC0 = ethers.id("TipSent(string,address,address,uint256,uint256)");
+const PAGE_REGISTERED_TOPIC0 = ethers.id("PageRegistered(string,address,string,uint8,address,string)");
+const WALLET_TOPIC = "0x" + "000000000000000000000000000000000000a11c".padStart(64, "0");
+const ZERO_TOPIC = "0x" + "0".repeat(64);
+
 /** Scenario flags for the fetch mock. */
 let scenario = { hasPage: false, hasTip: false, fail: false };
 
@@ -20,10 +28,16 @@ function mockLogsResponse(url: string): { logs: unknown[] } {
   const u = String(url);
   const isRegistry = u.includes(`/contracts/${REGISTRY}/results/logs`);
   const isTips = u.includes(`/contracts/${TIPS}/results/logs`);
-  // ownsRegisteredPage: any PageRegistered log for the wallet.
-  if (isRegistry) return { logs: scenario.hasPage ? [{ topics: ["0xt0", "0xt1", "0xt2"] }] : [] };
-  // countPaymentsReceived: TipSent (topic3) or PurchaseCompleted (topic2).
-  if (isTips) return { logs: scenario.hasTip ? [{ topics: ["0xt0"] }] : [] };
+  // ownsRegisteredPage: a PageRegistered log for the wallet (owner = topic2).
+  if (isRegistry)
+    return {
+      logs: scenario.hasPage ? [{ topics: [PAGE_REGISTERED_TOPIC0, ZERO_TOPIC, WALLET_TOPIC] }] : [],
+    };
+  // countPaymentsReceived: a TipSent to the wallet (toOwner = topic3).
+  if (isTips)
+    return {
+      logs: scenario.hasTip ? [{ topics: [TIPSENT_TOPIC0, ZERO_TOPIC, ZERO_TOPIC, WALLET_TOPIC] }] : [],
+    };
   return { logs: [] };
 }
 

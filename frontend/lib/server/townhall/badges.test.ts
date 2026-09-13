@@ -203,6 +203,32 @@ describe("badgesForUser", () => {
     expect(none).not.toContain("merchant");
   });
 
+  it("counts wallet activity from raw logs by event + topic slot", async () => {
+    const { ethers } = await import("ethers");
+    const { countWalletActivity } = await import("./badges");
+    const tipSig = ethers.id("TipSent(string,address,address,uint256,uint256)");
+    const saleSig = ethers.id("PurchaseCompleted(address,address,string,uint256,uint256)");
+    const me = "0x" + "a11c".padStart(64, "0");
+    const other = "0x" + "b22d".padStart(64, "0");
+    const logs = [
+      // TipSent: topics [sig, username, from, toOwner]
+      { topics: [tipSig, other, me, other] }, // I sent a tip
+      { topics: [tipSig, other, other, me] }, // I received a tip
+      { topics: [tipSig, other, other, other] }, // someone else's tip
+      // PurchaseCompleted: topics [sig, buyer, seller]
+      { topics: [saleSig, me, other] }, // I bought
+      { topics: [saleSig, other, me] }, // I sold
+      { topics: ["0xdead"] }, // unknown event — ignored
+    ];
+    const a = countWalletActivity(logs, me);
+    expect(a.sent).toBe(1);
+    expect(a.received).toBe(2); // 1 tip + 1 sale
+    expect(a.bought).toBe(1);
+    expect(a.sold).toBe(1);
+    const none = countWalletActivity(logs, other);
+    expect(none.sent + none.bought + none.sold).toBeGreaterThan(0);
+  });
+
   it("awards builder only when the wallet owns a page AND got a tip", () => {
     const s = statsFor("alice", { activeDays: new Set(["2026-09-10"]) });
     const both = { ...EMPTY_ENRICHMENT, ownsPage: true, tipsReceived: 1 };

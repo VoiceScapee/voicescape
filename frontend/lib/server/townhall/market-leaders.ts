@@ -75,6 +75,13 @@ interface MirrorLogsResponse {
   links?: { next?: string | null };
 }
 
+/**
+ * Page through a mirror-node logs list. Bounded by `cap` pages.
+ * NOTE (verified 2026-09-13 against mainnet.mirrornode.hedera.com):
+ * `topic0..topic3` query filters on /contracts/{id}/results/logs silently
+ * return zero logs even for exact topic values. Fetch unfiltered and filter
+ * by topic in code instead.
+ */
 async function fetchLogPages(firstUrl: string, cap: number): Promise<MirrorLog[]> {
   const out: MirrorLog[] = [];
   let url: string | null = firstUrl;
@@ -165,16 +172,15 @@ async function computeMarketLeaderboards(): Promise<MarketLeaderboards> {
   if (!contract) return { ...EMPTY_BOARDS, scannedAt: Date.now() };
   const base = `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs`;
   try {
-    const [tipLogs, purchaseLogs] = await Promise.all([
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: String(LOG_PAGE_LIMIT), topic0: TIPSENT_TOPIC0 })}`,
-        LOG_PAGE_CAP,
-      ),
-      fetchLogPages(
-        `${base}?${new URLSearchParams({ order: "asc", limit: String(LOG_PAGE_LIMIT), topic0: PURCHASE_TOPIC0 })}`,
-        LOG_PAGE_CAP,
-      ),
-    ]);
+    // NOTE: mirror-node topic query filters silently match nothing on this
+    // endpoint, so we fetch the contract's logs unfiltered (bounded pages)
+    // and split/filter by topic in code. See docs comment above fetchLogPages.
+    const allLogs = await fetchLogPages(
+      `${base}?${new URLSearchParams({ order: "asc", limit: String(LOG_PAGE_LIMIT) })}`,
+      LOG_PAGE_CAP,
+    );
+    const tipLogs = allLogs.filter((l) => l.topics?.[0]?.toLowerCase() === TIPSENT_TOPIC0.toLowerCase());
+    const purchaseLogs = allLogs.filter((l) => l.topics?.[0]?.toLowerCase() === PURCHASE_TOPIC0.toLowerCase());
     return {
       // TipSent topics: [sig, username, from, toOwner] → tippers = topic2
       tippers: rankLeaders(aggregateByAddress(tipLogs, 2, tipAmount)),
