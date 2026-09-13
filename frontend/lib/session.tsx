@@ -63,7 +63,7 @@ export type SessionStatus =
   | "authenticated";
 
 export interface SignerInfo {
-  /** Human label, e.g. "HashPack", "MetaMask". */
+  /** Human label, e.g. "HashPack", "Blade". */
   name: string;
   /** False → this wallet is connect-only; sign-in is not offered. */
   canSign: boolean;
@@ -75,7 +75,6 @@ const ADAPTER_SIGNERS: Record<WalletAdapterId, SignerInfo> = {
   hashpack: { name: "HashPack", canSign: true },
   blade: { name: "Blade", canSign: true },
   walletconnect: { name: "WalletConnect", canSign: true },
-  metamask: { name: "MetaMask", canSign: true },
 };
 
 export interface SessionContextValue {

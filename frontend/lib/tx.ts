@@ -2,11 +2,6 @@
  * TxSender — one interface for Voicescape contract calls, implemented per
  * wallet family:
  *
- *  - EVM (MetaMask on Hedera): calldata is ABI-encoded with ethers
- *    (encode/decode ONLY — never chain connectivity). Reads and writes go
- *    through the injected wallet's EIP-1193 provider (eth_call /
- *    eth_sendTransaction / eth_getTransactionReceipt); the wallet is the
- *    chain connection. No ethers Provider/Signer/Contract anywhere.
  *  - Hedera (HashPack / Blade / WalletConnect via DAppConnector): the same
  *    Solidity contracts are called through @hiero-ledger/sdk
  *    ContractExecuteTransaction / ContractCallQuery, signed in the wallet
@@ -85,8 +80,8 @@ export class WalletTimeoutError extends Error {
 }
 
 export interface TxSender {
-  /** "evm" for MetaMask, "hedera" for Hedera wallets. */
-  readonly kind: "evm" | "hedera";
+  /** "hedera" for Hedera wallets (HashPack / Blade / WalletConnect). */
+  readonly kind: "hedera";
   /** 0x… address or 0.0.x account id, depending on kind. */
   readonly account: string;
   /** Resolve a username. Returns null when the name is not registered. */
@@ -117,192 +112,11 @@ export interface TxSender {
 }
 
 /* ------------------------------------------------------------------ */
-/* Injected-EVM implementation (MetaMask)                               */
+/* Shared ABI interfaces (ethers encode/decode only — never chain I/O)   */
 /* ------------------------------------------------------------------ */
-
-/**
- * Minimal EIP-1193 surface. The injected wallet (MetaMask) IS the chain
- * connection — it signs and broadcasts. We never construct an ethers
- * Provider/Signer/Contract; ethers is used ONLY to encode/decode calldata
- * (the one use Brandon's Hedera-only rule allows).
- *
- * This mirrors the connection flow of Hedera's own
- * @hashgraph/hedera-wallet-connect HederaAdapter.connectInjected
- * (eth_requestAccounts → eth_chainId → wallet_switch/addEthereumChain),
- * without pulling in its Reown AppKit peer dependencies.
- */
-export interface Eip1193Provider {
-  request(args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }): Promise<unknown>;
-}
 
 const REGISTRY_IFACE = new ethers.Interface(REGISTRY_ABI);
 const TIPS_IFACE = new ethers.Interface(TIPS_ABI);
-
-function toQuantityHex(value: bigint): string {
-  return `0x${value.toString(16)}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Wait for an EVM transaction receipt via eth_getTransactionReceipt.
- * Resolves with the receipt once mined; throws WalletTimeoutError (carrying
- * the tx hash so the UI can confirm on-chain) when the receipt doesn't
- * appear in time; throws when the receipt reports a revert.
- */
-async function waitForEvmReceipt(
-  eth: Eip1193Provider,
-  hash: string,
-  timeoutMs = 120_000,
-): Promise<void> {
-  const start = Date.now();
-  for (;;) {
-    const receipt = (await eth.request({
-      method: "eth_getTransactionReceipt",
-      params: [hash],
-    })) as { status?: string } | null;
-    if (receipt) {
-      if (receipt.status !== undefined && receipt.status !== "0x1") {
-        throw new Error("The transaction reverted on-chain.");
-      }
-      return;
-    }
-    if (Date.now() - start > timeoutMs) {
-      throw new WalletTimeoutError(hash);
-    }
-    await sleep(2_000);
-  }
-}
-
-async function injectedEthCall(
-  eth: Eip1193Provider,
-  to: string,
-  data: string,
-): Promise<string> {
-  const result = (await eth.request({
-    method: "eth_call",
-    params: [{ to, data }, "latest"],
-  })) as string;
-  if (typeof result !== "string" || result === "0x") {
-    throw new Error("Empty call result.");
-  }
-  return result;
-}
-
-/**
- * MetaMask TxSender. Calldata is ABI-encoded with ethers (encode-only);
- * every chain interaction goes through the injected wallet's EIP-1193
- * provider — no ethers BrowserProvider, no Signer, no Contract, no
- * JsonRpcProvider.
- */
-export function createInjectedEvmTxSender(
-  eth: Eip1193Provider,
-  account: string,
-  opts?: { receiptTimeoutMs?: number; sendTimeoutMs?: number },
-): TxSender {
-  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
-    throw new Error("Injected wallet returned an invalid account address.");
-  }
-  const receiptTimeoutMs = opts?.receiptTimeoutMs ?? 120_000;
-  // The wallet's send prompt can go silent (mobile deep-link never opens,
-  // provider hangs). Without a timeout the UI hangs on "Waiting on your
-  // wallet…" forever — seen in production 2026-09-13. Match the Hedera
-  // sender's 90s wallet timeout.
-  const sendTimeoutMs = opts?.sendTimeoutMs ?? 90_000;
-
-  async function sendWrite(
-    to: string,
-    data: string,
-    valueWei?: bigint,
-  ): Promise<string> {
-    const params: Record<string, string> = { from: account, to, data };
-    if (valueWei !== undefined) {
-      if (valueWei <= 0n) throw new Error("Payment amount must be greater than zero.");
-      params.value = toQuantityHex(valueWei);
-    }
-    let hash: string;
-    try {
-      hash = (await Promise.race([
-        eth.request({ method: "eth_sendTransaction", params: [params] }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("WALLET_SEND_TIMEOUT")), sendTimeoutMs),
-        ),
-      ])) as string;
-    } catch (e) {
-      if (e instanceof Error && e.message === "WALLET_SEND_TIMEOUT") {
-        // No hash came back, so there is nothing to confirm on-chain.
-        // Never claim failure — the user may have approved in the wallet.
-        throw new Error(
-          "Your wallet didn't respond in time. Open your wallet and check for the pending " +
-            "request — if you already approved, the transaction may still go through. " +
-            "Check your wallet activity before retrying so you don't pay twice.",
-        );
-      }
-      throw e;
-    }
-    if (typeof hash !== "string" || !hash.startsWith("0x")) {
-      throw new Error("The wallet did not return a transaction hash.");
-    }
-    await waitForEvmReceipt(eth, hash, receiptTimeoutMs);
-    return hash;
-  }
-
-  return {
-    kind: "evm",
-    account,
-    async viewResolve(registryAddress, username) {
-      try {
-        const data = REGISTRY_IFACE.encodeFunctionData("resolvePage", [username]);
-        const raw = await injectedEthCall(eth, registryAddress, data);
-        const [owner, ipfsHash, ownerType, operator, purpose]: [
-          string,
-          string,
-          bigint,
-          string,
-          string,
-        ] = REGISTRY_IFACE.decodeFunctionResult("resolvePage", raw) as unknown as [
-          string,
-          string,
-          bigint,
-          string,
-          string,
-        ];
-        return { owner, ipfsHash, ownerType: Number(ownerType) === 1 ? 1 : 0, operator, purpose };
-      } catch {
-        // resolvePage reverts with UsernameInvalid when the name is unknown.
-        return null;
-      }
-    },
-    async sendRegister(registryAddress, username, ipfsHash, ownerType, operator, purpose) {
-      const data = REGISTRY_IFACE.encodeFunctionData("registerPage", [
-        username,
-        ipfsHash,
-        ownerType,
-        operator,
-        purpose,
-      ]);
-      return sendWrite(registryAddress, data);
-    },
-    async sendUpdate(registryAddress, username, ipfsHash) {
-      const data = REGISTRY_IFACE.encodeFunctionData("updatePage", [username, ipfsHash]);
-      return sendWrite(registryAddress, data);
-    },
-    async sendTip(tipsAddress, username, valueWei) {
-      const data = TIPS_IFACE.encodeFunctionData("tipPage", [username]);
-      return sendWrite(tipsAddress, data, valueWei);
-    },
-    async sendBuy(tipsAddress, seller, listingRef, valueWei) {
-      if (!/^0x[0-9a-fA-F]{40}$/.test(seller)) throw new Error("Seller address is invalid.");
-      const data = TIPS_IFACE.encodeFunctionData("buyListing", [seller, listingRef]);
-      return sendWrite(tipsAddress, data, valueWei);
-    },
-  };
-}
 
 /* ------------------------------------------------------------------ */
 /* Hedera implementation (@hiero-ledger/sdk + HashConnect)                 */
@@ -578,7 +392,7 @@ export function createReadOnlySender(chain: ChainConfig): TxSender {
   // used only to encode/decode the calldata. The Hedera SDK
   // ContractCallQuery path is only needed for wallet-signed writes.
   return {
-    kind: "evm",
+    kind: "hedera",
     account: "",
     async viewResolve(registryAddress, username) {
       try {

@@ -9,8 +9,9 @@ import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schem
 import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
-import { friendlyWalletError, getHederaPairing, useWallet } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
+import { useFundingGoal, TIP_CONFIRMED_EVENT } from "@/hooks/useFundingGoal";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -57,9 +58,15 @@ const TIP_PRESETS_USD = ["0.10", "1", "5", "10", "25"];
 
 function TipBox({
   username,
+  paused,
+  goalTargetHbar,
   onClose,
 }: {
   username: string;
+  /** True when the page's funding goal is reached: the tip form is replaced
+   *  by an honest paused notice (covers the ?tip=1 deep link). */
+  paused?: boolean;
+  goalTargetHbar?: number | null;
   onClose: () => void;
 }) {
   const { account, connect, getTxSender } = useWallet();
@@ -91,6 +98,10 @@ function TipBox({
       setFinalizedAt(new Date());
       setTxHash(confirmTxId);
       recordConversionEvent("tip_confirmed", "blockpage");
+      // Nudge every funding-goal display on this page to refetch now.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent(TIP_CONFIRMED_EVENT));
+      }
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent — check the explorer for details.");
       recordConversionEvent("tip_failed", "blockpage");
@@ -133,7 +144,10 @@ function TipBox({
     let activeAccount = account;
     if (!activeAccount && session?.adapterId) {
       try {
-        activeAccount = await connect(session.adapterId as "hashpack" | "blade" | "walletconnect" | "metamask");
+        // The stored adapter must still be a supported one (e.g. a session
+        // saved when MetaMask was offered is no longer connectable).
+        const stored = WALLET_ADAPTERS.find((a) => a.id === session.adapterId);
+        if (stored) activeAccount = await connect(stored.id);
       } catch {
         // connect() already sets wallet.error; fall through to the message below
       }
@@ -201,7 +215,23 @@ function TipBox({
       }}
     >
       <div className="pv-tip-card">
-        {txHash ? (
+        {paused ? (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+              <span aria-hidden="true" style={{ fontSize: "1.6rem" }}>🎯</span>
+              <h3 style={{ margin: 0 }}>{t("goal.pausedTitle")}</h3>
+            </div>
+            <p className="th-muted" style={{ lineHeight: 1.6, margin: "0 0 16px" }}>
+              {t("goal.pausedBody").replace(
+                "{target}",
+                goalTargetHbar != null ? `${goalTargetHbar.toFixed(4)} HBAR` : "its goal",
+              )}
+            </p>
+            <button type="button" className="pv-tip-btn" onClick={onClose}>
+              {t("goal.pausedClose")}
+            </button>
+          </>
+        ) : txHash ? (
           <>
             <TipCelebration
               usd={usdNum.toFixed(2)}
@@ -597,6 +627,12 @@ function PublicPageInner({ username }: { username: string }) {
   } catch {
     viewerAddress = undefined;
   }
+  // Fundraiser pause: when the owner's funding goal is reached, the tip
+  // flow pauses with honest messaging (the owner reopens it by setting a
+  // new goal). Derived from the same on-chain raised total as <GoalBar>.
+  const goalOwner =
+    state.status === "ready" ? canonicalAddress(state.meta.owner) : null;
+  const { reached: goalReached, goal: fundingGoal } = useFundingGoal(username, goalOwner);
 
   // Owner view: the connected wallet matches the page's on-chain owner
   // (compared in canonical EVM form — the session may be 0.0.x or 0x…).
@@ -732,6 +768,7 @@ function PublicPageInner({ username }: { username: string }) {
         meta={state.meta}
         tipInteractive
         onTip={() => setTipOpen((v) => !v)}
+        tipPaused={goalReached}
         onPayService={setService}
         // Canonical identity: the route username, which only renders after
         // /api/resolve confirms the on-chain registration. The Founder badge
@@ -739,7 +776,12 @@ function PublicPageInner({ username }: { username: string }) {
         canonicalUsername={username}
       />
       {tipOpen && (
-        <TipBox username={username} onClose={() => setTipOpen(false)} />
+        <TipBox
+          username={username}
+          paused={goalReached}
+          goalTargetHbar={fundingGoal?.targetHbar ?? null}
+          onClose={() => setTipOpen(false)}
+        />
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>

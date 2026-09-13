@@ -200,7 +200,7 @@ describe("session lifecycle (pure)", () => {
       token: "tok_test_abc123",
       address: "0x000000000000000000000000000000000000b001",
       chainId: 296,
-      adapterId: "metamask",
+      adapterId: "hashpack",
       expiresAtMs: NOW + SESSION_TTL_MS,
       ...overrides,
     });
@@ -240,7 +240,7 @@ describe("session lifecycle (pure)", () => {
         token: "",
         address: "0x000000000000000000000000000000000000b001",
         chainId: 296,
-        adapterId: "metamask",
+        adapterId: "hashpack",
         expiresAtMs: NOW + 1000,
       }),
     ).toThrow(/token/);

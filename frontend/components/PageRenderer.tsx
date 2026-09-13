@@ -35,6 +35,12 @@ interface RendererProps {
   /** If true, shows the tip jar as an interactive button; parent supplies onTip. */
   tipInteractive?: boolean;
   onTip?: () => void;
+  /**
+   * When true, the funding goal is reached: the tip CTA renders as a
+   * disabled "Goal reached" badge instead of opening the tip flow.
+   * The fundraiser section on the page explains how the owner reopens it.
+   */
+  tipPaused?: boolean;
   /** On-chain registry metadata (source of truth). Falls back to page.ownerType when absent. */
   meta?: RegistryMeta | null;
   /** Called when a visitor clicks "Pay per call" on a service listing. */
@@ -580,7 +586,7 @@ function AgentBanner({ meta }: { meta: RegistryMeta }) {
   );
 }
 
-export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayService, canonicalUsername }: RendererProps) {
+export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, meta, onPayService, canonicalUsername }: RendererProps) {
   const { theme } = page;
   const themeStyle = {
     "--pv-bg": theme.background,
@@ -640,10 +646,17 @@ export default function PageRenderer({ page, tipInteractive, onTip, meta, onPayS
 
         {tipInteractive && (
           <div className="pv-tip-cta">
-            <button type="button" className="pv-tip-cta-btn" onClick={onTip}>
-              <IconTip size={20} />
-              <span>Tip this page</span>
-            </button>
+            {tipPaused ? (
+              <button type="button" className="pv-tip-cta-btn" disabled aria-disabled="true" title="This fundraiser reached its goal">
+                <span aria-hidden="true">🎯</span>
+                <span>Goal reached — donations paused</span>
+              </button>
+            ) : (
+              <button type="button" className="pv-tip-cta-btn" onClick={onTip}>
+                <IconTip size={20} />
+                <span>Tip this page</span>
+              </button>
+            )}
           </div>
         )}
       </main>

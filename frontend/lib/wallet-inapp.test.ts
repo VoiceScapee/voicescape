@@ -18,6 +18,24 @@ import {
   probeInAppWallet,
 } from "./wallet";
 
+/**
+ * The real @hashgraph/hedera-wallet-connect module graph hangs on dynamic
+ * import under vitest (never resolves), which makes any test that reaches
+ * buildConnector() flaky. Mock it: a connector whose init() succeeds but
+ * reports no signers faithfully models "no persisted pairing".
+ */
+vi.mock("@hashgraph/hedera-wallet-connect", () => ({
+  DAppConnector: class MockDAppConnector {
+    signers: unknown[] = [];
+    walletConnectClient = { on: () => {} };
+    async init() {}
+  },
+  transactionToBase64String: () => "",
+  HederaJsonRpcMethod: { SignAndExecuteTransaction: "hedera_signAndExecuteTransaction" },
+  HederaSessionEvent: { ChainChanged: "chainChanged", AccountsChanged: "accountsChanged" },
+  HederaChainId: { Mainnet: "hedera:mainnet", Testnet: "hedera:testnet" },
+}));
+
 const IPHONE_WKWEBVIEW_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 const ANDROID_HASHAPP_UA =
@@ -268,9 +286,15 @@ describe("onPairingLost", () => {
 });
 
 describe("restoreHederaPairing", () => {
-  it("never throws and resolves null without a persisted pairing", async () => {
-    stubWindowWithStorage();
-    const { restoreHederaPairing } = await import("./wallet");
-    await expect(restoreHederaPairing()).resolves.toBeNull();
-  });
+  it(
+    "never throws and resolves null without a persisted pairing",
+    async () => {
+      stubWindowWithStorage();
+      // buildConnector() reads window.location.origin for dapp metadata.
+      (window as unknown as { location: unknown }).location = { origin: "https://test.local" };
+      const { restoreHederaPairing } = await import("./wallet");
+      await expect(restoreHederaPairing()).resolves.toBeNull();
+    },
+    15000,
+  );
 });

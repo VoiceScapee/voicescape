@@ -9,15 +9,9 @@
  * share recorded by the Tips contract. Goals move no funds; tipping stays
  * direct wallet-to-wallet on-chain.
  */
-import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { HbarAmount } from "@/components/HbarAmount";
-
-interface FundingGoal {
-  username: string;
-  targetHbar: number;
-  title: string | null;
-}
+import { useFundingGoal } from "@/hooks/useFundingGoal";
 
 export function GoalBar({
   username,
@@ -27,46 +21,13 @@ export function GoalBar({
   ownerAddress: string;
 }) {
   const { t } = useLanguage();
-  const [goal, setGoal] = useState<FundingGoal | null>(null);
-  const [raised, setRaised] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const gRes = await fetch(`/api/goals?username=${encodeURIComponent(username)}`, {
-          cache: "no-store",
-        });
-        const gJson = (await gRes.json()) as { goal?: FundingGoal | null };
-        const g = gJson.goal ?? null;
-        if (cancelled) return;
-        setGoal(g);
-        if (g) {
-          try {
-            const eRes = await fetch(`/api/earnings?address=${encodeURIComponent(ownerAddress)}`);
-            const eJson = (await eRes.json()) as { hbarAllTime?: string };
-            if (cancelled) return;
-            const n = Number(eJson.hbarAllTime);
-            setRaised(Number.isFinite(n) ? n : 0);
-          } catch {
-            if (!cancelled) setRaised(0);
-          }
-        }
-      } catch {
-        if (!cancelled) setGoal(null);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [username, ownerAddress]);
+  const { goal, raised, reached } = useFundingGoal(username, ownerAddress);
 
   if (!goal) return null;
 
   const target = goal.targetHbar;
   const raisedHbar = raised ?? 0;
   const pct = target > 0 ? Math.max(0, Math.min(100, (raisedHbar / target) * 100)) : 0;
-  const reached = raised !== null && raisedHbar >= target;
 
   return (
     <section

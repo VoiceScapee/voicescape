@@ -8,13 +8,6 @@
  *    from @hashgraph/hedera-wallet-connect (official, HIP-820 based).
  *    Contract calls go through @hiero-ledger/sdk transactions signed in the
  *    wallet — see lib/tx.ts.
- *  - MetaMask: the injected EIP-1193 wallet IS the chain connection
- *    (eth_requestAccounts → eth_chainId → wallet_switch/addEthereumChain,
- *    the same handshake Hedera's own HederaAdapter uses for injected
- *    wallets). Contract calldata is ABI-encoded with ethers (encode/decode
- *    only — never chain connectivity); reads/writes go through the
- *    wallet's eth_call / eth_sendTransaction — see createInjectedEvmTxSender
- *    in lib/tx.ts. No ethers Provider/Signer/Contract anywhere.
  *
  * Hedera pairing needs a WalletConnect project id:
  *   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (free at https://cloud.reown.com)
@@ -70,13 +63,12 @@ export interface WalletState {
   getTxSender: () => Promise<TxSender>;
 }
 
-export type WalletAdapterId = "hashpack" | "blade" | "walletconnect" | "metamask";
+export type WalletAdapterId = "hashpack" | "blade" | "walletconnect";
 
 export const WALLET_ADAPTERS: { id: WalletAdapterId; name: string; chains: string[] }[] = [
   { id: "hashpack", name: "HashPack", chains: ["hedera-testnet", "hedera-mainnet"] },
   { id: "blade", name: "Blade", chains: ["hedera-testnet", "hedera-mainnet"] },
   { id: "walletconnect", name: "WalletConnect", chains: ["hedera-testnet", "hedera-mainnet"] },
-  { id: "metamask", name: "MetaMask", chains: ["hedera-testnet", "hedera-mainnet"] },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -776,94 +768,12 @@ function makeHederaAdapter(id: WalletAdapterId): WalletAdapter {
   };
 }
 
-function getInjectedEthereum(): {
-  request: (args: {
-    method: string;
-    params?: unknown[] | Record<string, unknown>;
-  }) => Promise<unknown>;
-} {
-  const eth = (window as unknown as { ethereum?: unknown }).ethereum as
-    | {
-        request: (args: {
-          method: string;
-          params?: unknown[] | Record<string, unknown>;
-        }) => Promise<unknown>;
-      }
-    | undefined;
-  if (!eth?.request) {
-    throw new Error("No EVM wallet detected. Install MetaMask and try again.");
-  }
-  return eth;
-}
-
-const metamaskAdapter: WalletAdapter = {
-  id: "metamask",
-  async connect(chain: ChainConfig) {
-    const eth = getInjectedEthereum();
-    const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-    if (!accounts?.[0]) throw new Error("The wallet returned no accounts.");
-
-    // Best effort: move the wallet onto the app's active chain.
-    const targetChainIdHex = `0x${chain.chainId.toString(16)}`;
-    try {
-      await eth.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: targetChainIdHex }],
-      });
-    } catch (switchErr: unknown) {
-      const code = (switchErr as { code?: number })?.code;
-      if (code === 4902) {
-        await eth.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId: targetChainIdHex,
-              chainName: chain.label,
-              nativeCurrency: {
-                name: chain.nativeCurrency.name,
-                symbol: chain.nativeCurrency.symbol,
-                decimals: chain.nativeCurrency.decimals,
-              },
-              rpcUrls: [chain.rpcUrl],
-              blockExplorerUrls: [chain.blockExplorer],
-            },
-          ],
-        });
-      } else {
-        throw switchErr;
-      }
-    }
-
-    const chainIdHex = (await eth.request({ method: "eth_chainId" })) as string;
-    const walletChainId = parseInt(chainIdHex, 16);
-    if (walletChainId !== chain.chainId) {
-      throw new Error(
-        `Wallet is on chain ${walletChainId} but Voicescape is configured for ${chain.label} (${chain.chainId}). Switch networks in your wallet and try again.`,
-      );
-    }
-
-    const account = accounts[0];
-    const getTxSender = async (): Promise<TxSender> => {
-      // Dynamic import keeps @hiero-ledger/sdk out of the initial bundle
-      // (./tx also exports the Hedera sender). The injected wallet is the
-      // chain connection — no ethers Provider/Signer/Contract.
-      const { createInjectedEvmTxSender } = await import("./tx");
-      return createInjectedEvmTxSender(eth, account);
-    };
-    return { account, chainId: walletChainId, getTxSender };
-  },
-  async disconnect() {
-    // MetaMask exposes no programmatic disconnect; clearing local state is enough.
-  },
-};
-
 const ADAPTERS: Record<WalletAdapterId, WalletAdapter> = {
   hashpack: makeHederaAdapter("hashpack"),
   // Blade and generic WalletConnect pair through the same WalletConnect-based
   // modal, which supports any HIP-820 Hedera wallet.
   blade: makeHederaAdapter("blade"),
   walletconnect: makeHederaAdapter("walletconnect"),
-  metamask: metamaskAdapter,
 };
 
 /* ------------------------------------------------------------------ */

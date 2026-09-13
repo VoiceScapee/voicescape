@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useSession } from "@/lib/session";
 import { HbarAmount } from "@/components/HbarAmount";
+import { getHbarUsdPrice } from "@/lib/x402";
 
 interface EarningsData {
   hbar7d: string;
@@ -92,6 +93,16 @@ export function EarningsPanel({
   const [goalBusy, setGoalBusy] = useState(false);
   const [goalMsg, setGoalMsg] = useState<string | null>(null);
   const [hasGoal, setHasGoal] = useState(false);
+  // Live HBAR price for the USD hint under the goal target input.
+  const [hbarPrice, setHbarPrice] = useState<number | null>(null);
+  useEffect(() => {
+    getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
+  }, []);
+  const targetNum = Number(target.replace(/,/g, ""));
+  const targetUsd =
+    target.trim() !== "" && Number.isFinite(targetNum) && targetNum > 0 && hbarPrice
+      ? targetNum * hbarPrice
+      : null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -271,6 +282,11 @@ export function EarningsPanel({
                     fontSize: "1rem",
                   }}
                 />
+                {targetUsd !== null && (
+                  <span className="th-muted" style={{ fontSize: "0.75rem" }}>
+                    ≈ ${targetUsd.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                  </span>
+                )}
               </label>
               <label style={{ display: "grid", gap: 4, fontSize: "0.8rem" }}>
                 <span className="th-muted">{t("goal.nameLabel")}</span>
@@ -317,6 +333,21 @@ export function EarningsPanel({
                   {goalMsg}
                 </p>
               )}
+              {hasGoal &&
+                (() => {
+                  const raised = Number(earnings?.hbarAllTime);
+                  const goalTarget = Number(target.replace(/,/g, ""));
+                  return (
+                    Number.isFinite(raised) &&
+                    Number.isFinite(goalTarget) &&
+                    goalTarget > 0 &&
+                    raised >= goalTarget && (
+                      <p style={{ fontSize: "0.8rem", margin: 0, color: "var(--vs-accent, #34d399)" }} role="status">
+                        {t("goal.ownerPausedNote")}
+                      </p>
+                    )
+                  );
+                })()}
             </div>
           </div>
         </>
