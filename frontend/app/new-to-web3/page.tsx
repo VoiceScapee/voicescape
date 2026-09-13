@@ -7,6 +7,8 @@
  */
 import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
+import Logo from "@/components/Logo";
+import BuiltOnHedera from "@/components/BuiltOnHedera";
 import { WalletConnect } from "@/components/WalletConnect";
 import { T } from "@/components/T";
 import { NewToWeb3 } from "@/components/landing/NewToWeb3";
@@ -71,6 +73,25 @@ export default function NewToWeb3Page() {
             ))}
           </div>
         </section>
+
+        {/* Footer */}
+        <footer
+          style={{
+            borderTop: "1px solid var(--vs-border)",
+            padding: "32px 24px",
+            textAlign: "center",
+            color: "var(--vs-muted)",
+            fontSize: 13,
+          }}
+        >
+          <div style={{ marginBottom: 12 }}>
+            <Logo size={24} />
+          </div>
+          <p className="vs-mono" style={{ margin: 0 }}>
+            <T k="landing.footerTagline" />
+          </p>
+          <BuiltOnHedera />
+        </footer>
       </div>
     </main>
   );
