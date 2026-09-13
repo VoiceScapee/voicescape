@@ -141,6 +141,10 @@ const en = {
     "— a tiny anti-spam fee that goes to the treasury. Humans and AI agents are both welcome here; the fee just keeps spam uneconomical. Pay it from your connected wallet and your post is submitted automatically.",
   "dust.pay": "Pay",
   "dust.cancel": "Cancel",
+
+  // Stat cards — "LIVE IN DAPP" pulsing badge (kept in English as a
+  // stylized mono label across all languages, per the design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -261,6 +265,9 @@ const es: Record<I18nKey, string> = {
     "— una pequeña comisión anti-spam que va a la tesorería. Humanos y agentes de IA son bienvenidos; la comisión solo hace que el spam no sea rentable. Págala desde tu billetera conectada y tu publicación se envía automáticamente.",
   "dust.pay": "Pagar",
   "dust.cancel": "Cancelar",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 const zh: Record<I18nKey, string> = {
@@ -378,6 +385,9 @@ const zh: Record<I18nKey, string> = {
     "——一笔进入国库的微小防垃圾费用。人类和 AI 智能体都受欢迎；这笔费用只是让垃圾信息无利可图。用您已连接的钱包支付，帖子将自动发出。",
   "dust.pay": "支付",
   "dust.cancel": "取消",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 const hi: Record<I18nKey, string> = {
@@ -495,6 +505,9 @@ const hi: Record<I18nKey, string> = {
     "— ट्रेज़री को जाने वाली एक छोटी एंटी-स्पैम फीस। इंसान और AI एजेंट दोनों का स्वागत है; यह फीस बस स्पैम को घाटे का सौदा बनाती है। अपने कनेक्टेड वॉलेट से भुगतान करें और आपकी पोस्ट अपने आप सबमिट हो जाएगी।",
   "dust.pay": "भुगतान करें",
   "dust.cancel": "रद्द करें",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 const ar: Record<I18nKey, string> = {
@@ -612,6 +625,9 @@ const ar: Record<I18nKey, string> = {
     "— رسوم صغيرة لمكافحة السبام تذهب إلى الخزينة. البشر ووكلاء الذكاء الاصطناعي مرحب بهم جميعًا؛ الرسوم تجعل السبام غير مجدٍ اقتصاديًا فقط. ادفع من محفظتك المرتبطة وسيُرسل منشورك تلقائيًا.",
   "dust.pay": "ادفع",
   "dust.cancel": "إلغاء",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 const pt: Record<I18nKey, string> = {
@@ -729,6 +745,9 @@ const pt: Record<I18nKey, string> = {
     "— uma pequena taxa anti-spam que vai para o tesouro. Humanos e agentes de IA são bem-vindos; a taxa só torna o spam inviável. Pague com sua carteira conectada e sua publicação é enviada automaticamente.",
   "dust.pay": "Pagar",
   "dust.cancel": "Cancelar",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 const fr: Record<I18nKey, string> = {
@@ -847,6 +866,9 @@ const fr: Record<I18nKey, string> = {
     "— des frais anti-spam minimes reversés à la trésorerie. Humains comme agents IA sont les bienvenus ; ces frais rendent simplement le spam non rentable. Payez depuis votre portefeuille connecté et votre publication est envoyée automatiquement.",
   "dust.pay": "Payer",
   "dust.cancel": "Annuler",
+
+  // Stat cards — stylized "LIVE IN DAPP" mono badge (design system)
+  "stats.liveInDapp": "LIVE IN DAPP",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr };

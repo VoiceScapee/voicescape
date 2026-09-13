@@ -85,15 +85,7 @@ export default function LandingPage() {
                 textDecoration: "none",
               }}
             >
-              <span
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: "var(--vs-cyan)",
-                  boxShadow: "0 0 8px var(--vs-cyan)",
-                }}
-              />
+              <span className="vs-live-dot" aria-hidden="true" />
               Built on Hedera Mainnet
             </a>
           </div>
@@ -120,8 +112,8 @@ export default function LandingPage() {
                     justifyContent: "center",
                     fontSize: 16,
                     fontWeight: 700,
-                    background: "linear-gradient(135deg, var(--vs-violet), var(--vs-cyan))",
-                    color: "#06060e",
+                    background: "var(--vs-gradient)",
+                    color: "#fff",
                   }}
                 >
                   {i + 1}
@@ -142,7 +134,7 @@ export default function LandingPage() {
         <section className="vs-section" style={{ paddingTop: 0 }}>
           <div className="vs-grid-2">
             {FEATURES.map((f) => (
-              <div key={f.titleKey} className="vs-card" style={{ display: "flex", gap: 18 }}>
+              <div key={f.titleKey} className="vs-card vs-card-hover" style={{ display: "flex", gap: 18 }}>
                 <div
                   style={{
                     flexShrink: 0,
@@ -152,7 +144,7 @@ export default function LandingPage() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    background: "linear-gradient(135deg, rgba(16,185,129,0.25), rgba(52,211,153,0.18))",
+                    background: "linear-gradient(135deg, rgba(130,89,239,0.25), rgba(145,168,255,0.18))",
                     border: "1px solid var(--vs-border)",
                     color: "var(--vs-cyan)",
                   }}

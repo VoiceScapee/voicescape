@@ -268,7 +268,7 @@ export function WalletConnect() {
             minWidth: 210,
             padding: 6,
             overflow: "hidden",
-            background: "#101022",
+            background: "var(--vs-panel)",
             border: "1px solid var(--vs-border)",
             borderRadius: "var(--vs-radius)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
@@ -292,7 +292,7 @@ export function WalletConnect() {
                 fontSize: 14,
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(16,185,129,0.15)";
+                (e.currentTarget as HTMLButtonElement).style.background = "rgba(130,89,239,0.15)";
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLButtonElement).style.background = "none";

@@ -118,9 +118,9 @@
   background: conic-gradient(
     from 180deg,
     var(--pv-accent),
-    var(--vs-violet, #10b981),
-    var(--vs-cyan, #34d399),
-    var(--vs-magenta, #6ee7b7),
+    var(--vs-violet, #8259ef),
+    var(--vs-cyan, #91a8ff),
+    var(--vs-magenta, #91a8ff),
     var(--pv-accent)
   );
   animation: pvSpinGlow 12s linear infinite;
@@ -168,7 +168,7 @@
   text-transform: uppercase;
   color: #1c1207;
   background: linear-gradient(135deg, #fcd34d 0%, #f59e0b 60%, #d97706 100%);
-  border: 1px solid rgba(252, 211, 77, 0.65);
+  border: 1px solid rgba(255, 202, 114, 0.65);
   box-shadow: 0 0 18px rgba(245, 158, 11, 0.35);
   white-space: nowrap;
   cursor: default;
@@ -315,7 +315,7 @@
   height: 36px;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--pv-accent), var(--vs-magenta, #6ee7b7));
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--pv-accent), var(--vs-magenta, #91a8ff));
   flex-shrink: 0;
 }
 
@@ -335,7 +335,7 @@
   align-items: center;
   justify-content: center;
   color: #fff;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--pv-accent), var(--vs-magenta, #6ee7b7));
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--pv-accent), var(--vs-magenta, #91a8ff));
   box-shadow: 0 6px 20px color-mix(in srgb, var(--pv-accent) 30%, transparent);
 }
 
@@ -644,8 +644,8 @@ a.pv-friend:hover {
   border: none;
   border-radius: 999px;
   cursor: pointer;
-  background: linear-gradient(135deg, var(--pv-accent), var(--vs-magenta, #6ee7b7));
-  color: #0a0a12;
+  background: linear-gradient(135deg, var(--pv-accent), var(--vs-magenta, #91a8ff));
+  color: #090b12;
   box-shadow: 0 8px 28px color-mix(in srgb, var(--pv-accent) 35%, transparent);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
@@ -676,7 +676,7 @@ a.pv-friend:hover {
   align-items: flex-end;
   justify-content: center;
   padding: 16px;
-  background: rgba(3, 3, 10, 0.62);
+  background: rgba(9, 11, 18, 0.62);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: pvFadeUp 0.25s ease both;
@@ -692,12 +692,12 @@ a.pv-friend:hover {
   width: 100%;
   max-width: 440px;
   box-sizing: border-box;
-  background: var(--vs-panel, #12121f);
+  background: var(--vs-panel, #161b27);
   border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
   border-radius: 20px;
   padding: 26px 24px;
-  color: var(--vs-text, #f2f2f8);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--vs-violet, #10b981) 18%, transparent);
+  color: var(--vs-text, #f2f4fa);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--vs-violet, #8259ef) 18%, transparent);
   font-family: var(--vs-font, system-ui, sans-serif);
   max-height: 92vh;
   overflow-y: auto;
@@ -726,7 +726,7 @@ a.pv-friend:hover {
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-magenta, #6ee7b7));
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--vs-magenta, #91a8ff));
   color: #fff;
 }
 
@@ -747,7 +747,7 @@ a.pv-friend:hover {
 
 .pv-tip-sub {
   font-size: 13.5px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   margin: 0 0 18px;
   line-height: 1.5;
 }
@@ -767,7 +767,7 @@ a.pv-friend:hover {
 .pv-tip-amount-sym {
   font-size: 16px;
   font-weight: 700;
-  color: var(--vs-cyan, #34d399);
+  color: var(--vs-cyan, #91a8ff);
   margin-left: 8px;
   letter-spacing: 0.06em;
 }
@@ -792,12 +792,12 @@ a.pv-friend:hover {
 }
 
 .pv-chip:hover {
-  border-color: var(--vs-violet, #10b981);
+  border-color: var(--vs-violet, #8259ef);
 }
 
 .pv-chip.is-active {
-  border-color: var(--vs-violet, #10b981);
-  background: color-mix(in srgb, var(--vs-violet, #10b981) 18%, transparent);
+  border-color: var(--vs-violet, #8259ef);
+  background: color-mix(in srgb, var(--vs-violet, #8259ef) 18%, transparent);
 }
 
 .pv-tip-input {
@@ -815,7 +815,7 @@ a.pv-friend:hover {
 
 .pv-tip-input:focus {
   outline: none;
-  border-color: var(--vs-violet, #10b981);
+  border-color: var(--vs-violet, #8259ef);
 }
 
 .pv-tip-btn {
@@ -825,18 +825,20 @@ a.pv-friend:hover {
   justify-content: center;
   gap: 10px;
   padding: 15px;
-  border: none;
-  border-radius: 14px;
+  border: 1px solid rgba(130, 89, 239, 0.45);
+  border-radius: 999px;
   font-size: 17px;
   font-weight: 800;
   cursor: pointer;
-  color: #0a0a12;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  color: #d1d8ff;
+  background: linear-gradient(118deg, rgba(130, 89, 239, 0.18), rgba(0, 49, 255, 0.16));
+  transition: transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .pv-tip-btn:hover:not(:disabled) {
   transform: translateY(-1px);
+  border-color: rgba(130, 89, 239, 0.8);
+  box-shadow: 0 0 18px rgba(130, 89, 239, 0.3);
 }
 
 .pv-tip-btn:disabled {
@@ -847,7 +849,7 @@ a.pv-friend:hover {
 .pv-fee-note {
   text-align: center;
   font-size: 12.5px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   margin: 12px 0 0;
   line-height: 1.5;
 }
@@ -875,9 +877,9 @@ a.pv-friend:hover {
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: rgba(52, 211, 153, 0.14);
-  border: 1px solid rgba(52, 211, 153, 0.45);
-  color: #34d399;
+  background: rgba(145, 168, 255, 0.14);
+  border: 1px solid rgba(145, 168, 255, 0.45);
+  color: #91a8ff;
   margin-bottom: 14px;
 }
 
@@ -889,7 +891,7 @@ a.pv-friend:hover {
 .pv-tip-confirm p {
   margin: 0 0 12px;
   font-size: 14px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
 }
 
 .pv-tx-hash {
@@ -908,7 +910,7 @@ a.pv-friend:hover {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--vs-cyan, #34d399);
+  color: var(--vs-cyan, #91a8ff);
   font-size: 14px;
   font-weight: 600;
   text-decoration: none;
@@ -932,7 +934,7 @@ a.pv-friend:hover {
 }
 
 .pv-tip-again:hover {
-  border-color: var(--vs-violet, #10b981);
+  border-color: var(--vs-violet, #8259ef);
 }
 
 /* ---------- loading / not-found / error states ---------- */
@@ -946,8 +948,8 @@ a.pv-friend:hover {
   gap: 14px;
   padding: 32px 20px;
   text-align: center;
-  background: var(--vs-bg, #06060e);
-  color: var(--vs-text, #f2f2f8);
+  background: var(--vs-bg, #090b12);
+  color: var(--vs-text, #f2f4fa);
   font-family: var(--vs-font, system-ui, sans-serif);
 }
 
@@ -958,7 +960,7 @@ a.pv-friend:hover {
 
 .pv-state p {
   margin: 0;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   max-width: 420px;
   line-height: 1.6;
 }
@@ -966,7 +968,7 @@ a.pv-friend:hover {
 .pv-state-code {
   font-size: 72px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--vs-cyan, #91a8ff));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -979,8 +981,8 @@ a.pv-friend:hover {
   margin-top: 8px;
   padding: 12px 28px;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--vs-violet, #10b981), var(--vs-cyan, #34d399));
-  color: #0a0a12;
+  background: linear-gradient(135deg, var(--vs-violet, #8259ef), var(--vs-cyan, #91a8ff));
+  color: #090b12;
   font-weight: 800;
   text-decoration: none;
 }
@@ -1001,11 +1003,11 @@ a.pv-friend:hover {
 
 .pv-loading-text {
   font-size: 15px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
 }
 
 .pv-loading-text .vs-mono {
-  color: var(--vs-cyan, #34d399);
+  color: var(--vs-cyan, #91a8ff);
 }
 
 /* ---------- small screens ---------- */
@@ -1050,17 +1052,13 @@ a.pv-friend:hover {
   margin: 0;
   background: #0a0a0a;
   color: #fff;
-  border-top: 4px solid #fbbf24;
-  border-bottom: 4px solid #fbbf24;
+  border-top: 1px dashed rgba(255, 202, 114, 0.6);
+  border-bottom: 1px dashed rgba(255, 202, 114, 0.6);
 }
 
 .pv-agent-hazard {
-  height: 18px;
-  background: repeating-linear-gradient(
-    -45deg,
-    #fbbf24 0 18px,
-    #0a0a0a 18px 36px
-  );
+  height: 3px;
+  background: linear-gradient(90deg, #ffca72, #8259ef, #2d84eb);
 }
 
 .pv-agent-body {
@@ -1073,22 +1071,23 @@ a.pv-friend:hover {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
   font-size: 26px;
   font-weight: 900;
   letter-spacing: 0.08em;
-  background: #fbbf24;
+  background: #ffca72;
   color: #0a0a0a;
   padding: 10px 20px;
   border-radius: 10px;
   margin-bottom: 14px;
-  box-shadow: 0 0 24px rgba(251, 191, 36, 0.45);
+  box-shadow: 0 0 24px rgba(255, 202, 114, 0.45);
 }
 
 .pv-agent-warn {
   font-size: 16px;
   line-height: 1.55;
   margin: 0 0 14px;
-  color: #fde68a;
+  color: #ffe1ab;
 }
 
 .pv-agent-warn em {
@@ -1103,14 +1102,14 @@ a.pv-friend:hover {
   gap: 6px 14px;
   margin: 0 0 12px;
   padding: 14px 16px;
-  background: rgba(251, 191, 36, 0.08);
-  border: 1px solid rgba(251, 191, 36, 0.5);
+  background: rgba(255, 202, 114, 0.08);
+  border: 1px solid rgba(255, 202, 114, 0.5);
   border-radius: 12px;
   font-size: 13.5px;
 }
 
 .pv-agent-operator dt {
-  color: #fbbf24;
+  color: #ffca72;
   font-weight: 700;
   text-transform: uppercase;
   font-size: 11px;
@@ -1139,8 +1138,8 @@ a.pv-friend:hover {
 
 /* Agent pages also get a hazard frame around the whole page. */
 .pv-root.is-agent {
-  border-left: 6px solid #fbbf24;
-  border-right: 6px solid #fbbf24;
+  border-left: 6px solid #ffca72;
+  border-right: 6px solid #ffca72;
 }
 
 /* ---------- Phase B blocks ---------- */
@@ -1210,7 +1209,7 @@ a.pv-friend:hover {
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  color: #0a0a12;
+  color: #090b12;
   background: linear-gradient(135deg, var(--pv-accent), color-mix(in srgb, var(--pv-accent) 55%, #fff));
 }
 
@@ -1292,11 +1291,11 @@ a.pv-friend:hover {
   width: 100%;
   max-width: 480px;
   box-sizing: border-box;
-  background: var(--vs-panel, #12121f);
+  background: var(--vs-panel, #161b27);
   border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
   border-radius: 20px;
   padding: 26px 24px;
-  color: var(--vs-text, #f2f2f8);
+  color: var(--vs-text, #f2f4fa);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
   font-family: var(--vs-font, system-ui, sans-serif);
   max-height: 92vh;
@@ -1316,7 +1315,7 @@ a.pv-friend:hover {
 
 .pv-pay-price-note {
   font-size: 13px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   margin-top: 4px;
 }
 
@@ -1353,12 +1352,12 @@ a.pv-friend:hover {
 }
 
 .pv-rail-btn:hover {
-  border-color: var(--vs-cyan, #34d399);
+  border-color: var(--vs-cyan, #91a8ff);
 }
 
 .pv-rail-btn.is-active {
-  border-color: var(--vs-cyan, #34d399);
-  background: color-mix(in srgb, var(--vs-cyan, #34d399) 14%, transparent);
+  border-color: var(--vs-cyan, #91a8ff);
+  background: color-mix(in srgb, var(--vs-cyan, #91a8ff) 14%, transparent);
 }
 
 .pv-pay-params {
@@ -1398,7 +1397,7 @@ a.pv-friend:hover {
   font-size: 13px;
   margin: 10px 0 0;
   line-height: 1.5;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
 }
 
 .pv-pay-status.is-err {
@@ -1418,17 +1417,18 @@ a.pv-friend:hover {
   margin: 14px auto 0;
   padding: 10px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(52, 211, 153, 0.28);
-  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(130, 89, 239, 0.28);
+  background: rgba(130, 89, 239, 0.08);
   font-size: 13px;
-  color: var(--vs-text, #f2f2f7);
+  color: var(--vs-text, #f2f4fa);
 }
 .pv-chain-dot {
   position: relative;
-  width: 10px;
-  height: 10px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #34d399;
+  background: #8259ef;
+  box-shadow: 0 0 10px rgba(130, 89, 239, 0.8);
   flex-shrink: 0;
 }
 .pv-chain-dot::after {
@@ -1436,7 +1436,7 @@ a.pv-friend:hover {
   position: absolute;
   inset: -4px;
   border-radius: 50%;
-  border: 2px solid rgba(52, 211, 153, 0.55);
+  border: 2px solid rgba(130, 89, 239, 0.55);
   animation: pvChainPulse 1.8s ease-out infinite;
 }
 @keyframes pvChainPulse {
@@ -1454,7 +1454,7 @@ a.pv-friend:hover {
   letter-spacing: 0.01em;
 }
 .pv-chain-sub {
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   font-size: 12px;
   white-space: nowrap;
   overflow: hidden;
@@ -1465,12 +1465,41 @@ a.pv-friend:hover {
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 700;
-  color: var(--vs-cyan, #34d399);
+  color: var(--vs-cyan, #91a8ff);
   text-decoration: none;
-  border: 1px solid rgba(52, 211, 153, 0.35);
+  border: 1px solid rgba(145, 168, 255, 0.35);
   border-radius: 999px;
   padding: 4px 12px;
 }
 .pv-chain-verify:hover {
-  background: rgba(52, 211, 153, 0.14);
+  background: rgba(145, 168, 255, 0.14);
+}
+
+/* ------------------------------------------------------------------ */
+/* Design-system refresh: mono is the trust cue for chain data.        */
+/* ------------------------------------------------------------------ */
+
+.pv-tip-amount-value,
+.pv-pay-price,
+.pv-pay-price-usd,
+.pv-gb-date,
+.pv-review-tx,
+.pv-service-price {
+  font-family: var(--vs-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-variant-numeric: tabular-nums;
+}
+
+.pv-block {
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+.pv-block:hover {
+  transform: translateY(-2px);
+  border-color: rgba(130, 89, 239, 0.45);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-chain-dot::after {
+    animation: none;
+  }
 }

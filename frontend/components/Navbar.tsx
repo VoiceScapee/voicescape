@@ -15,10 +15,10 @@ export default function Navbar({ right }: NavbarProps) {
         position: "sticky",
         top: 0,
         zIndex: 40,
-        background: "rgba(6,6,14,0.72)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
-        borderBottom: "1px solid var(--vs-border)",
+        background: "rgba(9,11,18,0.82)",
+        backdropFilter: "blur(18px) saturate(140%)",
+        WebkitBackdropFilter: "blur(18px) saturate(140%)",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
       }}
     >
       <nav

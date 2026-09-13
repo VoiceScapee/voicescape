@@ -31,7 +31,7 @@
   border-left: none;
   border-right: none;
   border-top: none;
-  background: rgba(6, 6, 14, 0.82);
+  background: rgba(9, 11, 18, 0.82);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
@@ -62,9 +62,9 @@
 
 /* ?draft= deep-link indicator chip */
 .vb-draft-chip {
-  border-color: rgba(252, 211, 77, 0.45);
+  border-color: rgba(255, 202, 114, 0.45);
   color: #fcd34d;
-  background: rgba(252, 211, 77, 0.08);
+  background: rgba(255, 202, 114, 0.08);
   white-space: nowrap;
 }
 .vb-draft-chip.is-error {
@@ -164,8 +164,8 @@
 
 .vb-tab.is-active {
   background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
-  color: #06060e;
-  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.35);
+  color: #090b12;
+  box-shadow: 0 4px 18px rgba(130, 89, 239, 0.35);
 }
 
 /* ------------------------------------------------------------------ */
@@ -196,14 +196,14 @@
 
 .vb-template-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(16, 185, 129, 0.55);
+  border-color: rgba(130, 89, 239, 0.55);
 }
 
 .vb-template-card.is-selected {
   border-color: var(--vb-accent, var(--vs-violet));
   box-shadow:
     0 0 0 1px var(--vb-accent, var(--vs-violet)),
-    0 0 26px rgba(16, 185, 129, 0.35);
+    0 0 26px rgba(130, 89, 239, 0.35);
 }
 
 .vb-template-swatch {
@@ -235,7 +235,7 @@
   height: 22px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
-  color: #06060e;
+  color: #090b12;
 }
 
 /* ------------------------------------------------------------------ */
@@ -433,7 +433,7 @@ select.vs-input option {
   height: 30px;
   border-radius: 9px;
   background: linear-gradient(135deg, var(--vs-violet), var(--vs-magenta));
-  color: #06060e;
+  color: #090b12;
 }
 
 .vb-chat-log {
@@ -491,8 +491,8 @@ select.vs-input option {
   gap: 6px;
   padding: 7px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(16, 185, 129, 0.45);
-  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(130, 89, 239, 0.45);
+  background: rgba(130, 89, 239, 0.1);
   color: #cdb4ff;
   font-family: var(--vs-font);
   font-size: 12.5px;
@@ -501,7 +501,7 @@ select.vs-input option {
 }
 
 .vb-chip-btn:hover:not(:disabled) {
-  background: rgba(16, 185, 129, 0.22);
+  background: rgba(130, 89, 239, 0.22);
   border-color: var(--vs-violet);
   transform: translateY(-1px);
 }
@@ -563,8 +563,8 @@ select.vs-input option {
   align-self: flex-start;
   width: 100%;
   border-radius: 14px;
-  border: 1px solid rgba(52, 211, 153, 0.35);
-  background: rgba(52, 211, 153, 0.06);
+  border: 1px solid rgba(145, 168, 255, 0.35);
+  background: rgba(145, 168, 255, 0.06);
   padding: 12px 14px;
   animation: vsFadeUp 0.3s ease both;
 }
@@ -712,7 +712,7 @@ select.vs-input option {
   height: 32px;
   border-radius: 10px;
   background: linear-gradient(135deg, var(--vs-cyan), var(--vs-violet));
-  color: #06060e;
+  color: #090b12;
 }
 
 .vb-live-url {
@@ -785,9 +785,9 @@ select.vs-input option {
 }
 
 .vb-status.is-ok {
-  border-color: rgba(52, 211, 153, 0.5);
-  background: rgba(52, 211, 153, 0.08);
-  color: #a7f3d0;
+  border-color: rgba(145, 168, 255, 0.5);
+  background: rgba(145, 168, 255, 0.08);
+  color: #c6cfff;
 }
 
 .vb-status.is-err {
@@ -865,14 +865,14 @@ select.vs-input option {
   margin: 4px 0 12px;
   padding: 14px;
   border-radius: 12px;
-  border: 1px dashed rgba(251, 191, 36, 0.55);
-  background: rgba(251, 191, 36, 0.06);
+  border: 1px dashed rgba(255, 202, 114, 0.55);
+  background: rgba(255, 202, 114, 0.06);
 }
 
 .vb-agent-hint {
   font-size: 12.5px;
   line-height: 1.5;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
   margin: 8px 0 0;
 }
 
@@ -898,7 +898,7 @@ select.vs-input option {
   padding: 12px;
   border-radius: 12px;
   border: 1px solid var(--vs-border, rgba(255,255,255,0.12));
-  background: rgba(52, 211, 153, 0.05);
+  background: rgba(145, 168, 255, 0.05);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -910,7 +910,7 @@ select.vs-input option {
 .vb-x402-status {
   margin: 8px 0 0;
   font-size: 12.5px;
-  color: var(--vs-muted, #9a9ab0);
+  color: var(--vs-muted, #9b9b9d);
 }
 
 .vb-x402-status.is-err {
@@ -922,8 +922,8 @@ select.vs-input option {
 }
 
 .vb-chip-btn.is-active {
-  background: rgba(16, 185, 129, 0.32);
-  border-color: var(--vs-violet, #10b981);
+  background: rgba(130, 89, 239, 0.32);
+  border-color: var(--vs-violet, #8259ef);
   color: #fff;
   font-weight: 700;
 }
@@ -942,6 +942,6 @@ select.vs-input option {
 }
 
 .vb-icon-btn.is-active {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.5);
+  color: #ffca72;
+  border-color: rgba(255, 202, 114, 0.5);
 }

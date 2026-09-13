@@ -318,7 +318,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
                 <p className="th-muted" role="status">Verifying seller on-chain…</p>
               )}
               {sellerCheck === "match" && (
-                <p className="th-note" style={{ color: "var(--vs-green, #34d399)" }}>
+                <p className="th-note" style={{ color: "var(--vs-mint)" }}>
                   ✅ Verified — this address matches the seller&apos;s registered page.
                 </p>
               )}

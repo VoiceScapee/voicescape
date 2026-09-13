@@ -39,7 +39,7 @@ export function HbarAmount({
   }, [hbar]);
 
   return (
-    <span style={style}>
+    <span className="vs-mono" style={style}>
       {hbar} HBAR
       {fiat ? <span style={{ opacity: 0.65 }}> (≈ {fiat})</span> : null}
     </span>

@@ -77,7 +77,7 @@ export default function Splash() {
           left: "-140px",
           top: "-120px",
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(16,185,129,0.32) 0%, transparent 65%)",
+          background: "radial-gradient(circle, rgba(130,89,239,0.32) 0%, transparent 65%)",
           filter: "blur(40px)",
           pointerEvents: "none",
         }}
@@ -92,7 +92,7 @@ export default function Splash() {
           right: "-120px",
           bottom: "-110px",
           borderRadius: "50%",
-          background: "radial-gradient(circle, rgba(52,211,153,0.26) 0%, transparent 65%)",
+          background: "radial-gradient(circle, rgba(145,168,255,0.26) 0%, transparent 65%)",
           filter: "blur(40px)",
           animationDelay: "-3.5s",
           pointerEvents: "none",
@@ -122,7 +122,7 @@ export default function Splash() {
             style={{
               width: "100%",
               height: "auto",
-              filter: "drop-shadow(0 0 42px rgba(16,185,129,0.28))",
+              filter: "drop-shadow(0 0 42px rgba(130,89,239,0.28))",
             }}
           />
         </div>

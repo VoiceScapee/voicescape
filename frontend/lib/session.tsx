@@ -479,7 +479,7 @@ function SignInButton() {
             minWidth: 220,
             padding: 6,
             overflow: "hidden",
-            background: "#101022",
+            background: "var(--vs-panel)",
             border: "1px solid var(--vs-border)",
             borderRadius: "var(--vs-radius)",
             boxShadow: "0 8px 32px rgba(0,0,0,0.5)",

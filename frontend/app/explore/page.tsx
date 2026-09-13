@@ -117,7 +117,7 @@ export default function ExplorePage() {
                 key={p.username}
                 href={`/${p.username}`}
                 style={{ textDecoration: "none" }}
-                className="vs-glass"
+                className="vs-glass vs-card-hover"
               >
                 <div style={{ padding: 20, borderRadius: 12 }}>
                   {p.featured && (
@@ -127,8 +127,8 @@ export default function ExplorePage() {
                         fontSize: 11,
                         padding: "4px 10px",
                         borderRadius: 999,
-                        background: "var(--vs-accent)",
-                        color: "#000",
+                        background: "var(--vs-gradient)",
+                        color: "#fff",
                         fontWeight: 700,
                         marginBottom: 12,
                       }}

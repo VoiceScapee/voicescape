@@ -9,6 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { T } from "@/components/T";
 import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import ReferralCard from "@/components/townhall/ReferralCard";
@@ -39,11 +40,15 @@ interface CreatorStats {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="vs-card" style={{ padding: 16, minWidth: 0 }}>
+    <div className="vs-card vs-stat" style={{ padding: 16, minWidth: 0 }}>
+      <span className="vs-stat-live" aria-hidden="true">
+        <span className="vs-stat-live-dot" />
+        <T k="stats.liveInDapp" />
+      </span>
       <div className="th-muted" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>
         {label}
       </div>
-      <div style={{ fontSize: 30, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{value}</div>
+      <div className="vs-mono" style={{ fontSize: 30, fontWeight: 800, marginTop: 4, lineHeight: 1.1 }}>{value}</div>
       {sub && (
         <div className="th-muted" style={{ fontSize: 12, marginTop: 4 }}>
           {sub}

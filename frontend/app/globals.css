@@ -1,35 +1,107 @@
-/* Voicescape design system — hand-rolled CSS (no Tailwind). */
+/* Voicescape design system — "Voicescape at 100 Users" refresh.
+ *
+ * Hand-rolled CSS (no Tailwind). Palette, type, and component language come
+ * from the approved visual design: near-black navy base, violet primary,
+ * mint secondary highlights, amber agent identity, blue business badges.
+ *
+ * The --vs-* variables are the public token names used by components and
+ * inline styles across the app; --* names mirror the design artifact.
+ * (Note: no --green token — the old artifact named a violet value "green";
+ *  the violet token is --vs-violet / --violet.)
+ */
 
 :root {
-  --vs-bg: #06060e;
-  --vs-bg2: #0b0b18;
-  --vs-panel: #101022;
-  --vs-violet: #10b981;
-  --vs-cyan: #34d399;
-  --vs-magenta: #6ee7b7;
-  --vs-text: #f2f2fa;
-  --vs-muted: #9a9ab5;
-  --vs-border: rgba(255, 255, 255, 0.1);
+  /* Signature palette */
+  --bg: #090b12;
+  --bg2: #0b0e16;
+  --panel: #11151d;
+  --panel2: #161b27;
+  --line: rgba(255, 255, 255, 0.09);
+  --text: #fff;
+  --muted: #9b9b9d;
+  --violet: #8259ef;
+  --mint: #91a8ff;
+  --amber: #ffca72;
+  --blue: #2d84eb;
+  --azure: #0031ff;
+  --indigo: #4f46e5;
+  --gradient: linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%);
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+
+  /* --vs-* aliases (used by every component + inline styles) */
+  --vs-bg: var(--bg);
+  --vs-bg2: var(--bg2);
+  --vs-panel: var(--panel);
+  --vs-violet: var(--violet);
+  --vs-cyan: var(--mint);
+  --vs-magenta: var(--blue);
+  --vs-mint: var(--mint);
+  --vs-amber: var(--amber);
+  --vs-blue: var(--blue);
+  --vs-text: var(--text);
+  --vs-muted: var(--muted);
+  --vs-border: var(--line);
   --vs-glass: rgba(255, 255, 255, 0.055);
-  --vs-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --vs-font: "Space Grotesk", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --vs-radius: 14px;
+  --vs-gradient: var(--gradient);
+  --vs-accent: var(--violet);
+  --vs-accent-dim: #4a3791;
+  --vs-accent-soft: rgba(130, 89, 239, 0.12);
+  --vs-radius: 18px;
+  --vs-font: var(--font-sans, "DM Sans"), system-ui, -apple-system, "Segoe UI",
+    Roboto, sans-serif;
+  --vs-mono: var(--font-mono, "IBM Plex Mono"), ui-monospace, "SF Mono",
+    SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
-  background: var(--vs-bg);
-  color: var(--vs-text);
-  font-family: var(--vs-font);
-  margin: 0;
-}
-
 html {
   scroll-behavior: smooth;
+}
+
+html,
+body {
+  margin: 0;
+  color: var(--vs-text);
+  font-family: var(--vs-font);
+}
+
+/* Layered fixed backdrop: violet glow top-left, blue glow top-right,
+ * vertical navy gradient — plus a subtle 40px grid fading out at 72%. */
+body {
+  background:
+    radial-gradient(circle at 12% 5%, rgba(130, 89, 239, 0.18), transparent 26rem),
+    radial-gradient(circle at 92% 18%, rgba(0, 49, 255, 0.13), transparent 30rem),
+    linear-gradient(180deg, #0b0e16 0, #090b12 46%, #0c0f18 100%);
+  background-attachment: fixed;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.25;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 40px 40px;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 72%, transparent 100%);
+}
+
+/* Display headings: Montserrat 700, tight. */
+h1,
+h2 {
+  font-family: var(--font-display, "Montserrat"), var(--vs-font);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+h3 {
+  letter-spacing: -0.01em;
 }
 
 a {
@@ -40,6 +112,19 @@ a {
 /* Utility classes                                                     */
 /* ------------------------------------------------------------------ */
 
+.vs-display {
+  font-family: var(--font-display, "Montserrat"), var(--vs-font);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* Mono is the trust cue: ALL numbers, handles, timestamps, breadcrumbs,
+ * badges, prices, and "LIVE IN DAPP" labels render in IBM Plex Mono. */
+.vs-mono {
+  font-family: var(--vs-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 .vs-glass {
   background: var(--vs-glass);
   backdrop-filter: blur(14px);
@@ -48,41 +133,217 @@ a {
   border-radius: var(--vs-radius);
 }
 
+/* Bento / glass cards — 18–24px radius, hairline, deep shadow,
+ * hover lift + violet border. */
+.vs-card {
+  background: linear-gradient(145deg, #171c28, #121620);
+  border: 1px solid var(--vs-border);
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  transition: transform 0.18s ease, border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+.vs-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(130, 89, 239, 0.45);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32);
+}
+
+/* Real stat cards: 3px gradient left accent bar + top-right "LIVE IN DAPP"
+ * badge. Use ONLY where the number is real on-chain/app data. */
+.vs-stat {
+  position: relative;
+  overflow: hidden;
+}
+.vs-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--vs-gradient);
+}
+.vs-stat-live {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--vs-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #c8d1ff;
+}
+.vs-stat-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #8259ef, #0031ff);
+  box-shadow: 0 0 0 3px rgba(130, 89, 239, 0.12), 0 0 10px rgba(130, 89, 239, 0.55);
+  animation: vsStatPulse 2.4s ease-in-out infinite;
+}
+@keyframes vsStatPulse {
+  0%,
+  100% {
+    transform: scale(0.88);
+    opacity: 0.72;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+/* Pulsing on-chain status dot: 9px violet, 2.4s pulse. */
+.vs-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--vs-violet);
+  display: inline-block;
+  box-shadow: 0 0 0 5px rgba(130, 89, 239, 0.13),
+    0 0 24px rgba(130, 89, 239, 0.65);
+  animation: vsSignal 2.4s ease-in-out infinite;
+}
+@keyframes vsSignal {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+  }
+}
+
+/* Amber → violet → blue hazard strip for agent panels. */
+.vs-hazard {
+  height: 3px;
+  background: linear-gradient(90deg, #ffca72, #8259ef, #2d84eb);
+}
+
+/* ------------------------------------------------------------------ */
+/* Identity system — functional, not decoration.                      */
+/* Humans: circular gradient avatars + violet badges.                  */
+/* AI agents: amber squircle avatars (10px), amber badges, dashed       */
+/* borders, hazard strips — always explicitly labeled AI / human.       */
+/* ------------------------------------------------------------------ */
+
+.vs-avatar-human {
+  border-radius: 50%;
+  background: linear-gradient(145deg, #302b55, #18223f);
+  color: #d8ddff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.vs-avatar-agent {
+  border-radius: 10px;
+  background: #342d1b;
+  color: #ffd986;
+  box-shadow: 0 0 0 1px rgba(255, 202, 114, 0.35);
+}
+
+.vs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-family: var(--vs-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+.vs-badge-human {
+  border-color: rgba(130, 89, 239, 0.42);
+  color: #c6cfff;
+  background: rgba(130, 89, 239, 0.09);
+}
+.vs-badge-agent {
+  background: #322a16;
+  color: #ffd986;
+  border: 1px dashed #826d38;
+}
+.vs-badge-business {
+  color: #89c6ff;
+  border-color: rgba(45, 132, 235, 0.45);
+  background: rgba(45, 132, 235, 0.09);
+}
+.vs-badge-founder {
+  background: var(--vs-gradient);
+  color: #fff;
+  border: 0;
+}
+.vs-agent-panel {
+  border: 1px dashed rgba(255, 202, 114, 0.5) !important;
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+
 .vs-btn {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   padding: 12px 26px;
-  border-radius: 999px;
+  border-radius: 11px;
   font-family: var(--vs-font);
   font-size: 16px;
   font-weight: 600;
   text-decoration: none;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease,
+    background 0.15s ease, border-color 0.15s ease;
 }
 
 .vs-btn-primary {
-  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
-  color: #06060e;
-  box-shadow: 0 0 24px rgba(16, 185, 129, 0.45), 0 4px 18px rgba(52, 211, 153, 0.25);
+  background: var(--vs-gradient);
+  color: #fff;
+  border: 0;
+  box-shadow: 0 8px 24px rgba(52, 62, 229, 0.25);
 }
 
 .vs-btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 36px rgba(16, 185, 129, 0.6), 0 6px 24px rgba(52, 211, 153, 0.35);
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(52, 62, 229, 0.34);
+}
+
+.vs-btn-primary:active {
+  transform: scale(0.98);
 }
 
 .vs-btn-ghost {
-  background: transparent;
+  background: #171c28;
   color: var(--vs-text);
   border-color: var(--vs-border);
 }
 
 .vs-btn-ghost:hover {
-  border-color: var(--vs-cyan);
-  box-shadow: 0 0 18px rgba(52, 211, 153, 0.25);
+  border-color: rgba(130, 89, 239, 0.5);
+  box-shadow: 0 0 18px rgba(130, 89, 239, 0.18);
+}
+
+/* Tip buttons: translucent violet gradient + violet border. */
+.vs-btn-tip {
+  background: linear-gradient(
+    118deg,
+    rgba(130, 89, 239, 0.18),
+    rgba(0, 49, 255, 0.16)
+  );
+  border: 1px solid rgba(130, 89, 239, 0.45);
+  color: #d1d8ff;
+  border-radius: 999px;
+}
+
+.vs-btn-tip:hover {
+  border-color: rgba(130, 89, 239, 0.8);
+  box-shadow: 0 0 18px rgba(130, 89, 239, 0.3);
 }
 
 .vs-btn:disabled {
@@ -91,22 +352,21 @@ a {
   transform: none;
 }
 
-.vs-card {
-  background: var(--vs-panel);
-  border: 1px solid var(--vs-border);
-  border-radius: var(--vs-radius);
-  padding: 28px;
-}
-
 .vs-input {
   width: 100%;
-  background: var(--vs-bg2);
+  background: #0d111a;
   border: 1px solid var(--vs-border);
-  border-radius: 10px;
+  border-radius: 11px;
   color: var(--vs-text);
   padding: 10px 14px;
   font-family: var(--vs-font);
   font-size: 15px;
+}
+
+.vs-input:focus {
+  outline: none;
+  border-color: var(--vs-violet);
+  box-shadow: 0 0 0 3px rgba(130, 89, 239, 0.12);
 }
 
 .vs-input::placeholder {
@@ -120,10 +380,6 @@ a {
   text-transform: uppercase;
   color: var(--vs-muted);
   margin-bottom: 6px;
-}
-
-.vs-mono {
-  font-family: var(--vs-mono);
 }
 
 .vs-chip {
@@ -140,7 +396,7 @@ a {
 }
 
 .vs-gradient-text {
-  background: linear-gradient(90deg, var(--vs-violet), var(--vs-cyan), var(--vs-magenta));
+  background: linear-gradient(90deg, #8259ef, #4f46e5, #0031ff);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -164,13 +420,25 @@ a {
   gap: 20px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1050px) {
+  .vs-grid-3 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
   .vs-grid-2,
   .vs-grid-3 {
     grid-template-columns: 1fr;
   }
   .vs-section {
     padding: 48px 18px;
+  }
+}
+
+@media (max-width: 420px) {
+  .vs-section {
+    padding: 40px 14px;
   }
 }
 
@@ -240,7 +508,7 @@ a {
 }
 
 .vs-anim-shimmer {
-  background: linear-gradient(100deg, var(--vs-panel) 40%, #1b1b30 50%, var(--vs-panel) 60%);
+  background: linear-gradient(100deg, var(--vs-panel) 40%, #232a3d 50%, var(--vs-panel) 60%);
   background-size: 200% 100%;
   animation: vsShimmer 1.6s linear infinite;
 }
@@ -274,8 +542,8 @@ a {
   width: 7px;
   height: 100%;
   border-radius: 4px;
-  background: linear-gradient(180deg, var(--vs-cyan), var(--vs-violet));
-  box-shadow: 0 0 12px rgba(52, 211, 153, 0.45);
+  background: linear-gradient(180deg, var(--vs-mint), var(--vs-violet));
+  box-shadow: 0 0 12px rgba(130, 89, 239, 0.45);
   transform-origin: bottom;
   animation: txEq 1.15s ease-in-out infinite;
 }
@@ -301,13 +569,13 @@ a {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--vs-cyan);
+  background: var(--vs-violet);
   display: inline-block;
-  animation: txPulse 1.6s ease-in-out infinite;
+  animation: txPulse 2.4s ease-in-out infinite;
 }
 @keyframes txPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
-  50% { box-shadow: 0 0 0 9px rgba(52, 211, 153, 0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(130, 89, 239, 0.55); }
+  50% { box-shadow: 0 0 0 9px rgba(130, 89, 239, 0); }
 }
 .tx-confirm-sub {
   margin: 0;
@@ -325,12 +593,12 @@ a {
   height: 66px;
   margin: 0 auto 14px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--vs-violet), var(--vs-cyan));
-  color: #06060e;
+  background: var(--vs-gradient);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 34px rgba(16, 185, 129, 0.55);
+  box-shadow: 0 0 34px rgba(130, 89, 239, 0.55);
   animation: txPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
 }
 @keyframes txPop {
@@ -344,7 +612,7 @@ a {
 }
 .tx-finality {
   margin: 0;
-  color: var(--vs-cyan);
+  color: var(--vs-mint);
   font-weight: 600;
   font-size: 14px;
 }
@@ -366,7 +634,11 @@ a {
 }
 .tx-row:last-child { border-bottom: none; }
 .tx-row > span:first-child { color: var(--vs-muted); }
-.tx-row > span:last-child { font-weight: 700; font-variant-numeric: tabular-nums; }
+.tx-row > span:last-child {
+  font-weight: 700;
+  font-family: var(--vs-mono);
+  font-variant-numeric: tabular-nums;
+}
 .tx-hashscan {
   width: 100%;
   display: inline-flex;
@@ -399,10 +671,25 @@ a {
 /* ------------------------------------------------------------------ */
 
 :focus-visible {
-  outline: 2px solid var(--vs-cyan);
+  outline: 2px solid var(--vs-violet);
   outline-offset: 3px;
 }
 
 ::selection {
-  background: rgba(16, 185, 129, 0.5);
+  background: rgba(130, 89, 239, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+  .vs-stat-live-dot,
+  .vs-live-dot,
+  .tx-live-dot,
+  .tx-eq span {
+    animation: none !important;
+  }
 }

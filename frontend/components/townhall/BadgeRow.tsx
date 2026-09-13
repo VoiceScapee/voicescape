@@ -29,9 +29,9 @@ export default function BadgeRow({ badges }: { badges: Badge[] }) {
             borderRadius: 999,
             fontSize: 13,
             fontWeight: 600,
-            background: "rgba(16,185,129,0.12)",
-            border: "1px solid rgba(16,185,129,0.35)",
-            color: "#a7f3d0",
+            background: "rgba(130,89,239,0.12)",
+            border: "1px solid rgba(130,89,239,0.35)",
+            color: "#c6cfff",
             cursor: "default",
             whiteSpace: "nowrap",
           }}

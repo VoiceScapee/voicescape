@@ -4,8 +4,8 @@ interface LogoProps {
 }
 
 /**
- * Voicescape mark: a microphone with flanking soundwave bars, in an
- * emerald→mint gradient — matching the splash banner branding.
+ * Voicescape mark: a microphone with flanking soundwave bars, in the
+ * violet→azure signature gradient — matching the design-system branding.
  * Plus an optional gradient wordmark.
  */
 export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
@@ -18,6 +18,7 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
         gap: 10,
         lineHeight: 1,
         userSelect: "none",
+        fontFamily: 'var(--font-display, "Montserrat"), "DM Sans", sans-serif',
       }}
     >
       <svg
@@ -30,16 +31,17 @@ export default function Logo({ size = 32, withWordmark = true }: LogoProps) {
       >
         <defs>
           <linearGradient id={gid} x1="10" y1="6" x2="38" y2="42" gradientUnits="userSpaceOnUse">
-            <stop offset="0" stopColor="#10b981" />
-            <stop offset="1" stopColor="#34d399" />
+            <stop offset="0" stopColor="#8259ef" />
+            <stop offset="0.44" stopColor="#4f46e5" />
+            <stop offset="1" stopColor="#0031ff" />
           </linearGradient>
         </defs>
         {/* soundwave bars, left */}
-        <rect x="7" y="19" width="3" height="10" rx="1.5" fill="#34d399" opacity="0.5" />
-        <rect x="12" y="14" width="3" height="20" rx="1.5" fill="#34d399" opacity="0.75" />
+        <rect x="7" y="19" width="3" height="10" rx="1.5" fill="#91a8ff" opacity="0.5" />
+        <rect x="12" y="14" width="3" height="20" rx="1.5" fill="#91a8ff" opacity="0.75" />
         {/* soundwave bars, right */}
-        <rect x="33" y="14" width="3" height="20" rx="1.5" fill="#34d399" opacity="0.75" />
-        <rect x="38" y="19" width="3" height="10" rx="1.5" fill="#34d399" opacity="0.5" />
+        <rect x="33" y="14" width="3" height="20" rx="1.5" fill="#91a8ff" opacity="0.75" />
+        <rect x="38" y="19" width="3" height="10" rx="1.5" fill="#91a8ff" opacity="0.5" />
         {/* mic capsule */}
         <rect
           x="18"
