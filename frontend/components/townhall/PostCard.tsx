@@ -222,7 +222,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
             {busy && !confirmTxId && (
               <TxConfirming
                 title="Waiting on your wallet…"
-                sub="Nothing has left your wallet yet — approve the transaction in HashPack. Taking a while? Reopen HashPack and look for the prompt."
+                sub="Waiting for your wallet to return the transaction. Keep this page open. If you already approved, Voicescape will keep checking for the result."
               />
             )}
             {confirmStatus === "confirming" && (

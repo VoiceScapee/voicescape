@@ -2,17 +2,20 @@
  * TxSender — one interface for Voicescape contract calls, implemented per
  * wallet family:
  *
- *  - EVM (MetaMask on Hedera): ethers v6 against the chain's JSON-RPC.
- *    Reads go through a public JsonRpcProvider; writes use the wallet signer.
- *  - Hedera (HashPack / Blade / WalletConnect via HashConnect): the same
+ *  - EVM (MetaMask on Hedera): calldata is ABI-encoded with ethers
+ *    (encode/decode ONLY — never chain connectivity). Reads and writes go
+ *    through the injected wallet's EIP-1193 provider (eth_call /
+ *    eth_sendTransaction / eth_getTransactionReceipt); the wallet is the
+ *    chain connection. No ethers Provider/Signer/Contract anywhere.
+ *  - Hedera (HashPack / Blade / WalletConnect via DAppConnector): the same
  *    Solidity contracts are called through @hiero-ledger/sdk
  *    ContractExecuteTransaction / ContractCallQuery, signed in the wallet
- *    via hashconnect.sendTransaction(). Contract addresses are the EVM
- *    addresses from the Hardhat deploy, converted with
- *    ContractId.fromEvmAddress(0, 0, address).
+ *    via HIP-820. Contract addresses are the EVM addresses from the Hardhat
+ *    deploy, converted with ContractId.fromEvmAddress(0, 0, address).
  *
- * Read-only senders (no wallet) support viewResolve(); the send* methods
- * throw a "connect a wallet" error.
+ * Read-only senders (no wallet) support viewResolve() via the official
+ * Hedera mirror-node REST endpoint (POST /api/v1/contracts/call) —
+ * again with ethers used only to encode/decode the calldata.
  */
 import { ethers } from "ethers";
 import {
@@ -114,27 +117,140 @@ export interface TxSender {
 }
 
 /* ------------------------------------------------------------------ */
-/* EVM implementation (ethers v6)                                       */
+/* Injected-EVM implementation (MetaMask)                               */
 /* ------------------------------------------------------------------ */
 
-export function createEvmTxSender(
-  provider: ethers.Provider,
-  signer: ethers.Signer | null,
+/**
+ * Minimal EIP-1193 surface. The injected wallet (MetaMask) IS the chain
+ * connection — it signs and broadcasts. We never construct an ethers
+ * Provider/Signer/Contract; ethers is used ONLY to encode/decode calldata
+ * (the one use Brandon's Hedera-only rule allows).
+ *
+ * This mirrors the connection flow of Hedera's own
+ * @hashgraph/hedera-wallet-connect HederaAdapter.connectInjected
+ * (eth_requestAccounts → eth_chainId → wallet_switch/addEthereumChain),
+ * without pulling in its Reown AppKit peer dependencies.
+ */
+export interface Eip1193Provider {
+  request(args: {
+    method: string;
+    params?: unknown[] | Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+const REGISTRY_IFACE = new ethers.Interface(REGISTRY_ABI);
+const TIPS_IFACE = new ethers.Interface(TIPS_ABI);
+
+function toQuantityHex(value: bigint): string {
+  return `0x${value.toString(16)}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait for an EVM transaction receipt via eth_getTransactionReceipt.
+ * Resolves with the receipt once mined; throws WalletTimeoutError (carrying
+ * the tx hash so the UI can confirm on-chain) when the receipt doesn't
+ * appear in time; throws when the receipt reports a revert.
+ */
+async function waitForEvmReceipt(
+  eth: Eip1193Provider,
+  hash: string,
+  timeoutMs = 120_000,
+): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    const receipt = (await eth.request({
+      method: "eth_getTransactionReceipt",
+      params: [hash],
+    })) as { status?: string } | null;
+    if (receipt) {
+      if (receipt.status !== undefined && receipt.status !== "0x1") {
+        throw new Error("The transaction reverted on-chain.");
+      }
+      return;
+    }
+    if (Date.now() - start > timeoutMs) {
+      throw new WalletTimeoutError(hash);
+    }
+    await sleep(2_000);
+  }
+}
+
+async function injectedEthCall(
+  eth: Eip1193Provider,
+  to: string,
+  data: string,
+): Promise<string> {
+  const result = (await eth.request({
+    method: "eth_call",
+    params: [{ to, data }, "latest"],
+  })) as string;
+  if (typeof result !== "string" || result === "0x") {
+    throw new Error("Empty call result.");
+  }
+  return result;
+}
+
+/**
+ * MetaMask TxSender. Calldata is ABI-encoded with ethers (encode-only);
+ * every chain interaction goes through the injected wallet's EIP-1193
+ * provider — no ethers BrowserProvider, no Signer, no Contract, no
+ * JsonRpcProvider.
+ */
+export function createInjectedEvmTxSender(
+  eth: Eip1193Provider,
   account: string,
+  opts?: { receiptTimeoutMs?: number },
 ): TxSender {
-  function requireSigner(): ethers.Signer {
-    if (!signer) throw new Error("Connect a wallet to send transactions.");
-    return signer;
+  if (!/^0x[0-9a-fA-F]{40}$/.test(account)) {
+    throw new Error("Injected wallet returned an invalid account address.");
+  }
+  const receiptTimeoutMs = opts?.receiptTimeoutMs ?? 120_000;
+
+  async function sendWrite(
+    to: string,
+    data: string,
+    valueWei?: bigint,
+  ): Promise<string> {
+    const params: Record<string, string> = { from: account, to, data };
+    if (valueWei !== undefined) {
+      if (valueWei <= 0n) throw new Error("Payment amount must be greater than zero.");
+      params.value = toQuantityHex(valueWei);
+    }
+    const hash = (await eth.request({
+      method: "eth_sendTransaction",
+      params: [params],
+    })) as string;
+    if (typeof hash !== "string" || !hash.startsWith("0x")) {
+      throw new Error("The wallet did not return a transaction hash.");
+    }
+    await waitForEvmReceipt(eth, hash, receiptTimeoutMs);
+    return hash;
   }
 
   return {
     kind: "evm",
     account,
     async viewResolve(registryAddress, username) {
-      const contract = new ethers.Contract(registryAddress, REGISTRY_ABI, provider);
       try {
-        const [owner, ipfsHash, ownerType, operator, purpose]: [string, string, bigint, string, string] =
-          await contract.resolvePage(username);
+        const data = REGISTRY_IFACE.encodeFunctionData("resolvePage", [username]);
+        const raw = await injectedEthCall(eth, registryAddress, data);
+        const [owner, ipfsHash, ownerType, operator, purpose]: [
+          string,
+          string,
+          bigint,
+          string,
+          string,
+        ] = REGISTRY_IFACE.decodeFunctionResult("resolvePage", raw) as unknown as [
+          string,
+          string,
+          bigint,
+          string,
+          string,
+        ];
         return { owner, ipfsHash, ownerType: Number(ownerType) === 1 ? 1 : 0, operator, purpose };
       } catch {
         // resolvePage reverts with UsernameInvalid when the name is unknown.
@@ -142,31 +258,27 @@ export function createEvmTxSender(
       }
     },
     async sendRegister(registryAddress, username, ipfsHash, ownerType, operator, purpose) {
-      const contract = new ethers.Contract(registryAddress, REGISTRY_ABI, requireSigner());
-      const tx = await contract.registerPage(username, ipfsHash, ownerType, operator, purpose);
-      const receipt = await tx.wait();
-      return receipt.hash;
+      const data = REGISTRY_IFACE.encodeFunctionData("registerPage", [
+        username,
+        ipfsHash,
+        ownerType,
+        operator,
+        purpose,
+      ]);
+      return sendWrite(registryAddress, data);
     },
     async sendUpdate(registryAddress, username, ipfsHash) {
-      const contract = new ethers.Contract(registryAddress, REGISTRY_ABI, requireSigner());
-      const tx = await contract.updatePage(username, ipfsHash);
-      const receipt = await tx.wait();
-      return receipt.hash;
+      const data = REGISTRY_IFACE.encodeFunctionData("updatePage", [username, ipfsHash]);
+      return sendWrite(registryAddress, data);
     },
     async sendTip(tipsAddress, username, valueWei) {
-      if (valueWei <= 0n) throw new Error("Tip amount must be greater than zero.");
-      const contract = new ethers.Contract(tipsAddress, TIPS_ABI, requireSigner());
-      const tx = await contract.tipPage(username, { value: valueWei });
-      const receipt = await tx.wait();
-      return receipt.hash;
+      const data = TIPS_IFACE.encodeFunctionData("tipPage", [username]);
+      return sendWrite(tipsAddress, data, valueWei);
     },
     async sendBuy(tipsAddress, seller, listingRef, valueWei) {
-      if (valueWei <= 0n) throw new Error("Purchase amount must be greater than zero.");
       if (!/^0x[0-9a-fA-F]{40}$/.test(seller)) throw new Error("Seller address is invalid.");
-      const contract = new ethers.Contract(tipsAddress, TIPS_ABI, requireSigner());
-      const tx = await contract.buyListing(seller, listingRef, { value: valueWei });
-      const receipt = await tx.wait();
-      return receipt.hash;
+      const data = TIPS_IFACE.encodeFunctionData("buyListing", [seller, listingRef]);
+      return sendWrite(tipsAddress, data, valueWei);
     },
   };
 }
@@ -386,8 +498,74 @@ export function createHederaTxSender(
 /* Read-only factory (public page loads need no wallet)                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Official Hedera mirror-node REST base per chain. Used for read-only
+ * contract calls — no JSON-RPC provider, no ethers connectivity.
+ */
+function mirrorNodeBase(chain: ChainConfig): string {
+  return chain.key === "hedera-testnet"
+    ? "https://testnet.mirrornode.hedera.com"
+    : "https://mainnet.mirrornode.hedera.com";
+}
+
+/**
+ * eth_call equivalent against the official Hedera mirror node
+ * (POST /api/v1/contracts/call). Returns the raw result calldata.
+ * Exported for tests.
+ */
+export async function mirrorContractCall(
+  chain: ChainConfig,
+  to: string,
+  data: string,
+): Promise<string> {
+  const res = await fetch(`${mirrorNodeBase(chain)}/api/v1/contracts/call`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to, data, gas: HEDERA_QUERY_GAS }),
+  });
+  const body = (await res.json().catch(() => null)) as {
+    result?: unknown;
+    _status?: { messages?: Array<{ message?: string }> };
+  } | null;
+  if (!res.ok || !body || typeof body.result !== "string" || body.result === "0x") {
+    const detail = body?._status?.messages?.map((m) => m.message).join("; ");
+    throw new Error(`Mirror-node contract call failed${detail ? `: ${detail}` : "."}`);
+  }
+  return body.result;
+}
+
 export function createReadOnlySender(chain: ChainConfig): TxSender {
-  // Use ethers for all read-only queries (simpler, works for Hedera via JSON-RPC).
-  // The Hedera SDK ContractCallQuery path is only needed for wallet-signed writes.
-  return createEvmTxSender(new ethers.JsonRpcProvider(chain.rpcUrl), null, "");
+  // Read-only queries go through the official Hedera mirror node; ethers is
+  // used only to encode/decode the calldata. The Hedera SDK
+  // ContractCallQuery path is only needed for wallet-signed writes.
+  return {
+    kind: "evm",
+    account: "",
+    async viewResolve(registryAddress, username) {
+      try {
+        const data = REGISTRY_IFACE.encodeFunctionData("resolvePage", [username]);
+        const raw = await mirrorContractCall(chain, registryAddress, data);
+        const [owner, ipfsHash, ownerType, operator, purpose] = REGISTRY_IFACE.decodeFunctionResult(
+          "resolvePage",
+          raw,
+        ) as unknown as [string, string, bigint, string, string];
+        return { owner, ipfsHash, ownerType: Number(ownerType) === 1 ? 1 : 0, operator, purpose };
+      } catch {
+        // resolvePage reverts with UsernameInvalid when the name is unknown.
+        return null;
+      }
+    },
+    async sendRegister() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+    async sendUpdate() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+    async sendTip() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+    async sendBuy() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+  };
 }

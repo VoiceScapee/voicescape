@@ -52,7 +52,7 @@ describe("blockpage TipBox waiting phases", () => {
   it("phase A: alive 'waiting on wallet' state while busy without a hash", () => {
     expect(pageSrc).toMatch(/busy && !confirmTxId &&/);
     expect(pageSrc).toContain('title="Waiting on your wallet…"');
-    expect(pageSrc).toMatch(/Nothing has left your wallet yet/);
+    expect(pageSrc).toMatch(/If you already approved, Voicescape will keep checking for the result/);
   });
 
   it("phase B: passes the broadcast hash to the confirming state", () => {

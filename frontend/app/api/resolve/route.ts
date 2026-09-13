@@ -14,6 +14,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
+import { mirrorContractCall } from "@/lib/tx";
+import { CHAINS } from "@/lib/chains";
 
 const REGISTRY_ABI = [
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
@@ -21,7 +23,8 @@ const REGISTRY_ABI = [
 
 // Mainnet Registry EVM address
 const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
-const RPC_URL = process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC?.trim() || "https://mainnet.hashio.io/api";
+
+const REGISTRY_IFACE = new ethers.Interface(REGISTRY_ABI);
 
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get("username");
@@ -43,9 +46,14 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const provider = new ethers.JsonRpcProvider(RPC_URL);
-    const contract = new ethers.Contract(REGISTRY_EVM, REGISTRY_ABI, provider);
-    const [owner, ipfsHash, ownerType, operator, purpose] = await contract.resolvePage(username);
+    // Read through the official Hedera mirror node (no JSON-RPC provider);
+    // ethers only encodes/decodes the calldata.
+    const data = REGISTRY_IFACE.encodeFunctionData("resolvePage", [username]);
+    const raw = await mirrorContractCall(CHAINS["hedera-mainnet"], REGISTRY_EVM, data);
+    const [owner, ipfsHash, ownerType, operator, purpose] = REGISTRY_IFACE.decodeFunctionResult(
+      "resolvePage",
+      raw,
+    ) as unknown as [string, string, bigint, string, string];
 
     return NextResponse.json({
       owner,

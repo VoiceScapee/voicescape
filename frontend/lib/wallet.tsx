@@ -8,8 +8,13 @@
  *    from @hashgraph/hedera-wallet-connect (official, HIP-820 based).
  *    Contract calls go through @hiero-ledger/sdk transactions signed in the
  *    wallet — see lib/tx.ts.
- *  - MetaMask: injected window.ethereum provider + ethers v6, pointed at
- *    Hedera (adds/switches to the Hedera network automatically).
+ *  - MetaMask: the injected EIP-1193 wallet IS the chain connection
+ *    (eth_requestAccounts → eth_chainId → wallet_switch/addEthereumChain,
+ *    the same handshake Hedera's own HederaAdapter uses for injected
+ *    wallets). Contract calldata is ABI-encoded with ethers (encode/decode
+ *    only — never chain connectivity); reads/writes go through the
+ *    wallet's eth_call / eth_sendTransaction — see createInjectedEvmTxSender
+ *    in lib/tx.ts. No ethers Provider/Signer/Contract anywhere.
  *
  * Hedera pairing needs a WalletConnect project id:
  *   NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID (free at https://cloud.reown.com)
@@ -23,7 +28,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { ethers } from "ethers";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import { getActiveChain, type ChainConfig } from "./chains";
 import type { TxSender } from "./tx";
@@ -772,9 +776,19 @@ function makeHederaAdapter(id: WalletAdapterId): WalletAdapter {
   };
 }
 
-function getInjectedEthereum(): { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> } {
+function getInjectedEthereum(): {
+  request: (args: {
+    method: string;
+    params?: unknown[] | Record<string, unknown>;
+  }) => Promise<unknown>;
+} {
   const eth = (window as unknown as { ethereum?: unknown }).ethereum as
-    | { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> }
+    | {
+        request: (args: {
+          method: string;
+          params?: unknown[] | Record<string, unknown>;
+        }) => Promise<unknown>;
+      }
     | undefined;
   if (!eth?.request) {
     throw new Error("No EVM wallet detected. Install MetaMask and try again.");
@@ -829,13 +843,12 @@ const metamaskAdapter: WalletAdapter = {
     }
 
     const account = accounts[0];
-    const ethForProvider = eth;
     const getTxSender = async (): Promise<TxSender> => {
-      // Dynamic import keeps @hiero-ledger/sdk out of the initial bundle.
-      const { createEvmTxSender } = await import("./tx");
-      const provider = new ethers.BrowserProvider(ethForProvider as ethers.Eip1193Provider);
-      const signer = await provider.getSigner();
-      return createEvmTxSender(provider, signer, account);
+      // Dynamic import keeps @hiero-ledger/sdk out of the initial bundle
+      // (./tx also exports the Hedera sender). The injected wallet is the
+      // chain connection — no ethers Provider/Signer/Contract.
+      const { createInjectedEvmTxSender } = await import("./tx");
+      return createInjectedEvmTxSender(eth, account);
     };
     return { account, chainId: walletChainId, getTxSender };
   },
