@@ -8,7 +8,7 @@
  * Hedera headlines from /api/pulse. Expired drops never show as claimable.
  */
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import ExternalLink from "@/components/ExternalLink";
 import { T } from "@/components/T";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { FREEBIES, SHOWCASE } from "@/lib/landing/freebies";
@@ -95,11 +95,9 @@ export function CommunityPulse() {
         {FREEBIES.map((f) => {
           const live = isLive(f.endsAt);
           return (
-            <a
+            <ExternalLink
               key={f.id}
               href={f.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="vs-card"
               style={{ textDecoration: "none", color: "inherit", display: "block" }}
             >
@@ -122,7 +120,7 @@ export function CommunityPulse() {
               <span className="vs-btn vs-btn-primary" style={{ fontSize: 14 }}>
                 <T k={live ? f.ctaKey : f.expiredCtaKey} />
               </span>
-            </a>
+            </ExternalLink>
           );
         })}
       </div>
@@ -135,11 +133,9 @@ export function CommunityPulse() {
           </h3>
           <div className="vs-grid-3">
             {videos.map((v) => (
-              <a
+              <ExternalLink
                 key={v.url}
                 href={v.url}
-                target="_blank"
-                rel="noopener noreferrer"
                 className="vs-card"
                 style={{ textDecoration: "none", color: "inherit", padding: 0, overflow: "hidden" }}
               >
@@ -175,7 +171,7 @@ export function CommunityPulse() {
                     </p>
                   )}
                 </div>
-              </a>
+            </ExternalLink>
             ))}
           </div>
         </div>
@@ -201,14 +197,12 @@ export function CommunityPulse() {
                   borderTop: "1px solid var(--vs-border)",
                 }}
               >
-                <a
+                <ExternalLink
                   href={a.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
                   style={{ color: "inherit", textDecoration: "none", fontWeight: 600, fontSize: 15 }}
                 >
                   {a.title}
-                </a>
+                </ExternalLink>
                 {a.date && (
                   <span style={{ display: "block", fontSize: 13, color: "var(--vs-muted)", marginTop: 4 }}>
                     {a.source} · {fmtDate(a.date, lang)}
@@ -227,17 +221,15 @@ export function CommunityPulse() {
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           {SHOWCASE.map((s) => (
-            <Link
+            <ExternalLink
               key={s.name}
               href={s.url}
-              target="_blank"
-              rel="noopener noreferrer"
               className="vs-btn"
               style={{ fontSize: 14, textDecoration: "none" }}
               title={t(s.descKey)}
             >
               {s.name}
-            </Link>
+            </ExternalLink>
           ))}
         </div>
       </div>

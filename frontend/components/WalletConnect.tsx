@@ -9,6 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ExternalLink from "./ExternalLink";
 import { deriveUsername } from "@/lib/identity";
 import { NotificationBell } from "./NotificationBell";
 import {
@@ -352,14 +353,12 @@ export function WalletConnect() {
             }}
           >
             New to wallets?{" "}
-            <a
+            <ExternalLink
               href="https://www.hashpack.app"
-              target="_blank"
-              rel="noreferrer"
               style={{ color: "var(--vs-accent)", textDecoration: "underline" }}
             >
               Get HashPack (free)
-            </a>
+            </ExternalLink>
             <div style={{ marginTop: 4, fontSize: 11 }}>
               A wallet lets you create pages and receive tips.
             </div>

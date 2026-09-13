@@ -583,14 +583,6 @@ function PublicPageInner({ username }: { username: string }) {
   useEffect(() => {
     if (autoTip) setTipOpen(true);
   }, [autoTip]);
-  useEffect(() => {
-    if (!autoGoal || state.status !== "ready") return;
-    // The goal form lives in the owner-only EarningsPanel below the fold;
-    // scroll straight to it once the page data has rendered.
-    document
-      .getElementById("set-funding-goal")
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [autoGoal, state.status]);
   // Session may be absent outside the root providers; degrade gracefully.
   let viewerAddress: string | undefined;
   try {
@@ -610,6 +602,29 @@ function PublicPageInner({ username }: { username: string }) {
       const b = canonicalAddress(state.meta.owner);
       return !!a && !!b && a === b;
     })();
+
+  useEffect(() => {
+    // The goal form lives in the owner-only EarningsPanel below the fold;
+    // scroll straight to it once the page data has rendered AND ownership
+    // has resolved. The session (hence isOwner) can restore after the page
+    // data — e.g. HashPack's in-app auto-connect — so retry briefly until
+    // the element exists instead of firing once and silently missing.
+    if (!autoGoal || state.status !== "ready" || !isOwner) return;
+    let attempts = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const tryScroll = () => {
+      const el = document.getElementById("set-funding-goal");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (attempts++ < 10) timer = setTimeout(tryScroll, 250);
+    };
+    tryScroll();
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [autoGoal, state.status, isOwner]);
 
   // Fire-and-forget view tracking for creator analytics. Never blocks the
   // page; the server rate-limits per IP and skips the owner's own views.
