@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
+import { isGradient } from "@/lib/theme-presets";
 
 export interface OnboardDraft {
   templateId: string;
@@ -202,7 +203,11 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                         height: 44,
                         borderRadius: 8,
                         marginBottom: 8,
-                        background: `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
+                        // Gradient templates render their gradient directly;
+                        // nesting one inside another linear-gradient() is invalid CSS.
+                        background: isGradient(t.page.theme.background)
+                          ? t.page.theme.background
+                          : `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
                       }}
                     />
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{t.name}</span>

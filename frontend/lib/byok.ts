@@ -34,7 +34,7 @@ The JSON must match this schema exactly:
   "username": "string (lowercase letters, numbers, hyphens; never change the username unless the user explicitly asks)",
   "profileSong": { "blockIndex": "number (optional, featured profile song: indexes into blocks[] then that music block's tracks[])" },
   "theme": {
-    "background": "CSS color string",
+    "background": "CSS color string OR a CSS gradient, e.g. \"linear-gradient(180deg, #0b0b10 0%, #141419 100%)\" — rich gradients are encouraged, they make blockpages look premium",
     "foreground": "CSS color string",
     "accent": "CSS color string",
     "fontFamily": "CSS font-family string"

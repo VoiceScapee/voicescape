@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
@@ -37,6 +37,17 @@ import {
 import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
 import { pinAudioFile } from "@/lib/ipfs";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
+import {
+  GRADIENT_PRESETS,
+  GRADIENT_DIRECTIONS,
+  DEFAULT_SOLID_BACKGROUND,
+  backgroundMode,
+  buildCustomGradient,
+  findGradientPreset,
+  isGradient,
+  type BackgroundMode,
+  type GradientDirection,
+} from "@/lib/theme-presets";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -938,28 +949,172 @@ function ThemeEditor({
   theme: VoicescapePage["theme"];
   onChange: (key: keyof VoicescapePage["theme"], value: string) => void;
 }) {
-  const colors = [
-    ["background", "Background"],
-    ["foreground", "Foreground"],
-    ["accent", "Accent"],
-  ] as const;
+  // The editor mode is DERIVED from the live value every render — picking a
+  // template (solid or gradient) from the gallery always shows the right UI,
+  // and no toggle can corrupt the stored value.
+  const mode = backgroundMode(theme.background);
+
+  // Remember the user's last solid color and last gradient independently, so
+  // switching Solid <-> Gradient restores each side instead of destroying it.
+  const lastSolid = useRef<string>(
+    isGradient(theme.background) ? DEFAULT_SOLID_BACKGROUND : theme.background,
+  );
+  const lastGradient = useRef<string>(
+    isGradient(theme.background) ? theme.background : GRADIENT_PRESETS[0].css,
+  );
+  // Keep the remembered values in sync when the background changes from
+  // outside this panel (template picker, AI draft, liaison draft).
+  useEffect(() => {
+    if (isGradient(theme.background)) lastGradient.current = theme.background;
+    else lastSolid.current = theme.background;
+  }, [theme.background]);
+
+  // Custom gradient builder inputs (two colors + direction -> CSS string).
+  const [customFrom, setCustomFrom] = useState("#7c3aed");
+  const [customTo, setCustomTo] = useState("#db2777");
+  const [customDir, setCustomDir] = useState<GradientDirection>("135deg");
+
+  const matchedPreset = mode === "gradient" ? findGradientPreset(theme.background) : undefined;
+
+  const setMode = (m: BackgroundMode) => {
+    onChange("background", m === "gradient" ? lastGradient.current : lastSolid.current);
+  };
+  const applyCustom = (from: string, to: string, dir: GradientDirection) => {
+    onChange("background", buildCustomGradient(from, to, dir));
+  };
+
+  // <input type="color"> requires #rrggbb; never hand it a gradient string.
+  const solidValue = /^#[0-9a-fA-F]{6}$/.test(theme.background)
+    ? theme.background
+    : DEFAULT_SOLID_BACKGROUND;
+
+  const solidRows = (
+    [
+      ["foreground", "Foreground"],
+      ["accent", "Accent"],
+    ] as const
+  ).map(([key, label]) => (
+    <div className="vb-theme-row" key={key}>
+      <span className="vs-label">{label}</span>
+      <label className="vb-swatch" style={{ background: theme[key] }} title={`Pick ${label.toLowerCase()} color`}>
+        <input
+          type="color"
+          value={/^#[0-9a-fA-F]{6}$/.test(theme[key]) ? theme[key] : "#ffffff"}
+          aria-label={`${label} color`}
+          onChange={(e) => onChange(key, e.target.value)}
+        />
+      </label>
+      <code className="vs-mono vb-hex">{theme[key]}</code>
+    </div>
+  ));
+
   return (
     <div className="vb-theme vs-card">
       <div className="vb-panel-title">Theme</div>
-      {colors.map(([key, label]) => (
-        <div className="vb-theme-row" key={key}>
-          <span className="vs-label">{label}</span>
-          <label className="vb-swatch" style={{ background: theme[key] }} title={`Pick ${label.toLowerCase()} color`}>
+
+      {/* Background style toggle */}
+      <div className="vb-theme-row">
+        <span className="vs-label">Background</span>
+        <div className="vb-bgmode" role="group" aria-label="Background style">
+          <button
+            type="button"
+            className={mode === "solid" ? "is-active" : ""}
+            onClick={() => setMode("solid")}
+          >
+            Solid
+          </button>
+          <button
+            type="button"
+            className={mode === "gradient" ? "is-active" : ""}
+            onClick={() => setMode("gradient")}
+          >
+            Gradient
+          </button>
+        </div>
+      </div>
+
+      {mode === "solid" ? (
+        <div className="vb-theme-row">
+          <span className="vs-label">Color</span>
+          <label className="vb-swatch" style={{ background: solidValue }} title="Pick background color">
             <input
               type="color"
-              value={theme[key]}
-              aria-label={`${label} color`}
-              onChange={(e) => onChange(key, e.target.value)}
+              value={solidValue}
+              aria-label="Background color"
+              onChange={(e) => onChange("background", e.target.value)}
             />
           </label>
-          <code className="vs-mono vb-hex">{theme[key]}</code>
+          <code className="vs-mono vb-hex">{theme.background}</code>
         </div>
-      ))}
+      ) : (
+        <>
+          <div
+            className="vb-gradient-preview"
+            style={{ background: theme.background }}
+            title={matchedPreset ? matchedPreset.name : "Custom gradient"}
+          />
+          <div className="vb-preset-grid" role="group" aria-label="Gradient presets">
+            {GRADIENT_PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                title={p.name}
+                aria-label={`Gradient preset: ${p.name}`}
+                className={`vb-preset${matchedPreset?.id === p.id ? " is-selected" : ""}`}
+                style={{ background: p.css }}
+                onClick={() => onChange("background", p.css)}
+              />
+            ))}
+          </div>
+          <div className="vb-custom-note">
+            {matchedPreset ? matchedPreset.name : "Custom gradient"} — or build your own:
+          </div>
+          <div className="vb-theme-row">
+            <span className="vs-label">Custom</span>
+            <label className="vb-swatch" style={{ background: customFrom }} title="Gradient start color">
+              <input
+                type="color"
+                value={customFrom}
+                aria-label="Gradient start color"
+                onChange={(e) => {
+                  setCustomFrom(e.target.value);
+                  applyCustom(e.target.value, customTo, customDir);
+                }}
+              />
+            </label>
+            <label className="vb-swatch" style={{ background: customTo }} title="Gradient end color">
+              <input
+                type="color"
+                value={customTo}
+                aria-label="Gradient end color"
+                onChange={(e) => {
+                  setCustomTo(e.target.value);
+                  applyCustom(customFrom, e.target.value, customDir);
+                }}
+              />
+            </label>
+            <select
+              className="vs-input"
+              value={customDir}
+              aria-label="Gradient direction"
+              onChange={(e) => {
+                const d = e.target.value as GradientDirection;
+                setCustomDir(d);
+                applyCustom(customFrom, customTo, d);
+              }}
+            >
+              {GRADIENT_DIRECTIONS.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </>
+      )}
+
+      {solidRows}
+
       <label className="vb-field">
         <span className="vs-label">Font</span>
         <select className="vs-input" value={theme.fontFamily} onChange={(e) => onChange("fontFamily", e.target.value)}>
@@ -1062,7 +1217,11 @@ function TemplatePicker({
             <span
               className="vb-template-swatch"
               style={{
-                background: `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
+                // Gradient templates render their gradient directly; wrapping
+                // a gradient inside another linear-gradient() is invalid CSS.
+                background: isGradient(t.page.theme.background)
+                  ? t.page.theme.background
+                  : `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
               }}
             />
             <span className="vb-template-name">{t.name}</span>
