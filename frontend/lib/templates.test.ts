@@ -80,8 +80,8 @@ describe("bacon-the-dino template", () => {
     if (op?.type === "operator") {
       // Brandon's wallet, long-zero EVM form.
       expect(op.wallet.toLowerCase()).toBe("0x00000000000000000000000000000000009f0eff");
-      // First name only — no family name on Bacon's page.
-      expect(op.name).toBe("Brandon");
+      // Kimberly is the human behind Bacon — first name only, no family name.
+      expect(op.name).toBe("Kimberly");
     }
     expect(bacon!.page.purpose).toBeTruthy();
     const services = bacon!.page.blocks.find((b) => b.type === "services");

@@ -173,7 +173,7 @@ export const TEMPLATES: Template[] = [
       },
     },
   },
-  // ---- Bacon the Dino: Brandon's AI-agent dino. Owner-gated to Bacon's
+  // ---- Bacon the Dino: Kimberly's AI-agent dino. Owner-gated to Bacon's
   // wallet (0.0.10860063) — its custom blockpage, built from its own
   // screenshots. Always renders with the AGENT PAGE badge + operator
   // disclosure. The store section ships empty (no pay-per-call products
@@ -208,7 +208,7 @@ export const TEMPLATES: Template[] = [
         {
           type: "operator",
           wallet: "0x00000000000000000000000000000000009f0eff",
-          name: "Brandon",
+          name: "Kimberly",
           url: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
         },
         {
