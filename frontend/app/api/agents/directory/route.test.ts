@@ -46,6 +46,62 @@ describe("GET /api/agents/directory guardrails", () => {
     expect(vi.mocked(fetch).mock.calls.length).toBe(1);
   });
 
+  it("lists agents from PageRegistered logs — never PageUpdated", async () => {
+    // Regression: the route once filtered on the PageUpdated topic hash,
+    // which silently emptied the directory. The topic must be the canonical
+    // PageRegistered hash from lib/registry-topics.ts.
+    const { PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC } = await import(
+      "@/lib/registry-topics"
+    );
+    const w = (n: number) => n.toString(16).padStart(64, "0");
+    const wStr = (s: string) => {
+      const hex = Buffer.from(s, "utf8").toString("hex");
+      return w(s.length) + hex.padEnd(64, "0");
+    };
+    // PageRegistered(string username, address owner, string ipfsHash,
+    //   uint8 ownerType, address operator, string purpose) — data layout:
+    // [128][1][0][224][len+ipfsHash(64B content)][len+purpose]
+    const regData =
+      "0x" +
+      w(128) +
+      w(1) +
+      w(0) +
+      w(224) +
+      w(6) +
+      Buffer.from("QmTest", "utf8").toString("hex").padEnd(128, "0") +
+      wStr("test purpose");
+    const topics = ["0x" + "11".repeat(32), "0x" + "22".repeat(32)];
+    const regLog = {
+      timestamp: "1789000000.000000000",
+      topics: [PAGEREGISTERED_TOPIC, ...topics],
+      data: regData,
+    };
+    const updLog = {
+      ...regLog,
+      topics: [PAGEUPDATED_TOPIC, ...topics],
+    };
+    // registerPage(string,uint8,...) calldata: selector + username at offset 32
+    const fp =
+      "0x12345678" + w(32) + w(4) + Buffer.from("echo", "utf8").toString("hex").padEnd(64, "0");
+    vi.mocked(fetch).mockImplementation((async (url: unknown) => {
+      const ok = (json: unknown) =>
+        ({ ok: true, json: async () => json }) as unknown as Response;
+      const u = String(url);
+      if (u.includes("/results/logs"))
+        return ok({ logs: [updLog, regLog] });
+      if (u.includes("/transactions?timestamp="))
+        return ok({ transactions: [{ transaction_id: "0.0.1@1234.567" }] });
+      if (u.includes("/contracts/results/"))
+        return ok({ function_parameters: fp });
+      return ok({});
+    }) as typeof fetch);
+    const res = await GET(req("?t=topic-regression"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { agents: { username: string }[]; count: number };
+    expect(body.count).toBe(1);
+    expect(body.agents[0].username).toBe("echo");
+  });
+
   it("429s after 60 requests per IP per hour", async () => {
     let last = 200;
     for (let i = 0; i < 61; i++) {

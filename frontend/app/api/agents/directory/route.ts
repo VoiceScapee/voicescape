@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
+import { PAGEREGISTERED_TOPIC } from "@/lib/registry-topics";
 
 /**
  * GET /api/agents/directory
@@ -16,7 +17,10 @@ import { getKvStore } from "@/lib/server/store";
  */
 
 const REGISTRY_ID = "0.0.10854058";
-const PAGEREGISTERED_TOPIC = "0xa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f3";
+// NOTE: the topic hash lives in lib/registry-topics.ts (single source of
+// truth, verified against the canonical event signature). A hardcoded copy
+// here once pointed at the PageUpdated topic instead, which silently
+// emptied the directory — do not reintroduce a local constant.
 
 /** Server-side cache of the computed directory; best-effort, fail-open. */
 const DIRECTORY_CACHE_KEY = "agents:directory:v1";
