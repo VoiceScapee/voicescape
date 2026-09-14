@@ -1,3 +1,5 @@
 escalations.log
+.offset
+bot.log
 __pycache__/
 *.pyc

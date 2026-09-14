@@ -23,6 +23,7 @@ Copy rules (Brandon's standing directives):
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.parse
@@ -34,7 +35,6 @@ from dynamic_credentials import (  # noqa: E402
     DynamicCredentialError,
     dynamic_credential_entry,
     ensure_allowed_url,
-    url_with_surrogate_path_segment,
 )
 
 API = "https://api.telegram.org"
@@ -42,26 +42,30 @@ ALLOWED_HOSTS = ["api.telegram.org"]
 CREDENTIAL = "custom.telegram"  # Secure Vault connector (BotFather token)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ESCALATION_LOG = os.path.join(BASE_DIR, "escalations.log")
+OFFSET_FILE = os.path.join(BASE_DIR, ".offset")
 
-_credential_entry = None
 
-
-def _entry():
-    """Vault credential via the approved surrogate exchange (cached)."""
-    global _credential_entry
-    if _credential_entry is None:
-        try:
-            _credential_entry = dynamic_credential_entry(CREDENTIAL)
-        except DynamicCredentialError as e:
-            print(f"[bot] no telegram credential: {e}\n"
-                  "[bot] create the bot with @BotFather, then paste the token "
-                  "into the Secure Vault card.", file=sys.stderr)
-            sys.exit(1)
-    return _credential_entry
+# The egress proxy pattern-matches the literal `hsurr:` prefix to swap in the
+# real token. The surrogate MUST be placed raw (not URL-quoted): quoting turns
+# `hsurr:` into `hsurr%3A`, the proxy no longer matches, and the raw surrogate
+# leaks to Telegram (which 404s). Verified live 2026-09-14.
+_SURROGATE_RE = re.compile(r"^hsurr:[A-Za-z0-9_:.\-]+$")
 
 
 def _url(method):
-    url = url_with_surrogate_path_segment(_entry(), f"{API}/bot{{}}/{method}")
+    try:
+        entry = dynamic_credential_entry(CREDENTIAL)
+    except DynamicCredentialError as e:
+        print(f"[bot] telegram credential problem: {e}\n"
+              "[bot] create the bot with @BotFather, then paste the token "
+              "into the Secure Vault card.", file=sys.stderr)
+        sys.exit(1)
+    surr = str(entry.get("surrogate", ""))
+    if not _SURROGATE_RE.match(surr):
+        print("[bot] vault returned a malformed surrogate; refusing to call",
+              file=sys.stderr)
+        sys.exit(1)
+    url = f"{API}/bot{surr}/{method}"
     ensure_allowed_url(url, ALLOWED_HOSTS)
     return url
 
@@ -302,10 +306,10 @@ def handle_text(chat, text):
     send_message(chat_id, UNKNOWN)
 
 
-def process_updates(offset):
-    res = api_call("getUpdates", {"offset": offset, "timeout": 30,
+def process_updates(offset, timeout=30):
+    res = api_call("getUpdates", {"offset": offset, "timeout": timeout,
                                   "allowed_updates": ["message"]},
-                   timeout=45)
+                   timeout=timeout + 15)
     if not res or not res.get("ok"):
         return offset
     for update in res["result"]:
@@ -328,6 +332,19 @@ def process_updates(offset):
     return offset
 
 
+def _load_offset():
+    try:
+        with open(OFFSET_FILE) as f:
+            return int(f.read().strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _save_offset(offset):
+    with open(OFFSET_FILE, "w") as f:
+        f.write(str(offset))
+
+
 def main():
     me = api_call("getMe", timeout=15)  # also proves the vault credential works
     if not me or not me.get("ok"):
@@ -339,16 +356,20 @@ def main():
     if "--check" in sys.argv:
         return
 
-    offset = 0
-    # Drain anything sent while we were away only when explicitly asked.
+    # Drain pending updates and exit (for cron). Offset persists in .offset
+    # so each update is answered exactly once across runs.
     if "--once" in sys.argv:
-        process_updates(offset)
+        offset = _load_offset()
+        offset = process_updates(offset, timeout=10)
+        _save_offset(offset)
         return
 
     print("[bot] polling...", flush=True)
+    offset = _load_offset()
     while True:
         try:
             offset = process_updates(offset)
+            _save_offset(offset)
         except Exception as e:  # noqa: BLE001
             print(f"[bot] poll loop error: {e}", flush=True)
             time.sleep(5)
