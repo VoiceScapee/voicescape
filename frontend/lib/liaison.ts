@@ -252,7 +252,10 @@ export function isLiaisonTipLog(
   if (!ev) return false;
   if (ev.from !== sessionAddr.toLowerCase()) return false;
   if (ev.to !== LIAISON_OWNER_EVM) return false;
-  if (!(ev.amountHbar >= priceHbar)) return false;
+  // The Tips contract splits 98/2 on-chain: Danny receives 98% of the paid
+  // amount, the treasury takes 2%. The event logs Danny's net receipt, so
+  // the check must allow for the fee (plus a 1% tolerance for rounding).
+  if (!(ev.amountHbar >= priceHbar * 0.97)) return false;
   const topics =
     log && typeof log === "object"
       ? (log as { topics?: unknown }).topics

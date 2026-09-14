@@ -79,6 +79,22 @@ export default function DannyLiaisonPanel() {
   const { account, connect, getTxSender } = useWallet();
   const { isAuthenticated, authHeader } = useSession();
   const [status, setStatus] = useState<LiaisonStatus | null>(null);
+  const statusRef = useRef<LiaisonStatus | null>(null);
+  statusRef.current = status;
+
+  const dannySay = (text: string) =>
+    setMessages((m) => [...m, { role: "danny", text }]);
+  const userSay = (text: string) =>
+    setMessages((m) => [...m, { role: "user", text }]);
+
+  const startInterview = useCallback(() => {
+    if (statusRef.current != null && statusRef.current.buildsLeft <= 0) return;
+    setError(null);
+    setInterview({ step: "describe" });
+    dannySay(
+      "Let's build your page! Describe what you want — the vibe, colors, sections, what it's for. Write it like you'd tell a friend.",
+    );
+  }, []);
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -96,23 +112,15 @@ export default function DannyLiaisonPanel() {
   // After paying for a build, Danny interviews the user in the chat:
   // page type → vibe/business type → name → tagline → bio → username →
   // review → draft. No chat credits consumed; the build was already paid.
-  type InterviewStep =
-    | "pageType"
-    | "vibe"
-    | "bizType"
-    | "displayName"
-    | "heroTitle"
-    | "bio"
-    | "usernameHint"
-    | "review";
+  // Build interview: a natural 3-question chat flow. The user describes
+  // what they want in their own words (in the normal chat box), then gives
+  // a display name and username. No rigid form, no quick-reply buttons —
+  // just conversation.
+  type InterviewStep = "describe" | "displayName" | "usernameHint" | "review";
   interface InterviewState {
     step: InterviewStep;
-    pageType?: "personal" | "business";
-    vibe?: string;
-    bizType?: string;
+    description?: string;
     displayName?: string;
-    heroTitle?: string;
-    bio?: string;
     usernameHint?: string;
   }
   const [interview, setInterview] = useState<InterviewState | null>(null);
@@ -180,6 +188,11 @@ export default function DannyLiaisonPanel() {
           if (r.ok) {
             setPayError(null);
             await refreshStatus();
+            // Build purchased → Danny immediately starts the conversation.
+            // No dead end, no hunting for a button — he asks what you want.
+            if (confirmProduct === "build") {
+              startInterview();
+            }
           } else {
             setPayError(
               typeof j?.error === "string" ? j.error : "Couldn't unlock your purchase — try again.",
@@ -211,7 +224,7 @@ export default function DannyLiaisonPanel() {
       setConfirmTxId(null);
       setConfirmProduct(null);
     }
-  }, [confirmStatus, confirmTxId, confirmProduct, authedFetch, refreshStatus]);
+  }, [confirmStatus, confirmTxId, confirmProduct, authedFetch, refreshStatus, startInterview]);
 
   const sendChat = async () => {
     const text = input.trim();
@@ -311,51 +324,22 @@ export default function DannyLiaisonPanel() {
     </button>
   );
 
-  // Interview → template mapping. Vibe/business-type answers pick the
-  // starting template; the user customizes everything in the builder after.
-  const INTERVIEW_TEMPLATES: Record<string, string> = {
-    "personal:dark": "lofi-room",
-    "personal:bright": "solarpunk-garden",
-    "personal:bold": "aurora-drift",
-    "personal:clean": "wanderer-atlas",
-    "business:general": "business-card",
-    "business:food": "restaurant",
-    "business:shop": "retail-shop",
-    "business:services": "salon",
-  };
-
-  const VIBE_LABELS: Record<string, string> = {
-    dark: "dark & chill",
-    bright: "bright & playful",
-    bold: "bold & colorful",
-    clean: "clean & minimal",
-  };
-
-  const BIZ_LABELS: Record<string, string> = {
-    general: "general / professional",
-    food: "food & drink",
-    shop: "shop / retail",
-    services: "services",
-  };
-
-  const dannySay = (text: string) =>
-    setMessages((m) => [...m, { role: "danny", text }]);
-  const userSay = (text: string) =>
-    setMessages((m) => [...m, { role: "user", text }]);
-
-  const startInterview = () => {
-    if (status != null && status.buildsLeft <= 0) return;
-    setError(null);
-    setInterview({ step: "pageType" });
-    dannySay(
-      "Let's build your page! First — is this a personal page, or for a business?",
-    );
-  };
-
   const cancelInterview = () => {
     setInterview(null);
     setInput("");
     dannySay("No worries — we can build whenever you're ready. Just tap “✨ Build me a blockpage”.");
+  };
+
+  /** Pick a starting template from keywords in the user's description. */
+  const pickTemplateFromDescription = (desc: string): string => {
+    const t = desc.toLowerCase();
+    if (t.includes("restaurant") || t.includes("food") || t.includes("cafe") || t.includes("menu")) return "restaurant";
+    if (t.includes("shop") || t.includes("store") || t.includes("sell") || t.includes("product")) return "retail-shop";
+    if (t.includes("business") || t.includes("company") || t.includes("service")) return "business-card";
+    if (t.includes("dark") || t.includes("moody") || t.includes("chill") || t.includes("lofi")) return "lofi-room";
+    if (t.includes("bright") || t.includes("playful") || t.includes("colorful") || t.includes("fun")) return "solarpunk-garden";
+    if (t.includes("bold") || t.includes("neon") || t.includes("vibrant")) return "aurora-drift";
+    return "wanderer-atlas"; // clean default
   };
 
   /** Advance the interview one step. Returns true when the answer was consumed. */
@@ -365,98 +349,42 @@ export default function DannyLiaisonPanel() {
     if (!text) return false;
     const iv = interview;
 
-    if (iv.step === "pageType") {
-      const t = text.toLowerCase();
-      const pageType = t.includes("business") ? "business" : t.includes("personal") ? "personal" : null;
-      if (!pageType) {
-        dannySay("Pick one — is it a personal page or for a business?");
-        return true;
-      }
-      userSay(pageType === "personal" ? "Personal" : "Business");
-      if (pageType === "personal") {
-        setInterview({ ...iv, step: "vibe", pageType });
-        dannySay("Nice. What vibe should it have?");
-      } else {
-        setInterview({ ...iv, step: "bizType", pageType });
-        dannySay("Got it. What kind of business?");
-      }
-      return true;
-    }
-
-    if (iv.step === "vibe") {
-      const t = text.toLowerCase();
-      const vibe = (["dark", "bright", "bold", "clean"] as const).find((v) =>
-        t.includes(v),
-      );
-      if (!vibe) {
-        dannySay("Choose a vibe — dark, bright, bold, or clean?");
-        return true;
-      }
-      userSay(VIBE_LABELS[vibe]);
-      setInterview({ ...iv, step: "displayName", vibe });
-      dannySay("Love it. What's your name for the big hero title?");
-      return true;
-    }
-
-    if (iv.step === "bizType") {
-      const t = text.toLowerCase();
-      const bizType = (["food", "shop", "services", "general"] as const).find((b) =>
-        t.includes(b),
-      );
-      if (!bizType) {
-        dannySay("What kind of business — general, food & drink, shop, or services?");
-        return true;
-      }
-      userSay(BIZ_LABELS[bizType]);
-      setInterview({ ...iv, step: "displayName", bizType });
-      dannySay("Perfect. What's the business name for the big hero title?");
+    if (iv.step === "describe") {
+      userSay(text);
+      setInterview({ ...iv, step: "displayName", description: text });
+      dannySay("Love it. What name should the page show at the top?");
       return true;
     }
 
     if (iv.step === "displayName") {
-      if (text.length > 60) {
-        dannySay("A bit long — keep the name under 60 characters?");
-        return true;
-      }
       userSay(text);
-      setInterview({ ...iv, step: "heroTitle", displayName: text });
-      dannySay("Got a tagline? (e.g. “Web3 builder & creator”) — or type “skip”.");
-      return true;
-    }
-
-    if (iv.step === "heroTitle") {
-      const heroTitle = /^skip$/i.test(text) ? "" : text.slice(0, 120);
-      if (text && !/^skip$/i.test(text)) userSay(text);
-      setInterview({ ...iv, step: "bio", heroTitle });
-      dannySay("Short bio — a line or two about you? (or “skip”)");
-      return true;
-    }
-
-    if (iv.step === "bio") {
-      const bio = /^skip$/i.test(text) ? "" : text.slice(0, 500);
-      if (text && !/^skip$/i.test(text)) userSay(text.length > 120 ? text.slice(0, 120) + "…" : text);
-      setInterview({ ...iv, step: "usernameHint", bio });
-      dannySay("Username idea? 3–32 chars, lowercase (or “skip” and I'll suggest one).");
+      setInterview({ ...iv, step: "usernameHint", displayName: text });
+      dannySay("And what username do you want? (lowercase letters, numbers, dashes — like your-page)");
       return true;
     }
 
     if (iv.step === "usernameHint") {
-      const hint = /^skip$/i.test(text) ? "" : text.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32);
-      if (hint && !/^[a-z0-9_-]{3,32}$/.test(hint)) {
-        dannySay("That needs to be 3–32 chars: lowercase letters, numbers, hyphens. Try again or “skip”.");
+      const username = text.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+      if (!username || username.length < 3) {
+        dannySay("That username won't work — needs at least 3 characters, lowercase letters/numbers/dashes. Try another?");
         return true;
       }
-      if (text && !/^skip$/i.test(text)) userSay(hint);
-      const done: InterviewState = { ...iv, step: "review", usernameHint: hint };
-      setInterview(done);
-      const kind =
-        done.pageType === "personal"
-          ? `personal page with a ${VIBE_LABELS[done.vibe ?? ""] ?? "custom"} vibe`
-          : `business page (${BIZ_LABELS[done.bizType ?? ""] ?? "general"})`;
+      userSay(username);
+      setInterview({ ...iv, step: "review", usernameHint: username });
       dannySay(
-        `Here's what I've got:\n• ${kind}\n• Name: ${done.displayName || "—"}\n• Tagline: ${done.heroTitle || "—"}\n• Bio: ${done.bio ? "✓" : "—"}\n• Username: ${done.usernameHint || "I'll suggest one"}\n\nReady to build it?`,
+        `Here's what I'm building:\n• Name: ${iv.displayName}\n• Username: @${username}\n• Your vision: "${iv.description}"\n\nTap "Build it" below, or type "start over" to redo it.`,
       );
       return true;
+    }
+
+    if (iv.step === "review") {
+      const t = text.toLowerCase();
+      if (t.includes("start over") || t.includes("redo") || t.includes("restart")) {
+        setInterview({ step: "describe" });
+        dannySay("No problem — describe your page again, fresh start.");
+        return true;
+      }
+      return false; // let the Build button handle it
     }
 
     return false;
@@ -466,18 +394,15 @@ export default function DannyLiaisonPanel() {
     if (!interview || interview.step !== "review") return;
     const iv = interview;
     userSay("Build it!");
-    const key =
-      iv.pageType === "personal"
-        ? `personal:${iv.vibe ?? "clean"}`
-        : `business:${iv.bizType ?? "general"}`;
-    const templateId = INTERVIEW_TEMPLATES[key] ?? HUMAN_TEMPLATES[0]?.id ?? "";
+    // Pick the starting template from keywords in their description.
+    const templateId = pickTemplateFromDescription(iv.description ?? "");
     setInterview(null);
     setInput("");
     await buildDraft({
       templateId,
       displayName: iv.displayName ?? "",
-      heroTitle: iv.heroTitle ?? "",
-      bio: iv.bio ?? "",
+      heroTitle: iv.displayName ?? "",
+      bio: iv.description ?? "",
       usernameHint: iv.usernameHint ?? "",
     });
   };
@@ -646,61 +571,24 @@ export default function DannyLiaisonPanel() {
             </button>
           </div>
 
-          {/* Quick replies during interview choice steps */}
-          {interview && (interview.step === "pageType" || interview.step === "vibe" || interview.step === "bizType" || interview.step === "review") && (
+          {/* Interview controls: just Build / Start over / Cancel at review.
+              Everything else is typed in the chat box — no quick-reply
+              buttons, no rigid form. */}
+          {interview && interview.step === "review" && (
             <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-              {interview.step === "pageType" && (
-                <>
-                  <button type="button" onClick={() => answerInterview("personal")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    🙋 Personal
-                  </button>
-                  <button type="button" onClick={() => answerInterview("business")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    💼 Business
-                  </button>
-                </>
-              )}
-              {interview.step === "vibe" && (
-                <>
-                  <button type="button" onClick={() => answerInterview("dark")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    🌙 Dark & chill
-                  </button>
-                  <button type="button" onClick={() => answerInterview("bright")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    ☀️ Bright & playful
-                  </button>
-                  <button type="button" onClick={() => answerInterview("bold")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    🎨 Bold & colorful
-                  </button>
-                  <button type="button" onClick={() => answerInterview("clean")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    ✨ Clean & minimal
-                  </button>
-                </>
-              )}
-              {interview.step === "bizType" && (
-                <>
-                  <button type="button" onClick={() => answerInterview("general")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    💼 General
-                  </button>
-                  <button type="button" onClick={() => answerInterview("food")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    🍔 Food & drink
-                  </button>
-                  <button type="button" onClick={() => answerInterview("shop")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    🛍️ Shop
-                  </button>
-                  <button type="button" onClick={() => answerInterview("services")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    💈 Services
-                  </button>
-                </>
-              )}
-              {interview.step === "review" && (
-                <>
-                  <button type="button" onClick={confirmInterviewBuild} disabled={building} style={{ ...btnStyle, fontSize: "0.85rem", padding: "8px 14px" }}>
-                    {building ? "Building…" : "🔨 Build it!"}
-                  </button>
-                  <button type="button" onClick={() => { setInterview({ step: "pageType" }); dannySay("Let's start over — personal page or business?"); }} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                    Start over
-                  </button>
-                </>
-              )}
+              <button type="button" onClick={confirmInterviewBuild} disabled={building} style={{ ...btnStyle, fontSize: "0.85rem", padding: "8px 14px" }}>
+                {building ? "Building…" : "🔨 Build it!"}
+              </button>
+              <button type="button" onClick={() => { setInterview({ step: "describe" }); dannySay("No problem — describe your page again, fresh start."); }} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                Start over
+              </button>
+              <button type="button" onClick={cancelInterview} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                Cancel
+              </button>
+            </div>
+          )}
+          {interview && interview.step !== "review" && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
               <button type="button" onClick={cancelInterview} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
                 Cancel
               </button>
@@ -708,21 +596,14 @@ export default function DannyLiaisonPanel() {
           )}
 
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            {!interview ? (
+            {!interview && status != null && status.buildsLeft > 0 && (
               <button
                 type="button"
                 onClick={startInterview}
-                disabled={status != null && status.buildsLeft <= 0}
                 style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)" }}
               >
                 ✨ Build me a blockpage
               </button>
-            ) : (
-              (interview.step === "displayName" || interview.step === "heroTitle" || interview.step === "bio" || interview.step === "usernameHint") && (
-                <button type="button" onClick={cancelInterview} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
-                  Cancel interview
-                </button>
-              )
             )}
             {interview == null && status != null && status.buildsLeft <= 0 && (
               buyButton("build", `Buy a build — ${buildPrice} HBAR`)
