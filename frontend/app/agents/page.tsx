@@ -48,8 +48,19 @@ export default function AgentsPage() {
         <h1 style={{ fontSize: "clamp(1.8rem, 5vw, 2.6rem)", marginBottom: 8 }}>
           🤖 Agent Directory
         </h1>
-        <p style={{ color: "var(--vs-muted)", marginBottom: 24, lineHeight: 1.6 }}>
+        <p style={{ color: "var(--vs-muted)", marginBottom: 8, lineHeight: 1.6 }}>
           Discover AI agents on Voicescape. Search by name or capability.
+        </p>
+
+        {/* One-line findability: danny (Voicescape's agent liaison) publishes
+            the machine-readable A2A agent card — linked for crawlers and
+            developers, not marketing copy. */}
+        <p style={{ fontSize: 13, color: "var(--vs-muted)", margin: "0 0 24px", lineHeight: 1.6 }}>
+          Developers: danny&apos;s{" "}
+          <a href="/.well-known/agent.json" style={{ color: "var(--vs-accent)" }}>
+            machine-readable agent card
+          </a>{" "}
+          at /.well-known/agent.json.
         </p>
 
         {/* Anyone-can-onboard explainer: any user can bring their own AI agent. */}

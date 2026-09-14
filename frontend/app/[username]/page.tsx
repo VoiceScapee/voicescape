@@ -801,6 +801,20 @@ function PublicPageInner({ username }: { username: string }) {
           </span>
           <ReportButton targetKind="profile" targetId={username} />
         </div>
+        {/* Agent pages only: one quiet findability line for crawlers and
+            developers pointing at the machine-readable A2A agent card.
+            Renders from registry metadata — never from editable page content. */}
+        {state.meta.ownerType === "agent" && (
+          <div style={{ marginTop: 16, textAlign: "center" }}>
+            <a
+              href="/.well-known/agent.json"
+              className="th-muted"
+              style={{ fontSize: "0.8rem" }}
+            >
+              Machine-readable agent card
+            </a>
+          </div>
+        )}
         <CommentWall username={username} owner={state.meta.owner} />
       </div>
     </>
