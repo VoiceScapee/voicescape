@@ -5,10 +5,13 @@
  * *connection* into a wallet *sign-in*:
  *
  *  1. The user connects a wallet (existing `useWallet` flow).
- *  2. They sign an EIP-4361-style "Sign in with Voicescape" message
- *     (EVM: personal_sign · Hedera: HashConnect signMessages).
- *  3. The signature is POSTed ONCE to /api/auth/login, which verifies it
- *     server-side and returns a stateless HMAC session token (7 days).
+ *  2. They sign a tiny login transaction in the wallet — a 1-tinybar
+ *     self-transfer whose memo carries the login challenge
+ *     (EVM: personal_sign · Hedera: hedera_signAndExecuteTransaction,
+ *     the same primitive tipping uses).
+ *  3. The transaction id is POSTed ONCE to /api/auth/login, which verifies
+ *     the confirmed transaction server-side (mirror node) and returns a
+ *     stateless HMAC session token (7 days).
  *  4. The token rides in the `x-vs-session` header on every write; the
  *     server verifies it with no I/O and no server-side session storage.
  *
@@ -39,7 +42,6 @@ import {
   SESSION_TTL_MS,
   SignInRequired,
   buildSignInMessage,
-  bytesToHex,
   canonicalAddress,
   createSession,
   generateNonce,
@@ -88,7 +90,7 @@ export interface SessionContextValue {
   account: string | null;
   /** Last sign-in error, if any. */
   error: string | null;
-  /** Connect (if needed) and sign the sign-in message. */
+  /** Connect (if needed) and complete the wallet sign-in (message or login transaction). */
   signIn: (adapterId?: WalletAdapterId) => Promise<StoredSession>;
   /** Clear the session and disconnect the wallet. */
   signOut: () => void;
@@ -193,44 +195,111 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, status, chain.chainId]);
 
-  const signHederaMessage = useCallback(async (message: string, accountId: string): Promise<string> => {
-    const pairing = getHederaPairing();
-    if (!pairing) throw new Error("Wallet session not ready — reconnect and try again.");
-    const walletConnect = await import("@hashgraph/hedera-wallet-connect");
-    const { proto } = await import("@hiero-ledger/proto");
-    // DAppConnector.signMessage uses HIP-30 account format: "hedera:<network>:<accountId>"
-    const chain = (await import("./chains")).getActiveChain();
-    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
-    // 30s timeout: a healthy HashPack prompts within seconds. Silence means
-    // a stale WalletConnect session (HashPack #291) — fail with a reconnect
-    // message instead of hanging forever on "signing".
-    const result = (await Promise.race([
-      pairing.hc.signMessage({
-        signerAccountId: `hedera:${network}:${accountId}`,
-        message,
-      }),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("SIGN_TIMEOUT")), 30_000),
-      ),
-    ]).catch((e) => {
-      if (e instanceof Error && e.message === "SIGN_TIMEOUT") {
-        throw new Error(
-          "HashPack didn't respond — your wallet connection is stale. " +
-          "Disconnect Voicescape in HashPack's connected apps, then reconnect and try again.",
-        );
+  /**
+   * Hedera login via a wallet-signed transaction — the KISS Hedera method.
+   *
+   * `hedera_signMessage` is unreliable in some wallets (notably HashPack's
+   * dapp browser): the prompt never appears and the request hangs until it
+   * times out. But `hedera_signAndExecuteTransaction` provably works there
+   * (tipping uses it every day). So the login challenge goes in a
+   * transaction memo instead of a signed message: the wallet signs a
+   * 1-tinybar self-transfer carrying
+   * "VSLOGIN <account> <commit> <expiresAtMs> <origin>", and the server
+   * verifies the confirmed transaction on the mirror node. No message
+   * signing, no custom crypto — just a Hedera transaction and the mirror.
+   *
+   * Replay protection: the memo carries sha256(secret) (truncated), while
+   * the secret itself travels only in the HTTPS POST body — the public
+   * transaction id alone can't be replayed into a session.
+   *
+   * Costs the standard transaction fee (~$0.0001); the 1-tinybar transfer
+   * itself moves nothing. Returns { loginTxId, secret }.
+   */
+  const signHederaLoginTx = useCallback(
+    async (accountId: string): Promise<{ loginTxId: string; secret: string }> => {
+      const pairing = getHederaPairing();
+      if (!pairing) throw new Error("Wallet session not ready — reconnect and try again.");
+      const { AccountId, Client, Hbar, TransactionId, TransferTransaction } =
+        await import("@hiero-ledger/sdk");
+      const chain = (await import("./chains")).getActiveChain();
+      const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+      // Secret stays off-chain; only its hash goes in the public memo.
+      const secret = generateNonce();
+      const commit = (await sha256Hex(secret)).slice(0, 16);
+      const expiresAtMs = Date.now() + SESSION_TTL_MS;
+      // Login challenge in the memo (100-byte tx memo limit).
+      const memo = `VSLOGIN ${accountId} ${commit} ${expiresAtMs} ${window.location.origin}`;
+      if (memo.length > 100) throw new Error("Login challenge too long — try again.");
+
+      const tx = new TransferTransaction()
+        .addHbarTransfer(accountId, Hbar.fromTinybars(-1))
+        .addHbarTransfer(accountId, Hbar.fromTinybars(1))
+        .setTransactionMemo(memo);
+      tx.setTransactionId(TransactionId.generate(AccountId.fromString(accountId)));
+      tx.freezeWith(chain.key === "hedera-mainnet" ? Client.forMainnet() : Client.forTestnet());
+      const txId = tx.transactionId?.toString() ?? "";
+      const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
+
+      // Same 30s race as tipping: a healthy wallet prompts within seconds.
+      // If it stays silent, check the mirror — the user may have approved
+      // and the response got lost on the way back.
+      let walletResponded = false;
+      try {
+        await Promise.race([
+          (async () => {
+            await (
+              pairing.hc.signAndExecuteTransaction as unknown as (
+                params: object,
+              ) => Promise<unknown>
+            )({
+              signerAccountId: `hedera:${network}:${accountId}`,
+              transactionList: txBase64,
+            });
+            walletResponded = true;
+          })(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("WALLET_TIMEOUT")), 30_000)),
+        ]);
+      } catch (e) {
+        if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
+          if (await checkLoginTxLanded(txId)) return { loginTxId: txId, secret };
+          throw new Error(
+            "HashPack didn't respond — your wallet connection is stale. " +
+              "Disconnect Voicescape in HashPack's connected apps, then reconnect and try again.",
+          );
+        }
+        throw e;
       }
-      throw e;
-    })) as unknown as { result?: { signatureMap?: string }; signatureMap?: string };
-    // Handle both enveloped (result.signatureMap) and unwrapped shapes
-    const sigMapB64 = result?.result?.signatureMap ?? result?.signatureMap;
-    if (!sigMapB64) throw new Error("The wallet did not return a signature.");
-    // signatureMap is a base64-encoded proto.SignatureMap — decode and extract
-    const sigMapBytes = walletConnect.base64StringToUint8Array(sigMapB64);
-    const sigMap = proto.SignatureMap.decode(sigMapBytes);
-    const sig = walletConnect.extractFirstSignature(sigMap as unknown as Parameters<typeof walletConnect.extractFirstSignature>[0]);
-    if (!sig || sig.length === 0) throw new Error("The wallet did not return a signature.");
-    return "0x" + bytesToHex(sig);
-  }, []);
+      return { loginTxId: txId, secret };
+    },
+    [],
+  );
+
+  /** SHA-256 hex digest (WebCrypto). Used for the login memo commitment. */
+  async function sha256Hex(input: string): Promise<string> {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  /**
+   * Mirror-node check: did our login transaction actually execute?
+   * Recovery path for a wallet that goes silent after the user approves —
+   * we generated the txId, so we can look it up directly.
+   */
+  async function checkLoginTxLanded(txId: string): Promise<boolean> {
+    try {
+      const { toMirrorTxId } = await import("./tx-confirm");
+      const res = await fetch(
+        `https://mainnet.mirrornode.hedera.com/api/v1/transactions/${encodeURIComponent(toMirrorTxId(txId))}`,
+      );
+      if (!res.ok) return false;
+      const data = (await res.json()) as { transactions?: Array<{ result?: string }> };
+      return data.transactions?.[0]?.result === "SUCCESS";
+    } catch {
+      return false;
+    }
+  }
 
   const signEvmMessage = useCallback(async (message: string, address: string): Promise<string> => {
     const eth = (window as unknown as { ethereum?: unknown }).ethereum as
@@ -272,30 +341,33 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           );
         }
 
-        const now = new Date();
-        const message = buildSignInMessage({
-          address: activeAccount,
-          // Bind the signature to this deployment (EIP-4361 "uri"): a
-          // phishing site asking the user to sign the same text gets a
-          // credential the real server rejects.
-          uri: window.location.origin,
-          chainId: chain.chainId,
-          nonce: generateNonce(),
-          issuedAt: now.toISOString(),
-          expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
-        });
-
-        let signature: string;
+        let credential: { loginTxId: string; secret: string } | { message: string; signature: string };
         if (isHederaAccountId(activeAccount)) {
-          signature = await signHederaMessage(message, activeAccount);
+          // Hedera login = wallet-signed transaction (the KISS Hedera
+          // method). The server verifies the confirmed transaction on the
+          // mirror node and issues the session token.
+          credential = await signHederaLoginTx(activeAccount);
         } else {
-          signature = await signEvmMessage(message, activeAccount);
+          const now = new Date();
+          const message = buildSignInMessage({
+            address: activeAccount,
+            // Bind the signature to this deployment (EIP-4361 "uri"): a
+            // phishing site asking the user to sign the same text gets a
+            // credential the real server rejects.
+            uri: window.location.origin,
+            chainId: chain.chainId,
+            nonce: generateNonce(),
+            issuedAt: now.toISOString(),
+            expiresAt: new Date(now.getTime() + SESSION_TTL_MS).toISOString(),
+          });
+          const signature = await signEvmMessage(message, activeAccount);
           // Client-side check before we trust the session locally.
           if (!verifyEvmSignature(message, signature, activeAccount)) {
             throw new Error(
               "Signature verification failed — the wallet may have signed with a different account.",
             );
           }
+          credential = { message, signature };
         }
 
         const canonical = canonicalAddress(activeAccount);
@@ -312,7 +384,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           const loginRes = await fetch("/api/auth/login", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ credential: { message, signature } }),
+            body: JSON.stringify({ credential }),
           });
           const loginJson = (await loginRes.json().catch(() => null)) as {
             ok?: boolean;
@@ -365,7 +437,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         signingRef.current = false;
       }
     },
-    [adapterId, account, chain.chainId, signEvmMessage, signHederaMessage, wallet],
+    [adapterId, account, chain.chainId, signEvmMessage, signHederaLoginTx, wallet],
   );
 
   const signOut = useCallback(() => {
@@ -436,7 +508,7 @@ export function useSession(): SessionContextValue {
 export function RequireSession({
   children,
   title = "Sign in to continue",
-  description = "Connect your wallet and sign the sign-in message to use this feature.",
+  description = "Connect your wallet and approve the sign-in request to use this feature.",
 }: {
   children: React.ReactNode;
   title?: string;

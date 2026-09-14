@@ -1592,11 +1592,11 @@ function PublishPanel({
     try {
       requireSession();
     } catch {
-      setStatus({ kind: "info", text: "Requesting wallet signature…" });
+      setStatus({ kind: "info", text: "Requesting wallet approval…" });
       try {
         await signIn();
       } catch {
-        setStatus({ kind: "err", text: "Sign the wallet message to publish." });
+        setStatus({ kind: "err", text: "Approve the wallet request to publish." });
         return;
       }
     }

@@ -54,8 +54,10 @@ describe("friendlyWalletError", () => {
 
   it("passes unknown errors through unchanged", async () => {
     const { friendlyWalletError } = await import("./wallet");
-    expect(friendlyWalletError(new Error("User rejected the request."))).toBe(
-      "User rejected the request.",
+    // "User rejected the request." is now a KNOWN user-rejection pattern and
+    // maps to friendly copy — so use a genuinely unknown message here.
+    expect(friendlyWalletError(new Error("Some bizarre edge case 42."))).toBe(
+      "Some bizarre edge case 42.",
     );
     expect(friendlyWalletError("plain string")).toBe("plain string");
   });

@@ -2,7 +2,7 @@
  * Session verification tests — EVM recovery, Hedera Ed25519/ECDSA (mocked
  * mirror node), message validation, and the nonce registry. No network.
  */
-import { generateKeyPairSync, sign as cryptoSign } from "crypto";
+import { createHash, generateKeyPairSync, sign as cryptoSign } from "crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ethers } from "ethers";
 import { secp256k1 } from "@noble/curves/secp256k1";
@@ -452,5 +452,150 @@ describe("stateless session tokens", () => {
     const b = await portWithSecret(SECRET).verifySession(token);
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
+  });
+});
+
+describe("Hedera transaction login (VSLOGIN memo)", () => {
+  const ACCOUNT = "0.0.10424063";
+  const TXID = `${ACCOUNT}@1789348646.319665177`;
+  const SECRET = "a1b2c3d4e5f60718293a4b5c6d7e8f90"; // 32 hex, never on-chain
+
+  function commitFor(secret: string): string {
+    return createHash("sha256").update(secret, "utf8").digest("hex").slice(0, 16);
+  }
+  function memoFor(over: Record<string, string> = {}): string {
+    const p = {
+      account: ACCOUNT,
+      commit: commitFor(SECRET),
+      expiresAt: String(NOW + 3600_000),
+      origin: ORIGIN,
+      ...over,
+    };
+    return `VSLOGIN ${p.account} ${p.commit} ${p.expiresAt} ${p.origin}`;
+  }
+  /** Stub the mirror-node transaction lookup. memo=null → 404 (not indexed yet). */
+  function mockMirror(memo: string | null, result = "SUCCESS"): () => void {
+    const realFetch = global.fetch;
+    global.fetch = (async () => {
+      if (memo === null) return { ok: false, status: 404 } as unknown as Response;
+      return {
+        ok: true,
+        json: async () => ({
+          transactions: [{ result, memo_base64: Buffer.from(memo, "utf8").toString("base64") }],
+        }),
+      } as unknown as Response;
+    }) as typeof fetch;
+    return () => {
+      global.fetch = realFetch;
+    };
+  }
+
+  it("accepts a valid login transaction", async () => {
+    const restore = mockMirror(memoFor());
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect(r.session.chainId).toBe(CHAIN_ID);
+        expect(r.session.expiresAtMs).toBe(NOW + 3600_000);
+      }
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects a replayed txId presented without the secret", async () => {
+    const restore = mockMirror(memoFor());
+    try {
+      const r = await port().verifySession({
+        loginTxId: TXID,
+        secret: "ffffffffffffffffffffffffffffffff",
+      });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/does not match/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects when the transaction did not succeed", async () => {
+    const restore = mockMirror(memoFor(), "CONTRACT_REVERT_EXECUTED");
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/did not succeed/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects when the mirror never indexes the transaction", async () => {
+    const restore = mockMirror(null);
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/not found/);
+    } finally {
+      restore();
+    }
+  }, 20000);
+
+  it("rejects an expired challenge", async () => {
+    const restore = mockMirror(memoFor({ expiresAt: String(NOW - 1000) }));
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/expired/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects a challenge issued for a foreign origin", async () => {
+    const restore = mockMirror(memoFor({ origin: "https://evil.example" }));
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/not issued for this app/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects when the memo names a different account than the payer", async () => {
+    const restore = mockMirror(memoFor({ account: "0.0.99999999" }));
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/does not match this wallet/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects a malformed transaction id without hitting the mirror", async () => {
+    let fetched = false;
+    const realFetch = global.fetch;
+    global.fetch = (async () => {
+      fetched = true;
+      return { ok: false, status: 404 } as unknown as Response;
+    }) as typeof fetch;
+    try {
+      const r = await port().verifySession({ loginTxId: "not-a-txid", secret: SECRET });
+      expect(r.ok).toBe(false);
+      expect(fetched).toBe(false);
+    } finally {
+      global.fetch = realFetch;
+    }
+  });
+
+  it("rejects a missing secret", async () => {
+    const restore = mockMirror(memoFor());
+    try {
+      const r = await port().verifySession({ loginTxId: TXID });
+      expect(r.ok).toBe(false);
+    } finally {
+      restore();
+    }
   });
 });

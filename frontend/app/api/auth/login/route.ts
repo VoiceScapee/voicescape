@@ -8,7 +8,10 @@ export const runtime = "nodejs";
  * POST /api/auth/login — exchange a fresh wallet signature for a
  * stateless session token.
  *
- * Body: { credential: { message, signature } } (or the raw credential).
+ * Body: { credential: { message, signature } } (message-signature login)
+ * or { credential: { loginTxId, secret } } (Hedera transaction login —
+ * the wallet signed a 1-tinybar self-transfer carrying the login
+ * challenge in its memo; verified against the mirror node).
  *
  * Runs the full cryptographic verification once: EVM sessions via
  * ecrecover, Hedera sessions via the mirror-node account key, plus
@@ -39,14 +42,12 @@ export async function POST(req: NextRequest) {
     (body as { credential?: unknown } | null)?.credential !== undefined
       ? (body as { credential: unknown }).credential
       : body;
-  if (
-    !credential ||
-    typeof credential !== "object" ||
-    typeof (credential as { message?: unknown }).message !== "string" ||
-    typeof (credential as { signature?: unknown }).signature !== "string"
-  ) {
+  const c = credential as { message?: unknown; signature?: unknown; loginTxId?: unknown; secret?: unknown };
+  const isMessageCred = typeof c.message === "string" && typeof c.signature === "string";
+  const isTxCred = typeof c.loginTxId === "string" && typeof c.secret === "string";
+  if (!credential || typeof credential !== "object" || (!isMessageCred && !isTxCred)) {
     return NextResponse.json(
-      { ok: false, error: "expected { credential: { message, signature } }" },
+      { ok: false, error: "expected { credential: { message, signature } } or { credential: { loginTxId, secret } }" },
       { status: 400 },
     );
   }

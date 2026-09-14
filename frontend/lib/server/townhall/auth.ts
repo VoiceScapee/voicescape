@@ -55,6 +55,7 @@ import { keccak_256 } from "@noble/hashes/sha3";
 import { getActiveChain } from "../../chains";
 import { getKvStore } from "../store";
 import { mirrorBaseUrl } from "./topics";
+import { toMirrorTxId } from "../../tx-confirm";
 import {
   canonicalAddress,
   hexToBytes,
@@ -482,6 +483,14 @@ export class RealAuthPort implements AuthPort {
       }
       return r;
     }
+    // Login-transaction credential (Hedera KISS login): { loginTxId, secret }.
+    if (
+      cred &&
+      typeof cred === "object" &&
+      typeof (cred as { loginTxId?: unknown }).loginTxId === "string"
+    ) {
+      return this.verifyLoginTransaction(cred, nowMs);
+    }
     return this.verifyWalletSignature(cred, nowMs);
   }
 
@@ -564,6 +573,120 @@ export class RealAuthPort implements AuthPort {
         address,
         chainId: fields.chainId,
         nonce: fields.nonce,
+        expiresAtMs,
+      },
+    };
+  }
+
+  /**
+   * Verify a Hedera login transaction — the KISS Hedera-native login.
+   *
+   * The wallet signed a 1-tinybar self-transfer whose memo carries
+   * "VSLOGIN <account> <commit> <expiresAtMs> <origin>", where commit is
+   * the first 16 hex chars of sha256(secret). The client sends
+   * { loginTxId, secret }; the secret never appears on-chain, so the
+   * public transaction id alone can't be replayed into a session.
+   *
+   * Checks, in order:
+   *  1. The transaction exists on the mirror node with result SUCCESS
+   *     (polled briefly — the mirror lags consensus by seconds).
+   *  2. sha256(secret) matches the memo commitment.
+   *  3. The memo names the transaction's payer account.
+   *  4. The challenge hasn't expired and names this app's origin.
+   *  5. The secret (as nonce) is claimed — replay protection.
+   */
+  private async verifyLoginTransaction(cred: unknown, nowMs: number): Promise<VerifyResult> {
+    const { loginTxId, secret } = cred as { loginTxId?: unknown; secret?: unknown };
+    if (typeof loginTxId !== "string" || !loginTxId || typeof secret !== "string" || !secret) {
+      return { ok: false, error: "missing login transaction" };
+    }
+    if (!/^[0-9a-f]{32}$/.test(secret)) {
+      return { ok: false, error: "malformed login secret" };
+    }
+    const dashTxId = toMirrorTxId(loginTxId);
+    if (!/^\d+\.\d+\.\d+-\d+-\d+$/.test(dashTxId)) {
+      return { ok: false, error: "malformed login transaction id" };
+    }
+    const expectedChainId = this.chainIdFn();
+    const expectedOrigin = this.originFn();
+
+    // Poll the mirror briefly — it lags consensus by a few seconds.
+    let tx: { result?: string; memo_base64?: string } | null = null;
+    for (let i = 0; i < 5; i++) {
+      try {
+        const res = await fetch(
+          `${mirrorBaseUrl()}/api/v1/transactions/${encodeURIComponent(dashTxId)}`,
+        );
+        if (res.ok) {
+          const json = (await res.json()) as {
+            transactions?: Array<{ result?: string; memo_base64?: string }>;
+          };
+          tx = json.transactions?.[0] ?? null;
+          if (tx) break;
+        }
+      } catch {
+        // try again
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    if (!tx) {
+      return { ok: false, error: "login transaction not found — try signing in again" };
+    }
+    if (tx.result !== "SUCCESS") {
+      return { ok: false, error: "login transaction did not succeed" };
+    }
+
+    let memo = "";
+    try {
+      memo = Buffer.from(tx.memo_base64 ?? "", "base64").toString("utf8");
+    } catch {
+      return { ok: false, error: "login transaction has no challenge" };
+    }
+    // "VSLOGIN <account> <commit> <expiresAtMs> <origin>"
+    const mparts = memo.split(" ");
+    if (mparts.length !== 5 || mparts[0] !== "VSLOGIN") {
+      return { ok: false, error: "login transaction has no challenge" };
+    }
+    const [, memoAccount, commit, expiresAtStr, memoOrigin] = mparts;
+    // The commitment binds the off-chain secret to this transaction.
+    const expectedCommit = createHash("sha256").update(secret, "utf8").digest("hex").slice(0, 16);
+    if (!/^[0-9a-f]{16}$/.test(commit) || commit !== expectedCommit) {
+      return { ok: false, error: "login challenge does not match" };
+    }
+    // Payer is the dash-form prefix (0.0.X-seconds-nanos).
+    const payer = dashTxId.split("-").slice(0, -2).join("-");
+    if (!isHederaAccountId(memoAccount) || memoAccount !== payer) {
+      return { ok: false, error: "login challenge does not match this wallet" };
+    }
+    const expiresAtMs = Number(expiresAtStr);
+    if (!Number.isFinite(expiresAtMs) || expiresAtMs <= nowMs) {
+      return { ok: false, error: "login challenge expired — sign in again" };
+    }
+    if (memoOrigin !== expectedOrigin) {
+      return { ok: false, error: "login challenge was not issued for this app" };
+    }
+    const address = canonicalAddress(memoAccount);
+    if (!address) return { ok: false, error: "invalid sign-in: bad address" };
+
+    // The secret doubles as the nonce: it was never on-chain, so only the
+    // wallet that just signed can present it — replaying the public txId
+    // without it fails the commitment check above.
+    let nonceError: string | null;
+    try {
+      nonceError = await checkNonceClaim(address, secret, loginTxId.toLowerCase(), expiresAtMs, nowMs);
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "sign-in unavailable" };
+    }
+    if (nonceError) {
+      return { ok: false, error: nonceError };
+    }
+
+    return {
+      ok: true,
+      session: {
+        address,
+        chainId: expectedChainId,
+        nonce: secret,
         expiresAtMs,
       },
     };
