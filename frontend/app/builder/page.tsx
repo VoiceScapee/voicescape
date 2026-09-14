@@ -988,17 +988,46 @@ function TemplatePicker({
   activeId,
   onPick,
   account,
+  liaisonDraft,
+  onPickLiaisonDraft,
 }: {
   activeId: string;
   onPick: (t: Template) => void;
   /** Connected wallet account id (0.0.x or 0x…) — owner-gated templates stay hidden without it. */
   account: string | null;
+  /** The user's wallet-bound liaison draft, if one exists. */
+  liaisonDraft?: { draftId: string; usernameHint: string | null; templateId: string } | null;
+  /** Load the liaison draft into the canvas. */
+  onPickLiaisonDraft?: () => void;
 }) {
   const [category, setCategory] = useState<"business" | "personal">("personal");
   const filtered = TEMPLATES.filter((t) => t.category === category && isTemplateVisible(t, account));
   return (
     <div>
       <div className="vb-panel-title">Template</div>
+      {/* Liaison slice-1: the wallet-bound premade blockpage Danny built for
+          this user sits above the grid. Selecting it loads their draft JSON
+          into the canvas. */}
+      {liaisonDraft && onPickLiaisonDraft && (
+        <button
+          type="button"
+          onClick={onPickLiaisonDraft}
+          title="A premade blockpage Danny built for your wallet — only you can see it"
+          className="vb-template-card"
+          style={{ borderColor: "var(--vs-accent, #38bdf8)", marginBottom: 10, width: "100%" }}
+        >
+          <span
+            className="vb-template-swatch"
+            style={{
+              background: "linear-gradient(135deg, #38bdf8 0%, #a78bfa 55%, #f472b6 100%)",
+            }}
+          />
+          <span className="vb-template-name">✨ Made for you</span>
+          <span className="vb-template-desc">
+            Danny&apos;s draft{liaisonDraft.usernameHint ? ` · @${liaisonDraft.usernameHint}` : ""} — bound to your wallet
+          </span>
+        </button>
+      )}
       <div style={{ marginBottom: 12 }}>
         <label style={{ display: "block", fontSize: 13, marginBottom: 6, color: "var(--vs-muted)" }}>
           Blockpage type
@@ -1511,12 +1540,20 @@ function PublishPanel({
   onPageChange,
   initialOwnerType,
   initialVanity,
+  liaisonAssisted,
 }: {
   page: VoicescapePage;
   onPageChange: (p: VoicescapePage) => void;
   initialOwnerType?: "human" | "agent";
   /** A custom name suggested by a loaded draft (e.g. the ?draft= link). */
   initialVanity?: string | null;
+  /**
+   * True when the canvas holds the liaison's wallet-bound draft. Code
+   * assertion (never convention): liaison-assisted pages ALWAYS publish as
+   * human pages with a zero operator and empty purpose — the helper is
+   * hired help, never a custodian.
+   */
+  liaisonAssisted?: boolean;
 }) {
   const { account, getTxSender } = useWallet();
   const { requireSession, signIn } = useSession();
@@ -1628,6 +1665,20 @@ function PublishPanel({
         setStatus({ kind: "err", text: "Agent blockpages must disclose a purpose." });
         return;
       }
+    }
+    // Liaison non-custody assertion: a liaison-assisted publish can never
+    // leave as an agent page, carry an operator, or set a purpose. The
+    // registry contract additionally makes ownership untransferable.
+    if (liaisonAssisted) {
+      if (ownerType !== "human") {
+        setStatus({
+          kind: "err",
+          text: "Liaison-built pages publish as human blockpages only — the helper can never take control.",
+        });
+        return;
+      }
+      operator = ZERO_ADDRESS;
+      purposeText = "";
     }
     setBusy(true);
     try {
@@ -1931,7 +1982,7 @@ function BuilderInner() {
   const { account } = useWallet();
   // No wallet session required to design: preview mode lets anyone build and
   // preview. The publish flow asks for the wallet signature when it matters.
-  const { isAuthenticated } = useSession();
+  const { isAuthenticated, token } = useSession();
   const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
   const [page, setPage] = useState<VoicescapePage>(() =>
     JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage,
@@ -1939,6 +1990,77 @@ function BuilderInner() {
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+
+  // Liaison slice-1: the wallet-bound premade blockpage Danny built for this
+  // user. Fetched with their session — invisible to every other wallet.
+  const [liaisonDraftMeta, setLiaisonDraftMeta] = useState<{
+    draftId: string;
+    usernameHint: string | null;
+    templateId: string;
+  } | null>(null);
+  const [liaisonDraftId, setLiaisonDraftId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setLiaisonDraftMeta(null);
+      return;
+    }
+    const t = token();
+    if (!t) return;
+    let live = true;
+    fetch("/api/liaison/draft", {
+      headers: { "x-vs-session": t },
+      cache: "no-store",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        const d = j?.draft;
+        if (live && d && typeof d.draftId === "string") {
+          setLiaisonDraftMeta({
+            draftId: d.draftId,
+            usernameHint: typeof d.usernameHint === "string" ? d.usernameHint : null,
+            templateId: typeof d.templateId === "string" ? d.templateId : "",
+          });
+        }
+      })
+      .catch(() => {
+        /* No draft (or offline) — the "Made for you" card simply stays hidden. */
+      });
+    return () => {
+      live = false;
+    };
+  }, [isAuthenticated, token]);
+
+  /** Load the liaison draft into the canvas. The page becomes
+      liaison-assisted: PublishPanel asserts it publishes as a human page. */
+  const pickLiaisonDraft = async () => {
+    const t = token();
+    if (!t) return;
+    try {
+      const res = await fetch("/api/liaison/draft", {
+        headers: { "x-vs-session": t },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      const d = j?.draft;
+      if (!d?.pageJson || !isValidPage(d.pageJson)) return;
+      // Server enforces human-only drafts; belt and suspenders client-side.
+      const fresh = JSON.parse(JSON.stringify(d.pageJson)) as VoicescapePage;
+      fresh.ownerType = "human";
+      const tmpl = TEMPLATES.find((x) => x.id === d.templateId);
+      if (tmpl) setTemplateId(tmpl.id);
+      setLiaisonDraftId(typeof d.draftId === "string" ? d.draftId : "liaison");
+      setDraftOwnerType("human");
+      if (typeof d.usernameHint === "string" && d.usernameHint) {
+        setDraftVanity(d.usernameHint);
+      }
+      setAiDraft(null);
+      setPage(fresh);
+      setTab("customize");
+    } catch {
+      /* keep the current canvas on failure */
+    }
+  };
 
   const template: Template = useMemo(
     () => TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0],
@@ -1953,6 +2075,9 @@ function BuilderInner() {
 
   const pickTemplate = (t: Template) => {
     setTemplateId(t.id);
+    // A different template means the canvas is no longer the liaison's
+    // draft — drop the liaison-assisted publish assertion.
+    setLiaisonDraftId(null);
     // Deep-clone so edits don't mutate the template definition.
     editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
   };
@@ -2189,7 +2314,13 @@ function BuilderInner() {
       <div className="vb-main">
         {/* Left: controls */}
         <div className="vb-controls">
-          <TemplatePicker activeId={templateId} onPick={pickTemplate} account={account} />
+          <TemplatePicker
+            activeId={templateId}
+            onPick={pickTemplate}
+            account={account}
+            liaisonDraft={liaisonDraftMeta}
+            onPickLiaisonDraft={pickLiaisonDraft}
+          />
 
           <div className="vb-tabs" role="tablist" aria-label="Builder panels">
             {TABS.map((t) => (
@@ -2284,6 +2415,7 @@ function BuilderInner() {
               // defaults the name field so republishing updates the page
               // on-chain instead of registering a second one.
               initialVanity={draftVanity ?? publishedUsername}
+              liaisonAssisted={liaisonDraftId !== null}
             />
           )}
         </div>
