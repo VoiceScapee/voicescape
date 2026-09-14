@@ -75,7 +75,11 @@ export function decodeTipSentLog(log: unknown): TipEvent | null {
   if (!Number.isFinite(amountHbar) || amountHbar <= 0) return null;
 
   const timestamp = typeof l.timestamp === "string" ? l.timestamp : "";
-  if (!/^\d+\.\d+$/.test(timestamp)) return null;
+  // The per-transaction contract-results endpoint omits the timestamp
+  // field that the contract-logs endpoint provides. Verification only
+  // needs the parties and amount — accept a missing timestamp rather
+  // than rejecting every log from that endpoint.
+  if (timestamp && !/^\d+\.\d+$/.test(timestamp)) return null;
 
   return { from, to, amountHbar, timestamp };
 }
