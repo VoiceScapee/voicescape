@@ -23,6 +23,7 @@ import {
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
 import DannyAgentCard from "@/components/DannyAgentCard";
+import DannyLiaisonPanel from "@/components/DannyLiaisonPanel";
 import PageBadges from "@/components/townhall/PageBadges";
 import OnChainLiveBadge from "@/components/OnChainLiveBadge";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
@@ -790,6 +791,9 @@ function PublicPageInner({ username }: { username: string }) {
             from /.well-known/agent.json — the same document machines read.
             danny-only: no other agent publishes a card on this domain. */}
         {username === "danny" && <DannyAgentCard />}
+        {/* Liaison slice-1: paid human-facing help — chat, tip-to-unlock,
+            and wallet-bound blockpage drafts. Danny-only, like the agent card. */}
+        {username === "danny" && <DannyLiaisonPanel />}
         {ownerEvm && <GoalBar username={username} ownerAddress={ownerEvm} />}
         {isOwner && <TipPushToggle wallet={state.meta.owner} />}
         {isOwner && ownerEvm && (
