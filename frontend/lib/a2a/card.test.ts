@@ -71,4 +71,13 @@ describe("buildAgentCard", () => {
     expect(card.capabilities.streaming).toBe(true);
     expect(card.capabilities.pushNotifications).toBe(false);
   });
+
+  it("identifies as danny, the agent liaison, with verifiable on-chain facts", () => {
+    expect(card.name).toBe("danny");
+    expect(card.description).toMatch(/0\.0\.10857765/);
+    expect(card.description).toMatch(/'danny'/);
+    expect(card.description).toMatch(/\/danny/);
+    expect(card.description).toMatch(/liaison/i);
+    expect(card.description).toMatch(/ownerType AGENT/i);
+  });
 });

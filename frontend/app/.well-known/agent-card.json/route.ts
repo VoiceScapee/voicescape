@@ -3,7 +3,7 @@ import { buildAgentCard } from "@/lib/a2a/card";
 import { siteUrl } from "@/lib/seo";
 
 /**
- * GET /.well-known/agent-card.json — A2A AgentCard for Echo.
+ * GET /.well-known/agent-card.json — A2A AgentCard for danny.
  *
  * A2A Protocol v1.0.0 (Linux Foundation), §8.2: the well-known URI is the
  * standard discovery mechanism — clients fetch this to learn the agent's

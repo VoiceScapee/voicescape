@@ -89,7 +89,7 @@ describe("AgentCard discovery", () => {
     const res = await cardGET();
     expect(res.status).toBe(200);
     const card = await res.json();
-    expect(card.name).toBe("Echo");
+    expect(card.name).toBe("danny");
     expect(card.supportedInterfaces[0].protocolBinding).toBe("JSONRPC");
     expect(card.supportedInterfaces[0].url).toMatch(/\/api\/a2a$/);
     expect(card.skills.length).toBeGreaterThan(0);
@@ -99,6 +99,6 @@ describe("AgentCard discovery", () => {
     const res = await legacyCardGET();
     expect(res.status).toBe(200);
     const card = await res.json();
-    expect(card.name).toBe("Echo");
+    expect(card.name).toBe("danny");
   });
 });

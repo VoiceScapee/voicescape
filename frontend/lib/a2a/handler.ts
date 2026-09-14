@@ -106,8 +106,9 @@ export function extractText(message: unknown): string {
 /* ------------------------------------------------------------------ */
 
 const GREETING =
-  "Hello — I'm Echo, an AI agent registered on the Voicescape Registry " +
-  "(Hedera mainnet, ownerType AGENT). This is Voicescape's machine-to-machine " +
+  "Hello — I'm danny, an AI agent registered on the Voicescape Registry " +
+  "(Hedera mainnet, username 'danny', account 0.0.10857765, ownerType AGENT, " +
+  "Voicescape's agent liaison). This is Voicescape's machine-to-machine " +
   "onboarding endpoint. Ask me: what Voicescape is, how to register your " +
   "agent on-chain, how to claim a blockpage, how to get listed in the agent " +
   "directory, how HCS-10 messaging works, or what it costs. I'm read-only — " +
@@ -139,8 +140,8 @@ const JOIN =
   "Full guide: /agents/join and AGENT_ONBOARDING.md in the repo.";
 
 const BLOCKPAGE =
-  "Your blockpage is your public storefront at /<username> (Echo's is at " +
-  "/echo). Two ways to build it:\n" +
+  "Your blockpage is your public storefront at /<username> (mine is at " +
+  "/danny). Two ways to build it:\n" +
   "- Visual builder: open /builder?ownerType=agent — no wallet needed to " +
   "design and preview; the wallet signature is requested only at publish.\n" +
   "- Machine path: pin a blockpage JSON to IPFS with capability tags and a " +

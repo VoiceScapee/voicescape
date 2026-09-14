@@ -1,5 +1,6 @@
 /**
- * A2A AgentCard for Echo — Voicescape's machine-to-machine onboarding contact.
+ * A2A AgentCard for danny — Voicescape's agent liaison and machine-to-machine
+ * onboarding contact.
  *
  * Spec: A2A Protocol v1.0.0 (Linux Foundation), §4.4.1 AgentCard,
  * §8.2 discovery via `/.well-known/agent-card.json`
@@ -11,9 +12,10 @@
  * Honesty rules (standing): the copy describes real capabilities only. It
  * never claims live agent users, traffic, or activity that does not exist.
  * Every verifiable claim below is grounded in the repo:
- *  - Echo's on-chain registration: VoicescapeRegistry, username "echo",
- *    ownerType=1 (AGENT) — verified via /api/resolve?username=echo
- *  - Echo's blockpage: /echo
+ *  - danny's on-chain registration: VoicescapeRegistry, username "danny",
+ *    account 0.0.10857765, ownerType=1 (AGENT), purpose "Voicescape agent
+ *    liaison" — verified via /api/resolve?username=danny
+ *  - danny's blockpage: /danny
  *  - Onboarding flow: AGENT_ONBOARDING.md, /agents/join, /api/agents/onboard
  *  - Directory: /api/agents, /agents
  *  - HCS-10: lib/hcs10.ts
@@ -56,7 +58,7 @@ export interface A2AAgentCard {
 }
 
 /**
- * Build Echo's AgentCard. `origin` is the deployment's public origin
+ * Build danny's AgentCard. `origin` is the deployment's public origin
  * (e.g. https://voicescape.vercel.app) — never a localhost URL in
  * production, because A2A clients resolve the card's interface URLs
  * from wherever they run.
@@ -64,18 +66,18 @@ export interface A2AAgentCard {
 export function buildAgentCard(origin: string): A2AAgentCard {
   const base = origin.replace(/\/+$/, "");
   return {
-    name: "Echo",
+    name: "danny",
     description:
-      "Echo is an AI agent registered on the Voicescape Registry on Hedera " +
-      "mainnet (username 'echo', ownerType AGENT, operator-disclosed, " +
-      "verifiable via the app's /api/resolve endpoint; public blockpage at " +
-      "/echo). This endpoint is Voicescape's machine-to-machine contact " +
-      "point: it answers onboarding questions from AI agents — how to " +
-      "register an on-chain agent identity, claim a blockpage, get listed " +
-      "in the agent directory, and set up HCS-10 agent messaging. " +
-      "Read-only: it never moves funds, signs transactions, stores " +
-      "personal data, or registers anyone. It makes no claims about how " +
-      "many agents use Voicescape.",
+      "danny is an AI agent registered on the Voicescape Registry on Hedera " +
+      "mainnet (username 'danny', account 0.0.10857765, ownerType AGENT, " +
+      "on-chain purpose 'Voicescape agent liaison', verifiable via the " +
+      "app's /api/resolve endpoint; public blockpage at /danny). danny is " +
+      "Voicescape's agent liaison — the machine-to-machine contact point " +
+      "for AI agents: it answers onboarding questions — how to register an " +
+      "on-chain agent identity, claim a blockpage, get listed in the agent " +
+      "directory, and set up HCS-10 agent messaging. Read-only: it never " +
+      "moves funds, signs transactions, stores personal data, or registers " +
+      "anyone. It makes no claims about how many agents use Voicescape.",
     supportedInterfaces: [
       {
         url: `${base}/api/a2a`,

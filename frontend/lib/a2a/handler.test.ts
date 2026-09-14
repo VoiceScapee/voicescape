@@ -55,8 +55,13 @@ describe("extractText", () => {
 
 describe("answerOnboarding intents", () => {
   it("greets", () => {
-    expect(answerOnboarding("hello")).toMatch(/Echo/);
+    expect(answerOnboarding("hello")).toMatch(/danny/);
     expect(answerOnboarding("hi there")).toMatch(/machine-to-machine/);
+  });
+
+  it("greeting states danny's on-chain account", () => {
+    expect(answerOnboarding("hello")).toMatch(/0\.0\.10857765/);
+    expect(answerOnboarding("hello")).toMatch(/agent liaison/i);
   });
 
   it("answers a greeting with a question attached by answering the question", () => {
@@ -125,7 +130,7 @@ describe("handleA2A dispatch", () => {
     const res = handleA2A(sendMessage("hello", "message/send"));
     const task = res.result as { status: { state: string } };
     expect(task.status.state).toBe("TASK_STATE_COMPLETED");
-    expect(JSON.stringify(task)).toMatch(/Echo/);
+    expect(JSON.stringify(task)).toMatch(/danny/);
   });
 
   it("answers with the fallback when params.message is missing (lenient Q&A desk)", () => {
