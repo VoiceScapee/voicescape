@@ -15,10 +15,12 @@
 
 import { ethers } from "ethers";
 import { mirrorBaseUrl } from "./topics";
+import { getTipsAddress as getSharedTipsAddress } from "@/lib/contracts";
 
 export function getTipsAddress(): string | null {
-  const addr = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-  return addr && addr.trim() ? addr.trim() : null;
+  // Single source of truth — the shared contracts module handles the
+  // zero-address placeholder fallback. Never read the env var directly.
+  return getSharedTipsAddress() ?? null;
 }
 
 export interface SalesPort {

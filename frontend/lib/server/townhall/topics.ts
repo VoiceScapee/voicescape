@@ -9,6 +9,7 @@
  * and "proposal-vote", and the topic is identified on the network by its
  * Hedera id. Kept as-is so existing deployments don't need env changes.
  */
+import { getTreasuryId } from "@/lib/contracts";
 
 export type TownhallNetwork = "testnet" | "mainnet" | "previewnet";
 
@@ -85,8 +86,7 @@ export function dustFeeTinybars(): number {
   return 2_000_000;
 }
 
-/** Treasury address receiving dust fees (NEXT_PUBLIC_TREASURY_ADDRESS). */
+/** Treasury address receiving dust fees. Falls back to mainnet default. */
 export function treasuryAddress(): string | null {
-  const addr = process.env.NEXT_PUBLIC_TREASURY_ADDRESS;
-  return addr && addr.trim() ? addr.trim() : null;
+  return getTreasuryId();
 }

@@ -15,6 +15,7 @@ import { ethers } from "ethers";
 import { getKvStore, type KvStore } from "./store";
 import { mirrorBaseUrl } from "./townhall/topics";
 import { checkContent } from "./townhall/content-filter";
+import { getTipsAddress as getSharedTipsAddress } from "@/lib/contracts";
 
 export const ANALYTICS_VIEW_TTL_MS = 30 * 24 * 3600 * 1000; // 30 days
 export const PAGE_SUBJECT = "page";
@@ -230,8 +231,8 @@ const PURCHASE_IFACE = new ethers.Interface([
 ]);
 
 function tipsContract(): string | null {
-  const a = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-  return a && a.trim() ? a.trim() : null;
+  // Single source of truth — handles zero-address placeholder fallback.
+  return getSharedTipsAddress() ?? null;
 }
 
 function paddedTopic(hexAddr: string): string {

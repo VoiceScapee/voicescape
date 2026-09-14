@@ -296,7 +296,7 @@ export class RealMirrorPort implements MirrorPort {
   async verifyDustFee(dustFeeTxId: string, expectedSender?: string): Promise<DustFeeResult> {
     const treasury = treasuryAddress();
     if (!treasury) {
-      return { ok: false, reason: "NEXT_PUBLIC_TREASURY_ADDRESS is not configured", receivedTinybars: null };
+      return { ok: false, reason: "Treasury address is not configured", receivedTinybars: null };
     }
     if (!dustFeeTxId || !dustFeeTxId.includes("@")) {
       return { ok: false, reason: "dustFeeTxId must be a Hedera transaction id like 0.0.1234@1694...", receivedTinybars: null };

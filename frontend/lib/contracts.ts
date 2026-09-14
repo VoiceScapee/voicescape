@@ -24,6 +24,9 @@ const MAINNET_REGISTRY_ID = "0.0.10854058";
 const MAINNET_REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
 const MAINNET_TIPS_ID = "0.0.10854060";
 const MAINNET_TIPS_EVM = "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
+// Treasury: Brandon's account receiving the 2% fee. Not a contract, so no
+// EVM address — the Hedera ID is used directly.
+const MAINNET_TREASURY_ID = "0.0.10424063";
 
 export function getRegistryAddress(): string | undefined {
   return normalizeContractAddress(
@@ -39,6 +42,16 @@ export function getTipsAddress(): string | undefined {
     MAINNET_TIPS_ID,
     MAINNET_TIPS_EVM,
   );
+}
+
+/**
+ * Treasury account (Hedera ID, not a contract). Falls back to the known
+ * mainnet treasury if the env var is unset or a placeholder.
+ */
+export function getTreasuryId(): string {
+  const raw = process.env.NEXT_PUBLIC_TREASURY_ADDRESS?.trim();
+  if (!raw || /^0x0{40}$/i.test(raw)) return MAINNET_TREASURY_ID;
+  return raw;
 }
 
 /**

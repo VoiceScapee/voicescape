@@ -26,6 +26,7 @@ import { ethers } from "ethers";
 import { getKvStore } from "../store";
 import { tinybarToHbar } from "../analytics";
 import { mirrorBaseUrl } from "./topics";
+import { getTipsAddress as getSharedTipsAddress } from "@/lib/contracts";
 
 export interface MarketLeader {
   /** 0x EVM address of the tipper / buyer / seller. */
@@ -60,8 +61,8 @@ const TIPSENT_TOPIC0 = TIPSENT_IFACE.getEvent("TipSent")!.topicHash;
 const PURCHASE_TOPIC0 = PURCHASE_IFACE.getEvent("PurchaseCompleted")!.topicHash;
 
 function tipsContract(): string | null {
-  const a = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-  return a && a.trim() ? a.trim() : null;
+  // Single source of truth — handles zero-address placeholder fallback.
+  return getSharedTipsAddress() ?? null;
 }
 
 interface MirrorLog {

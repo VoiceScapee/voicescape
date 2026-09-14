@@ -478,14 +478,16 @@ async function computeTownhallStats(hcs: HcsPort): Promise<TownhallStatsBlob> {
 /* On-chain enrichment (free mirror-node reads, bounded)              */
 /* ------------------------------------------------------------------ */
 
+import { getTipsAddress as getSharedTipsAddress, getRegistryAddress as getSharedRegistryAddress } from "@/lib/contracts";
+
 function tipsContract(): string | null {
-  const a = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
-  return a && a.trim() ? a.trim() : null;
+  // Single source of truth — handles zero-address placeholder fallback.
+  return getSharedTipsAddress() ?? null;
 }
 
 function registryContract(): string | null {
-  const a = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
-  return a && a.trim() ? a.trim() : null;
+  // Single source of truth — handles zero-address placeholder fallback.
+  return getSharedRegistryAddress() ?? null;
 }
 
 function paddedTopic(hexAddr: string): string {

@@ -53,7 +53,7 @@ import {
   setByokKey,
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
-import { registerPage, updatePage, ZERO_ADDRESS } from "@/lib/contracts";
+import { registerPage, updatePage, ZERO_ADDRESS, getRegistryAddress } from "@/lib/contracts";
 import {
   deriveUsername,
   deriveUsernameFromEvm,
@@ -1539,7 +1539,7 @@ function PublishPanel({
   const [operatorUrl, setOperatorUrl] = useState("");
   const [purpose, setPurpose] = useState(page.purpose ?? "");
   const chain = getActiveChain();
-  const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS ?? "(not set)";
+  const registry = getRegistryAddress() ?? "(not set)";
 
   // KISS identity: the wallet address IS the page name. The derived name
   // (user-10424063) is the default; a custom name is an optional claim.

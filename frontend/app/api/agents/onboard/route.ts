@@ -4,6 +4,7 @@ import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
 import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
 import { mirrorBaseUrl, townhallNetwork } from "@/lib/server/townhall/topics";
+import { getRegistryAddress } from "@/lib/contracts";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { deriveUsername, isValidUsername } from "@/lib/identity";
 import {
@@ -224,7 +225,7 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Build the unsigned registerPage transaction ---
-  const registryAddress = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
+  const registryAddress = getRegistryAddress();
   if (!registryAddress || !/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) {
     return NextResponse.json({ error: "registry contract not configured" }, { status: 503 });
   }

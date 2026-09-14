@@ -24,6 +24,7 @@ import type { SalesPort } from "./sales";
 import { defaultSalesPort } from "./sales";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "../quota";
 import { getTopicId, mirrorBaseUrl, type TopicDomain } from "./topics";
+import { getRegistryAddress } from "@/lib/contracts";
 import { checkContent, checkUrl } from "./content-filter";
 import { BUILDERS_ROOM_ID, BUILDER_UNLOCK_MESSAGE, hasBuilderBadge } from "../badges";
 import { ethers } from "ethers";
@@ -2509,7 +2510,7 @@ const PAGE_REGISTERED_TOPIC0 = ethers.id(
  * configured, mirror down, or no event found) — callers fail open.
  */
 async function pageRegisteredAt(username: string): Promise<number | null> {
-  const contract = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS?.trim();
+  const contract = getRegistryAddress();
   if (!contract) return null;
   const topic1 = ethers.id(username.toLowerCase());
   const url =
@@ -2815,7 +2816,7 @@ export async function getTrending(
 
   // 3. New pages: up to 5 PageRegistered events from the last 7 days.
   try {
-    const contract = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS?.trim();
+    const contract = getRegistryAddress();
     if (contract) {
       const url =
         `${mirrorBaseUrl()}/api/v1/contracts/${contract}/results/logs?` +

@@ -3,6 +3,7 @@ import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
 import { getTopicId, townhallNetwork } from "@/lib/server/townhall/topics";
+import { getTipsAddress } from "@/lib/contracts";
 import { canonicalAddress } from "@/lib/session-message";
 import {
   defaultDeps,
@@ -165,7 +166,7 @@ export async function POST(req: NextRequest) {
         );
       }
       // Tips route through the Tips contract so the 98/2 split is atomic.
-      const tipsAddress = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
+      const tipsAddress = getTipsAddress();
       if (!tipsAddress) {
         return NextResponse.json(
           { error: "tipping contract not configured" },
@@ -183,7 +184,7 @@ export async function POST(req: NextRequest) {
       }
       built = buildPostTransaction(op, { ...ctx, topicId });
     } else {
-      const tipsAddress = process.env.NEXT_PUBLIC_TIPS_ADDRESS;
+      const tipsAddress = getTipsAddress();
       if (!tipsAddress) {
         return NextResponse.json(
           { error: "marketplace contract not configured" },

@@ -30,6 +30,7 @@ import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
 import { defaultHcsPort } from "./townhall/hcs";
 import { aggregateRepVotes } from "./townhall/votes";
 import { getTopicId } from "./townhall/topics";
+import { getRegistryAddress } from "@/lib/contracts";
 import type { StoredMessage, TownhallMessage } from "./townhall/types";
 
 /* ------------------------------------------------------------------ */
@@ -390,10 +391,10 @@ export async function buildAgentDirectory(
   host: string,
   filters: DirectoryFilters = {},
 ): Promise<DirectoryResponse> {
-  const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
+  const registry = getRegistryAddress();
   if (!registry) {
     throw new Error(
-      "NEXT_PUBLIC_REGISTRY_ADDRESS is not set — deploy the registry contract and add its address to the environment.",
+      "Registry contract address is not configured — deploy the registry contract.",
     );
   }
   const network = getActiveChain().key;

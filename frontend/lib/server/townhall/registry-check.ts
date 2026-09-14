@@ -14,6 +14,7 @@
 
 import { getActiveChain } from "../../chains";
 import { createReadOnlySender, type ResolveResult } from "../../tx";
+import { getRegistryAddress } from "@/lib/contracts";
 
 export interface RegistryPort {
   /** True when the username exists in the on-chain registry. */
@@ -57,8 +58,8 @@ async function resolveCached(username: string): Promise<ResolveResult | null> {
   let value: ResolveResult | null = null;
   try {
     const sender = createReadOnlySender(getActiveChain());
-    const registry = process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
-    if (!registry) throw new Error("NEXT_PUBLIC_REGISTRY_ADDRESS is not set");
+    const registry = getRegistryAddress();
+    if (!registry) throw new Error("Registry contract address is not configured");
     value = await sender.viewResolve(registry, key);
   } catch (e) {
     console.warn(`[townhall] registry check failed for "${key}": ${e instanceof Error ? e.message : String(e)}`);
