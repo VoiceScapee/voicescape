@@ -13,7 +13,7 @@ export interface KnowledgeEntry {
   id: string;
   /** Lowercase phrases; a message scores by how many appear in it. */
   keywords: string[];
-  /** May contain {price} — filled with the current session price in HBAR. */
+  /** May contain {chatPrice} / {buildPrice} — filled with the current product prices in HBAR. */
   answer: string;
 }
 
@@ -34,7 +34,7 @@ export const LIAISON_KNOWLEDGE: KnowledgeEntry[] = [
     id: "how-help-works",
     keywords: ["how does this work", "how do i get help", "help session", "price", "cost", "how much", "pay"],
     answer:
-      "Here's how it works: connect your wallet and sign in, then tip {price} HBAR on this page to unlock a help session — 50 chat messages and 1 blockpage build. Or ask me up to 3 questions free first. When you ask me to build your page, a premade draft appears in your builder, bound to your wallet. You review it and publish with your own wallet signature.",
+      "Here's how it works: connect your wallet and sign in, then pay Danny for what you need — {chatPrice} HBAR for 50 chat messages, or {buildPrice} HBAR for a blockpage build. When you ask me to build your page, a premade draft appears in your builder, bound to your wallet. You review it and publish with your own wallet signature.",
   },
   {
     id: "wallet-signin",
@@ -127,7 +127,8 @@ export interface LiaisonAnswer {
  */
 export function findLiaisonAnswer(
   message: string,
-  priceHbar = 5,
+  chatPriceHbar = 5,
+  buildPriceHbar = 5,
 ): LiaisonAnswer | null {
   const text = (message ?? "").toLowerCase();
   if (!text.trim()) return null;
@@ -150,6 +151,9 @@ export function findLiaisonAnswer(
   if (!best || bestScore < MATCH_THRESHOLD) return null;
   return {
     entryId: best.id,
-    answer: best.answer.replaceAll("{price}", String(priceHbar)),
+    answer: best.answer
+      .replaceAll("{chatPrice}", String(chatPriceHbar))
+      .replaceAll("{buildPrice}", String(buildPriceHbar))
+      .replaceAll("{price}", String(chatPriceHbar)),
   };
 }

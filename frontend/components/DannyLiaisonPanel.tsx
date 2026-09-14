@@ -4,9 +4,11 @@
  * DannyLiaisonPanel — the paid human-facing helper on danny's blockpage.
  *
  * Humans connect their wallet, sign in, and can:
- * - tip to unlock a help session (50 chats + 1 page build) — every chat
- *   message and every help-build costs a fee; there is no free tier,
- * - ask Danny to build them a premade blockpage draft, bound to their wallet.
+ * - buy chat: 5 HBAR → 50 messages with Danny,
+ * - buy a build: 5 HBAR → 1 premade blockpage draft, bound to their wallet.
+ * No bundle, no free tier — each product is bought separately. Prices are
+ * env-tunable (LIAISON_CHAT_PRICE_HBAR / LIAISON_BUILD_PRICE_HBAR) and the
+ * server refuses to serve below the floor (never loses money).
  *
  * The regular builder stays free for anyone who builds themselves — the
  * paywall applies ONLY to this panel and its /api/liaison routes.
@@ -25,11 +27,16 @@ import { TEMPLATES } from "@/lib/templates";
 import { friendlyWalletError } from "@/lib/wallet";
 
 interface LiaisonStatus {
-  priceHbar: number;
+  chatPriceHbar: number;
+  buildPriceHbar: number;
+  chatPerPayment: number;
+  buildsPerPayment: number;
   chatLeft: number;
   buildsLeft: number;
   expMs: number | null;
 }
+
+type LiaisonProduct = "chat" | "build";
 
 interface ChatMsg {
   role: "user" | "danny";
@@ -77,9 +84,10 @@ export default function DannyLiaisonPanel() {
   const [error, setError] = useState<string | null>(null);
 
   // Pay flow
-  const [paying, setPaying] = useState(false);
+  const [paying, setPaying] = useState<LiaisonProduct | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  const [confirmProduct, setConfirmProduct] = useState<LiaisonProduct | null>(null);
   const confirmStatus = useConfirmedTransaction(confirmTxId);
 
   // Build form
@@ -118,14 +126,15 @@ export default function DannyLiaisonPanel() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [messages]);
 
-  // Tip approved → confirmed on-chain → verify with the server.
+  // Tip approved → confirmed on-chain → verify with the server for the
+  // product that was bought.
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
       authedFetch("/api/liaison/verify-tip", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ txHash: confirmTxId }),
+        body: JSON.stringify({ txHash: confirmTxId, product: confirmProduct ?? "chat" }),
       })
         .then(async (r) => {
           const j = await r.json().catch(() => null);
@@ -134,25 +143,28 @@ export default function DannyLiaisonPanel() {
             await refreshStatus();
           } else {
             setPayError(
-              typeof j?.error === "string" ? j.error : "Couldn't unlock your session — try again.",
+              typeof j?.error === "string" ? j.error : "Couldn't unlock your purchase — try again.",
             );
           }
         })
-        .catch(() => setPayError("Couldn't unlock your session — try again."))
+        .catch(() => setPayError("Couldn't unlock your purchase — try again."))
         .finally(() => {
-          setPaying(false);
+          setPaying(null);
           setConfirmTxId(null);
+          setConfirmProduct(null);
         });
     } else if (confirmStatus === "failed") {
       setPayError("The tip transaction failed on-chain — no payment was sent.");
-      setPaying(false);
+      setPaying(null);
       setConfirmTxId(null);
+      setConfirmProduct(null);
     } else if (confirmStatus === "timeout") {
       setPayError("Tip submitted but not yet visible — give it a moment, then refresh.");
-      setPaying(false);
+      setPaying(null);
       setConfirmTxId(null);
+      setConfirmProduct(null);
     }
-  }, [confirmStatus, confirmTxId, authedFetch, refreshStatus]);
+  }, [confirmStatus, confirmTxId, confirmProduct, authedFetch, refreshStatus]);
 
   const sendChat = async () => {
     const text = input.trim();
@@ -195,14 +207,15 @@ export default function DannyLiaisonPanel() {
     }
   };
 
-  const pay = async () => {
+  const pay = async (product: LiaisonProduct) => {
     setPayError(null);
     if (!account) {
       setPayError("Connect a wallet first.");
       return;
     }
-    const price = status?.priceHbar ?? 5;
-    setPaying(true);
+    const price =
+      product === "chat" ? (status?.chatPriceHbar ?? 5) : (status?.buildPriceHbar ?? 5);
+    setPaying(product);
     try {
       const sender = await getTxSender();
       // tipPage takes an 18-decimal valueWei. HBAR on the EVM side of
@@ -211,12 +224,24 @@ export default function DannyLiaisonPanel() {
       const wei = ethers.parseUnits(price.toString(), 18);
       const hash = await tipPage("danny", wei, sender);
       // Approved — wait for real on-chain confirmation before unlocking.
+      setConfirmProduct(product);
       setConfirmTxId(hash);
     } catch (e) {
       setPayError(`Tip failed: ${friendlyWalletError(e)}`);
-      setPaying(false);
+      setPaying(null);
     }
   };
+
+  const buyButton = (product: LiaisonProduct, label: string) => (
+    <button
+      type="button"
+      onClick={() => pay(product)}
+      disabled={paying !== null}
+      style={{ ...btnStyle, padding: "8px 14px", fontSize: "0.85rem" }}
+    >
+      {paying === product ? "Working…" : label}
+    </button>
+  );
 
   const buildDraft = async () => {
     if (building) return;
@@ -258,7 +283,9 @@ export default function DannyLiaisonPanel() {
     }
   };
 
-  const price = status?.priceHbar ?? 5;
+  const chatPrice = status?.chatPriceHbar ?? 5;
+  const buildPrice = status?.buildPriceHbar ?? 5;
+  const chatPerPayment = status?.chatPerPayment ?? 50;
   // No free tier: every chat message and every help-build costs a fee.
   const credits =
     status == null
@@ -286,28 +313,30 @@ export default function DannyLiaisonPanel() {
 
       {!isAuthenticated ? (
         <p className="th-muted" style={{ fontSize: "0.9rem", margin: "12px 0 4px" }}>
-          Connect your wallet and sign in to talk to Danny. Chat is paid — tip
-          to unlock a help session (no free tier).
+          Connect your wallet and sign in to talk to Danny. Paid per product —
+          chat is {chatPrice} HBAR for {chatPerPayment} messages, a page build is{" "}
+          {buildPrice} HBAR. No free tier.
         </p>
       ) : (
         <>
           {credits && (
             <p className="th-muted" style={{ fontSize: "0.82rem", margin: "8px 0 0" }}>
               {credits}
-              {status && status.chatLeft === 0 && status.buildsLeft === 0 && (
-                <>
-                  {" — "}
-                  <button
-                    type="button"
-                    onClick={pay}
-                    disabled={paying}
-                    style={{ ...btnStyle, padding: "6px 12px", fontSize: "0.82rem" }}
-                  >
-                    {paying ? "Working…" : `Unlock help — ${price} HBAR`}
-                  </button>
-                </>
-              )}
             </p>
+          )}
+          {status && status.chatLeft === 0 && status.buildsLeft === 0 && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {buyButton(
+                "chat",
+                `💬 Chat — ${chatPrice} HBAR (${chatPerPayment} messages)`,
+              )}
+              {buyButton("build", `✨ Build my page — ${buildPrice} HBAR`)}
+            </div>
+          )}
+          {status != null && status.chatLeft <= 0 && status.buildsLeft > 0 && (
+            <div style={{ marginTop: 8 }}>
+              {buyButton("chat", `Buy chat — ${chatPrice} HBAR (${chatPerPayment} messages)`)}
+            </div>
           )}
 
           <div
@@ -392,10 +421,13 @@ export default function DannyLiaisonPanel() {
                 <input value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} placeholder="Tagline (e.g. Web3 builder & creator)" maxLength={120} aria-label="Tagline" style={{ ...inputStyle, marginBottom: 8 }} />
                 <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Short bio" maxLength={500} rows={2} aria-label="Bio" style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
                 <input value={usernameHint} onChange={(e) => setUsernameHint(e.target.value)} placeholder="Username idea (3–32: a-z 0-9 - _)" maxLength={32} aria-label="Username idea" style={{ ...inputStyle, marginBottom: 8 }} />
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button type="button" onClick={buildDraft} disabled={building || (status != null && status.buildsLeft <= 0)} style={btnStyle}>
                     {building ? "Building…" : `Build it${status && status.buildsLeft > 0 ? ` (${status.buildsLeft} left)` : ""}`}
                   </button>
+                  {status != null && status.buildsLeft <= 0 && (
+                    buyButton("build", `Buy a build — ${buildPrice} HBAR`)
+                  )}
                   <button type="button" onClick={() => setShowBuild(false)} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)" }}>
                     Cancel
                   </button>

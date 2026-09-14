@@ -6,8 +6,8 @@ import { liaisonRouteDeps, liaisonSessionAddr, toResponse } from "../_shared";
 export const runtime = "nodejs";
 
 /**
- * GET /api/liaison/status — public price + (when signed in) the wallet's
- * remaining help-session credits and free messages.
+ * GET /api/liaison/status — public prices + (when signed in) the wallet's
+ * remaining credits.
  */
 export async function GET(req: NextRequest) {
   const gated = await ipGate(

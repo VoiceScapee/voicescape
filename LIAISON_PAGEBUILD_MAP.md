@@ -130,7 +130,7 @@ Events: `PageRegistered`, `PageUpdated`.
 
 ## 4. Payment unlock logic
 
-**Price.** `LIAISON_PRICE_HBAR` env (default 5; Brandon's call). Floor:
+**Pricing (Brandon, 2026-09-14):** `LIAISON_CHAT_PRICE_HBAR` (default 5) buys 50 chat messages; `LIAISON_BUILD_PRICE_HBAR` (default 5) buys 1 page build. No bundle, no free tier — each product bought separately via `verify-tip` with `product: "chat" | "build"`; grants accumulate and every grant extends the 7-day window. Floor:
 `LIAISON_PRICE_FLOOR_HBAR` (default 1 HBAR) — a boot-time assertion in the
 route layer refuses to serve paid liaison routes when the configured price
 sits below the floor, so a misconfiguration can never make it loss-making.
@@ -277,8 +277,8 @@ DAppConnector), `TEMPLATES`, BYOK chat.
 
 ## 8. Brandon's calls (decided 2026-09-14)
 
-1. **Price:** `LIAISON_PRICE_HBAR`, default 5 HBAR, env-tunable.
-2. **What's included:** 50 chat messages + 1 page build per payment (7-day TTL).
+1. **Price:** `LIAISON_CHAT_PRICE_HBAR` = 5 HBAR per 50-message chat session; `LIAISON_BUILD_PRICE_HBAR` = 5 HBAR per page build — both env-tunable, both floored at 1 HBAR.
+2. **What's included:** bought separately per product; grants accumulate (a second chat purchase adds 50 more messages); 7-day TTL extended on every grant.
 3. **Free tier:** none — paywall from the first message.
 4. **Revenue:** 98/2 tip split on-chain; liaison sweeps its share to treasury
    (1 HBAR reserve), keeping nothing else.

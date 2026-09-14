@@ -58,9 +58,20 @@ export const LIAISON_MAX_DRAFT_BYTES = 100_000;
 export const LIAISON_MAX_MESSAGE_CHARS = 1000;
 export const LIAISON_HISTORY_LIMIT = 10;
 
-/** Price of one help session in HBAR (Brandon's call; env-tunable). */
-export function liaisonPriceHbar(env: Record<string, string | undefined> = process.env): number {
-  const raw = Number(env.LIAISON_PRICE_HBAR);
+/** Slice-1 products. Brandon's call (2026-09-14): 5 HBAR per page build,
+ * 5 HBAR per 50-message chat session. No bundle, no free tier — each
+ * product is bought separately. */
+export type LiaisonProduct = "chat" | "build";
+
+/** Price of a 50-message chat session in HBAR (Brandon's call; env-tunable). */
+export function liaisonChatPriceHbar(env: Record<string, string | undefined> = process.env): number {
+  const raw = Number(env.LIAISON_CHAT_PRICE_HBAR);
+  return Number.isFinite(raw) && raw > 0 ? raw : 5;
+}
+
+/** Price of one page build in HBAR (Brandon's call; env-tunable). */
+export function liaisonBuildPriceHbar(env: Record<string, string | undefined> = process.env): number {
+  const raw = Number(env.LIAISON_BUILD_PRICE_HBAR);
   return Number.isFinite(raw) && raw > 0 ? raw : 5;
 }
 
@@ -79,21 +90,32 @@ export function liaisonPriceHbar(env: Record<string, string | undefined> = proce
  *  - revenue sweep: one ~$0.0001 HBAR transfer per sweep, paid from the
  *    liaison's own 98% share (never from treasury or users).
  * So any price at or above the floor is profitable by construction. The
- * floor exists only to make a misconfigured LIAISON_PRICE_HBAR (e.g.
- * 0.0001 HBAR from a typo) fail closed at boot instead of selling help
- * sessions at a loss.
+ * floor exists only to make a misconfigured LIAISON_CHAT_PRICE_HBAR or
+ * LIAISON_BUILD_PRICE_HBAR (e.g. 0.0001 HBAR from a typo) fail closed at
+ * boot instead of selling help at a loss.
  */
 export function liaisonPriceFloorHbar(env: Record<string, string | undefined> = process.env): number {
   const raw = Number(env.LIAISON_PRICE_FLOOR_HBAR);
   return Number.isFinite(raw) && raw > 0 ? raw : 1;
 }
 
-/** Throw when the configured price sits below the floor — routes refuse to serve. */
-export function assertLiaisonPriceFloor(priceHbar: number, floorHbar: number): void {
-  if (!(priceHbar >= floorHbar)) {
-    throw new Error(
-      `LIAISON_PRICE_HBAR (${priceHbar}) is below the floor (${floorHbar}) — refusing to serve paid liaison routes`,
-    );
+/** Throw when either configured product price sits below the floor — routes
+ * refuse to serve. Both prices are checked: a misconfigured chat OR build
+ * price fails closed, never sells help at a loss. */
+export function assertLiaisonPriceFloors(
+  chatPriceHbar: number,
+  buildPriceHbar: number,
+  floorHbar: number,
+): void {
+  for (const [name, env, price] of [
+    ["chat", "LIAISON_CHAT_PRICE_HBAR", chatPriceHbar],
+    ["build", "LIAISON_BUILD_PRICE_HBAR", buildPriceHbar],
+  ] as const) {
+    if (!(price >= floorHbar)) {
+      throw new Error(
+        `${env} (${price}) is below the floor (${floorHbar}) — refusing to serve paid liaison ${name} routes`,
+      );
+    }
   }
 }
 

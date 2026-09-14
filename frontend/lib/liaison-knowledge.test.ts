@@ -18,12 +18,14 @@ describe("findLiaisonAnswer", () => {
     expect(a!.answer).toContain("never touch your page");
   });
 
-  it("answers how-help-works with the live price filled in", () => {
-    const a = findLiaisonAnswer("how much does it cost?", 7);
+  it("answers how-help-works with both live prices filled in", () => {
+    const a = findLiaisonAnswer("how much does it cost?", 7, 3);
     expect(a).not.toBeNull();
     expect(a!.entryId).toBe("how-help-works");
     expect(a!.answer).toContain("7 HBAR");
-    expect(a!.answer).not.toContain("{price}");
+    expect(a!.answer).toContain("3 HBAR");
+    expect(a!.answer).not.toContain("{chatPrice}");
+    expect(a!.answer).not.toContain("{buildPrice}");
   });
 
   it("answers tips questions", () => {

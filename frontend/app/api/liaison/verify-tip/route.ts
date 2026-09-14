@@ -7,11 +7,12 @@ import { liaisonRouteDeps, liaisonSessionAddr, readJsonBody, toResponse } from "
 export const runtime = "nodejs";
 
 /**
- * POST /api/liaison/verify-tip — { txHash } | { scan: true }
+ * POST /api/liaison/verify-tip — { txHash, product } | { scan: true, product }
  *
- * Verifies a tip to the liaison on the mirror node and grants a help
- * session (50 chats + 1 page build, 7-day TTL). Anti-replay: each
- * transaction can unlock only one session.
+ * Verifies a tip to the liaison on the mirror node and grants credits for
+ * one product: "chat" (50 messages) or "build" (1 page build), 7-day TTL.
+ * Grants accumulate. Anti-replay: each transaction can unlock only one
+ * product.
  */
 export async function POST(req: NextRequest) {
   const gated = await ipGate(

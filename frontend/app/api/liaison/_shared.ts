@@ -12,9 +12,10 @@ import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { getKvStore } from "@/lib/server/store";
 import {
   MIRROR_NODE_BASE,
-  assertLiaisonPriceFloor,
+  assertLiaisonPriceFloors,
+  liaisonBuildPriceHbar,
+  liaisonChatPriceHbar,
   liaisonPriceFloorHbar,
-  liaisonPriceHbar,
 } from "@/lib/liaison";
 import type { HandlerResult, LiaisonDeps } from "@/lib/server/liaison/handlers";
 import {
@@ -38,20 +39,22 @@ export async function liaisonSessionAddr(req: NextRequest): Promise<string | nul
  * Real production deps for the liaison handlers.
  *
  * BOOT ASSERTION (economics invariant — the platform never loses money on
- * the liaison): refuses to build deps when LIAISON_PRICE_HBAR sits below
- * LIAISON_PRICE_FLOOR_HBAR (default 1 HBAR). Slice-1 marginal cost is ~$0
- * (deterministic KB, no LLM, free mirror-node reads, free-tier KV), so any
- * price at/above the floor is profitable — a misconfigured price can only
- * fail closed, never sell help at a loss. See liaisonPriceFloorHbar for
- * the margin math.
+ * the liaison): refuses to build deps when LIAISON_CHAT_PRICE_HBAR or
+ * LIAISON_BUILD_PRICE_HBAR sits below LIAISON_PRICE_FLOOR_HBAR (default 1
+ * HBAR). Slice-1 marginal cost is ~$0 (deterministic KB, no LLM, free
+ * mirror-node reads, free-tier KV), so any price at/above the floor is
+ * profitable — a misconfigured price can only fail closed, never sell help
+ * at a loss. See liaisonPriceFloorHbar for the margin math.
  */
 export function liaisonDeps(): LiaisonDeps {
-  const priceHbar = liaisonPriceHbar();
-  assertLiaisonPriceFloor(priceHbar, liaisonPriceFloorHbar());
+  const chatPriceHbar = liaisonChatPriceHbar();
+  const buildPriceHbar = liaisonBuildPriceHbar();
+  assertLiaisonPriceFloors(chatPriceHbar, buildPriceHbar, liaisonPriceFloorHbar());
   return {
     kv: getKvStore(),
     nowMs: () => Date.now(),
-    priceHbar,
+    chatPriceHbar,
+    buildPriceHbar,
     mirrorGet: async (path: string) => {
       const res = await fetch(`${MIRROR_NODE_BASE}${path}`, {
         headers: { Accept: "application/json" },
@@ -78,7 +81,8 @@ export function liaisonDeps(): LiaisonDeps {
 
 /**
  * Build route deps, or return a 503 when the price-floor boot assertion
- * fires (misconfigured LIAISON_PRICE_HBAR — operator must fix the env).
+ * fires (misconfigured LIAISON_CHAT_PRICE_HBAR / LIAISON_BUILD_PRICE_HBAR —
+ * operator must fix the env).
  */
 export function liaisonRouteDeps():
   | { ok: true; deps: LiaisonDeps }

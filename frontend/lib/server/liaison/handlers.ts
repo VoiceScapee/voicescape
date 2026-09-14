@@ -47,6 +47,7 @@ import {
   normalizeTxRef,
   parseEntitlement,
   type LiaisonEntitlement,
+  type LiaisonProduct,
 } from "../../liaison";
 import {
   LIAISON_UNKNOWN_FALLBACK,
@@ -62,7 +63,10 @@ export interface MirrorGetResult {
 export interface LiaisonDeps {
   kv: KvStore;
   nowMs: () => number;
-  priceHbar: number;
+  /** Price of a 50-message chat session in HBAR. */
+  chatPriceHbar: number;
+  /** Price of one page build in HBAR. */
+  buildPriceHbar: number;
   /** GET against the mirror node; path starts with "/api/v1/...". */
   mirrorGet: (path: string) => Promise<MirrorGetResult>;
   /**
@@ -132,12 +136,16 @@ function asRecord(v: unknown): Record<string, unknown> | null {
 /* ------------------------------------------------------------------ */
 
 /**
- * Verify a tip to the liaison on-chain and grant a help-session
- * entitlement. Body: { txHash } or { scan: true }.
+ * Verify a tip to the liaison on-chain and grant credits for ONE product.
+ * Body: { txHash, product } | { scan: true, product }.
+ * product is required: "chat" (5 HBAR → 50 messages) or "build" (5 HBAR →
+ * 1 page build). Brandon's call: no bundle — each product is bought
+ * separately, and grants accumulate (a second chat tip adds 50 more
+ * messages on top of what the wallet already has).
  *
  * Verification is mirror-node truth: the transaction must be a successful
  * contract call, and its logs must contain a TipSent from the session
- * wallet to danny's owner for at least the session price, with the
+ * wallet to danny's owner for at least the product's price, with the
  * keccak256("danny") username topic. Anti-replay: the normalized tx ref is
  * claimed once via setNx.
  */
@@ -148,7 +156,13 @@ export async function handleVerifyTip(
 ): Promise<HandlerResult> {
   const b = asRecord(body) ?? {};
   const nowMs = deps.nowMs();
-  const price = deps.priceHbar;
+  const product: LiaisonProduct | null =
+    b.product === "chat" || b.product === "build" ? b.product : null;
+  if (!product) {
+    return err(400, "product is required — 'chat' (50 messages) or 'build' (1 page build)");
+  }
+  const price = product === "chat" ? deps.chatPriceHbar : deps.buildPriceHbar;
+  const productNoun = product === "chat" ? "chat session" : "page build";
 
   let claimId: string | null = null;
 
@@ -176,7 +190,10 @@ export async function handleVerifyTip(
       break;
     }
     if (!claimId) {
-      return err(404, "no unused tip to danny found for this wallet — tip first, then verify");
+      return err(
+        404,
+        `no unused tip to danny of at least ${price} HBAR found for this wallet — tip first, then verify`,
+      );
     }
   } else {
     const ref = normalizeTxRef(b.txHash);
@@ -205,17 +222,22 @@ export async function handleVerifyTip(
     if (!matched) {
       return err(
         404,
-        "no qualifying tip found in that transaction — it must tip danny at least the session price from your connected wallet",
+        `no qualifying tip found in that transaction — it must tip danny at least ${price} HBAR for a ${productNoun} from your connected wallet`,
       );
     }
     const claimed = await deps.kv.setNx(liaisonTipKey(ref), addr, LIAISON_TIP_CLAIM_TTL_MS);
-    if (!claimed) return err(409, "this tip was already used to unlock a session");
+    if (!claimed) return err(409, "this tip was already used — each tip unlocks one product");
     claimId = ref;
   }
 
+  // Accumulate: a new grant adds to whatever the wallet already has (each
+  // product bought separately, no bundle). Every grant extends the 7-day
+  // window from now.
+  const prev = await readEntitlement(deps, addr);
+  const live = prev && entitlementAlive(prev, nowMs) ? prev : { chatLeft: 0, buildsLeft: 0, expMs: 0 };
   const ent: LiaisonEntitlement = {
-    chatLeft: LIAISON_CHAT_PER_PAYMENT,
-    buildsLeft: LIAISON_BUILDS_PER_PAYMENT,
+    chatLeft: live.chatLeft + (product === "chat" ? LIAISON_CHAT_PER_PAYMENT : 0),
+    buildsLeft: live.buildsLeft + (product === "build" ? LIAISON_BUILDS_PER_PAYMENT : 0),
     expMs: nowMs + LIAISON_ENTITLEMENT_TTL_MS,
   };
   await writeEntitlement(deps, addr, ent);
@@ -235,6 +257,7 @@ export async function handleVerifyTip(
   return ok({
     ok: true,
     claimId,
+    product,
     chatLeft: ent.chatLeft,
     buildsLeft: ent.buildsLeft,
     expMs: ent.expMs,
@@ -264,7 +287,8 @@ export async function handleStatus(
   // No free tier (Brandon's call): the Danny paywall starts at the first
   // message. The regular builder stays free — that path never calls here.
   const base: Record<string, unknown> = {
-    priceHbar: deps.priceHbar,
+    chatPriceHbar: deps.chatPriceHbar,
+    buildPriceHbar: deps.buildPriceHbar,
     chatPerPayment: LIAISON_CHAT_PER_PAYMENT,
     buildsPerPayment: LIAISON_BUILDS_PER_PAYMENT,
   };
@@ -309,14 +333,16 @@ export async function handleChat(
   let ent = await readEntitlement(deps, addr);
   if (ent && !entitlementAlive(ent, nowMs)) ent = null;
   if (!ent || ent.chatLeft <= 0) {
-    return err(402, "chat with Danny is paid — tip to unlock a help session", {
-      priceHbar: deps.priceHbar,
-    });
+    return err(
+      402,
+      `chat with Danny is paid — ${deps.chatPriceHbar} HBAR unlocks ${LIAISON_CHAT_PER_PAYMENT} messages`,
+      { chatPriceHbar: deps.chatPriceHbar },
+    );
   }
   ent = { ...ent, chatLeft: ent.chatLeft - 1 };
   await writeEntitlement(deps, addr, ent);
 
-  const found = findLiaisonAnswer(message, deps.priceHbar);
+  const found = findLiaisonAnswer(message, deps.chatPriceHbar, deps.buildPriceHbar);
   const answer = found ? found.answer : LIAISON_UNKNOWN_FALLBACK;
   const entryId = found ? found.entryId : "unknown";
 
@@ -395,9 +421,11 @@ export async function handleDraftPost(
 
   let ent = await readEntitlement(deps, addr);
   if (!ent || !entitlementAlive(ent, nowMs) || ent.buildsLeft <= 0) {
-    return err(402, "no page builds left — tip to unlock a help session", {
-      priceHbar: deps.priceHbar,
-    });
+    return err(
+      402,
+      `page builds are paid — ${deps.buildPriceHbar} HBAR per build`,
+      { buildPriceHbar: deps.buildPriceHbar },
+    );
   }
 
   const templateId = typeof b.templateId === "string" ? b.templateId : "";

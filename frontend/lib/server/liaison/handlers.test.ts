@@ -83,7 +83,8 @@ function makeDeps(overrides: Partial<LiaisonDeps> = {}): LiaisonDeps {
   return {
     kv: createMemoryKvStore(),
     nowMs: () => NOW,
-    priceHbar: PRICE,
+    chatPriceHbar: PRICE,
+    buildPriceHbar: PRICE,
     mirrorGet: async (path: string) => {
       const hit = routes.get(path);
       if (hit) return hit;
@@ -102,25 +103,64 @@ async function grant(deps: LiaisonDeps, addr = SESSION) {
 }
 
 describe("handleVerifyTip", () => {
+  it("rejects a missing product (400)", async () => {
+    const r = await handleVerifyTip(makeDeps(), SESSION, { txHash: "0.0.999@1789350068.813732104" });
+    expect(r.status).toBe(400);
+    expect(r.body.error).toContain("product");
+  });
+
   it("rejects a malformed txHash", async () => {
-    const r = await handleVerifyTip(makeDeps(), SESSION, { txHash: "nope" });
+    const r = await handleVerifyTip(makeDeps(), SESSION, { txHash: "nope", product: "chat" });
     expect(r.status).toBe(400);
   });
 
-  it("grants a help session for a qualifying tip", async () => {
+  it("grants 50 chat messages for a chat tip (no build credit)", async () => {
     const deps = makeDeps();
-    const r = await handleVerifyTip(deps, SESSION, { txHash: "0.0.999@1789350068.813732104" });
+    const r = await handleVerifyTip(deps, SESSION, {
+      txHash: "0.0.999@1789350068.813732104",
+      product: "chat",
+    });
     expect(r.status).toBe(200);
-    expect(r.body).toMatchObject({ ok: true, chatLeft: 50, buildsLeft: 1 });
+    expect(r.body).toMatchObject({ ok: true, product: "chat", chatLeft: 50, buildsLeft: 0 });
     const ent = JSON.parse((await deps.kv.get(liaisonEntKey(SESSION)))!);
     expect(ent.chatLeft).toBe(50);
+    expect(ent.buildsLeft).toBe(0);
+  });
+
+  it("grants 1 page build for a build tip (no chat credit)", async () => {
+    const deps = makeDeps();
+    const r = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX, product: "build" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, product: "build", chatLeft: 0, buildsLeft: 1 });
+  });
+
+  it("accumulates on top of an existing entitlement", async () => {
+    const deps = makeDeps();
+    await deps.kv.set(
+      liaisonEntKey(SESSION),
+      JSON.stringify({ chatLeft: 10, buildsLeft: 1, expMs: NOW + 86_400_000 }),
+      86_400_000,
+    );
+    const r = await handleVerifyTip(deps, SESSION, {
+      txHash: "0.0.999@1789350068.813732104",
+      product: "chat",
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ chatLeft: 60, buildsLeft: 1 });
+  });
+
+  it("enforces the per-product price (a chat-priced tip can't buy a build)", async () => {
+    const deps = makeDeps({ buildPriceHbar: 10 });
+    // The fixture tip is 5 HBAR — enough for chat, not for a 10 HBAR build.
+    const r = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX, product: "build" });
+    expect(r.status).toBe(404);
   });
 
   it("rejects replay of the same tip (409)", async () => {
     const deps = makeDeps();
-    const first = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX });
+    const first = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX, product: "chat" });
     expect(first.status).toBe(200);
-    const second = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX });
+    const second = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX, product: "chat" });
     expect(second.status).toBe(409);
   });
 
@@ -134,27 +174,33 @@ describe("handleVerifyTip", () => {
         return { ok: true, status: 200, json: { logs: [tipLog("0x2222222222222222222222222222222222222222")] } };
       },
     });
-    const r = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX });
+    const r = await handleVerifyTip(deps, SESSION, { txHash: TIP_TX, product: "chat" });
     expect(r.status).toBe(404);
   });
 
-  it("scan:true finds the newest unused tip for the wallet", async () => {
+  it("scan:true requires a product and finds the newest unused tip", async () => {
     const deps = makeDeps();
-    const r = await handleVerifyTip(deps, SESSION, { scan: true });
+    const missing = await handleVerifyTip(deps, SESSION, { scan: true });
+    expect(missing.status).toBe(400);
+    const r = await handleVerifyTip(deps, SESSION, { scan: true, product: "build" });
     expect(r.status).toBe(200);
     expect(r.body.ok).toBe(true);
+    expect(r.body).toMatchObject({ product: "build", buildsLeft: 1 });
   });
 
   it("runs the revenue sweep after verification (best-effort)", async () => {
     const deps = makeDeps({ afterTipVerified: async () => "0.0.1@2.3" });
-    const r = await handleVerifyTip(deps, SESSION, { txHash: "0.0.999@1789350068.813732104" });
+    const r = await handleVerifyTip(deps, SESSION, {
+      txHash: "0.0.999@1789350068.813732104",
+      product: "chat",
+    });
     expect(r.status).toBe(200);
     expect(r.body.forwarded).toBe(true);
     expect(r.body.sweepTxId).toBe("0.0.1@2.3");
   });
 
   it("still verifies when the sweep hook is absent or fails", async () => {
-    const missing = await handleVerifyTip(makeDeps(), SESSION, { txHash: TIP_TX });
+    const missing = await handleVerifyTip(makeDeps(), SESSION, { txHash: TIP_TX, product: "chat" });
     expect(missing.status).toBe(200);
     expect(missing.body.forwarded).toBe(false);
     const failing = await handleVerifyTip(
@@ -164,7 +210,7 @@ describe("handleVerifyTip", () => {
         },
       }),
       SESSION,
-      { scan: true },
+      { scan: true, product: "chat" },
     );
     expect(failing.status).toBe(200);
     expect(failing.body.forwarded).toBe(false);
@@ -172,10 +218,11 @@ describe("handleVerifyTip", () => {
 });
 
 describe("handleStatus", () => {
-  it("returns the public price without a session", async () => {
+  it("returns the public prices without a session", async () => {
     const r = await handleStatus(makeDeps(), null);
     expect(r.status).toBe(200);
-    expect(r.body.priceHbar).toBe(PRICE);
+    expect(r.body.chatPriceHbar).toBe(PRICE);
+    expect(r.body.buildPriceHbar).toBe(PRICE);
     expect(r.body.chatLeft).toBeUndefined();
   });
 
@@ -193,7 +240,8 @@ describe("handleChat", () => {
   it("402s on the very first message without a paid session (no free tier)", async () => {
     const r = await handleChat(makeDeps(), SESSION, { message: "what is voicescape" });
     expect(r.status).toBe(402);
-    expect(r.body.priceHbar).toBe(PRICE);
+    expect(r.body.chatPriceHbar).toBe(PRICE);
+    expect(r.body.error).toContain("50 messages");
   });
 
   it("spends paid chat credits", async () => {
@@ -233,9 +281,11 @@ describe("handleDraftPost/Get/Delete", () => {
     accent: "#ff0000",
   };
 
-  it("402s without a paid build credit", async () => {
+  it("402s without a paid build credit (names the build price)", async () => {
     const r = await handleDraftPost(makeDeps(), SESSION, form);
     expect(r.status).toBe(402);
+    expect(r.body.buildPriceHbar).toBe(PRICE);
+    expect(r.body.error).toContain("per build");
   });
 
   it("assembles a human, wallet-bound draft", async () => {

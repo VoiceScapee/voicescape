@@ -7,17 +7,18 @@ import { describe, expect, it } from "vitest";
 import { ethers } from "ethers";
 import {
   LIAISON_OWNER_EVM,
-  assertLiaisonPriceFloor,
+  assertLiaisonPriceFloors,
   computeForwardable,
   entitlementAlive,
   isLiaisonTipLog,
   isOwnPageRegisteredLog,
   isSuccessfulContractCall,
   decodeRegisterUsername,
+  liaisonBuildPriceHbar,
+  liaisonChatPriceHbar,
   liaisonForwardReserveHbar,
   liaisonForwardThresholdHbar,
   liaisonPriceFloorHbar,
-  liaisonPriceHbar,
   liaisonUsernameTopic,
   normalizeTxRef,
   parseEntitlement,
@@ -70,32 +71,37 @@ describe("normalizeTxRef", () => {
   });
 });
 
-describe("liaisonPriceHbar", () => {
-  it("defaults to 5 HBAR", () => {
-    expect(liaisonPriceHbar({})).toBe(5);
+describe("liaisonChatPriceHbar / liaisonBuildPriceHbar", () => {
+  it("default to 5 HBAR each", () => {
+    expect(liaisonChatPriceHbar({})).toBe(5);
+    expect(liaisonBuildPriceHbar({})).toBe(5);
   });
-  it("honors LIAISON_PRICE_HBAR", () => {
-    expect(liaisonPriceHbar({ LIAISON_PRICE_HBAR: "10" })).toBe(10);
+  it("honor their env vars independently", () => {
+    expect(liaisonChatPriceHbar({ LIAISON_CHAT_PRICE_HBAR: "10" })).toBe(10);
+    expect(liaisonBuildPriceHbar({ LIAISON_CHAT_PRICE_HBAR: "10" })).toBe(5);
+    expect(liaisonBuildPriceHbar({ LIAISON_BUILD_PRICE_HBAR: "3" })).toBe(3);
+    expect(liaisonChatPriceHbar({ LIAISON_BUILD_PRICE_HBAR: "3" })).toBe(5);
   });
-  it("ignores invalid values", () => {
-    expect(liaisonPriceHbar({ LIAISON_PRICE_HBAR: "free" })).toBe(5);
-    expect(liaisonPriceHbar({ LIAISON_PRICE_HBAR: "-3" })).toBe(5);
+  it("ignore invalid values", () => {
+    expect(liaisonChatPriceHbar({ LIAISON_CHAT_PRICE_HBAR: "free" })).toBe(5);
+    expect(liaisonBuildPriceHbar({ LIAISON_BUILD_PRICE_HBAR: "-3" })).toBe(5);
   });
 });
 
-describe("liaisonPriceFloorHbar + assertLiaisonPriceFloor", () => {
+describe("liaisonPriceFloorHbar + assertLiaisonPriceFloors", () => {
   it("defaults the floor to 1 HBAR", () => {
     expect(liaisonPriceFloorHbar({})).toBe(1);
   });
   it("honors LIAISON_PRICE_FLOOR_HBAR", () => {
     expect(liaisonPriceFloorHbar({ LIAISON_PRICE_FLOOR_HBAR: "2.5" })).toBe(2.5);
   });
-  it("passes when price is at or above the floor", () => {
-    expect(() => assertLiaisonPriceFloor(5, 1)).not.toThrow();
-    expect(() => assertLiaisonPriceFloor(1, 1)).not.toThrow();
+  it("passes when both prices are at or above the floor", () => {
+    expect(() => assertLiaisonPriceFloors(5, 5, 1)).not.toThrow();
+    expect(() => assertLiaisonPriceFloors(1, 1, 1)).not.toThrow();
   });
-  it("throws when price is below the floor (fail closed)", () => {
-    expect(() => assertLiaisonPriceFloor(0.5, 1)).toThrow(/below the floor/);
+  it("throws when either price is below the floor (fail closed)", () => {
+    expect(() => assertLiaisonPriceFloors(0.5, 5, 1)).toThrow(/LIAISON_CHAT_PRICE_HBAR/);
+    expect(() => assertLiaisonPriceFloors(5, 0.5, 1)).toThrow(/LIAISON_BUILD_PRICE_HBAR/);
   });
 });
 
