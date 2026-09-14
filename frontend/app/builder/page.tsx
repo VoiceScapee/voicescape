@@ -1556,7 +1556,7 @@ function PublishPanel({
   liaisonAssisted?: boolean;
 }) {
   const { account, getTxSender } = useWallet();
-  const { requireSession, signIn } = useSession();
+  const { requireSession, signIn, token } = useSession();
   const hcs = useHcsSubmit();
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1773,6 +1773,25 @@ function PublishPanel({
         await new Promise((r) => setTimeout(r, 3000));
       }
       setStatus({ kind: "ok", text: "Published!" });
+      // Liaison loop-close: if this page came from Danny's draft, confirm
+      // the publish with the server so the draft is deleted (the liaison
+      // keeps no copy) and the completion is recorded. Best-effort — the
+      // page is already live; a missed confirm just leaves the draft to
+      // expire via TTL.
+      if (liaisonAssisted) {
+        try {
+          const t = token();
+          if (t) {
+            await fetch("/api/liaison/publish-confirm", {
+              method: "POST",
+              headers: { "content-type": "application/json", "x-vs-session": t },
+              body: JSON.stringify({ username: target, txHash: hash }),
+            });
+          }
+        } catch {
+          /* draft cleanup is best-effort */
+        }
+      }
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
       markPublished(target);

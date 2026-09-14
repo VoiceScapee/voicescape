@@ -296,11 +296,27 @@ export async function handleStatus(
   const nowMs = deps.nowMs();
   const ent = await readEntitlement(deps, addr);
   const alive = ent && entitlementAlive(ent, nowMs) ? ent : null;
+  // One-time congratulations: set by publish-confirm when a Danny-built
+  // page goes live. The panel shows it once, then it's cleared.
+  let celebratedUsername: string | null = null;
+  try {
+    const raw = await deps.kv.get(`liaison:celebrate:${addr.toLowerCase()}`);
+    if (raw) {
+      const c = JSON.parse(raw) as { username?: string };
+      if (typeof c.username === "string" && c.username) {
+        celebratedUsername = c.username;
+        await deps.kv.del(`liaison:celebrate:${addr.toLowerCase()}`);
+      }
+    }
+  } catch {
+    /* celebration is best-effort */
+  }
   return ok({
     ...base,
     chatLeft: alive ? alive.chatLeft : 0,
     buildsLeft: alive ? alive.buildsLeft : 0,
     expMs: alive ? alive.expMs : null,
+    ...(celebratedUsername ? { celebratedUsername } : {}),
   });
 }
 
@@ -553,7 +569,17 @@ export async function handlePublishConfirm(
   }
 
   // Publish confirmed — the draft's job is done. Delete it: the page is
-  // now the user's alone, and the liaison keeps no copy.
+  // now the user's alone, and the liaison keeps no copy. Record the
+  // completion so the panel can congratulate the user on their next visit.
   await deps.kv.del(liaisonDraftKey(addr));
+  try {
+    await deps.kv.set(
+      `liaison:celebrate:${addr.toLowerCase()}`,
+      JSON.stringify({ username, atMs: deps.nowMs() }),
+      7 * 24 * 3600_000, // 7 days — plenty of time for the user to come back
+    );
+  } catch {
+    /* celebration is a nicety — never fail the confirm over it */
+  }
   return ok({ ok: true, username });
 }

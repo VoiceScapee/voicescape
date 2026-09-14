@@ -389,6 +389,29 @@ describe("handlePublishConfirm", () => {
     expect(await deps.kv.get(liaisonDraftKey(SESSION))).toBeNull();
   });
 
+  it("records the celebration flag on publish confirm", async () => {
+    const deps = pubDeps();
+    const r = await handlePublishConfirm(deps, SESSION, { username: "my-page", txHash: PUB_TX });
+    expect(r.status).toBe(200);
+    const raw = await deps.kv.get(`liaison:celebrate:${SESSION.toLowerCase()}`);
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw as string)).toMatchObject({ username: "my-page" });
+  });
+
+  it("status returns and clears the celebration flag once", async () => {
+    const deps = pubDeps();
+    await deps.kv.set(
+      `liaison:celebrate:${SESSION.toLowerCase()}`,
+      JSON.stringify({ username: "my-page", atMs: 1 }),
+      3_600_000,
+    );
+    const first = await handleStatus(deps, SESSION);
+    expect(first.body).toMatchObject({ celebratedUsername: "my-page" });
+    // Second read: flag is gone.
+    const second = await handleStatus(deps, SESSION);
+    expect(second.body).not.toHaveProperty("celebratedUsername");
+  });
+
   it("rejects a registration owned by someone else", async () => {
     const deps = makeDeps({
       mirrorGet: async (path: string) => {
