@@ -16,6 +16,7 @@ import { getKvStore, type KvStore } from "./store";
 import { mirrorBaseUrl } from "./townhall/topics";
 import { checkContent } from "./townhall/content-filter";
 import { getTipsAddress as getSharedTipsAddress } from "@/lib/contracts";
+import { isPageOwner } from "./owner-check";
 
 export const ANALYTICS_VIEW_TTL_MS = 30 * 24 * 3600 * 1000; // 30 days
 export const PAGE_SUBJECT = "page";
@@ -380,7 +381,9 @@ export async function getCreatorStats(
     return err(503, "could not resolve page ownership — try again in a moment");
   }
   if (!owner) return err(404, "page not found");
-  if (owner.toLowerCase() !== verified.address.toLowerCase()) {
+  // Owner identity must survive Hedera's dual address forms: the registry
+  // may store the ECDSA-derived alias while the session holds long-zero.
+  if (!(await isPageOwner(owner, verified.address))) {
     return err(403, "analytics are private — only the page owner can view them");
   }
   const [views, tips, referrals, badges] = await Promise.all([

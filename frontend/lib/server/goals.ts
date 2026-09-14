@@ -22,6 +22,7 @@ import type { KvStore } from "./store";
 import { getKvStore } from "./store";
 import { normalizeUsername } from "./analytics";
 import { checkContent } from "./townhall/content-filter";
+import { isPageOwner } from "./owner-check";
 
 /** KV key prefix for funding goals. */
 export const GOAL_KEY_PREFIX = "goals:";
@@ -269,7 +270,9 @@ async function requireOwner(deps: GoalDeps, usernameRaw: unknown, cred: unknown)
     return { ok: false, result: err(503, "could not resolve page ownership — try again in a moment") };
   }
   if (!owner) return { ok: false, result: err(404, "page not found") };
-  if (owner.toLowerCase() !== verified.address.toLowerCase()) {
+  // Owner identity must survive Hedera's dual address forms: the registry
+  // may store the ECDSA-derived alias while the session holds long-zero.
+  if (!(await isPageOwner(owner, verified.address))) {
     return { ok: false, result: err(403, "only the page owner can manage the funding goal") };
   }
   return { ok: true, username, owner: owner.toLowerCase() };
