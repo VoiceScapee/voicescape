@@ -34,6 +34,7 @@ interface LiaisonStatus {
   chatLeft: number;
   buildsLeft: number;
   expMs: number | null;
+  celebratedUsername?: string | null;
 }
 
 type LiaisonProduct = "chat" | "build";
@@ -85,18 +86,36 @@ export default function DannyLiaisonPanel() {
 
   // Pay flow
   const [paying, setPaying] = useState<LiaisonProduct | null>(null);
+  const [payStage, setPayStage] = useState<"wallet" | "confirming" | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
   const [confirmProduct, setConfirmProduct] = useState<LiaisonProduct | null>(null);
   const confirmStatus = useConfirmedTransaction(confirmTxId);
 
-  // Build form
-  const [showBuild, setShowBuild] = useState(false);
-  const [templateId, setTemplateId] = useState(HUMAN_TEMPLATES[0]?.id ?? "");
-  const [displayName, setDisplayName] = useState("");
-  const [heroTitle, setHeroTitle] = useState("");
-  const [bio, setBio] = useState("");
-  const [usernameHint, setUsernameHint] = useState("");
+  // Build interview — conversational flow that replaces the rigid form.
+  // After paying for a build, Danny interviews the user in the chat:
+  // page type → vibe/business type → name → tagline → bio → username →
+  // review → draft. No chat credits consumed; the build was already paid.
+  type InterviewStep =
+    | "pageType"
+    | "vibe"
+    | "bizType"
+    | "displayName"
+    | "heroTitle"
+    | "bio"
+    | "usernameHint"
+    | "review";
+  interface InterviewState {
+    step: InterviewStep;
+    pageType?: "personal" | "business";
+    vibe?: string;
+    bizType?: string;
+    displayName?: string;
+    heroTitle?: string;
+    bio?: string;
+    usernameHint?: string;
+  }
+  const [interview, setInterview] = useState<InterviewState | null>(null);
   const [building, setBuilding] = useState(false);
   const [buildDone, setBuildDone] = useState(false);
 
@@ -111,7 +130,21 @@ export default function DannyLiaisonPanel() {
   const refreshStatus = useCallback(async () => {
     try {
       const res = await authedFetch("/api/liaison/status", { cache: "no-store" });
-      if (res.ok) setStatus((await res.json()) as LiaisonStatus);
+      if (res.ok) {
+        const s = (await res.json()) as LiaisonStatus;
+        setStatus(s);
+        // One-time congratulations: the user published a Danny-built page.
+        // The server clears the flag on read, so this shows exactly once.
+        if (s.celebratedUsername) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: "danny",
+              text: `🎉 Your page @${s.celebratedUsername} is live! I loved building that with you. It's all yours now — share it, tip it, make it yours.`,
+            },
+          ]);
+        }
+      }
     } catch {
       /* panel stays usable without status */
     }
@@ -150,17 +183,20 @@ export default function DannyLiaisonPanel() {
         .catch(() => setPayError("Couldn't unlock your purchase — try again."))
         .finally(() => {
           setPaying(null);
+          setPayStage(null);
           setConfirmTxId(null);
           setConfirmProduct(null);
         });
     } else if (confirmStatus === "failed") {
       setPayError("The tip transaction failed on-chain — no payment was sent.");
       setPaying(null);
+      setPayStage(null);
       setConfirmTxId(null);
       setConfirmProduct(null);
     } else if (confirmStatus === "timeout") {
       setPayError("Tip submitted but not yet visible — give it a moment, then refresh.");
       setPaying(null);
+      setPayStage(null);
       setConfirmTxId(null);
       setConfirmProduct(null);
     }
@@ -169,6 +205,13 @@ export default function DannyLiaisonPanel() {
   const sendChat = async () => {
     const text = input.trim();
     if (!text || busy) return;
+    // Interview mode: answers are handled locally — no chat credit spent,
+    // the build was already paid for.
+    if (interview) {
+      setInput("");
+      answerInterview(text);
+      return;
+    }
     setError(null);
     setBusy(true);
     setMessages((m) => [...m, { role: "user", text }]);
@@ -216,12 +259,14 @@ export default function DannyLiaisonPanel() {
     const price =
       product === "chat" ? (status?.chatPriceHbar ?? 5) : (status?.buildPriceHbar ?? 5);
     setPaying(product);
+    setPayStage("wallet");
     try {
       const sender = await getTxSender();
       // tipPage takes an 18-decimal valueWei. HBAR on the EVM side of
       // Hedera is 10^18 wei per HBAR (same as ethers' ether units) —
       // parseUnits from the price string keeps non-integer prices exact.
       const wei = ethers.parseUnits(price.toString(), 18);
+      setPayStage("confirming");
       const hash = await tipPage("danny", wei, sender);
       // Approved — wait for real on-chain confirmation before unlocking.
       setConfirmProduct(product);
@@ -229,6 +274,7 @@ export default function DannyLiaisonPanel() {
     } catch (e) {
       setPayError(`Tip failed: ${friendlyWalletError(e)}`);
       setPaying(null);
+      setPayStage(null);
     }
   };
 
@@ -239,24 +285,212 @@ export default function DannyLiaisonPanel() {
       disabled={paying !== null}
       style={{ ...btnStyle, padding: "8px 14px", fontSize: "0.85rem" }}
     >
-      {paying === product ? "Working…" : label}
+      {paying === product
+        ? payStage === "wallet"
+          ? "Waiting for wallet…"
+          : "Confirming on-chain…"
+        : label}
     </button>
   );
 
-  const buildDraft = async () => {
+  // Interview → template mapping. Vibe/business-type answers pick the
+  // starting template; the user customizes everything in the builder after.
+  const INTERVIEW_TEMPLATES: Record<string, string> = {
+    "personal:dark": "lofi-room",
+    "personal:bright": "solarpunk-garden",
+    "personal:bold": "aurora-drift",
+    "personal:clean": "wanderer-atlas",
+    "business:general": "business-card",
+    "business:food": "restaurant",
+    "business:shop": "retail-shop",
+    "business:services": "salon",
+  };
+
+  const VIBE_LABELS: Record<string, string> = {
+    dark: "dark & chill",
+    bright: "bright & playful",
+    bold: "bold & colorful",
+    clean: "clean & minimal",
+  };
+
+  const BIZ_LABELS: Record<string, string> = {
+    general: "general / professional",
+    food: "food & drink",
+    shop: "shop / retail",
+    services: "services",
+  };
+
+  const dannySay = (text: string) =>
+    setMessages((m) => [...m, { role: "danny", text }]);
+  const userSay = (text: string) =>
+    setMessages((m) => [...m, { role: "user", text }]);
+
+  const startInterview = () => {
+    if (status != null && status.buildsLeft <= 0) return;
+    setError(null);
+    setInterview({ step: "pageType" });
+    dannySay(
+      "Let's build your page! First — is this a personal page, or for a business?",
+    );
+  };
+
+  const cancelInterview = () => {
+    setInterview(null);
+    setInput("");
+    dannySay("No worries — we can build whenever you're ready. Just tap “✨ Build me a blockpage”.");
+  };
+
+  /** Advance the interview one step. Returns true when the answer was consumed. */
+  const answerInterview = (raw: string): boolean => {
+    if (!interview) return false;
+    const text = raw.trim();
+    if (!text) return false;
+    const iv = interview;
+
+    if (iv.step === "pageType") {
+      const t = text.toLowerCase();
+      const pageType = t.includes("business") ? "business" : t.includes("personal") ? "personal" : null;
+      if (!pageType) {
+        dannySay("Pick one — is it a personal page or for a business?");
+        return true;
+      }
+      userSay(pageType === "personal" ? "Personal" : "Business");
+      if (pageType === "personal") {
+        setInterview({ ...iv, step: "vibe", pageType });
+        dannySay("Nice. What vibe should it have?");
+      } else {
+        setInterview({ ...iv, step: "bizType", pageType });
+        dannySay("Got it. What kind of business?");
+      }
+      return true;
+    }
+
+    if (iv.step === "vibe") {
+      const t = text.toLowerCase();
+      const vibe = (["dark", "bright", "bold", "clean"] as const).find((v) =>
+        t.includes(v),
+      );
+      if (!vibe) {
+        dannySay("Choose a vibe — dark, bright, bold, or clean?");
+        return true;
+      }
+      userSay(VIBE_LABELS[vibe]);
+      setInterview({ ...iv, step: "displayName", vibe });
+      dannySay("Love it. What's your name for the big hero title?");
+      return true;
+    }
+
+    if (iv.step === "bizType") {
+      const t = text.toLowerCase();
+      const bizType = (["food", "shop", "services", "general"] as const).find((b) =>
+        t.includes(b),
+      );
+      if (!bizType) {
+        dannySay("What kind of business — general, food & drink, shop, or services?");
+        return true;
+      }
+      userSay(BIZ_LABELS[bizType]);
+      setInterview({ ...iv, step: "displayName", bizType });
+      dannySay("Perfect. What's the business name for the big hero title?");
+      return true;
+    }
+
+    if (iv.step === "displayName") {
+      if (text.length > 60) {
+        dannySay("A bit long — keep the name under 60 characters?");
+        return true;
+      }
+      userSay(text);
+      setInterview({ ...iv, step: "heroTitle", displayName: text });
+      dannySay("Got a tagline? (e.g. “Web3 builder & creator”) — or type “skip”.");
+      return true;
+    }
+
+    if (iv.step === "heroTitle") {
+      const heroTitle = /^skip$/i.test(text) ? "" : text.slice(0, 120);
+      if (text && !/^skip$/i.test(text)) userSay(text);
+      setInterview({ ...iv, step: "bio", heroTitle });
+      dannySay("Short bio — a line or two about you? (or “skip”)");
+      return true;
+    }
+
+    if (iv.step === "bio") {
+      const bio = /^skip$/i.test(text) ? "" : text.slice(0, 500);
+      if (text && !/^skip$/i.test(text)) userSay(text.length > 120 ? text.slice(0, 120) + "…" : text);
+      setInterview({ ...iv, step: "usernameHint", bio });
+      dannySay("Username idea? 3–32 chars, lowercase (or “skip” and I'll suggest one).");
+      return true;
+    }
+
+    if (iv.step === "usernameHint") {
+      const hint = /^skip$/i.test(text) ? "" : text.toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 32);
+      if (hint && !/^[a-z0-9_-]{3,32}$/.test(hint)) {
+        dannySay("That needs to be 3–32 chars: lowercase letters, numbers, hyphens. Try again or “skip”.");
+        return true;
+      }
+      if (text && !/^skip$/i.test(text)) userSay(hint);
+      const done: InterviewState = { ...iv, step: "review", usernameHint: hint };
+      setInterview(done);
+      const kind =
+        done.pageType === "personal"
+          ? `personal page with a ${VIBE_LABELS[done.vibe ?? ""] ?? "custom"} vibe`
+          : `business page (${BIZ_LABELS[done.bizType ?? ""] ?? "general"})`;
+      dannySay(
+        `Here's what I've got:\n• ${kind}\n• Name: ${done.displayName || "—"}\n• Tagline: ${done.heroTitle || "—"}\n• Bio: ${done.bio ? "✓" : "—"}\n• Username: ${done.usernameHint || "I'll suggest one"}\n\nReady to build it?`,
+      );
+      return true;
+    }
+
+    return false;
+  };
+
+  const confirmInterviewBuild = async () => {
+    if (!interview || interview.step !== "review") return;
+    const iv = interview;
+    userSay("Build it!");
+    const key =
+      iv.pageType === "personal"
+        ? `personal:${iv.vibe ?? "clean"}`
+        : `business:${iv.bizType ?? "general"}`;
+    const templateId = INTERVIEW_TEMPLATES[key] ?? HUMAN_TEMPLATES[0]?.id ?? "";
+    setInterview(null);
+    setInput("");
+    await buildDraft({
+      templateId,
+      displayName: iv.displayName ?? "",
+      heroTitle: iv.heroTitle ?? "",
+      bio: iv.bio ?? "",
+      usernameHint: iv.usernameHint ?? "",
+    });
+  };
+
+  const buildDraft = async (fromInterview?: {
+    templateId: string;
+    displayName: string;
+    heroTitle: string;
+    bio: string;
+    usernameHint: string;
+  }) => {
     if (building) return;
     setError(null);
     setBuilding(true);
+    const payload = fromInterview ?? {
+      templateId: HUMAN_TEMPLATES[0]?.id ?? "",
+      displayName: "",
+      heroTitle: "",
+      bio: "",
+      usernameHint: "",
+    };
     try {
       const res = await authedFetch("/api/liaison/draft", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          templateId,
-          displayName: displayName.trim(),
-          heroTitle: heroTitle.trim(),
-          bio: bio.trim(),
-          usernameHint: usernameHint.trim(),
+          templateId: payload.templateId,
+          displayName: payload.displayName.trim(),
+          heroTitle: payload.heroTitle.trim(),
+          bio: payload.bio.trim(),
+          usernameHint: payload.usernameHint.trim(),
         }),
       });
       const j = (await res.json().catch(() => null)) as {
@@ -384,8 +618,8 @@ export default function DannyLiaisonPanel() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") sendChat();
               }}
-              placeholder="Ask Danny anything about Voicescape…"
-              maxLength={1000}
+              placeholder={interview ? "Type your answer…" : "Ask Danny anything about Voicescape…"}
+              maxLength={interview ? 500 : 1000}
               aria-label="Message Danny"
               style={{ ...inputStyle, flex: 1 }}
             />
@@ -394,59 +628,100 @@ export default function DannyLiaisonPanel() {
             </button>
           </div>
 
+          {/* Quick replies during interview choice steps */}
+          {interview && (interview.step === "pageType" || interview.step === "vibe" || interview.step === "bizType" || interview.step === "review") && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+              {interview.step === "pageType" && (
+                <>
+                  <button type="button" onClick={() => answerInterview("personal")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    🙋 Personal
+                  </button>
+                  <button type="button" onClick={() => answerInterview("business")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    💼 Business
+                  </button>
+                </>
+              )}
+              {interview.step === "vibe" && (
+                <>
+                  <button type="button" onClick={() => answerInterview("dark")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    🌙 Dark & chill
+                  </button>
+                  <button type="button" onClick={() => answerInterview("bright")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    ☀️ Bright & playful
+                  </button>
+                  <button type="button" onClick={() => answerInterview("bold")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    🎨 Bold & colorful
+                  </button>
+                  <button type="button" onClick={() => answerInterview("clean")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    ✨ Clean & minimal
+                  </button>
+                </>
+              )}
+              {interview.step === "bizType" && (
+                <>
+                  <button type="button" onClick={() => answerInterview("general")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    💼 General
+                  </button>
+                  <button type="button" onClick={() => answerInterview("food")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    🍔 Food & drink
+                  </button>
+                  <button type="button" onClick={() => answerInterview("shop")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    🛍️ Shop
+                  </button>
+                  <button type="button" onClick={() => answerInterview("services")} style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    💈 Services
+                  </button>
+                </>
+              )}
+              {interview.step === "review" && (
+                <>
+                  <button type="button" onClick={confirmInterviewBuild} disabled={building} style={{ ...btnStyle, fontSize: "0.85rem", padding: "8px 14px" }}>
+                    {building ? "Building…" : "🔨 Build it!"}
+                  </button>
+                  <button type="button" onClick={() => { setInterview({ step: "pageType" }); dannySay("Let's start over — personal page or business?"); }} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                    Start over
+                  </button>
+                </>
+              )}
+              <button type="button" onClick={cancelInterview} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                Cancel
+              </button>
+            </div>
+          )}
+
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-            {!showBuild ? (
+            {!interview ? (
               <button
                 type="button"
-                onClick={() => setShowBuild(true)}
+                onClick={startInterview}
                 disabled={status != null && status.buildsLeft <= 0}
                 style={{ ...btnStyle, background: "var(--vs-glass)", color: "var(--vs-text)", border: "1px solid var(--vs-border)" }}
               >
                 ✨ Build me a blockpage
               </button>
             ) : (
-              <div style={{ width: "100%", borderTop: "1px solid var(--vs-border)", paddingTop: 12 }}>
-                <div style={{ fontWeight: 700, marginBottom: 8 }}>Your premade blockpage</div>
-                <label style={{ display: "block", fontSize: 13, marginBottom: 4, color: "var(--vs-muted)" }}>
-                  Starting template
-                </label>
-                <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={{ ...inputStyle, marginBottom: 8 }}>
-                  {HUMAN_TEMPLATES.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name} — {t.description}
-                    </option>
-                  ))}
-                </select>
-                <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Your name (hero title)" maxLength={60} aria-label="Your name" style={{ ...inputStyle, marginBottom: 8 }} />
-                <input value={heroTitle} onChange={(e) => setHeroTitle(e.target.value)} placeholder="Tagline (e.g. Web3 builder & creator)" maxLength={120} aria-label="Tagline" style={{ ...inputStyle, marginBottom: 8 }} />
-                <textarea value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Short bio" maxLength={500} rows={2} aria-label="Bio" style={{ ...inputStyle, marginBottom: 8, resize: "vertical" }} />
-                <input value={usernameHint} onChange={(e) => setUsernameHint(e.target.value)} placeholder="Username idea (3–32: a-z 0-9 - _)" maxLength={32} aria-label="Username idea" style={{ ...inputStyle, marginBottom: 8 }} />
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={buildDraft} disabled={building || (status != null && status.buildsLeft <= 0)} style={btnStyle}>
-                    {building ? "Building…" : `Build it${status && status.buildsLeft > 0 ? ` (${status.buildsLeft} left)` : ""}`}
-                  </button>
-                  {status != null && status.buildsLeft <= 0 && (
-                    buyButton("build", `Buy a build — ${buildPrice} HBAR`)
-                  )}
-                  <button type="button" onClick={() => setShowBuild(false)} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)" }}>
-                    Cancel
-                  </button>
-                </div>
-                {buildDone && (
-                  <p style={{ marginTop: 10 }}>
-                    <a href="/builder" style={{ color: "var(--vs-accent, #38bdf8)", fontWeight: 700 }}>
-                      Open the builder →
-                    </a>{" "}
-                    <span className="th-muted" style={{ fontSize: "0.85rem" }}>
-                      your “✨ Made for you” card is at the top of the templates.
-                    </span>
-                  </p>
-                )}
-              </div>
+              (interview.step === "displayName" || interview.step === "heroTitle" || interview.step === "bio" || interview.step === "usernameHint") && (
+                <button type="button" onClick={cancelInterview} style={{ ...btnStyle, background: "transparent", color: "var(--vs-muted)", border: "1px solid var(--vs-border)", fontSize: "0.85rem", padding: "8px 14px" }}>
+                  Cancel interview
+                </button>
+              )
+            )}
+            {interview == null && status != null && status.buildsLeft <= 0 && (
+              buyButton("build", `Buy a build — ${buildPrice} HBAR`)
             )}
           </div>
+          {buildDone && (
+            <p style={{ marginTop: 10 }}>
+              <a href="/builder" style={{ color: "var(--vs-accent, #38bdf8)", fontWeight: 700 }}>
+                Open the builder →
+              </a>{" "}
+              <span className="th-muted" style={{ fontSize: "0.85rem" }}>
+                your “✨ Made for you” card is at the top of the templates.
+              </span>
+            </p>
+          )}
 
-          {!showBuild && status != null && (status.chatLeft > 0 || status.buildsLeft > 0) && (
+          {interview == null && status != null && (status.chatLeft > 0 || status.buildsLeft > 0) && (
             <p className="th-muted" style={{ fontSize: "0.78rem", margin: "10px 0 0" }}>
               Tips are non-refundable and split 98/2 on-chain. Publishing always happens with
               your own wallet — Danny can&apos;t do it for you.
