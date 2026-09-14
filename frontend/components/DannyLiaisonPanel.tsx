@@ -160,14 +160,20 @@ export default function DannyLiaisonPanel() {
   }, [messages]);
 
   // Tip approved → confirmed on-chain → verify with the server for the
-  // product that was bought.
+  // product that was bought. The verify call has a hard 30s timeout: if the
+  // network or server hangs, the button must not stick on
+  // "Confirming on-chain…" forever — the user gets a retryable error and
+  // the tx can be re-verified (verify-tip is idempotent on txHash).
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30_000);
       authedFetch("/api/liaison/verify-tip", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ txHash: confirmTxId, product: confirmProduct ?? "chat" }),
+        signal: controller.signal,
       })
         .then(async (r) => {
           const j = await r.json().catch(() => null);
@@ -180,13 +186,18 @@ export default function DannyLiaisonPanel() {
             );
           }
         })
-        .catch(() => setPayError("Couldn't unlock your purchase — try again."))
+        .catch(() => setPayError("Couldn't unlock your purchase — the request timed out. Your payment is safe; try again and it will be credited."))
         .finally(() => {
+          clearTimeout(timeout);
           setPaying(null);
           setPayStage(null);
           setConfirmTxId(null);
           setConfirmProduct(null);
         });
+      return () => {
+        clearTimeout(timeout);
+        controller.abort();
+      };
     } else if (confirmStatus === "failed") {
       setPayError("The tip transaction failed on-chain — no payment was sent.");
       setPaying(null);
@@ -254,6 +265,13 @@ export default function DannyLiaisonPanel() {
     setPayError(null);
     if (!account) {
       setPayError("Connect a wallet first.");
+      return;
+    }
+    // The purchase must be credited to a signed-in session — without one,
+    // verify-tip has no wallet to unlock and the button sticks on
+    // "Confirming on-chain…". Fail fast with a clear message instead.
+    if (!isAuthenticated) {
+      setPayError("Sign in with your wallet first, then pay — the purchase is credited to your signed-in session.");
       return;
     }
     const price =
