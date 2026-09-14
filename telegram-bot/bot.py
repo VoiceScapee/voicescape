@@ -4,12 +4,14 @@ Voicescape Telegram bot — onboarding + FAQ for humans and AI agents.
 
 Stdlib only (urllib). Long-polling, no webhook infra needed.
 
-  VOICESCAPE_TG_BOT_TOKEN=... python3 bot.py          # run
-  VOICESCAPE_TG_BOT_TOKEN=... python3 bot.py --check  # verify token via getMe
-  VOICESCAPE_TG_BOT_TOKEN=... python3 bot.py --once   # process pending updates, exit
+  python3 bot.py          # run
+  python3 bot.py --check  # verify token via getMe
+  python3 bot.py --once   # process pending updates, exit
 
-The token NEVER goes in this repo. It lives in the Secure Vault and is
-injected as an environment variable at runtime.
+The token NEVER goes in this repo, env vars, or logs. It lives in the Secure
+Vault as the `custom.telegram` connector and is pulled at runtime through the
+approved surrogate exchange (Sentinel/authd swaps the surrogate for the real
+token on egress).
 
 Copy rules (Brandon's standing directives):
 - Describe Voicescape as "user/AI built blockpages" (never "MySpace-style").
@@ -27,10 +29,41 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 
+sys.path.insert(0, "/opt/hatch/skills/skill-creator/bin")
+from dynamic_credentials import (  # noqa: E402
+    DynamicCredentialError,
+    dynamic_credential_entry,
+    ensure_allowed_url,
+    url_with_surrogate_path_segment,
+)
+
 API = "https://api.telegram.org"
-TOKEN = os.environ.get("VOICESCAPE_TG_BOT_TOKEN", "").strip()
+ALLOWED_HOSTS = ["api.telegram.org"]
+CREDENTIAL = "custom.telegram"  # Secure Vault connector (BotFather token)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ESCALATION_LOG = os.path.join(BASE_DIR, "escalations.log")
+
+_credential_entry = None
+
+
+def _entry():
+    """Vault credential via the approved surrogate exchange (cached)."""
+    global _credential_entry
+    if _credential_entry is None:
+        try:
+            _credential_entry = dynamic_credential_entry(CREDENTIAL)
+        except DynamicCredentialError as e:
+            print(f"[bot] no telegram credential: {e}\n"
+                  "[bot] create the bot with @BotFather, then paste the token "
+                  "into the Secure Vault card.", file=sys.stderr)
+            sys.exit(1)
+    return _credential_entry
+
+
+def _url(method):
+    url = url_with_surrogate_path_segment(_entry(), f"{API}/bot{{}}/{method}")
+    ensure_allowed_url(url, ALLOWED_HOSTS)
+    return url
 
 DAPP = "https://voicescape.vercel.app"
 AGENTS_JOIN = DAPP + "/agents/join"
@@ -193,7 +226,7 @@ FAQ_KEYWORDS = [
 # ---------------------------------------------------------------- api
 
 def api_call(method, params=None, timeout=40):
-    url = f"{API}/bot{TOKEN}/{method}"
+    url = _url(method)
     data = None
     if params:
         data = urllib.parse.urlencode(params).encode()
@@ -296,12 +329,7 @@ def process_updates(offset):
 
 
 def main():
-    if not TOKEN:
-        print("VOICESCAPE_TG_BOT_TOKEN is not set. Get it from @BotFather, "
-              "then run with the env var set.", file=sys.stderr)
-        sys.exit(1)
-
-    me = api_call("getMe", timeout=15)
+    me = api_call("getMe", timeout=15)  # also proves the vault credential works
     if not me or not me.get("ok"):
         print(f"[bot] token check failed: {me}", file=sys.stderr)
         sys.exit(1)

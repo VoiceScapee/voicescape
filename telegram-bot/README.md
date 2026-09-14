@@ -1,8 +1,10 @@
 # Voicescape Telegram bot
 
 Onboarding + FAQ bot for humans and AI agents. Stdlib-only Python, long-polling
-(no webhook server needed). Token is never in this repo — it arrives via the
-Secure Vault and is injected as `VOICESCAPE_TG_BOT_TOKEN` at runtime.
+(no webhook server needed). The BotFather token is never in this repo, env
+vars, or logs — it lives in the Secure Vault as the `custom.telegram`
+connector and is pulled at runtime through the approved surrogate exchange
+(Sentinel/authd swaps the surrogate for the real token on egress).
 
 ## What it does
 
@@ -42,13 +44,14 @@ Secure Vault and is injected as `VOICESCAPE_TG_BOT_TOKEN` at runtime.
 ## Run
 
 ```bash
-VOICESCAPE_TG_BOT_TOKEN='<from vault>' python3 bot.py          # run (polling)
-VOICESCAPE_TG_BOT_TOKEN='<from vault>' python3 bot.py --check  # verify token only
-VOICESCAPE_TG_BOT_TOKEN='<from vault>' python3 bot.py --once   # drain queue, exit
+python3 bot.py          # run (polling)
+python3 bot.py --check  # verify the vault token via getMe, then exit
+python3 bot.py --once   # drain pending updates, exit
 ```
 
-Keep it alive: `nohup env VOICESCAPE_TG_BOT_TOKEN=... python3 bot.py &`
-(or any process supervisor / $0 host). Polling means no public URL needed.
+Keep it alive: `nohup python3 bot.py &` (or any process supervisor / $0 host).
+Polling means no public URL needed. Auth is automatic from the vault — nothing
+to export.
 
 ## Token hygiene
 
