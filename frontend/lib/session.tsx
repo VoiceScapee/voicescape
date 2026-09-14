@@ -344,10 +344,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const msg = e instanceof Error ? e.message : "Sign-in failed.";
         // User rejection shouldn't look like an app error.
         const rejected = /user (rejected|denied)|rejected the request/i.test(msg);
+        // Stale WalletConnect session: the wallet never responded. Auto-
+        // disconnect so the next attempt starts with a clean pairing instead
+        // of reusing the broken one — the user shouldn't have to manually
+        // nuke both apps.
+        const staleSession = /stale|didn't respond/i.test(msg);
+        if (staleSession) {
+          try {
+            await wallet.disconnect();
+          } catch {
+            // Best effort — the error message below is what matters.
+          }
+        }
         setError(rejected ? "Signature request was dismissed in the wallet." : msg);
         setSessionBoth(null);
         writeStored(null);
-        setStatus(account ? "connected" : "anonymous");
+        setStatus(account && !staleSession ? "connected" : "anonymous");
         throw e instanceof Error ? e : new Error(msg);
       } finally {
         signingRef.current = false;
