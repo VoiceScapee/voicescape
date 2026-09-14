@@ -1,3 +1,35 @@
+import { imageGatewayUrl } from "./ipfs";
+
+/**
+ * Sanitize a user-supplied avatar image URL before rendering it in an <img>.
+ *
+ * Stricter than safeExternalUrl: only absolute https: URLs — and ipfs://
+ * CIDs, which are resolved to the configured gateway — are allowed. http:,
+ * javascript:, data:, vbscript:, and everything else return null. Images are
+ * passive fetch targets, so an http: URL would leak the page visit over
+ * cleartext and break under mixed-content blocking.
+ *
+ * This is the single choke point for page-JSON avatar photos (hero,
+ * top8). Never render an <img src> from page JSON without it.
+ */
+export function safeImageUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v) return null;
+  // Anchor the scheme check at the start; the `i` flag catches
+  // HTTPS: casing. Leading whitespace is trimmed above.
+  if (/^https:\/\//i.test(v)) return v;
+  if (/^ipfs:\/\//i.test(v)) {
+    const cid = v.slice("ipfs://".length).trim();
+    // Bare CIDs only: base58 Qm… (46 chars) or base32 bafy/bafk… (50+).
+    // No paths, no nested schemes, nothing else after the CID.
+    if (/^(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{50,})$/.test(cid)) {
+      return imageGatewayUrl(cid);
+    }
+  }
+  return null;
+}
+
 /**
  * Sanitize a user-supplied URL before rendering it as an <a href>.
  *

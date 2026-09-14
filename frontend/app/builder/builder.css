@@ -238,6 +238,49 @@
   color: #090b12;
 }
 
+.vb-template-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vs-muted);
+  background: var(--vs-glass);
+  border: 1px solid var(--vs-border);
+  border-radius: 999px;
+  padding: 1px 9px;
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+
+.vb-template-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #090b12;
+  pointer-events: none;
+}
+
+.vb-template-badge.is-featured {
+  background: linear-gradient(135deg, #fbbf24, #f472b6);
+}
+
+.vb-template-badge.is-popular {
+  background: linear-gradient(135deg, #fb923c, #ef4444);
+  color: #fff;
+}
+
+.vb-avatar-preview {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+}
+
 /* ------------------------------------------------------------------ */
 /* Block editors                                                      */
 /* ------------------------------------------------------------------ */

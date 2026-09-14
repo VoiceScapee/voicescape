@@ -219,7 +219,7 @@ export async function publishPageJson(pageObj) {
  * @returns {Promise<PublishResult>}
  * @throws {Error} On non-2xx responses or network failure.
  */
-async function pinFileViaPinata(data, filename, contentType, jwt) {
+async function pinFileViaPinata(data, filename, contentType, jwt, label = "audio") {
   const form = new FormData();
   form.append(
     "file",
@@ -228,7 +228,7 @@ async function pinFileViaPinata(data, filename, contentType, jwt) {
   );
   form.append(
     "pinataMetadata",
-    JSON.stringify({ name: `voicescape-audio-${filename || "upload"}` }),
+    JSON.stringify({ name: `voicescape-${label}-${filename || "upload"}` }),
   );
 
   let res;
@@ -261,6 +261,39 @@ async function pinFileViaPinata(data, filename, contentType, jwt) {
 
 /** Max audio upload: 25 MB. The browser checks too; the server is the authority. */
 export const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+
+/** Max avatar image upload: 5 MB. The browser checks too; the server is the authority. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Pin a user-uploaded avatar image to IPFS via Pinata.
+ * Requires PINATA_JWT. The caller must run the bytes through
+ * validateImageUpload() first (magic bytes + EXIF strip) — this is the
+ * transport layer only.
+ *
+ * @param {Buffer|Uint8Array} data - File bytes (EXIF-cleaned when JPEG).
+ * @param {string} filename - Sanitized filename.
+ * @param {string} contentType - MIME type; must start with "image/".
+ * @returns {Promise<PublishResult>} `{ cid, provider }`.
+ * @throws {Error} If validation fails, PINATA_JWT is unset, or Pinata errors.
+ */
+export async function publishImageFile(data, filename, contentType) {
+  if (!contentType || !contentType.startsWith("image/")) {
+    throw new Error(
+      `Refusing to pin non-image upload (content-type "${contentType || "missing"}").`,
+    );
+  }
+  if (!data || data.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image upload too large (max ${(MAX_IMAGE_BYTES / 1024 / 1024).toFixed(0)} MB).`,
+    );
+  }
+  const pinataJwt = process.env[ENV.PINATA_JWT];
+  if (!pinataJwt) {
+    throw new Error("PINATA_UNAVAILABLE");
+  }
+  return pinFileViaPinata(data, filename, contentType, pinataJwt, "image");
+}
 
 /**
  * Pin a user-uploaded audio file to IPFS via Pinata.

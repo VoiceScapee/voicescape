@@ -32,6 +32,7 @@ vi.mock("@/lib/server/townhall/auth", () => ({
 // Never hit Pinata in tests — auth is checked before any publish call.
 vi.mock("../../../lib/server/publish.js", () => ({
   publishAudioFile: async () => ({ cid: "bafytest", provider: "pinata" }),
+  publishImageFile: async () => ({ cid: "bafyimagetest", provider: "pinata" }),
   publishPageJson: async () => ({ cid: "bafytest", provider: "pinata" }),
 }));
 
@@ -137,6 +138,122 @@ describe("POST /api/pin quota", () => {
       await globalQuotaStore().clearAll();
       if (old === undefined) delete process.env.PIN_DAILY_QUOTA;
       else process.env.PIN_DAILY_QUOTA = old;
+    }
+  });
+});
+
+describe("POST /api/pin image upload (kind=image)", () => {
+  // Realistic 1x1 PNG bytes so the magic-byte screen passes.
+  function pngFile(name = "avatar.png", type = "image/png"): File {
+    const png = new Uint8Array(72);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    return new File([png], name, { type });
+  }
+  function imageReq(file: File): NextRequest {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("kind", "image");
+    return new NextRequest("http://localhost/api/pin", {
+      method: "POST",
+      headers: { [SESSION_HEADER]: GOOD_TOKEN },
+      body: form,
+    });
+  }
+
+  it("pins a valid image and returns its CID", async () => {
+    const old = process.env.IMAGE_DAILY_QUOTA;
+    process.env.IMAGE_DAILY_QUOTA = "10";
+    await globalQuotaStore().clearAll();
+    try {
+      const res = await POST(imageReq(pngFile()));
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { cid?: string; provider?: string };
+      expect(json.cid).toBe("bafyimagetest");
+      expect(json.provider).toBe("pinata");
+    } finally {
+      await globalQuotaStore().clearAll();
+      if (old === undefined) delete process.env.IMAGE_DAILY_QUOTA;
+      else process.env.IMAGE_DAILY_QUOTA = old;
+    }
+  });
+
+  it("rejects non-image bytes even when the client declares image/*", async () => {
+    const old = process.env.IMAGE_DAILY_QUOTA;
+    process.env.IMAGE_DAILY_QUOTA = "10";
+    await globalQuotaStore().clearAll();
+    try {
+      const exe = new Uint8Array(64);
+      exe.set([0x4d, 0x5a, 0x90, 0x00]); // MZ header — a disguised executable
+      const res = await POST(
+        imageReq(new File([exe], "evil.png", { type: "image/png" })),
+      );
+      expect(res.status).toBe(400);
+    } finally {
+      await globalQuotaStore().clearAll();
+      if (old === undefined) delete process.env.IMAGE_DAILY_QUOTA;
+      else process.env.IMAGE_DAILY_QUOTA = old;
+    }
+  });
+
+  it("rejects images over the 5 MB cap", async () => {
+    const old = process.env.IMAGE_DAILY_QUOTA;
+    process.env.IMAGE_DAILY_QUOTA = "10";
+    await globalQuotaStore().clearAll();
+    try {
+      const big = new Uint8Array(6 * 1024 * 1024);
+      big.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      const res = await POST(imageReq(new File([big], "big.png", { type: "image/png" })));
+      expect(res.status).toBe(400);
+      const json = (await res.json()) as { error?: string };
+      expect(json.error).toMatch(/too large/i);
+    } finally {
+      await globalQuotaStore().clearAll();
+      if (old === undefined) delete process.env.IMAGE_DAILY_QUOTA;
+      else process.env.IMAGE_DAILY_QUOTA = old;
+    }
+  });
+
+  it("returns 429 after the image pin daily quota is spent", async () => {
+    const old = process.env.IMAGE_DAILY_QUOTA;
+    process.env.IMAGE_DAILY_QUOTA = "1";
+    await globalQuotaStore().clearAll();
+    try {
+      expect((await POST(imageReq(pngFile()))).status).toBe(200);
+      const res = await POST(imageReq(pngFile()));
+      expect(res.status).toBe(429);
+      const json = (await res.json()) as { error: string; limit: number };
+      expect(json.error).toBe("daily image pin limit reached (1/day)");
+      expect(json.limit).toBe(1);
+    } finally {
+      await globalQuotaStore().clearAll();
+      if (old === undefined) delete process.env.IMAGE_DAILY_QUOTA;
+      else process.env.IMAGE_DAILY_QUOTA = old;
+    }
+  });
+
+  it("keeps the audio path when kind is absent", async () => {
+    const old = process.env.AUDIO_DAILY_QUOTA;
+    process.env.AUDIO_DAILY_QUOTA = "10";
+    await globalQuotaStore().clearAll();
+    try {
+      const form = new FormData();
+      const mp3 = new Uint8Array(1024);
+      mp3.set([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      form.append("file", new File([mp3], "track.mp3", { type: "audio/mpeg" }));
+      const res = await POST(
+        new NextRequest("http://localhost/api/pin", {
+          method: "POST",
+          headers: { [SESSION_HEADER]: GOOD_TOKEN },
+          body: form,
+        }),
+      );
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { cid?: string };
+      expect(json.cid).toBe("bafytest");
+    } finally {
+      await globalQuotaStore().clearAll();
+      if (old === undefined) delete process.env.AUDIO_DAILY_QUOTA;
+      else process.env.AUDIO_DAILY_QUOTA = old;
     }
   });
 });

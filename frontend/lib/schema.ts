@@ -4,8 +4,17 @@
  * Define types ONCE here and import everywhere: templates, editor,
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
+import { safeExternalUrl, safeImageUrl } from "./url";
+
 export type Block =
-  | { type: "hero"; title: string; subtitle?: string; avatarEmoji?: string }
+  | {
+      type: "hero";
+      title: string;
+      subtitle?: string;
+      avatarEmoji?: string;
+      /** Photo avatar: absolute https: URL (builder writes IPFS gateway URLs). Falls back to avatarEmoji. */
+      avatarUrl?: string;
+    }
   | { type: "bio"; text: string }
   | { type: "links"; items: { label: string; url: string }[] }
   | { type: "tipJar"; message?: string }
@@ -13,7 +22,12 @@ export type Block =
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
   | { type: "music"; title?: string; tracks: MusicTrack[]; note?: string }
   | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // MVP: emoji/CSS placeholders, no external images. ":logo:" renders the first-party Voicescape logo.
-  | { type: "top8"; title?: string; friends: { name: string; avatarEmoji?: string; url?: string }[] }
+  | {
+      type: "top8";
+      title?: string;
+      /** avatarUrl: absolute https: photo, falls back to avatarEmoji/initial. */
+      friends: { name: string; avatarEmoji?: string; avatarUrl?: string; url?: string }[];
+    }
   // ---- Phase B (agent + commerce) blocks ----
   /** Paid API services an agent sells per call. "Pay per call" runs the x402 payment flow. */
   | { type: "services"; items: { name: string; description: string; priceUsdCents: number; endpoint: string }[] }
@@ -104,10 +118,36 @@ export interface VoicescapePage {
     background: string;
     foreground: string;
     accent: string;
+    /**
+     * CSS font-family stack. The builder offers FONT_OPTIONS below; the first
+     * three resolve through CSS vars set on <html> by app/layout.tsx via
+     * next/font/google (Montserrat display, DM Sans body, IBM Plex Mono).
+     * Renderers apply it verbatim as --pv-font, so any valid stack works.
+     */
     fontFamily: string;
   };
   blocks: Block[];
 }
+
+/**
+ * Font stacks offered by the builder's theme picker.
+ *
+ * The first three are the app's design-system type, loaded once in
+ * app/layout.tsx (next/font/google) and exposed as CSS vars on <html>:
+ * Montserrat 700 for display, DM Sans for body/UI, IBM Plex Mono for
+ * numbers. Each value carries a plain-CSS fallback stack so a page stays
+ * readable if the var ever fails to resolve.
+ */
+export const FONT_OPTIONS: { value: string; label: string }[] = [
+  { value: "var(--font-display), Arial, sans-serif", label: "Montserrat" },
+  { value: "var(--font-sans), Arial, sans-serif", label: "DM Sans" },
+  { value: "var(--font-mono), ui-monospace, monospace", label: "IBM Plex Mono" },
+  { value: "Georgia, serif", label: "Georgia" },
+  { value: "Arial, Helvetica, sans-serif", label: "Arial" },
+  { value: "monospace", label: "Monospace" },
+  { value: "Comic Sans MS, cursive", label: "Comic Sans" },
+  { value: "Impact, sans-serif", label: "Impact" },
+];
 
 export const BLOCK_TYPES = [
   "hero",
@@ -196,6 +236,29 @@ export function isValidPage(input: unknown): input is VoicescapePage {
     if (type === "music") {
       const tracks = (b as Record<string, unknown>).tracks;
       if (tracks !== undefined && (!Array.isArray(tracks) || !tracks.every(isValidMusicTrack)))
+        return false;
+    }
+    // Photo avatars: when present they must be absolute https: URLs or
+    // ipfs:// CIDs (the builder only ever writes IPFS gateway URLs from its
+    // own uploads). safeImageUrl rejects http:, javascript:, data:, and
+    // malformed values. The renderer re-checks as defense-in-depth.
+    if (type === "hero") {
+      const u = (b as Record<string, unknown>).avatarUrl;
+      if (u !== undefined && !safeImageUrl(u)) return false;
+    }
+    if (type === "top8") {
+      const friends = (b as Record<string, unknown>).friends;
+      if (
+        friends !== undefined &&
+        (!Array.isArray(friends) ||
+          !friends.every(
+            (f) =>
+              typeof f === "object" &&
+              f !== null &&
+              ((f as Record<string, unknown>).avatarUrl === undefined ||
+                safeImageUrl((f as Record<string, unknown>).avatarUrl)),
+          ))
+      )
         return false;
     }
     return true;

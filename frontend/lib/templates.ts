@@ -11,6 +11,9 @@ export interface Template {
    * either 0.0.x or 0x form). Omit for public templates.
    */
   ownerAccounts?: string[];
+  /** Gallery merchandising: "Featured" (1–2 max) and "Popular" badges. */
+  featured?: boolean;
+  popular?: boolean;
   page: VoicescapePage;
 }
 
@@ -27,6 +30,31 @@ export function isTemplateVisible(
   if (!account) return false;
   const want = account.trim().toLowerCase();
   return t.ownerAccounts.some((a) => a.trim().toLowerCase() === want);
+}
+
+/**
+ * Gallery filtering for the builder's TemplatePicker: category + visibility
+ * + free-text search over name/description/id. Featured sorts first, then
+ * popular, then the rest (stable within each tier).
+ */
+export function filterTemplates(
+  templates: Template[],
+  opts: { category: "business" | "personal"; query: string; account: string | null | undefined },
+): Template[] {
+  const q = opts.query.trim().toLowerCase();
+  const rank = (t: Template) => (t.featured ? 0 : t.popular ? 1 : 2);
+  return templates
+    .filter((t) => {
+      if (t.category !== opts.category) return false;
+      if (!isTemplateVisible(t, opts.account)) return false;
+      if (!q) return true;
+      return (
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.id.toLowerCase().includes(q)
+      );
+    })
+    .sort((a, b) => rank(a) - rank(b));
 }
 
 function base(username: string): Omit<VoicescapePage, "theme"> {
@@ -405,6 +433,7 @@ export const TEMPLATES: Template[] = [
     name: "Coffee Shop",
     description: "Menu, hours, community vibes, and a tip jar for your favorite baristas.",
     category: "business",
+    popular: true,
     page: {
       ...base("daily-grind"),
       theme: {
@@ -529,6 +558,7 @@ export const TEMPLATES: Template[] = [
     name: "Aurora Drift",
     description: "Flowing northern-light gradients for dreamers, makers, and late-night thinkers.",
     category: "personal",
+    featured: true,
     page: {
       ...base("aurora.wav"),
       theme: {
@@ -622,6 +652,7 @@ export const TEMPLATES: Template[] = [
     name: "Lo-Fi Room",
     description: "Warm lamplight and rain sounds. A cozy corner for bedroom creators.",
     category: "personal",
+    popular: true,
     page: {
       ...base("the-lofi-room"),
       theme: {
@@ -712,6 +743,7 @@ export const TEMPLATES: Template[] = [
     name: "Night Signal",
     description: "Pirate-radio energy. You are the media — broadcast yourself.",
     category: "personal",
+    popular: true,
     page: {
       ...base("night-signal"),
       theme: {

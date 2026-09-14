@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
 import { resolveFounderBadge } from "@/lib/founders";
@@ -8,7 +8,8 @@ import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
-import { safeExternalUrl, openExternalUrl } from "@/lib/url";
+import { safeExternalUrl, safeImageUrl, openExternalUrl } from "@/lib/url";
+import { getJumpNavItems, parseCopyLink, truncCopyValue } from "@/lib/page-nav";
 import {
   MUSIC_SOURCE_LABELS,
   trackEmbedHeight,
@@ -19,6 +20,7 @@ import type { MusicTrack } from "@/lib/schema";
 import {
   IconBook,
   IconBolt,
+  IconCopy,
   IconExternal,
   IconGlobe,
   IconLink,
@@ -72,10 +74,13 @@ type MusicBlockT = Extract<Block, { type: "music" }>;
 function MusicBlock({
   block,
   profileTrackIndex,
+  anchorId,
 }: {
   block: MusicBlockT;
   /** Index into block.tracks of the page's featured profile song. */
   profileTrackIndex?: number;
+  /** Anchor id for the section jump-nav. */
+  anchorId?: string;
 }) {
   // Defensive: pages pinned before the track schema may have no tracks array.
   const tracks: MusicTrack[] = Array.isArray(block.tracks) ? block.tracks : [];
@@ -90,7 +95,7 @@ function MusicBlock({
 
   if (tracks.length === 0) {
     return (
-      <section className="pv-block pv-music pv-glass" aria-label="Music">
+      <section className="pv-block pv-music pv-glass" aria-label="Music" id={anchorId}>
         <div className="pv-music-legacy">
           <div className="pv-music-cover" aria-hidden="true">
             <IconMusic size={30} />
@@ -182,7 +187,7 @@ function MusicBlock({
   };
 
   return (
-    <section className="pv-block pv-music pv-glass" aria-label="Music">
+    <section className="pv-block pv-music pv-glass" aria-label="Music" id={anchorId}>
       <div className="pv-music-head">
         <span className="pv-music-icon" aria-hidden="true">
           <IconMusic size={22} />
@@ -225,6 +230,8 @@ function BlockView({
   onPayService,
   profileTrackIndex,
   isFounder,
+  anchorId,
+  onCopy,
 }: {
   block: Block;
   onPayService?: (s: ServiceItem) => void;
@@ -232,15 +239,25 @@ function BlockView({
   profileTrackIndex?: number;
   /** Render the platform Founder badge in the hero (not user-editable). */
   isFounder?: boolean;
+  /** Anchor id for the section jump-nav (only set on titled sections). */
+  anchorId?: string;
+  /** Copy-to-clipboard handler for `copy:` link rows. */
+  onCopy?: (text: string) => void;
 }) {
   switch (block.type) {
     case "hero": {
       const initial = (block.title || "?").trim().charAt(0).toUpperCase() || "?";
+      const photoUrl = safeImageUrl(block.avatarUrl);
       return (
-        <section className="pv-block pv-hero">
+        <section className="pv-block pv-hero" id={anchorId}>
           <div className="pv-avatar-ring">
             <div className="pv-avatar" aria-hidden="true">
-              {block.avatarEmoji || initial}
+              {photoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoUrl} alt="" />
+              ) : (
+                block.avatarEmoji || initial
+              )}
             </div>
           </div>
           <h1 className="pv-title">{block.title}</h1>
@@ -257,8 +274,25 @@ function BlockView({
       );
     case "links":
       return (
-        <section className="pv-block pv-links" aria-label="Links">
+        <section className="pv-block pv-links" aria-label="Links" id={anchorId}>
           {block.items.map((item, i) => {
+            const copyText = parseCopyLink(item.url);
+            if (copyText) {
+              // "On-chain proof" row: tap copies the contract id / address.
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  className="pv-link-btn pv-copy-btn"
+                  onClick={() => onCopy?.(copyText)}
+                  title={`Copy ${copyText}`}
+                >
+                  <IconCopy size={18} />
+                  <span className="pv-link-label">{item.label}</span>
+                  <span className="pv-copy-value vs-mono">{truncCopyValue(copyText)}</span>
+                </button>
+              );
+            }
             const url = safeExternalUrl(item.url);
             return (
               <a
@@ -286,16 +320,34 @@ function BlockView({
       );
     case "tipJar":
       return (
-        <section className="pv-block pv-tipjar" aria-label="Tip jar">
+        <section className="pv-block pv-tipjar" aria-label="Tip jar" id={anchorId}>
           <span className="pv-tipjar-icon" aria-hidden="true">
             <IconTip size={26} />
           </span>
           {block.message && <p>{block.message}</p>}
+          {/* Visible on-page trust math: 98% to the creator, 2% to the
+              treasury — enforced atomically by the Tips contract. The tip
+              sheet keeps the fuller breakdown. */}
+          <div className="pv-split">
+            <div
+              className="pv-split-bar"
+              role="img"
+              aria-label="Tip split: 98 percent to the creator, 2 percent to the Voicescape treasury"
+            >
+              <span className="pv-split-creator" style={{ width: "98%" }} />
+              <span className="pv-split-treasury" style={{ width: "2%" }} />
+            </div>
+            <div className="pv-split-labels" aria-hidden="true">
+              <span>98% creator</span>
+              <span>2% treasury</span>
+            </div>
+            <p className="pv-split-note">Enforced on-chain by the Tips contract</p>
+          </div>
         </section>
       );
     case "guestbook":
       return (
-        <section className="pv-block" aria-label="Guestbook">
+        <section className="pv-block" aria-label="Guestbook" id={anchorId}>
           <h2 className="pv-block-title">
             <IconBook size={20} />
             <span>Guestbook</span>
@@ -315,7 +367,7 @@ function BlockView({
         </section>
       );
     case "music":
-      return <MusicBlock block={block} profileTrackIndex={profileTrackIndex} />;
+      return <MusicBlock block={block} profileTrackIndex={profileTrackIndex} anchorId={anchorId} />;
     case "gallery": {
       const effect =
         block.effect === "dance" || block.effect === "marquee" || block.effect === "float"
@@ -356,7 +408,7 @@ function BlockView({
     case "top8": {
       const title = block.title || "Top 8";
       return (
-        <section className="pv-block" aria-label={title}>
+        <section className="pv-block" aria-label={title} id={anchorId}>
           <h2 className="pv-block-title">
             <IconUsers size={20} />
             <span>{title}</span>
@@ -367,10 +419,16 @@ function BlockView({
             <div className="pv-top8-grid">
               {block.friends.map((f, i) => {
                 const initial = (f.name || "?").trim().charAt(0).toUpperCase() || "?";
+                const photoUrl = safeImageUrl(f.avatarUrl);
                 const inner = (
                   <>
                     <span className="pv-friend-avatar" aria-hidden="true">
-                      {f.avatarEmoji || initial}
+                      {photoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={photoUrl} alt="" />
+                      ) : (
+                        f.avatarEmoji || initial
+                      )}
                     </span>
                     <span className="pv-friend-name">{f.name}</span>
                   </>
@@ -392,23 +450,23 @@ function BlockView({
       );
     }
     case "services":
-      return <ServicesBlock block={block} onPayService={onPayService} />;
+      return <ServicesBlock block={block} anchorId={anchorId} onPayService={onPayService} />;
     case "capabilities":
       return <CapabilitiesBlock block={block} />;
     case "operator":
       return <OperatorBlock block={block} />;
     case "reviews":
-      return <ReviewsBlock block={block} />;
+      return <ReviewsBlock block={block} anchorId={anchorId} />;
     case "booking":
-      return <BookingBlock block={block} />;
+      return <BookingBlock block={block} anchorId={anchorId} />;
     default:
       return null;
   }
 }
 
-function ServicesBlock({ block, onPayService }: { block: Extract<Block, { type: "services" }>; onPayService?: (s: ServiceItem) => void }) {
+function ServicesBlock({ block, anchorId, onPayService }: { block: Extract<Block, { type: "services" }>; anchorId?: string; onPayService?: (s: ServiceItem) => void }) {
   return (
-    <section className="pv-block" aria-label="Services">
+    <section className="pv-block" aria-label="Services" id={anchorId}>
       <h2 className="pv-block-title">
         <IconBolt size={20} />
         <span>Services — pay per call</span>
@@ -511,10 +569,10 @@ function OperatorBlock({ block }: { block: Extract<Block, { type: "operator" }> 
   );
 }
 
-function ReviewsBlock({ block }: { block: Extract<Block, { type: "reviews" }> }) {
+function ReviewsBlock({ block, anchorId }: { block: Extract<Block, { type: "reviews" }>; anchorId?: string }) {
   const chain = getActiveChain();
   return (
-    <section className="pv-block" aria-label={block.title || "Reviews"}>
+    <section className="pv-block" aria-label={block.title || "Reviews"} id={anchorId}>
       <h2 className="pv-block-title">
         <span aria-hidden="true">⭐</span>
         <span>{block.title || "Reviews"}</span>
@@ -544,9 +602,9 @@ function ReviewsBlock({ block }: { block: Extract<Block, { type: "reviews" }> })
   );
 }
 
-function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> }) {
+function BookingBlock({ block, anchorId }: { block: Extract<Block, { type: "booking" }>; anchorId?: string }) {
   return (
-    <section className="pv-block" aria-label={block.title || "Booking"}>
+    <section className="pv-block" aria-label={block.title || "Booking"} id={anchorId}>
       <h2 className="pv-block-title">
         <IconGlobe size={20} />
         <span>{block.title || "Book"}</span>
@@ -650,6 +708,39 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
   // user-controlled, so gating on it would let anyone spoof the badge.
   const isFounder = resolveFounderBadge(canonicalUsername, page.username);
 
+  // Section jump-nav (mockup M2): auto-generated from titled blocks,
+  // shown only when there are 3+ navigable sections.
+  const navItems = getJumpNavItems(page.blocks);
+  const navIdFor = (blockIndex: number): string | undefined =>
+    navItems.find((n) => n.id === `pv-section-${blockIndex}`)?.id;
+
+  // Copy-to-clipboard feedback for `copy:` link rows.
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    },
+    [],
+  );
+  const handleCopy = (text: string) => {
+    const showToast = (ok: boolean) => {
+      setToast(ok ? "Copied to clipboard" : "Copy failed — long-press to copy");
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(null), 2200);
+    };
+    try {
+      const p = navigator.clipboard?.writeText(text);
+      if (p && typeof p.then === "function") {
+        p.then(() => showToast(true), () => showToast(false));
+      } else {
+        showToast(false);
+      }
+    } catch {
+      showToast(false);
+    }
+  };
+
   return (
     <div className={`pv-root${isAgent ? " is-agent" : ""}`} style={themeStyle}>
       <header className="pv-header">
@@ -663,6 +754,16 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
 
       {agentMeta && <AgentBanner meta={agentMeta} />}
 
+      {navItems.length >= 3 && (
+        <nav className="pv-jumpnav" aria-label="Page sections">
+          {navItems.map((n) => (
+            <a key={n.id} href={`#${n.id}`} className="pv-jumpnav-link">
+              {n.label}
+            </a>
+          ))}
+        </nav>
+      )}
+
       <main className="pv-blocks">
         {page.blocks.map((block, i) => (
           <BlockView
@@ -670,6 +771,8 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
             block={block}
             onPayService={onPayService}
             isFounder={isFounder}
+            anchorId={navIdFor(i)}
+            onCopy={handleCopy}
             profileTrackIndex={
               block.type === "music" &&
               page.profileSong &&
@@ -701,6 +804,12 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
         <Logo size={16} />
         <span>Made with Voicescape</span>
       </footer>
+
+      {toast && (
+        <div className="pv-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

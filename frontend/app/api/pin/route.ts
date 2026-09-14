@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 // Server-only: the Pinata JWT must never reach the browser.
-import { publishAudioFile, publishPageJson } from "../../../lib/server/publish.js";
+import { publishAudioFile, publishImageFile, publishPageJson } from "../../../lib/server/publish.js";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "@/lib/server/quota";
 import { ipGate } from "@/lib/server/rate-limit";
-import { validateAudioUpload } from "@/lib/server/media-safety";
+import { validateAudioUpload, validateImageUpload } from "@/lib/server/media-safety";
 import { checkContent } from "@/lib/server/townhall/content-filter";
 
 export const runtime = "nodejs";
@@ -24,6 +24,88 @@ function safeAudioFilename(raw: unknown): string {
   return `audio-${Date.now()}.${ext}`;
 }
 
+/**
+ * Privacy: same PII rule as audio — the upload filename is user-controlled
+ * and persists in Pinata metadata. Neutral name, only a safe image
+ * extension preserved.
+ */
+function safeImageFilename(raw: unknown): string {
+  const name = typeof raw === "string" ? raw : "";
+  const dot = name.lastIndexOf(".");
+  let ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+  if (!["jpg", "jpeg", "png", "gif", "webp"].includes(ext)) ext = "bin";
+  return `avatar-${Date.now()}.${ext}`;
+}
+
+/**
+ * Pin an avatar image (hero / top8 photo). Mirrors the audio path:
+ * per-wallet daily quota, magic-byte validation with EXIF stripping, then
+ * Pinata. Images are small (5 MB) so the daily quota is higher than audio's.
+ */
+async function pinAvatarImage(
+  file: File,
+  wallet: string,
+  address: string,
+): Promise<NextResponse> {
+  const imageLimit = quotaLimitFromEnv("IMAGE_DAILY_QUOTA", 10);
+  let imageQ;
+  try {
+    imageQ = await globalQuotaStore().consume("pin:image", wallet, imageLimit);
+  } catch (e) {
+    console.error(`[pin] quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    return NextResponse.json(
+      { error: "temporarily unavailable — please retry in a moment" },
+      { status: 503 },
+    );
+  }
+  if (!imageQ.allowed) {
+    console.warn(`[quota] pin:image: wallet ${address} hit daily limit ${imageLimit}`);
+    return NextResponse.json(
+      quotaExceededBody(imageQ, `daily image pin limit reached (${imageLimit}/day)`),
+      { status: 429 },
+    );
+  }
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    // Defense-in-depth: verify the actual bytes are an image (magic bytes),
+    // not just the client-declared Content-Type. JPEGs come back EXIF-
+    // stripped so GPS/camera metadata never reaches permanent storage.
+    const screen = validateImageUpload(bytes, file.type);
+    if (!screen.ok) {
+      return NextResponse.json({ error: screen.reason }, { status: 400 });
+    }
+    const data = screen.cleaned ?? bytes;
+    // Content type from the sniffed magic bytes (trustworthy), not the
+    // client header — an empty or lying client MIME can't sneak through.
+    const contentType =
+      screen.kind === "jpeg"
+        ? "image/jpeg"
+        : screen.kind === "png"
+          ? "image/png"
+          : screen.kind === "gif"
+            ? "image/gif"
+            : screen.kind === "webp"
+              ? "image/webp"
+              : file.type;
+    const { cid, provider } = await publishImageFile(data, safeImageFilename(file.name), contentType);
+    return NextResponse.json({ cid, provider });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    const pinataDown = message.includes("PINATA_UNAVAILABLE");
+    if (pinataDown) {
+      console.error("[pin] Pinata unavailable (image): publishing service misconfigured or down");
+    }
+    const status = pinataDown
+      ? 503
+      : message.includes("too large") || message.includes("non-image")
+        ? 400
+        : 502;
+    const userMessage = pinataDown
+      ? "Publishing is temporarily unavailable — your work is saved, please try again later."
+      : message;
+    return NextResponse.json({ error: userMessage }, { status });
+  }
+}
 /**
  * Privacy: blockpage JSON is pinned to IPFS, which is immutable — a phone
  * number in a bio could never be taken back. Recursively walk every
@@ -90,6 +172,12 @@ export async function POST(req: NextRequest) {
         { error: 'Expected a "file" field in the multipart body.' },
         { status: 400 },
       );
+    }
+    // Avatar images ride the same /api/pin endpoint as audio uploads —
+    // kind=image selects the image path (magic-byte validation + EXIF
+    // strip + its own quota); anything else keeps the audio path.
+    if (form.get("kind") === "image") {
+      return pinAvatarImage(file, wallet, verified.session.address);
     }
     // Pinning costs real Pinata allowance (25 MB each for audio — the
     // expensive one): per-wallet daily quota, checked after session verify

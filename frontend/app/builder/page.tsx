@@ -26,6 +26,7 @@ import {
 } from "@/components/icons";
 import {
   BLOCK_TYPES,
+  FONT_OPTIONS,
   createDefaultBlock,
   isValidPage,
   type Block,
@@ -35,8 +36,8 @@ import {
   type VoicescapePage,
 } from "@/lib/schema";
 import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
-import { pinAudioFile } from "@/lib/ipfs";
-import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
+import { pinAudioFile, pinImageFile, imageGatewayUrl } from "@/lib/ipfs";
+import { TEMPLATES, filterTemplates, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -89,8 +90,6 @@ function setBlock(blocks: Block[], index: number, next: Block): Block[] {
 function truncMiddle(v: string, head = 6, tail = 4): string {
   return v.length > head + tail + 3 ? `${v.slice(0, head)}…${v.slice(-tail)}` : v;
 }
-
-const shortFont = (f: string) => f.split(",")[0];
 
 function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) {
   switch (type) {
@@ -333,6 +332,68 @@ function MusicTrackEditor({
   );
 }
 
+/**
+ * Avatar photo upload for hero / top8 blocks. Pins to IPFS via /api/pin
+ * (kind=image): server validates magic bytes and strips JPEG EXIF before
+ * the CID is stored. The photo wins over the emoji avatar in the renderer;
+ * removing it restores the emoji.
+ */
+function AvatarPhotoUpload({
+  avatarUrl,
+  onChange,
+}: {
+  avatarUrl?: string;
+  onChange: (url: string | undefined) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const upload = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    try {
+      const cid = await pinImageFile(file);
+      onChange(imageGatewayUrl(cid));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 8 }}>
+      {avatarUrl ? (
+        <div className="vb-row" style={{ alignItems: "center", gap: 10 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={avatarUrl} alt="Avatar preview" className="vb-avatar-preview" />
+          <button type="button" className="vs-btn vs-btn-ghost" onClick={() => onChange(undefined)}>
+            Remove photo
+          </button>
+        </div>
+      ) : (
+        <label className="vs-btn vs-btn-ghost" style={{ cursor: uploading ? "wait" : "pointer" }}>
+          {uploading ? "Uploading…" : "Upload photo"}
+          <input
+            type="file"
+            accept="image/*"
+            hidden
+            disabled={uploading}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (f) void upload(f);
+            }}
+            aria-label="Upload avatar photo"
+          />
+        </label>
+      )}
+      {error && <p className="vb-error">{error}</p>}
+      <p className="vs-hint">Photo (max 5 MB) — shown instead of the emoji avatar.</p>
+    </div>
+  );
+}
+
 function BlockEditor({
   block,
   index,
@@ -399,6 +460,10 @@ function BlockEditor({
               placeholder="Avatar emoji (optional)"
               onChange={(e) => onChange({ ...block, avatarEmoji: e.target.value })}
             />
+            <AvatarPhotoUpload
+              avatarUrl={block.avatarUrl}
+              onChange={(avatarUrl) => onChange({ ...block, avatarUrl })}
+            />
           </label>
         </>
       )}
@@ -420,41 +485,64 @@ function BlockEditor({
       {block.type === "links" && (
         <>
           <span className="vs-label">Links</span>
-          {block.items.map((item, i) => (
-            <div className="vb-row" key={i}>
-              <input
-                className="vs-input"
-                style={{ flex: 1 }}
-                value={item.label}
-                placeholder="Label"
-                onChange={(e) => {
-                  const items = [...block.items];
-                  items[i] = { ...items[i], label: e.target.value };
-                  onChange({ ...block, items });
-                }}
-              />
-              <input
-                className="vs-input"
-                style={{ flex: 2 }}
-                value={item.url}
-                placeholder="URL"
-                onChange={(e) => {
-                  const items = [...block.items];
-                  items[i] = { ...items[i], url: e.target.value };
-                  onChange({ ...block, items });
-                }}
-              />
-              <button
-                type="button"
-                className="vb-icon-btn vb-icon-btn-danger"
-                onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
-                title="Remove link"
-                aria-label="Remove link"
-              >
-                <IconClose size={14} />
-              </button>
-            </div>
-          ))}
+          {block.items.map((item, i) => {
+            const isCopy = item.url.startsWith("copy:");
+            const shownUrl = isCopy ? item.url.slice("copy:".length) : item.url;
+            const setItems = (items: typeof block.items) => onChange({ ...block, items });
+            return (
+              <div className="vb-entry" key={i} style={{ marginBottom: 8 }}>
+                <div className="vb-row">
+                  <input
+                    className="vs-input"
+                    style={{ flex: 1 }}
+                    value={item.label}
+                    placeholder="Label"
+                    onChange={(e) => {
+                      const items = [...block.items];
+                      items[i] = { ...items[i], label: e.target.value };
+                      setItems(items);
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="vb-icon-btn vb-icon-btn-danger"
+                    onClick={() => setItems(block.items.filter((_, j) => j !== i))}
+                    title="Remove link"
+                    aria-label="Remove link"
+                  >
+                    <IconClose size={14} />
+                  </button>
+                </div>
+                <input
+                  className="vs-input"
+                  value={shownUrl}
+                  placeholder={isCopy ? "Text to copy (e.g. 0.0.10854058)" : "URL"}
+                  onChange={(e) => {
+                    const items = [...block.items];
+                    items[i] = {
+                      ...items[i],
+                      url: isCopy ? `copy:${e.target.value}` : e.target.value,
+                    };
+                    setItems(items);
+                  }}
+                />
+                <label className="vs-hint" style={{ display: "flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={isCopy}
+                    onChange={(e) => {
+                      const items = [...block.items];
+                      items[i] = e.target.checked
+                        ? { ...items[i], url: `copy:${shownUrl}` }
+                        : { ...items[i], url: shownUrl };
+                      setItems(items);
+                    }}
+                  />
+                  Copy row — tap copies the text (contract ids, proof links)
+                </label>
+              </div>
+            );
+          })}
           <button
             type="button"
             className="vs-btn vs-btn-ghost"
@@ -625,6 +713,98 @@ function BlockEditor({
               <option value="float">Float</option>
             </select>
           </div>
+        </>
+      )}
+
+      {block.type === "top8" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              placeholder="Title (optional)"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <span className="vs-label">Friends</span>
+          {block.friends.map((friend, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <span>Friend {i + 1}</span>
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, friends: block.friends.filter((_, j) => j !== i) })}
+                  title="Remove friend"
+                  aria-label="Remove friend"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+              <label className="vb-field">
+                <span className="vs-label">Name</span>
+                <input
+                  className="vs-input"
+                  value={friend.name}
+                  placeholder="Name"
+                  onChange={(e) => {
+                    const friends = [...block.friends];
+                    friends[i] = { ...friends[i], name: e.target.value };
+                    onChange({ ...block, friends });
+                  }}
+                />
+              </label>
+              <div className="vb-row" style={{ gap: 8 }}>
+                <label className="vb-field" style={{ flex: 1 }}>
+                  <span className="vs-label">Avatar emoji</span>
+                  <input
+                    className="vs-input"
+                    value={friend.avatarEmoji ?? ""}
+                    placeholder="😎"
+                    onChange={(e) => {
+                      const friends = [...block.friends];
+                      friends[i] = { ...friends[i], avatarEmoji: e.target.value };
+                      onChange({ ...block, friends });
+                    }}
+                  />
+                </label>
+                <label className="vb-field" style={{ flex: 2 }}>
+                  <span className="vs-label">Link (optional)</span>
+                  <input
+                    className="vs-input"
+                    value={friend.url ?? ""}
+                    placeholder="https://…"
+                    onChange={(e) => {
+                      const friends = [...block.friends];
+                      friends[i] = { ...friends[i], url: e.target.value };
+                      onChange({ ...block, friends });
+                    }}
+                  />
+                </label>
+              </div>
+              <AvatarPhotoUpload
+                avatarUrl={friend.avatarUrl}
+                onChange={(avatarUrl) => {
+                  const friends = [...block.friends];
+                  friends[i] = { ...friends[i], avatarUrl };
+                  onChange({ ...block, friends });
+                }}
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() =>
+              onChange({
+                ...block,
+                friends: [...block.friends, { name: "", avatarEmoji: "😎" }],
+              })
+            }
+          >
+            <IconPlus size={16} /> Add friend
+          </button>
         </>
       )}
 
@@ -963,15 +1143,9 @@ function ThemeEditor({
       <label className="vb-field">
         <span className="vs-label">Font</span>
         <select className="vs-input" value={theme.fontFamily} onChange={(e) => onChange("fontFamily", e.target.value)}>
-          {[
-            "Arial, Helvetica, sans-serif",
-            "Georgia, serif",
-            "monospace",
-            "Comic Sans MS, cursive",
-            "Impact, sans-serif",
-          ].map((f) => (
-            <option key={f} value={f}>
-              {shortFont(f)}
+          {FONT_OPTIONS.map((f) => (
+            <option key={f.value} value={f.value}>
+              {f.label}
             </option>
           ))}
         </select>
@@ -1001,10 +1175,13 @@ function TemplatePicker({
   onPickLiaisonDraft?: () => void;
 }) {
   const [category, setCategory] = useState<"business" | "personal">("personal");
-  const filtered = TEMPLATES.filter((t) => t.category === category && isTemplateVisible(t, account));
+  const [query, setQuery] = useState("");
+  const filtered = filterTemplates(TEMPLATES, { category, query, account });
   return (
     <div>
-      <div className="vb-panel-title">Template</div>
+      <div className="vb-panel-title">
+        Template <span className="vb-template-count">{filtered.length}</span>
+      </div>
       {/* Liaison slice-1: the wallet-bound premade blockpage Danny built for
           this user sits above the grid. Selecting it loads their draft JSON
           into the canvas. */}
@@ -1049,7 +1226,22 @@ function TemplatePicker({
           <option value="business">Business</option>
         </select>
       </div>
+      <div style={{ marginBottom: 12 }}>
+        <input
+          className="vs-input"
+          style={{ width: "100%" }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search templates…"
+          aria-label="Search templates"
+        />
+      </div>
       <div className="vb-template-grid">
+        {filtered.length === 0 && (
+          <p className="vb-empty" style={{ gridColumn: "1 / -1" }}>
+            No templates match “{query}”.
+          </p>
+        )}
         {filtered.map((t) => (
           <button
             key={t.id}
@@ -1065,6 +1257,11 @@ function TemplatePicker({
                 background: `linear-gradient(135deg, ${t.page.theme.background} 0%, ${t.page.theme.accent} 55%, ${t.page.theme.foreground} 100%)`,
               }}
             />
+            {(t.featured || t.popular) && (
+              <span className={`vb-template-badge${t.featured ? " is-featured" : " is-popular"}`}>
+                {t.featured ? "⭐ Featured" : "🔥 Popular"}
+              </span>
+            )}
             <span className="vb-template-name">{t.name}</span>
             <span className="vb-template-desc">{t.description}</span>
             {t.id === activeId && (

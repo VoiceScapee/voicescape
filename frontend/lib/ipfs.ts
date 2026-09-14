@@ -86,6 +86,53 @@ export function audioGatewayUrl(cid: string): string {
   return `${getGateway()}${cid}`;
 }
 
+/** Max avatar image upload size: 5 MB (keeps pins cheap and pages fast). */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** Gateway URL for an image CID pinned to IPFS (avatars). */
+export function imageGatewayUrl(cid: string): string {
+  return `${getGateway()}${cid}`;
+}
+
+/**
+ * Upload the page owner's avatar photo. Posts multipart/form-data to
+ * /api/pin with kind=image, which validates magic bytes, strips JPEG EXIF,
+ * and pins via Pinata server-side (the JWT never reaches the browser).
+ * Returns the image CID.
+ *
+ * Client-side guardrails: must be an image/* file under MAX_IMAGE_BYTES.
+ * The server re-validates — never trust the client alone.
+ */
+export async function pinImageFile(file: Blob, filename?: string): Promise<string> {
+  const type = file.type || "";
+  if (!type.startsWith("image/")) {
+    throw new Error(`Not an image file (got "${type || "unknown type"}").`);
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB; max 5 MB).`,
+    );
+  }
+  const form = new FormData();
+  const name = filename || (file instanceof File ? file.name : "avatar.image") || "avatar.image";
+  form.append("file", file, name);
+  form.append("kind", "image");
+
+  const res = await fetch("/api/pin", {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: form,
+  });
+  const data = (await res.json().catch(() => ({}))) as { cid?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? `Image upload failed (HTTP ${res.status}).`);
+  }
+  if (!data.cid) {
+    throw new Error("Upload succeeded but the server returned no CID.");
+  }
+  return data.cid;
+}
+
 /**
  * Upload the page owner's own audio file ("upload your own music").
  * Posts multipart/form-data to /api/pin, which pins via Pinata server-side
