@@ -36,6 +36,8 @@ export const SITEMAP_STATIC_ROUTES: StaticRoute[] = [
   { path: "/builder", changeFrequency: "weekly", priority: 0.6 },
   { path: "/new-to-web3", changeFrequency: "monthly", priority: 0.7 },
   { path: "/mining-depin", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/terms", changeFrequency: "yearly", priority: 0.3 },
+  { path: "/privacy", changeFrequency: "yearly", priority: 0.3 },
 ];
 
 /** Max public profile URLs in the sitemap — keeps the file small. */

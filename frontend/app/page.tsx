@@ -1,8 +1,9 @@
-import Link from "next/link";
 import Splash from "@/components/Splash";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Logo from "@/components/Logo";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
+import LegalLinks from "@/components/LegalLinks";
 import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
 import { OnboardingTrigger } from "@/components/OnboardingTrigger";
@@ -212,6 +213,7 @@ export default function LandingPage() {
           <p className="vs-mono" style={{ margin: 0 }}>
             <T k="landing.footerTagline" />
           </p>
+          <LegalLinks />
           <BuiltOnHedera />
         </footer>
       </main>
