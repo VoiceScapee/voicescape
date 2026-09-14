@@ -240,42 +240,48 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const txId = tx.transactionId?.toString() ?? "";
       const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
 
-      // Same 30s race as tipping: a healthy wallet prompts within seconds.
-      // If it stays silent, check the mirror — the user may have approved
-      // and the response got lost on the way back.
-      let walletResponded = false;
-      try {
-        await Promise.race([
-          (async () => {
-            await (
-              pairing.hc.signAndExecuteTransaction as unknown as (
-                params: object,
-              ) => Promise<unknown>
-            )({
-              signerAccountId: `hedera:${network}:${accountId}`,
-              transactionList: txBase64,
-            });
-            walletResponded = true;
-          })(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("WALLET_TIMEOUT")), 30_000)),
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
-          // The wallet may have submitted the tx while losing the response —
-          // in that case txId is still undefined. Search the mirror by memo
-          // (which carries our challenge) instead of by txId.
-          const landedTxId = txId && (await checkLoginTxLanded(txId))
-            ? txId
-            : await findLoginTxByMemo(accountId, commit);
-          if (landedTxId) return { loginTxId: landedTxId, secret };
-          throw new Error(
-            "HashPack didn't respond — your wallet connection is stale. " +
-              "Disconnect Voicescape in HashPack's connected apps, then reconnect and try again.",
-          );
-        }
-        throw e;
+      // Don't wait on the wallet response — it often gets lost in HashPack's
+      // in-app browser. Send the tx, then watch the mirror for the approval.
+      // The user approves in the wallet; we see it land and complete login.
+      // This is the reliable path: the chain is the source of truth, not the
+      // wallet's response callback.
+      const walletSend = (
+        pairing.hc.signAndExecuteTransaction as unknown as (
+          params: object,
+        ) => Promise<unknown>
+      )({
+        signerAccountId: `hedera:${network}:${accountId}`,
+        transactionList: txBase64,
+      });
+      // A lost response just never settles; a real rejection (user hit
+      // Reject) should surface instead of polling for 2 minutes.
+      let walletRejected: unknown = null;
+      walletSend.catch((e) => {
+        walletRejected = e;
+      });
+      // Fast path: wallet returns the txId (works on desktop/good connections).
+      const returned = await Promise.race([
+        walletSend.then(() => txId as string | null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+      ]);
+      if (returned && (await checkLoginTxLanded(returned))) {
+        return { loginTxId: returned, secret };
       }
-      return { loginTxId: txId, secret };
+      if (walletRejected) throw walletRejected;
+      // Reliable path: poll the mirror for our login memo. The user has up
+      // to 2 minutes to approve in the wallet.
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        if (walletRejected) throw walletRejected;
+        const found = await findLoginTxByMemo(accountId, commit);
+        if (found) return { loginTxId: found, secret };
+        if (Date.now() >= deadline) break;
+        await new Promise((r) => setTimeout(r, 3_000));
+      }
+      throw new Error(
+        "Didn't see your approval on-chain. Approve the transaction in your " +
+          "wallet and try again.",
+      );
     },
     [],
   );
