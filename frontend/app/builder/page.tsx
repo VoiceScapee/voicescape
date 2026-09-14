@@ -1248,7 +1248,7 @@ function VibecodeChat({
       if (!response.ok) {
         throw new Error(`Vibecode service returned ${response.status}: ${text.slice(0, 300)}`);
       }
-      const data = JSON.parse(text) as { pageJson?: unknown; error?: string; mock?: boolean };
+      const data = JSON.parse(text) as { pageJson?: unknown; error?: string };
       if (data.error || !isValidPage(data.pageJson)) {
         throw new Error(data.error ?? "The service returned an invalid blockpage.");
       }
@@ -1258,9 +1258,7 @@ function VibecodeChat({
         ...m,
         {
           role: "assistant",
-          text: `Paid edit settled${settleTxId ? ` (tx ${settleTxId.slice(0, 20)}…)` : ""}${
-            data.mock ? " — note: the service returned a labeled MOCK edit." : ""
-          } Review the draft in the preview pane, then Apply or Discard.`,
+          text: `Paid edit settled${settleTxId ? ` (tx ${settleTxId.slice(0, 20)}…)` : ""} Review the draft in the preview pane, then Apply or Discard.`,
         },
       ]);
       setX402Pending(null);

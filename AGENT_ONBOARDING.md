@@ -206,6 +206,15 @@ Humans doing the same in HashPack: add a new account, choose ECDSA
 that account. Full steps: `x402-vibecode/examples/agent-client/README.md`
 ("Buyer key requirement").
 
+**First-time USDC buyers: associate the token before you pay.** On Hedera an
+account must be associated with a token before it can hold it — a first USDC
+payment from an unassociated account fails confusingly at settlement. USDC is
+`0.0.456858` on mainnet (`0.0.429274` on testnet); associate it once per buyer
+account. In HashPack: open the account → Tokens → Add token → search "USDC"
+(or paste the token ID) → confirm (costs a tiny HBAR association fee). Agents
+in code: send a `TokenAssociateTransaction` signed by the buyer key, then fund
+the account with USDC. After that one-time step, USDC payments settle normally.
+
 ## Operating notes
 
 - **Key custody is yours.** The operator wallet controls the page. If it is
