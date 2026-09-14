@@ -551,7 +551,7 @@ export function RequireSession({
  * same flow with full connection-state chrome.)
  */
 export function SignInButton() {
-  const { signIn, status } = useSession();
+  const { signIn, status, error } = useSession();
   const chain = getActiveChain();
   const [showOptions, setShowOptions] = useState(false);
   const options = WALLET_ADAPTERS.filter((a) => a.chains.includes(chain.key));
@@ -567,6 +567,23 @@ export function SignInButton() {
       >
         {busy ? "Check your wallet…" : "Sign in with wallet"}
       </button>
+      {error && !busy && (
+        <div
+          role="alert"
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            borderRadius: 8,
+            background: "rgba(255,80,80,0.12)",
+            border: "1px solid rgba(255,80,80,0.4)",
+            color: "#ff9a9a",
+            fontSize: 13,
+            maxWidth: 300,
+          }}
+        >
+          {error}
+        </div>
+      )}
       {showOptions && (
         <div
           style={{
