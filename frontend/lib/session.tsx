@@ -201,9 +201,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     // DAppConnector.signMessage uses HIP-30 account format: "hedera:<network>:<accountId>"
     const chain = (await import("./chains")).getActiveChain();
     const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
-    const result = (await pairing.hc.signMessage({
-      signerAccountId: `hedera:${network}:${accountId}`,
-      message,
+    // 30s timeout: a healthy HashPack prompts within seconds. Silence means
+    // a stale WalletConnect session (HashPack #291) — fail with a reconnect
+    // message instead of hanging forever on "signing".
+    const result = (await Promise.race([
+      pairing.hc.signMessage({
+        signerAccountId: `hedera:${network}:${accountId}`,
+        message,
+      }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("SIGN_TIMEOUT")), 30_000),
+      ),
+    ]).catch((e) => {
+      if (e instanceof Error && e.message === "SIGN_TIMEOUT") {
+        throw new Error(
+          "HashPack didn't respond — your wallet connection is stale. " +
+          "Disconnect Voicescape in HashPack's connected apps, then reconnect and try again.",
+        );
+      }
+      throw e;
     })) as unknown as { result?: { signatureMap?: string }; signatureMap?: string };
     // Handle both enveloped (result.signatureMap) and unwrapped shapes
     const sigMapB64 = result?.result?.signatureMap ?? result?.signatureMap;
