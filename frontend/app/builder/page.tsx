@@ -1677,10 +1677,9 @@ function PublishPanel({
         walletStepStarted = true;
         return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
       };
-      // HashPack sometimes goes silent after the user approves (the tx still
-      // lands on-chain; the wallet layer recovers via the mirror node after a
-      // 90s timeout). Without a progress hint the UI looks frozen on
-      // "Registering…" — reassure after 15s so users don't abandon the page.
+      // HashPack sometimes goes silent (stale WalletConnect session) — the
+      // prompt never appears. The wallet layer times out after 30s with a
+      // reconnect message. Reassure after 15s so users don't abandon the page.
       // The wallet wording only applies once the wallet step actually started:
       // during pinning/resolving no wallet prompt exists yet, so claiming
       // "already approved" would be misleading.
@@ -1689,7 +1688,7 @@ function PublishPanel({
         setStatus({
           kind: "info",
           text: walletStepStarted
-            ? "Still working — if you already approved in your wallet, the network is confirming. This can take up to ~90 seconds; please keep this page open."
+            ? "Still working — if you already approved in your wallet, the network is confirming. If no prompt appeared, your wallet connection may be stale."
             : "Still working — please keep this page open.",
         });
       }, 15000);

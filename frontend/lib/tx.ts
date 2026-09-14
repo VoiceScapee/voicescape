@@ -265,7 +265,12 @@ export function createHederaTxSender(
     // timeout the UI hangs on "Tipping…" forever. Race the wallet call
     // against a timeout, then check the mirror node for our txId — we
     // generated it ourselves, so we can verify whether it actually landed.
-    const WALLET_TIMEOUT_MS = 90_000;
+    //
+    // 30s (not 90s): a healthy HashPack prompts within seconds. If we've
+    // heard nothing after 30s the WalletConnect session is stale (HashPack
+    // #291) — the prompt never appeared. Fail with a reconnect message
+    // instead of leaving the user on "Publishing…" for a minute and a half.
+    const WALLET_TIMEOUT_MS = 30_000;
     let walletResponded = false;
     try {
       await Promise.race([
@@ -289,11 +294,14 @@ export function createHederaTxSender(
         if (landed === "failed") {
           throw new Error("The transaction failed on-chain. No payment was sent.");
         }
-        // Unknown: not visible on the mirror node yet. The user may have
-        // approved in their wallet — never claim failure. Throw the tx id
-        // along so the UI can confirm on-chain reactively instead of
-        // showing a dead-end error.
-        throw new WalletTimeoutError(txId);
+        // Not on-chain after 30s of wallet silence: the prompt never appeared
+        // (stale WalletConnect session, HashPack #291). Don't leave the user
+        // hanging — tell them exactly how to fix it.
+        throw new Error(
+          "HashPack didn't respond — your wallet connection is stale. " +
+          "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
+          "then reconnect and try again.",
+        );
       }
       throw e;
     }

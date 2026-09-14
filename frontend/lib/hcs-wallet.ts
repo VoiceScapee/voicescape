@@ -131,7 +131,11 @@ export async function submitHcsViaWallet(
     // hangs on "submitting" forever while the user's money is already
     // spent — the worst possible UX. Race the wallet call against a
     // timeout, then check whether the transaction actually landed.
-    const WALLET_TIMEOUT_MS = 90_000;
+    //
+    // 30s (not 90s): a healthy HashPack prompts within seconds. Silence
+    // means a stale WalletConnect session (HashPack #291) — fail with a
+    // reconnect message instead of hanging.
+    const WALLET_TIMEOUT_MS = 30_000;
     let walletResponded = false;
     try {
       await Promise.race([
@@ -153,9 +157,12 @@ export async function submitHcsViaWallet(
         if (landed === "failed") {
           throw new Error("The transaction failed on-chain. No message was posted.");
         }
+        // Not on-chain after 30s of wallet silence: the prompt never appeared
+        // (stale WalletConnect session). Tell the user how to fix it.
         throw new Error(
-          "Your wallet didn't respond in time. The message may still have been posted — " +
-          "check the chat before sending again to avoid duplicates.",
+          "HashPack didn't respond — your wallet connection is stale. " +
+          "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
+          "then reconnect and try again.",
         );
       }
       throw e;
