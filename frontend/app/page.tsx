@@ -69,15 +69,69 @@ export default function LandingPage() {
             >
               <T k="landing.exploreBlockpages" />
             </Link>
+          </div>
+          {/* Proof chips — real, verifiable claims only */}
+          <div
+            style={{
+              marginTop: 22,
+              display: "flex",
+              gap: 10,
+              justifyContent: "center",
+              flexWrap: "wrap",
+            }}
+          >
             <a
-              href="https://discord.gg/2KGzPduUN5"
+              href="https://hashscan.io/mainnet/contract/0.0.10854060"
               target="_blank"
               rel="noopener noreferrer"
-              className="vs-btn vs-btn-ghost"
-              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+              className="vs-glass"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--vs-muted)",
+                textDecoration: "none",
+              }}
             >
-              <T k="landing.joinDiscord" />
+              <T k="landing.proof1" />
+              <IconArrowRight size={14} />
             </a>
+            <span
+              className="vs-glass"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 16px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--vs-muted)",
+              }}
+            >
+              <T k="landing.proof2" />
+            </span>
+            <Link
+              href="/user-10424063"
+              className="vs-glass"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 16px",
+                borderRadius: 999,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--vs-muted)",
+                textDecoration: "none",
+              }}
+            >
+              <T k="landing.proof3" />
+              <IconArrowRight size={14} />
+            </Link>
           </div>
           <div style={{ marginTop: 20 }}>
             <a
