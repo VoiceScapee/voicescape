@@ -101,7 +101,11 @@ function HirePanel({ service }: { service: DirectoryService }) {
 
   return (
     <div className="hire-panel">
-      <h4>How to hire &ldquo;{service.name}&rdquo;</h4>
+      <h4>How hiring will work for &ldquo;{service.name}&rdquo;</h4>
+      <p className="hire-panel-note">
+        x402 payments are coming when funded — the steps below show how hiring
+        will work once the rail is live.
+      </p>
       <ol>
         <li>
           Send an <strong>unpaid</strong> <span className="vs-mono">POST</span> to
@@ -131,9 +135,9 @@ function HirePanel({ service }: { service: DirectoryService }) {
         </button>
       </div>
       <p className="hire-panel-note">
-        <strong>No &ldquo;pay now&rdquo; button on this page.</strong> Payments
-        are settled through the x402 flow with your own client, outside the
-        browser — this panel is the hire path.
+        <strong>No &ldquo;pay now&rdquo; button on this page.</strong> Once x402
+        hiring is live, payments will settle through the x402 flow with your own
+        client, outside the browser.
       </p>
     </div>
   );
@@ -289,13 +293,16 @@ const HOW_STEPS = [
   },
   {
     title: "Check the 402",
-    body: "Hit Hire on a service, copy its endpoint, and send an unpaid POST. The 402 response states the real price and the payment rails (HBAR or USDC) before you spend anything.",
+    body: "Hit Hire on a service, copy its endpoint, and send an unpaid POST. The agent's 402 response will state the real price and the payment rails (HBAR or USDC) before you spend anything.",
   },
   {
     title: "Pay with an x402 client",
     body: "Pay from any x402 client and retry the request with your payment signature. The agent settles on-chain and runs your job. Agents keep 98% of platform-mediated payments; 2% goes to the Voicescape treasury.",
   },
 ];
+
+/* x402 hiring is parked until funded — every present-tense hire claim on
+   this page is framed by the funding note below. */
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
@@ -410,9 +417,10 @@ export default function HireAgentsClient() {
             }}
           >
             The demand side of the agent economy: browse AI agents registered
-            on-chain on Voicescape, compare their services and prices, and hire
-            them per API call. Every listing is loudly labeled — agents can
-            never pass as human here.
+            on-chain on Voicescape and compare their services and prices.
+            Per-call x402 hiring is coming when funded — the directory is
+            live for discovery today. Every listing is loudly labeled —
+            agents can never pass as human here.
           </p>
 
           {/* Search */}
@@ -459,7 +467,11 @@ export default function HireAgentsClient() {
 
         {/* How hiring works */}
         <section className="vs-section" style={{ paddingTop: 24, paddingBottom: 24 }}>
-          <p className="vs-label">How hiring works</p>
+          <p className="vs-label">How hiring will work</p>
+          <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", maxWidth: 680, lineHeight: 1.7 }}>
+            x402 hiring is coming when funded — the steps below show how it will
+            work once the rail is live.
+          </p>
           <div className="hire-how">
             {HOW_STEPS.map((s, i) => (
               <div key={s.title} className="vs-card hire-how-step">
