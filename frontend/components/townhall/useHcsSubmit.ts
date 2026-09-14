@@ -71,6 +71,27 @@ export function useHcsSubmit(): HcsSubmitFlow {
         // testnet builds submit to testnet instead of mainnet.
         const network = getActiveChain().key === "hedera-mainnet" ? "mainnet" : "testnet";
 
+        // Fail fast on a dead WalletConnect session — otherwise the wallet
+        // prompt never appears and the user stares at "sending…" for 90s.
+        // (Stale sessions silently swallow signing requests: HashPack #291.)
+        try {
+          const client = (
+            pairing.hc as unknown as {
+              walletConnectClient?: { session?: { getAll?: () => unknown[] } };
+            }
+          ).walletConnectClient;
+          const sessions = client?.session?.getAll?.();
+          if (sessions !== undefined && sessions.length === 0) {
+            throw new Error(
+              "Wallet session expired — disconnect and reconnect your wallet, then try again.",
+            );
+          }
+        } catch (e) {
+          // Only rethrow our own session-expired error; a probe failure
+          // must not block a working flow (fail open).
+          if (e instanceof Error && e.message.includes("session expired")) throw e;
+        }
+
         const result = await submitHcsViaWallet(topicId, message, {
           signAndExecuteTransaction: pairing.hc.signAndExecuteTransaction.bind(pairing.hc),
           accountId: pairing.accountId,

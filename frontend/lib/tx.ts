@@ -192,6 +192,32 @@ export function createHederaTxSender(
     }
   }
 
+  /**
+   * Check whether the WalletConnect session is still alive before asking
+   * the wallet to sign. Stale sessions (HashPack #291) silently swallow
+   * signing requests — no prompt appears, no error fires, and the app
+   * hangs until the 90s timeout. Detecting the dead session up front lets
+   * us fail fast with a "reconnect" message instead.
+   *
+   * Fail-open: if the session state can't be determined (e.g. iframe flow
+   * internals), proceed as before rather than blocking a working flow.
+   */
+  function isSessionAlive(): boolean {
+    try {
+      const client = (
+        dAppConnector as unknown as {
+          walletConnectClient?: { session?: { getAll?: () => unknown[] } };
+        }
+      ).walletConnectClient;
+      const sessions = client?.session?.getAll?.();
+      // getAll() returning undefined = can't determine; fail open.
+      if (sessions === undefined) return true;
+      return sessions.length > 0;
+    } catch {
+      return true;
+    }
+  }
+
   async function executeWrite(
     evmAddress: string,
     fn: string,
@@ -199,6 +225,13 @@ export function createHederaTxSender(
     valueWei?: bigint,
   ): Promise<string> {
     const { dAppConnector: liveConnector, accountId } = requireWallet();
+    // Fail fast on a dead session — otherwise the wallet prompt never
+    // appears and the user stares at "Publishing…" for 90 seconds.
+    if (!isSessionAlive()) {
+      throw new Error(
+        "Wallet session expired — disconnect and reconnect your wallet, then try again.",
+      );
+    }
     const tx = new ContractExecuteTransaction()
       .setContractId(hederaContractId(evmAddress))
       .setGas(HEDERA_WRITE_GAS)
