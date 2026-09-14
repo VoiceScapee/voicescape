@@ -22,6 +22,7 @@ import {
 } from "@/lib/tx-proof";
 import { WalletConnect } from "@/components/WalletConnect";
 import CommentWall from "@/components/townhall/CommentWall";
+import DannyAgentCard from "@/components/DannyAgentCard";
 import PageBadges from "@/components/townhall/PageBadges";
 import OnChainLiveBadge from "@/components/OnChainLiveBadge";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
@@ -785,6 +786,10 @@ function PublicPageInner({ username }: { username: string }) {
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "0 18px 72px" }}>
+        {/* danny's blockpage shows the liaison's live A2A agent card, fetched
+            from /.well-known/agent.json — the same document machines read.
+            danny-only: no other agent publishes a card on this domain. */}
+        {username === "danny" && <DannyAgentCard />}
         {ownerEvm && <GoalBar username={username} ownerAddress={ownerEvm} />}
         {isOwner && <TipPushToggle wallet={state.meta.owner} />}
         {isOwner && ownerEvm && (
