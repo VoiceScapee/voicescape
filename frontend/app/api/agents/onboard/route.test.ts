@@ -166,8 +166,8 @@ describe("POST /api/agents/onboard", () => {
     expect(json.username).toBe("scout-7");
   });
 
-  it("returns 503 when the registry is not configured", async () => {
-    delete process.env.NEXT_PUBLIC_REGISTRY_ADDRESS;
+  it("returns 503 when the registry address is an unmappable format", async () => {
+    process.env.NEXT_PUBLIC_REGISTRY_ADDRESS = "0.0.99999";
     const res = await POST(postReq(GOOD_BODY, "good.token"));
     expect(res.status).toBe(503);
   });

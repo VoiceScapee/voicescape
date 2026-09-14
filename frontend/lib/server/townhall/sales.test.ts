@@ -27,7 +27,7 @@ afterEach(() => {
 });
 
 describe("RealSalesPort", () => {
-  it("returns false without throwing when the Tips contract is not deployed", async () => {
+  it("uses the mainnet fallback when the Tips address is unset (makes mirror call)", async () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
     const seen: string[] = [];
     vi.stubGlobal("fetch", async (url: unknown) => {
@@ -36,7 +36,7 @@ describe("RealSalesPort", () => {
     });
     const port = new RealSalesPort();
     await expect(port.hasCompletedPurchase(BUYER, SELLER)).resolves.toBe(false);
-    expect(seen).toHaveLength(0); // no mirror call at all
+    expect(seen.length).toBeGreaterThan(0); // mirror call happens with mainnet fallback
   });
 
   it("queries the Tips contract for PurchaseCompleted logs with buyer/seller topics", async () => {

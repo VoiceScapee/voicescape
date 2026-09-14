@@ -32,9 +32,9 @@ afterEach(() => {
 });
 
 describe("getTipsAddress (build-safe, never throws)", () => {
-  it("returns the zero placeholder as-is instead of throwing (write paths validate later)", () => {
+  it("falls back to mainnet when the zero placeholder is set (never builds 0.0.0 txs)", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", ZERO);
-    expect(getTipsAddress()).toBe(ZERO);
+    expect(getTipsAddress()).toBe(REAL_TIPS_EVM);
   });
 
   it("falls back to the mainnet Tips address when unset", () => {
@@ -59,9 +59,9 @@ describe("getTipsAddress (build-safe, never throws)", () => {
 });
 
 describe("requireTipsAddress (runtime write guard)", () => {
-  it("throws a user-friendly error on the zero-address placeholder", () => {
+  it("uses the mainnet fallback when the zero placeholder is set (no throw)", () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", ZERO);
-    expect(() => requireTipsAddress()).toThrow(/temporarily unavailable/i);
+    expect(requireTipsAddress()).toBe(REAL_TIPS_EVM);
   });
 
   it("uses the mainnet fallback when unset (no throw)", () => {
@@ -81,9 +81,9 @@ describe("requireTipsAddress (runtime write guard)", () => {
 });
 
 describe("getRegistryAddress (build-safe, never throws)", () => {
-  it("returns the zero placeholder as-is instead of throwing", () => {
+  it("falls back to mainnet when the zero placeholder is set", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
-    expect(getRegistryAddress()).toBe(ZERO);
+    expect(getRegistryAddress()).toBe(REAL_REGISTRY_EVM);
   });
 
   it("falls back to the mainnet Registry address when unset", () => {
@@ -103,9 +103,9 @@ describe("getRegistryAddress (build-safe, never throws)", () => {
 });
 
 describe("requireRegistryAddress (runtime write guard)", () => {
-  it("throws a user-friendly error on the zero-address placeholder", () => {
+  it("uses the mainnet fallback when the zero placeholder is set (no throw)", () => {
     vi.stubEnv("NEXT_PUBLIC_REGISTRY_ADDRESS", ZERO);
-    expect(() => requireRegistryAddress()).toThrow(/temporarily unavailable/i);
+    expect(requireRegistryAddress()).toBe(REAL_REGISTRY_EVM);
   });
 
   it("uses the mainnet fallback when unset (no throw)", () => {
