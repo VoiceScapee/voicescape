@@ -481,13 +481,49 @@ export async function handleDraftPost(
   const templateId = typeof b.templateId === "string" ? b.templateId : "";
   const template = TEMPLATES.find((t) => t.id === templateId);
   if (!template) return err(400, "unknown templateId");
-  if (template.page.ownerType === "agent") {
-    // The liaison builds for humans; agent templates carry operator
-    // disclosure blocks that must never ship on a human page.
-    return err(400, "agent templates aren't offered by the liaison");
-  }
+  const templateIsAgent = template.page.ownerType === "agent";
 
   const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  // Agent wallets can buy agent builds: the request must explicitly opt in
+  // with full operator disclosure (the registry contract reverts without
+  // it). The wallet itself is the agent — it pays, it owns the keys, it
+  // signs the publish. Human requests keep the old guard: agent templates
+  // carry operator disclosure blocks that must never ship on a human page.
+  const wantAgent = b.ownerType === "agent";
+  if (templateIsAgent && !wantAgent) {
+    return err(400, "agent templates aren't offered by the liaison");
+  }
+  if (wantAgent && !templateIsAgent) {
+    return err(400, "agent builds need an agent template");
+  }
+  let agentDisclosure: {
+    operator: string;
+    operatorName: string;
+    operatorUrl: string;
+    purpose: string;
+  } | null = null;
+  if (wantAgent) {
+    const opRaw = str(b.operatorWallet).trim();
+    let operator: string;
+    if (/^0x[0-9a-fA-F]{40}$/.test(opRaw)) operator = opRaw.toLowerCase();
+    else if (/^0\.0\.\d+$/.test(opRaw)) {
+      operator = "0x" + BigInt(opRaw.slice(4)).toString(16).padStart(40, "0");
+    } else {
+      return err(400, "operatorWallet must be a 0x address or a 0.0.x account id");
+    }
+    if (/^0x0+$/.test(operator)) {
+      return err(400, "operatorWallet must not be the zero address");
+    }
+    const operatorName = str(b.operatorName).trim().slice(0, 60);
+    const operatorUrl = str(b.operatorUrl).trim().slice(0, 200);
+    if (operatorUrl && !/^https?:\/\/[^\s/$.?#].[^\s]*$/i.test(operatorUrl)) {
+      return err(400, "operatorUrl must be an http(s) URL");
+    }
+    const purpose = str(b.purpose).trim().slice(0, 280);
+    if (!purpose) return err(400, "agent builds must disclose a purpose");
+    agentDisclosure = { operator, operatorName, operatorUrl, purpose };
+  }
+
   const displayName = str(b.displayName).trim().slice(0, 60);
   const heroTitle = str(b.heroTitle).trim().slice(0, 120);
   const bio = str(b.bio).trim().slice(0, 500);
@@ -497,11 +533,37 @@ export async function handleDraftPost(
 
   // Deep-clone so template definitions are never mutated.
   const page = JSON.parse(JSON.stringify(template.page)) as VoicescapePage;
-  // Non-custody: liaison drafts are ALWAYS human pages. The publish path
-  // asserts this again, but the draft itself must never carry agent fields.
-  page.ownerType = "human";
-  delete page.purpose;
-  page.blocks = page.blocks.filter((blk) => blk.type !== "operator");
+  if (agentDisclosure) {
+    // Agent build: the session wallet IS the agent. Keep the agent typing,
+    // stamp the disclosure, and sync the operator block (the registry
+    // reverts on a zero operator, so one must always be present).
+    page.ownerType = "agent";
+    page.purpose = agentDisclosure.purpose;
+    let synced = false;
+    for (const blk of page.blocks) {
+      if (blk.type === "operator") {
+        blk.wallet = agentDisclosure.operator;
+        if (agentDisclosure.operatorName) blk.name = agentDisclosure.operatorName;
+        if (agentDisclosure.operatorUrl) blk.url = agentDisclosure.operatorUrl;
+        synced = true;
+      }
+    }
+    if (!synced) {
+      page.blocks.push({
+        type: "operator",
+        wallet: agentDisclosure.operator,
+        ...(agentDisclosure.operatorName ? { name: agentDisclosure.operatorName } : {}),
+        ...(agentDisclosure.operatorUrl ? { url: agentDisclosure.operatorUrl } : {}),
+      });
+    }
+  } else {
+    // Non-custody: human liaison drafts are ALWAYS human pages. The publish
+    // path asserts this again, but the draft itself must never carry agent
+    // fields.
+    page.ownerType = "human";
+    delete page.purpose;
+    page.blocks = page.blocks.filter((blk) => blk.type !== "operator");
+  }
 
   for (const blk of page.blocks) {
     if (blk.type === "hero") {
@@ -544,6 +606,7 @@ export async function handleDraftPost(
     draftId,
     templateId: template.id,
     usernameHint,
+    ownerType: page.ownerType ?? "human",
     buildsLeft: ent.buildsLeft,
   });
 }

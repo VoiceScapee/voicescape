@@ -65,6 +65,7 @@ export const ALL_BADGES: Badge[] = [
   { id: "builder", name: "Builder", description: "Published a blockpage and received a first tip — unlocks the Builders room.", icon: "🔨", category: "milestone" },
   // Special
   { id: "agent-pioneer", name: "Agent Pioneer", description: "An AI agent among the first 100 agent pages.", icon: "🤖", category: "special" },
+  { id: "bacon-badge", name: "Bacon Badge", description: "Bought the official Bacon the Dino badge from his blockpage store — a real on-chain purchase.", icon: "🦕", category: "special" },
   { id: "prolific", name: "Prolific", description: "200 total town hall actions.", icon: "🔥", category: "special" },
   // Growth — referral badges
   { id: "connector", name: "Connector", description: "Referred your first new user to Voicescape.", icon: "🔗", category: "special" },
@@ -295,6 +296,8 @@ export interface BadgeEnrichment {
   violations: number;
   /** The wallet owns at least one registered blockpage. */
   ownsPage: boolean;
+  /** Completed an on-chain purchase of Bacon the Dino's badge listing. */
+  baconBadge: boolean;
 }
 
 export const EMPTY_ENRICHMENT: BadgeEnrichment = {
@@ -306,6 +309,7 @@ export const EMPTY_ENRICHMENT: BadgeEnrichment = {
   agentRank: null,
   violations: 0,
   ownsPage: false,
+  baconBadge: false,
 };
 
 /**
@@ -363,6 +367,8 @@ export function badgesForUser(
     give("agent-pioneer");
   }
   if (totalActions(s) >= THRESHOLDS.prolific) give("prolific");
+  // Purchased: Bacon the Dino's official badge from his blockpage store.
+  if (e.baconBadge) give("bacon-badge");
 
   // Growth — referral badges
   if (s.referrals.size >= THRESHOLDS.connector) give("connector");
@@ -504,6 +510,52 @@ const PURCHASE_TOPIC0 = ethers.id("PurchaseCompleted(address,address,string,uint
 /** Cap on mirror-node log pages scanned per enrichment call. */
 const LOG_PAGE_CAP = 5;
 
+/**
+ * Bacon the Dino's official badge — sold from his blockpage store.
+ * `listingRef` is the marketplace listing id Bacon chooses when posting
+ * the badge listing; buyer = the wallet being checked, seller = Bacon.
+ */
+export const BACON_BADGE_LISTING_REF = "bacon-badge";
+export const BACON_WALLET_ID = "0.0.10860063";
+/** Bacon's key-derived (alias) EVM address — the form the Tips contract emits as seller. */
+export const BACON_ALIAS_ADDRESS = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+const PURCHASE_DATA_ABI = ["string", "uint256", "uint256"] as const; // listingRef, amount, fee
+
+/**
+ * True when the wallet completed an on-chain purchase of Bacon's badge
+ * listing (PurchaseCompleted with listingRef "bacon-badge", seller =
+ * Bacon's wallet). Filters the fetched Tips-contract logs in code —
+ * mirror-node topic filters silently match nothing on
+ * /contracts/{id}/results/logs, so this follows the same in-code
+ * pattern as the other wallet counters. The seller topic is matched
+ * against both the long-zero and alias (key-derived) address forms,
+ * since the contract emits whichever form the buyer paid. Bounded to
+ * the fetched log list; fail-open → false.
+ */
+export function hasBaconBadge(logs: TipsLog[], wallet: string): boolean {
+  const canonBuyer = canonicalAddress(wallet);
+  if (!canonBuyer) return false;
+  const buyerTopic = paddedTopic(canonBuyer).toLowerCase();
+  const baconTopics = new Set(
+    [BACON_ALIAS_ADDRESS, canonicalAddress(BACON_WALLET_ID)]
+      .filter((a): a is string => !!a)
+      .map((a) => paddedTopic(a).toLowerCase()),
+  );
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  for (const l of logs) {
+    if (l.topics?.[0]?.toLowerCase() !== PURCHASE_TOPIC0.toLowerCase()) continue;
+    if (l.topics?.[1]?.toLowerCase() !== buyerTopic) continue;
+    if (!baconTopics.has(l.topics?.[2]?.toLowerCase() ?? "")) continue;
+    try {
+      const [listingRef] = coder.decode(PURCHASE_DATA_ABI, l.data ?? "0x") as unknown as [string, bigint, bigint];
+      if (listingRef === BACON_BADGE_LISTING_REF) return true;
+    } catch {
+      /* undecodable log — skip */
+    }
+  }
+  return false;
+}
+
 const PAGE_REGISTERED_ABI = [
   "event PageRegistered(string indexed username, address indexed owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
 ];
@@ -527,7 +579,7 @@ async function fetchLogPages(firstUrl: string, cap: number): Promise<NonNullable
   return out;
 }
 
-type TipsLog = { topics?: string[]; timestamp?: string; data?: string };
+export type TipsLog = { topics?: string[]; timestamp?: string; data?: string };
 
 /**
  * Fetch the tips-contract's logs unfiltered (bounded pages); fail-open → [].
@@ -762,6 +814,7 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     agentRank: null,
     violations: 0,
     ownsPage: false,
+    baconBadge: false,
   };
   if (wallet) {
     const [logs, agent, violations, ownsPage] = await Promise.all([
@@ -778,6 +831,7 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     enrichment.tipsSent = activity.sent;
     enrichment.purchasesBought = activity.bought;
     enrichment.purchasesSold = activity.sold;
+    enrichment.baconBadge = hasBaconBadge(logs, wallet);
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
     // Founder bypass: the founder wallet always qualifies for the Builder badge.
     applyFounderEnrichment(wallet, enrichment);

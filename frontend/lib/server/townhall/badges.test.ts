@@ -1,8 +1,11 @@
 /** Badge system tests — pure computation. No network, no chain. */
 import { describe, expect, it } from "vitest";
+import { ethers } from "ethers";
 import {
   ALL_BADGES,
   BADGE_BY_ID,
+  BACON_ALIAS_ADDRESS,
+  BACON_BADGE_LISTING_REF,
   EMPTY_ENRICHMENT,
   SCORE_WEIGHTS,
   THRESHOLDS,
@@ -10,8 +13,10 @@ import {
   applyFounderEnrichment,
   badgesForUser,
   gatherUserStats,
+  hasBaconBadge,
   scoreFromEntry,
   totalActions,
+  type TipsLog,
   type UserStats,
 } from "./badges";
 import type { StoredMessage, TownhallMessage } from "./types";
@@ -49,10 +54,10 @@ function statsFor(username: string, patch: Partial<UserStats>): UserStats {
 }
 
 describe("badge catalog", () => {
-  it("defines 24 badges with unique ids and valid categories", () => {
-    expect(ALL_BADGES).toHaveLength(24);
+  it("defines 25 badges with unique ids and valid categories", () => {
+    expect(ALL_BADGES).toHaveLength(25);
     const ids = ALL_BADGES.map((b) => b.id);
-    expect(new Set(ids).size).toBe(24);
+    expect(new Set(ids).size).toBe(25);
     for (const b of ALL_BADGES) {
       expect(["activity", "quality", "milestone", "special"]).toContain(b.category);
       expect(b.name.length).toBeGreaterThan(0);
@@ -389,5 +394,75 @@ describe("referral badges", () => {
     expect(stats.get("carol")?.referrals.size ?? 0).toBe(0);
     const ids = badgesForUser(stats.get("brandon") ?? null, EMPTY_ENRICHMENT, null).map((b) => b.id);
     expect(ids).toContain("connector");
+  });
+});
+
+describe("bacon badge (purchasable)", () => {
+  const PURCHASE_TOPIC0 = ethers.id("PurchaseCompleted(address,address,string,uint256,uint256)");
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const pad = (addr: string) => "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const BUYER = "0x0000000000000000000000000000000000012345";
+
+  function purchaseLog(opts: {
+    buyer?: string;
+    seller?: string;
+    listingRef?: string;
+    topic0?: string;
+    data?: string;
+  }): TipsLog {
+    return {
+      topics: [
+        opts.topic0 ?? PURCHASE_TOPIC0,
+        pad(opts.buyer ?? BUYER),
+        pad(opts.seller ?? BACON_ALIAS_ADDRESS),
+      ],
+      data:
+        opts.data ??
+        coder.encode(["string", "uint256", "uint256"], [opts.listingRef ?? BACON_BADGE_LISTING_REF, 100n, 2n]),
+    };
+  }
+
+  it("grants the badge for a completed badge purchase (alias seller form)", () => {
+    expect(hasBaconBadge([purchaseLog({})], BUYER)).toBe(true);
+  });
+
+  it("matches the long-zero seller form too", () => {
+    // 0.0.10860063 long-zero: 0x0000…0a5b61f
+    const longZero = "0x0000000000000000000000000000000000a5b61f";
+    expect(hasBaconBadge([purchaseLog({ seller: longZero })], BUYER)).toBe(true);
+  });
+
+  it("accepts the buyer in 0.0.x form", () => {
+    expect(hasBaconBadge([purchaseLog({ buyer: "0x0000000000000000000000000000000000012345" })], "0.0.74565")).toBe(true);
+  });
+
+  it("rejects a different listingRef", () => {
+    expect(hasBaconBadge([purchaseLog({ listingRef: "bacon-sticker" })], BUYER)).toBe(false);
+  });
+
+  it("rejects purchases from other sellers", () => {
+    const other = "0x0000000000000000000000000000000000009999";
+    expect(hasBaconBadge([purchaseLog({ seller: other })], BUYER)).toBe(false);
+  });
+
+  it("rejects logs where the wallet is not the buyer", () => {
+    expect(hasBaconBadge([purchaseLog({})], "0.0.77777")).toBe(false);
+  });
+
+  it("rejects non-purchase events and undecodable logs", () => {
+    const wrongEvent = purchaseLog({ topic0: ethers.id("TipSent(string,address,address,uint256,uint256)") });
+    const badData = purchaseLog({ data: "0xdeadbeef" });
+    expect(hasBaconBadge([wrongEvent], BUYER)).toBe(false);
+    expect(hasBaconBadge([badData], BUYER)).toBe(false);
+    expect(hasBaconBadge([], BUYER)).toBe(false);
+    expect(hasBaconBadge([purchaseLog({})], "not-an-address")).toBe(false);
+  });
+
+  it("badgesForUser grants bacon-badge only when enrichment says so", () => {
+    const s = statsFor("buyer", {});
+    const withBadge = badgesForUser(s, { ...EMPTY_ENRICHMENT, baconBadge: true }, null).map((b) => b.id);
+    expect(withBadge).toContain("bacon-badge");
+    const without = badgesForUser(s, EMPTY_ENRICHMENT, null).map((b) => b.id);
+    expect(without).not.toContain("bacon-badge");
   });
 });
