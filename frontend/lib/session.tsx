@@ -261,7 +261,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         ]);
       } catch (e) {
         if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
-          if (await checkLoginTxLanded(txId)) return { loginTxId: txId, secret };
+          // The wallet may have submitted the tx while losing the response —
+          // in that case txId is still undefined. Search the mirror by memo
+          // (which carries our challenge) instead of by txId.
+          const landedTxId = txId && (await checkLoginTxLanded(txId))
+            ? txId
+            : await findLoginTxByMemo(accountId, commit);
+          if (landedTxId) return { loginTxId: landedTxId, secret };
           throw new Error(
             "HashPack didn't respond — your wallet connection is stale. " +
               "Disconnect Voicescape in HashPack's connected apps, then reconnect and try again.",
@@ -298,6 +304,38 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       return data.transactions?.[0]?.result === "SUCCESS";
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Fallback for when the wallet submits the login tx but loses the response
+   * (txId unknown). Searches the mirror for a recent successful transfer from
+   * the account whose memo carries our login commitment.
+   */
+  async function findLoginTxByMemo(accountId: string, commit: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `https://mainnet.mirrornode.hedera.com/api/v1/transactions` +
+          `?account.id=${encodeURIComponent(accountId)}` +
+          `&transactiontype=cryptotransfer&limit=10&order=desc`,
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as {
+        transactions?: Array<{ transaction_id?: string; result?: string; memo_base64?: string }>;
+      };
+      for (const t of data.transactions ?? []) {
+        if (t.result !== "SUCCESS" || !t.transaction_id || !t.memo_base64) continue;
+        let memo = "";
+        try {
+          memo = Buffer.from(t.memo_base64, "base64").toString("utf8");
+        } catch {
+          continue;
+        }
+        if (memo.includes(commit)) return t.transaction_id;
+      }
+      return null;
+    } catch {
+      return null;
     }
   }
 
