@@ -57,7 +57,10 @@ function normalizeContractAddress(
   knownEvmAddress: string,
 ): string | undefined {
   const addr = raw?.trim();
-  if (!addr) return knownEvmAddress; // unset → mainnet default
+  // Unset, empty, or the zero-address placeholder from .env.example →
+  // use the known mainnet default. (A zero placeholder used to slip
+  // through and build transactions to Contract ID 0.0.0 in HashPack.)
+  if (!addr || /^0x0{40}$/i.test(addr)) return knownEvmAddress;
   // Ethers needs the 0x EVM address, not the 0.0.x Hedera ID.
   if (/^0\.0\.\d+$/.test(addr)) {
     return addr === knownHederaId ? knownEvmAddress : undefined;
