@@ -104,6 +104,8 @@ export default function DannyLiaisonPanel() {
   const [paying, setPaying] = useState<LiaisonProduct | null>(null);
   const [payStage, setPayStage] = useState<"wallet" | "confirming" | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
+  const [reverifyBusy, setReverifyBusy] = useState(false);
+
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
   const [confirmProduct, setConfirmProduct] = useState<LiaisonProduct | null>(null);
   const confirmStatus = useConfirmedTransaction(confirmTxId);
@@ -157,6 +159,33 @@ export default function DannyLiaisonPanel() {
       /* panel stays usable without status */
     }
   }, [authedFetch]);
+
+  // Re-verify a payment: scans on-chain for the user's newest unconsumed
+  // tip and credits it, without requiring a new payment. For users hit by
+  // the 98/2 verification bug — their HBAR is on-chain, just uncredited.
+  const reverify = async (product: "chat" | "build") => {
+    setReverifyBusy(true);
+    setPayError(null);
+    try {
+      const res = await authedFetch("/api/liaison/verify-tip", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ scan: true, product }),
+      });
+      const j = await res.json().catch(() => null);
+      if (res.ok) {
+        await refreshStatus();
+        // Build re-verified → start the interview immediately.
+        if (product === "build") startInterview();
+      } else {
+        setPayError(typeof j?.error === "string" ? j.error : "No unused payment found on-chain.");
+      }
+    } catch {
+      setPayError("Couldn't reach the server — try again.");
+    } finally {
+      setReverifyBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (isAuthenticated) refreshStatus();
@@ -553,6 +582,27 @@ export default function DannyLiaisonPanel() {
           {payError && (
             <p style={{ color: "#f87171", fontSize: "0.85rem", margin: "0 0 8px" }}>{payError}</p>
           )}
+          {/* Re-verify: if the user paid but the credit didn't land (e.g. the
+              98/2 bug), scan on-chain for their unconsumed tip instead of
+              making them pay again. */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              disabled={reverifyBusy}
+              onClick={() => reverify("chat")}
+              style={{ ...btnStyle, background: "transparent", border: "1px solid var(--vs-border)", fontSize: "0.8rem", padding: "6px 10px" }}
+            >
+              {reverifyBusy ? "Checking…" : "I paid for chat — check again"}
+            </button>
+            <button
+              type="button"
+              disabled={reverifyBusy}
+              onClick={() => reverify("build")}
+              style={{ ...btnStyle, background: "transparent", border: "1px solid var(--vs-border)", fontSize: "0.8rem", padding: "6px 10px" }}
+            >
+              {reverifyBusy ? "Checking…" : "I paid for a build — check again"}
+            </button>
+          </div>
 
           <div style={{ display: "flex", gap: 8 }}>
             <input
