@@ -184,6 +184,23 @@ describe("isLiaisonTipLog", () => {
   it("rejects non-TipSent logs", () => {
     expect(isLiaisonTipLog({ topics: [], data: "0x", timestamp: "1.1" }, SESSION, PRICE)).toBe(false);
   });
+  it("accepts a tip from the wallet's key-derived EVM address (real wallets)", () => {
+    // Contract logs carry msg.sender (key-derived EVM); sessions are keyed
+    // by the long-zero address. The alias list bridges them.
+    const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const log = tipLog({
+      topics: [TIPSENT_TOPIC, liaisonUsernameTopic(), word(keyDerived), word(LIAISON_OWNER_EVM)],
+    });
+    expect(isLiaisonTipLog(log, SESSION, PRICE)).toBe(false);
+    expect(isLiaisonTipLog(log, SESSION, PRICE, [keyDerived])).toBe(true);
+  });
+  it("still rejects a stranger even with aliases present", () => {
+    const stranger = "0x3333333333333333333333333333333333333333";
+    const log = tipLog({
+      topics: [TIPSENT_TOPIC, liaisonUsernameTopic(), word(stranger), word(LIAISON_OWNER_EVM)],
+    });
+    expect(isLiaisonTipLog(log, SESSION, PRICE, [SESSION])).toBe(false);
+  });
 });
 
 describe("decodeRegisterUsername", () => {
@@ -223,5 +240,15 @@ describe("isOwnPageRegisteredLog", () => {
   });
   it("rejects a different username", () => {
     expect(isOwnPageRegisteredLog(log, "other-page", SESSION)).toBe(false);
+  });
+  it("accepts the wallet's key-derived EVM address as owner", () => {
+    const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const keyLog = {
+      topics: [PAGEREGISTERED_TOPIC, usernameTopic, word(keyDerived)],
+      data: "0x",
+      timestamp: "1789350068.1",
+    };
+    expect(isOwnPageRegisteredLog(keyLog, "my-page", SESSION)).toBe(false);
+    expect(isOwnPageRegisteredLog(keyLog, "my-page", SESSION, [keyDerived])).toBe(true);
   });
 });

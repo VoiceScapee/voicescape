@@ -23,6 +23,7 @@
 import { checkContent } from "../townhall/content-filter";
 import { TEMPLATES } from "../../templates";
 import { isValidPage, type VoicescapePage } from "../../schema";
+import { longZeroToAccountId } from "../../session-message";
 import type { KvStore } from "../store";
 import {
   LIAISON_BUILDS_PER_PAYMENT,
@@ -131,6 +132,37 @@ function asRecord(v: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/**
+ * Every EVM address a session wallet can appear as on-chain.
+ *
+ * Hedera wallet sessions are keyed by the account's long-zero address, but
+ * contract logs (TipSent.from, PageRegistered owner) carry msg.sender —
+ * the account's key-derived EVM address. Without resolving that alias,
+ * every real wallet's payment verifies on-chain but never credits (the
+ * 2026-09-14 verify-tip failures). Resolved once per verification via the
+ * mirror node; never throws — falls back to the session address alone.
+ */
+async function resolvePayerCandidates(
+  deps: LiaisonDeps,
+  addr: string,
+): Promise<string[]> {
+  const candidates = [addr.toLowerCase()];
+  try {
+    const accountId = longZeroToAccountId(addr);
+    if (!accountId) return candidates;
+    const res = await deps.mirrorGet(`/api/v1/accounts/${accountId}`);
+    if (!res.ok) return candidates;
+    const evm = asRecord(res.json)?.evm_address;
+    if (typeof evm === "string" && /^0x[0-9a-fA-F]{40}$/.test(evm)) {
+      const lower = evm.toLowerCase();
+      if (!candidates.includes(lower)) candidates.push(lower);
+    }
+  } catch {
+    /* fall back to the session address alone */
+  }
+  return candidates;
+}
+
 /* ------------------------------------------------------------------ */
 /* POST /api/liaison/verify-tip                                        */
 /* ------------------------------------------------------------------ */
@@ -180,8 +212,9 @@ export async function handleVerifyTip(
     if (!res.ok) return err(502, "mirror node unreachable — try again in a moment");
     const logs = asRecord(res.json)?.logs;
     if (!Array.isArray(logs)) return err(502, "unexpected mirror node response");
+    const fromAddrs = await resolvePayerCandidates(deps, addr);
     for (const log of logs) {
-      if (!isLiaisonTipLog(log, addr, price)) continue;
+      if (!isLiaisonTipLog(log, addr, price, fromAddrs)) continue;
       const txHash = asRecord(log)?.transaction_hash;
       if (typeof txHash !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) continue;
       const claimed = await deps.kv.setNx(liaisonTipKey(txHash.toLowerCase()), addr, LIAISON_TIP_CLAIM_TTL_MS);
@@ -217,8 +250,9 @@ export async function handleVerifyTip(
       return err(400, "that transaction is not a successful contract call");
     }
     const logs = asRecord(resultRes.json)?.logs;
+    const fromAddrs = await resolvePayerCandidates(deps, addr);
     const matched =
-      Array.isArray(logs) && logs.some((l) => isLiaisonTipLog(l, addr, price));
+      Array.isArray(logs) && logs.some((l) => isLiaisonTipLog(l, addr, price, fromAddrs));
     if (!matched) {
       return err(
         404,
@@ -562,8 +596,10 @@ export async function handlePublishConfirm(
     return err(400, "that transaction does not register this username");
   }
   const logs = result?.logs;
+  const ownerAddrs = await resolvePayerCandidates(deps, addr);
   const owned =
-    Array.isArray(logs) && logs.some((l) => isOwnPageRegisteredLog(l, username, addr));
+    Array.isArray(logs) &&
+    logs.some((l) => isOwnPageRegisteredLog(l, username, addr, ownerAddrs));
   if (!owned) {
     return err(400, "no on-chain registration found for your wallet and this username");
   }
