@@ -344,6 +344,83 @@ describe("handleDraftPost/Get/Delete", () => {
     expect(r.status).toBe(400);
   });
 
+  it("refuses agent opt-in on a human template", async () => {
+    const deps = makeDeps();
+    await grant(deps);
+    const r = await handleDraftPost(deps, SESSION, {
+      ...form,
+      ownerType: "agent",
+      operatorWallet: "0x00000000000000000000000000000000009f0eff",
+      purpose: "test agent",
+    });
+    expect(r.status).toBe(400);
+  });
+
+  it("assembles an agent draft with operator disclosure", async () => {
+    const deps = makeDeps();
+    await grant(deps);
+    const r = await handleDraftPost(deps, SESSION, {
+      templateId: "bacon-the-dino",
+      ownerType: "agent",
+      operatorWallet: "0.0.10424063",
+      operatorName: "Brandon Prout",
+      operatorUrl: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
+      purpose: "Family-friendly AI dino sharing snack quests and jokes.",
+      usernameHint: "bacon-the-dino",
+    });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, ownerType: "agent" });
+
+    const got = await handleDraftGet(deps, SESSION);
+    expect(got.status).toBe(200);
+    const draft = got.body.draft as {
+      pageJson: {
+        ownerType?: string;
+        purpose?: string;
+        blocks: { type: string; wallet?: string; name?: string; url?: string }[];
+      };
+    };
+    // Agent typing survives; the operator block is synced to the request.
+    expect(draft.pageJson.ownerType).toBe("agent");
+    expect(draft.pageJson.purpose).toBe("Family-friendly AI dino sharing snack quests and jokes.");
+    const op = draft.pageJson.blocks.find((b) => b.type === "operator");
+    expect(op?.wallet).toBe("0x00000000000000000000000000000000009f0eff");
+    expect(op?.name).toBe("Brandon Prout");
+    expect(op?.url).toBe("https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/");
+  });
+
+  it("refuses agent builds without full disclosure", async () => {
+    const deps = makeDeps();
+    await grant(deps);
+    const base = {
+      templateId: "bacon-the-dino",
+      ownerType: "agent",
+      operatorWallet: "0x00000000000000000000000000000000009f0eff",
+    };
+    // No purpose.
+    expect((await handleDraftPost(deps, SESSION, base)).status).toBe(400);
+    // Zero operator.
+    expect(
+      (await handleDraftPost(deps, SESSION, {
+        ...base,
+        operatorWallet: "0x0000000000000000000000000000000000000000",
+        purpose: "p",
+      })).status,
+    ).toBe(400);
+    // Garbage operator.
+    expect(
+      (await handleDraftPost(deps, SESSION, { ...base, operatorWallet: "nope", purpose: "p" })).status,
+    ).toBe(400);
+    // Bad URL.
+    expect(
+      (await handleDraftPost(deps, SESSION, {
+        ...base,
+        purpose: "p",
+        operatorUrl: "not a url",
+      })).status,
+    ).toBe(400);
+  });
+
   it("refuses unknown templates and PII", async () => {
     const deps = makeDeps();
     await grant(deps);

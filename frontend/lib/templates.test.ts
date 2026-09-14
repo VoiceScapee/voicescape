@@ -55,8 +55,52 @@ describe("founder template", () => {
     expect(founder!.page.username).toBe("user-10424063");
   });
 
-  it("is the only owner-gated template in the gallery", () => {
+  it("is one of the owner-gated templates in the gallery", () => {
     const gated = TEMPLATES.filter((t) => t.ownerAccounts && t.ownerAccounts.length > 0);
-    expect(gated.map((t) => t.id)).toEqual(["founder"]);
+    expect(gated.map((t) => t.id)).toEqual(["bacon-the-dino", "founder"]);
+  });
+});
+
+describe("bacon-the-dino template", () => {
+  const bacon = TEMPLATES.find((t) => t.id === "bacon-the-dino");
+
+  it("exists, is agent-typed, and is owner-gated to Bacon's wallet", () => {
+    expect(bacon).toBeDefined();
+    expect(bacon!.page.ownerType).toBe("agent");
+    expect(bacon!.ownerAccounts).toContain("0.0.10860063");
+    expect(isTemplateVisible(bacon!, null)).toBe(false);
+    expect(isTemplateVisible(bacon!, "0.0.12345")).toBe(false);
+    expect(isTemplateVisible(bacon!, "0.0.10860063")).toBe(true);
+    expect(isTemplateVisible(bacon!, "0x0c243aae85131bf396d3fc4c6005a0f885bd7734")).toBe(true);
+  });
+
+  it("carries operator disclosure and an honest empty store", () => {
+    const op = bacon!.page.blocks.find((b) => b.type === "operator");
+    expect(op).toBeDefined();
+    if (op?.type === "operator") {
+      // Brandon's wallet, long-zero EVM form.
+      expect(op.wallet.toLowerCase()).toBe("0x00000000000000000000000000000000009f0eff");
+    }
+    expect(bacon!.page.purpose).toBeTruthy();
+    const services = bacon!.page.blocks.find((b) => b.type === "services");
+    expect(services).toBeDefined();
+    if (services?.type === "services") {
+      expect(services.items).toEqual([]);
+    }
+  });
+
+  it("uses only real links and real supported features", () => {
+    const links = bacon!.page.blocks.find((b) => b.type === "links");
+    expect(links).toBeDefined();
+    if (links?.type === "links") {
+      for (const item of links.items) {
+        expect(item.url).not.toContain("example.com");
+        expect(item.url).toMatch(/^https:\/\//);
+      }
+    }
+    // No travel filler from the generic atlas template.
+    const haystack = JSON.stringify(bacon!.page).toLowerCase();
+    expect(haystack).not.toContain("atlas");
+    expect(haystack).not.toContain("compass");
   });
 });

@@ -1666,10 +1666,12 @@ function PublishPanel({
         return;
       }
     }
-    // Liaison non-custody assertion: a liaison-assisted publish can never
-    // leave as an agent page, carry an operator, or set a purpose. The
-    // registry contract additionally makes ownership untransferable.
-    if (liaisonAssisted) {
+    // Liaison non-custody assertion: a liaison-assisted publish keeps the
+    // server-issued draft typing. Human drafts can never leave as agent
+    // pages; agent drafts (disclosed and paid for by the agent wallet
+    // itself) keep their operator and purpose. The wallet signs everything —
+    // the helper never takes control either way.
+    if (liaisonAssisted && initialOwnerType !== "agent") {
       if (ownerType !== "human") {
         setStatus({
           kind: "err",
@@ -2050,7 +2052,8 @@ function BuilderInner() {
   }, [isAuthenticated, token]);
 
   /** Load the liaison draft into the canvas. The page becomes
-      liaison-assisted: PublishPanel asserts it publishes as a human page. */
+      liaison-assisted: PublishPanel keeps the server-issued draft typing
+      (human drafts publish as human pages only). */
   const pickLiaisonDraft = async () => {
     const t = token();
     if (!t) return;
@@ -2063,13 +2066,16 @@ function BuilderInner() {
       const j = await res.json();
       const d = j?.draft;
       if (!d?.pageJson || !isValidPage(d.pageJson)) return;
-      // Server enforces human-only drafts; belt and suspenders client-side.
+      // The server issues the draft's typing. Human drafts stay human
+      // (belt and suspenders client-side); agent drafts keep their
+      // operator disclosure.
       const fresh = JSON.parse(JSON.stringify(d.pageJson)) as VoicescapePage;
-      fresh.ownerType = "human";
+      const draftIsAgent = fresh.ownerType === "agent";
+      if (!draftIsAgent) fresh.ownerType = "human";
       const tmpl = TEMPLATES.find((x) => x.id === d.templateId);
       if (tmpl) setTemplateId(tmpl.id);
       setLiaisonDraftId(typeof d.draftId === "string" ? d.draftId : "liaison");
-      setDraftOwnerType("human");
+      setDraftOwnerType(draftIsAgent ? "agent" : "human");
       if (typeof d.usernameHint === "string" && d.usernameHint) {
         setDraftVanity(d.usernameHint);
       }

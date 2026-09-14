@@ -337,8 +337,11 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
     if (!checked.allowed) return checked;
   }
 
-  // Spam heuristics.
-  if (REPEATED_CHAR_RE.test(text)) {
+  // Spam heuristics. EVM addresses (0x + 40 hex chars) legitimately
+  // contain long zero runs (the long-zero account form), so strip them
+  // before the repeated-character scan.
+  const textSansEvmAddrs = text.replace(/0x[0-9a-fA-F]{40}\b/g, "");
+  if (REPEATED_CHAR_RE.test(textSansEvmAddrs)) {
     return blocked("repeated characters look like spam");
   }
   if (REPEATED_WORD_RE.test(text)) {
