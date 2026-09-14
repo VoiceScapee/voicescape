@@ -39,9 +39,15 @@ function word(addr: string): string {
 
 function tipLog(from: string = SESSION, txHash?: string) {
   const amountTinybar = BigInt(5) * BigInt(100_000_000);
+  // Real TipSent logs carry two data words: gross amount, then the 2%
+  // treasury fee (fee = value * 200 / 10000, as the contract emits).
+  const feeTinybar = (amountTinybar * BigInt(200)) / BigInt(10_000);
   const log: Record<string, unknown> = {
     topics: [TIPSENT_TOPIC, liaisonUsernameTopic(), word(from), word(LIAISON_OWNER_EVM)],
-    data: "0x" + amountTinybar.toString(16).padStart(64, "0"),
+    data:
+      "0x" +
+      amountTinybar.toString(16).padStart(64, "0") +
+      feeTinybar.toString(16).padStart(64, "0"),
     timestamp: "1789350068.813732104",
   };
   if (txHash) log.transaction_hash = txHash;

@@ -42,6 +42,9 @@ export interface WeeklyLeader {
  * Decode one mirror-node log into a TipEvent. Returns null for anything
  * that is not a well-formed TipSent event (wrong topic, missing parties,
  * unparseable amount) — callers skip nulls.
+ *
+ * amountHbar is the creator's NET 98% share (gross amount minus the treasury
+ * fee word) — the only figure any UI total may display as "received".
  */
 export function decodeTipSentLog(log: unknown): TipEvent | null {
   if (!log || typeof log !== "object") return null;
@@ -61,11 +64,17 @@ export function decodeTipSentLog(log: unknown): TipEvent | null {
   const to = "0x" + toTopic.slice(-40).toLowerCase();
   if (!/^0x[0-9a-f]{40}$/.test(from) || !/^0x[0-9a-f]{40}$/.test(to)) return null;
 
+  // TipSent data layout: word0 = gross amount (msg.value, tinybar),
+  // word1 = treasury fee (tinybar). The creator's actual 98% share — the
+  // only figure any UI total may show — is gross minus fee.
   let amountHbar = 0;
-  if (typeof l.data === "string" && l.data.length >= 66) {
+  if (typeof l.data === "string" && l.data.length >= 130) {
     try {
-      const amountTinybar = BigInt("0x" + l.data.slice(2, 66));
-      amountHbar = Number(amountTinybar) / TINYBAR_PER_HBAR;
+      const grossTinybar = BigInt("0x" + l.data.slice(2, 66));
+      const feeTinybar = BigInt("0x" + l.data.slice(66, 130));
+      if (feeTinybar < 0n || feeTinybar > grossTinybar) return null;
+      const netTinybar = grossTinybar - feeTinybar;
+      amountHbar = Number(netTinybar) / TINYBAR_PER_HBAR;
     } catch {
       return null;
     }
