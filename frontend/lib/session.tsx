@@ -25,6 +25,7 @@
 
 "use client";
 
+import { usePathname } from "next/navigation";
 import React, {
   createContext,
   useCallback,
@@ -150,6 +151,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
      verified on every request), so it stays valid even before the wallet
      reconnects — that gives the honest 7-day reload. */
   const restoredRef = useRef(false);
+  const pathname = usePathname();
   useEffect(() => {
     const stored = readStored();
     if (stored && stored.chainId === chain.chainId) {
@@ -163,6 +165,19 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     restoredRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  /* Re-verify the session on every route change. HashPack's in-app browser
+     can drop React context on navigation — this restores the session from
+     storage so the user never has to sign in twice. Never wipes, only restores. */
+  useEffect(() => {
+    if (!restoredRef.current) return; // mount effect handles the first load
+    const stored = readStored();
+    if (stored && stored.chainId === chain.chainId && !sessionRef.current) {
+      setSessionBoth(stored);
+      setStatus("authenticated");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   /* React to wallet connect / disconnect / account switch. Never runs
      before the restore above, so a page reload can't wipe a valid session
