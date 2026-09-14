@@ -77,10 +77,14 @@ describe("decodeTipSentLog", () => {
     expect(
       decodeTipSentLog(tipLog({ from: ALICE, to: BOB, amountTinybar: 0n })),
     ).toBeNull();
-    // Missing timestamp
+    // Missing timestamp is accepted — the per-transaction contract-results
+    // endpoint omits it, and verification only needs parties + amount.
     const noTs = tipLog({ from: ALICE, to: BOB, amountTinybar: 10_000_000n });
     delete (noTs as Record<string, unknown>).timestamp;
-    expect(decodeTipSentLog(noTs)).toBeNull();
+    expect(decodeTipSentLog(noTs)).not.toBeNull();
+    // Malformed timestamp is still rejected
+    const badTs = tipLog({ from: ALICE, to: BOB, amountTinybar: 10_000_000n, timestamp: "not-a-time" });
+    expect(decodeTipSentLog(badTs)).toBeNull();
     // Garbage input
     expect(decodeTipSentLog(null)).toBeNull();
     expect(decodeTipSentLog("nope")).toBeNull();

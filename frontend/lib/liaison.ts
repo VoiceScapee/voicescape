@@ -238,19 +238,28 @@ export function isSuccessfulContractCall(tx: unknown): boolean {
 
 /**
  * A mirror-node log is a *paid liaison tip* when it decodes as TipSent with:
- * - from == the session wallet (the payer),
+ * - from == one of the payer's on-chain addresses,
  * - to == danny's on-chain owner (the 98% recipient),
  * - amount >= the session price (the event records the full tipped value),
  * - the indexed username topic == keccak256("danny") (the tip was FOR danny).
+ *
+ * The payer's address needs the extraFromAddrs list because Hedera wallet
+ * sessions are keyed by the account's long-zero address, while contract
+ * logs carry msg.sender — the account's key-derived EVM address. Without
+ * the alias, every real wallet's tip verifies on-chain but never credits.
  */
 export function isLiaisonTipLog(
   log: unknown,
   sessionAddr: string,
   priceHbar: number,
+  extraFromAddrs: string[] = [],
 ): boolean {
   const ev = decodeTipSentLog(log);
   if (!ev) return false;
-  if (ev.from !== sessionAddr.toLowerCase()) return false;
+  const fromOk = [sessionAddr, ...extraFromAddrs].some(
+    (a) => typeof a === "string" && ev.from === a.toLowerCase(),
+  );
+  if (!fromOk) return false;
   if (ev.to !== LIAISON_OWNER_EVM) return false;
   // The Tips contract splits 98/2 on-chain: Danny receives 98% of the paid
   // amount, the treasury takes 2%. The event logs Danny's net receipt, so
@@ -294,13 +303,15 @@ export function decodeRegisterUsername(functionParameters: unknown): string | nu
 
 /**
  * A PageRegistered log belongs to this publish when the indexed username
- * topic matches keccak256(username) and the indexed owner is the session
- * wallet. topics[1] = username hash, topics[2] = owner address.
+ * topic matches keccak256(username) and the indexed owner is one of the
+ * session wallet's on-chain addresses (long-zero session form or the
+ * key-derived EVM address contracts actually log as msg.sender).
  */
 export function isOwnPageRegisteredLog(
   log: unknown,
   username: string,
   sessionAddr: string,
+  extraOwnerAddrs: string[] = [],
 ): boolean {
   if (!log || typeof log !== "object") return false;
   const topics = (log as { topics?: unknown }).topics;
@@ -312,6 +323,10 @@ export function isOwnPageRegisteredLog(
   const wantUsername = ethers
     .keccak256(ethers.toUtf8Bytes(username.toLowerCase()))
     .toLowerCase();
-  const wantOwner = `0x${"0".repeat(24)}${sessionAddr.toLowerCase().replace(/^0x/, "")}`;
-  return usernameTopic === wantUsername && ownerTopic === wantOwner;
+  const ownerOk = [sessionAddr, ...extraOwnerAddrs].some(
+    (a) =>
+      typeof a === "string" &&
+      ownerTopic === `0x${"0".repeat(24)}${a.toLowerCase().replace(/^0x/, "")}`,
+  );
+  return usernameTopic === wantUsername && ownerOk;
 }

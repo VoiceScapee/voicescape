@@ -134,6 +134,35 @@ describe("handleVerifyTip", () => {
     expect(r.body).toMatchObject({ ok: true, product: "build", chatLeft: 0, buildsLeft: 1 });
   });
 
+  it("credits a tip logged under the wallet's key-derived EVM address", async () => {
+    // Real-world case (2026-09-14): the session is keyed by the long-zero
+    // address, but the TipSent log carries msg.sender — the account's
+    // key-derived EVM address. The verifier must bridge the alias.
+    const longZero = "0x000000000000000000000000000000000000007b"; // 0.0.123
+    const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const deps = makeDeps({
+      mirrorGet: async (path: string) => {
+        if (path === `/api/v1/transactions/${TIP_TX}`) {
+          return {
+            ok: true,
+            status: 200,
+            json: { transactions: [{ result: "SUCCESS", name: "CONTRACT_CALL" }] },
+          };
+        }
+        if (path === `/api/v1/contracts/results/${TIP_TX}`) {
+          return { ok: true, status: 200, json: { logs: [tipLog(keyDerived)] } };
+        }
+        if (path === "/api/v1/accounts/0.0.123") {
+          return { ok: true, status: 200, json: { evm_address: keyDerived } };
+        }
+        return { ok: false, status: 404, json: null };
+      },
+    });
+    const r = await handleVerifyTip(deps, longZero, { txHash: TIP_TX, product: "build" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, product: "build", buildsLeft: 1 });
+  });
+
   it("accumulates on top of an existing entitlement", async () => {
     const deps = makeDeps();
     await deps.kv.set(
@@ -387,6 +416,44 @@ describe("handlePublishConfirm", () => {
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ ok: true, username: "my-page" });
     expect(await deps.kv.get(liaisonDraftKey(SESSION))).toBeNull();
+  });
+
+  it("confirms a registration logged under the key-derived EVM address", async () => {
+    // Same aliasing as verify-tip: PageRegistered carries msg.sender.
+    const longZero = "0x000000000000000000000000000000000000007b"; // 0.0.123
+    const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const data = REGISTER_IFACE.encodeFunctionData("registerPage", [
+      "my-page",
+      "bafycid",
+      0,
+      "0x0000000000000000000000000000000000000000",
+      "",
+    ]);
+    const deps = makeDeps({
+      mirrorGet: async (path: string) => {
+        if (path === `/api/v1/transactions/${PUB_TX}`) {
+          return {
+            ok: true,
+            status: 200,
+            json: { transactions: [{ result: "SUCCESS", name: "CONTRACT_CALL" }] },
+          };
+        }
+        if (path === `/api/v1/contracts/results/${PUB_TX}`) {
+          return {
+            ok: true,
+            status: 200,
+            json: { function_parameters: data, logs: [pageRegisteredLog("my-page", keyDerived)] },
+          };
+        }
+        if (path === "/api/v1/accounts/0.0.123") {
+          return { ok: true, status: 200, json: { evm_address: keyDerived } };
+        }
+        return { ok: false, status: 404, json: null };
+      },
+    });
+    const r = await handlePublishConfirm(deps, longZero, { username: "my-page", txHash: PUB_TX });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ ok: true, username: "my-page" });
   });
 
   it("records the celebration flag on publish confirm", async () => {
