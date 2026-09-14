@@ -85,6 +85,41 @@ describe("decodeTipSentLog", () => {
     expect(decodeTipSentLog(null)).toBeNull();
     expect(decodeTipSentLog("nope")).toBeNull();
   });
+
+  it("reports the creator's net 98% share, not the gross amount", () => {
+    const gross = 10_000_000n; // 0.1 HBAR tipped
+    const fee = 200_000n; // 2% treasury cut
+    const data =
+      "0x" + gross.toString(16).padStart(64, "0") + fee.toString(16).padStart(64, "0");
+    expect(
+      decodeTipSentLog(tipLog({ from: ALICE, to: BOB, amountTinybar: gross, data })),
+    ).toEqual({
+      from: ALICE.toLowerCase(),
+      to: BOB.toLowerCase(),
+      amountHbar: 0.098,
+      timestamp: "1757750400.000000000",
+    });
+  });
+
+  it("rejects TipSent logs missing the fee word", () => {
+    const oneWord =
+      "0x" + (10_000_000n).toString(16).padStart(64, "0"); // gross only, no fee
+    expect(
+      decodeTipSentLog(
+        tipLog({ from: ALICE, to: BOB, amountTinybar: 10_000_000n, data: oneWord }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects TipSent logs where the fee exceeds the gross amount", () => {
+    const gross = 10_000_000n;
+    const fee = 11_000_000n; // impossible on-chain — corrupt log
+    const data =
+      "0x" + gross.toString(16).padStart(64, "0") + fee.toString(16).padStart(64, "0");
+    expect(
+      decodeTipSentLog(tipLog({ from: ALICE, to: BOB, amountTinybar: gross, data })),
+    ).toBeNull();
+  });
 });
 
 describe("aggregateWeeklyTips", () => {
