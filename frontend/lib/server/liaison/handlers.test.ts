@@ -363,7 +363,7 @@ describe("handleDraftPost/Get/Delete", () => {
       templateId: "bacon-the-dino",
       ownerType: "agent",
       operatorWallet: "0.0.10424063",
-      operatorName: "Brandon Prout",
+      operatorName: "Brandon",
       operatorUrl: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
       purpose: "Family-friendly AI dino sharing snack quests and jokes.",
       usernameHint: "bacon-the-dino",
@@ -385,7 +385,7 @@ describe("handleDraftPost/Get/Delete", () => {
     expect(draft.pageJson.purpose).toBe("Family-friendly AI dino sharing snack quests and jokes.");
     const op = draft.pageJson.blocks.find((b) => b.type === "operator");
     expect(op?.wallet).toBe("0x00000000000000000000000000000000009f0eff");
-    expect(op?.name).toBe("Brandon Prout");
+    expect(op?.name).toBe("Brandon");
     expect(op?.url).toBe("https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/");
   });
 

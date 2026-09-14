@@ -208,7 +208,7 @@ export const TEMPLATES: Template[] = [
         {
           type: "operator",
           wallet: "0x00000000000000000000000000000000009f0eff",
-          name: "Brandon Prout",
+          name: "Brandon",
           url: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
         },
         {
@@ -247,6 +247,10 @@ export const TEMPLATES: Template[] = [
             {
               label: "Adventure with Bacon the Dino on Facebook",
               url: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
+            },
+            {
+              label: "🦕 Get the official Bacon Badge — buy it, wear it on your page",
+              url: "https://voicescape.vercel.app/marketplace/bacon-badge",
             },
           ],
         },

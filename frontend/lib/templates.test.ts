@@ -80,6 +80,8 @@ describe("bacon-the-dino template", () => {
     if (op?.type === "operator") {
       // Brandon's wallet, long-zero EVM form.
       expect(op.wallet.toLowerCase()).toBe("0x00000000000000000000000000000000009f0eff");
+      // First name only — no family name on Bacon's page.
+      expect(op.name).toBe("Brandon");
     }
     expect(bacon!.page.purpose).toBeTruthy();
     const services = bacon!.page.blocks.find((b) => b.type === "services");
@@ -87,6 +89,11 @@ describe("bacon-the-dino template", () => {
     if (services?.type === "services") {
       expect(services.items).toEqual([]);
     }
+  });
+
+  it("uses the operator's first name only — no family name anywhere", () => {
+    const haystack = JSON.stringify(bacon!.page).toLowerCase();
+    expect(haystack).not.toContain("prout");
   });
 
   it("uses only real links and real supported features", () => {
