@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import Navbar from "@/components/Navbar";
 import Logo from "@/components/Logo";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
+import LegalLinks from "@/components/LegalLinks";
 import { WalletConnect } from "@/components/WalletConnect";
 import { T } from "@/components/T";
 import { NewToWeb3 } from "@/components/landing/NewToWeb3";
@@ -95,6 +96,7 @@ export default function NewToWeb3Page() {
           <p className="vs-mono" style={{ margin: 0 }}>
             <T k="landing.footerTagline" />
           </p>
+          <LegalLinks />
           <BuiltOnHedera />
         </footer>
       </div>
