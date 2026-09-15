@@ -1,0 +1,6 @@
+audio/
+frames/
+segs/
+out/
+shots/*.png
+!shots/.gitkeep
