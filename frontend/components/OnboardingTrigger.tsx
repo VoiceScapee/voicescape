@@ -16,6 +16,12 @@ import { Onboarding } from "@/components/Onboarding";
 
 const PUBLISHED_KEY = "vs_published_username";
 
+/**
+ * Set by markPublished(); consumed once by the Buddy widget, which greets
+ * the visitor with "🎉 Your blockpage is live!" the next time it opens.
+ */
+export const BUDDY_CELEBRATE_KEY = "vs_buddy_celebrate";
+
 /** The locally-remembered published username, if any. */
 function publishedUsername(): string | null {
   if (typeof window === "undefined") return null;
@@ -92,6 +98,7 @@ export function OnboardingTrigger() {
 export function markPublished(username: string): void {
   try {
     localStorage.setItem(PUBLISHED_KEY, username.toLowerCase());
+    localStorage.setItem(BUDDY_CELEBRATE_KEY, "true");
     localStorage.setItem("vs_onboarded", "true");
   } catch {
     /* storage unavailable — best effort */

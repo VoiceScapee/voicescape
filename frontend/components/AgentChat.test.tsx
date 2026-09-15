@@ -47,4 +47,16 @@ describe("AgentChat", () => {
     expect(layoutSrc).toContain('import AgentChat from "@/components/AgentChat"');
     expect(layoutSrc).toContain("<AgentChat />");
   });
+
+  it("shows the one-time post-publish celebration and consumes the flag", () => {
+    expect(widgetSrc).toContain("🎉 Your blockpage is live!");
+    expect(widgetSrc).toContain("BUDDY_CELEBRATE_KEY");
+    expect(widgetSrc).toContain('localStorage.removeItem(BUDDY_CELEBRATE_KEY)');
+  });
+
+  it("markPublished arms the Buddy celebration flag", () => {
+    const triggerSrc = readFileSync(join(here, "OnboardingTrigger.tsx"), "utf8");
+    expect(triggerSrc).toContain('BUDDY_CELEBRATE_KEY = "vs_buddy_celebrate"');
+    expect(triggerSrc).toContain("localStorage.setItem(BUDDY_CELEBRATE_KEY");
+  });
 });

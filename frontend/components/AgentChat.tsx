@@ -9,6 +9,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -17,6 +18,18 @@ const GREETING: Msg = {
   content:
     "Hey, I'm Buddy. I can look up any blockpage, check whether a tip landed, or show you how the treasury's doing. What's up?",
 };
+
+/** One-time greeting after the visitor publishes their blockpage. */
+function celebrationMsg(username: string | null): Msg {
+  return {
+    role: "assistant",
+    content:
+      "🎉 Your blockpage is live!" +
+      (username
+        ? ` Take a bow — it's up at /${username}. What's next: share it, or keep polishing?`
+        : " Take a bow. What's next: share it, or keep polishing?"),
+  };
+}
 
 /** Header tagline + input placeholder: hard-coded on purpose — this widget
  *  mounts outside LanguageProvider, so useLanguage() is unavailable here. */
@@ -43,6 +56,21 @@ export default function AgentChat() {
   useEffect(() => {
     if (open) inputRef.current?.focus();
   }, [open ]);
+
+  // One-time "🎉 Your blockpage is live!" greeting after a publish.
+  // The builder sets BUDDY_CELEBRATE_KEY via markPublished(); we consume
+  // and clear it here so it shows exactly once.
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(BUDDY_CELEBRATE_KEY) === "true") {
+        localStorage.removeItem(BUDDY_CELEBRATE_KEY);
+        const username = localStorage.getItem("vs_published_username");
+        setMsgs([celebrationMsg(username)]);
+      }
+    } catch {
+      /* storage unavailable — keep the default greeting */
+    }
+  }, []);
 
   async function send() {
     const text = input.trim();
