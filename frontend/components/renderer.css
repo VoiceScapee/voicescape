@@ -708,6 +708,119 @@ a.pv-friend:hover {
   box-shadow: 0 12px 34px color-mix(in srgb, var(--pv-accent) 45%, transparent);
 }
 
+/* ---------- tip jar card (brand pass) ---------- */
+
+.pv-tipjar-card {
+  background: linear-gradient(145deg, var(--vs-panel2, #161b27), var(--vs-panel, #11151d));
+  border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
+  border-radius: 20px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.pv-tipjar-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vs-muted, #9b9b9d);
+  margin: 0 0 10px;
+}
+
+.pv-tipjar-amt {
+  margin: 6px 0 2px;
+}
+
+.pv-tipjar-amt-num {
+  font-family: var(--vs-mono);
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--vs-text, #f2f4fa);
+}
+
+.pv-tipjar-amt-cap {
+  font-size: 15px;
+  color: var(--vs-muted, #9b9b9d);
+}
+
+.pv-tipjar-msg {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--vs-muted, #9b9b9d);
+  margin: 8px 0 0;
+}
+
+.pv-tipjar-split {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+  padding: 14px;
+  text-align: left;
+  background: var(--vs-accent-soft, rgba(130, 89, 239, 0.12));
+  border: 1px solid color-mix(in srgb, var(--vs-violet, #8259ef) 25%, transparent);
+  border-radius: 12px;
+}
+
+.pv-tipjar-bar {
+  display: flex;
+  height: 10px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--vs-bg, #090b12);
+}
+
+.pv-tipjar-bar-creator {
+  display: block;
+  height: 100%;
+  width: 98%;
+  background: linear-gradient(90deg, var(--vs-violet, #8259ef), var(--vs-mint, #91a8ff));
+}
+
+.pv-tipjar-bar-treasury {
+  display: block;
+  height: 100%;
+  width: 2%;
+  background: var(--vs-blue, #2d84eb);
+}
+
+.pv-tipjar-split-txt {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--vs-muted, #9b9b9d);
+  margin: 0;
+}
+
+.pv-tipjar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 26px;
+  font-size: 16px;
+  font-weight: 700;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--vs-gradient, linear-gradient(118deg, #8259ef, #4f46e5 44%, #0031ff));
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(52, 62, 229, 0.25);
+}
+
+.pv-tipjar-btn:disabled:not(.pv-tipjar-btn-paused) {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.pv-tipjar-btn-paused {
+  background: var(--vs-glass, rgba(255, 255, 255, 0.055));
+  border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
+  box-shadow: none;
+  color: inherit;
+  cursor: default;
+}
+
 .pv-footer {
   text-align: center;
   margin-top: 48px;
@@ -747,7 +860,7 @@ a.pv-friend:hover {
   box-sizing: border-box;
   background: var(--vs-panel, #161b27);
   border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
-  border-radius: 20px;
+  border-radius: 24px;
   padding: 26px 24px;
   color: var(--vs-text, #f2f4fa);
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 40px color-mix(in srgb, var(--vs-violet, #8259ef) 18%, transparent);
@@ -826,22 +939,23 @@ a.pv-friend:hover {
 }
 
 .pv-chip-row {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 12px;
 }
 
 .pv-chip {
-  flex: 1;
-  padding: 10px 0;
-  border-radius: 12px;
-  border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
-  background: transparent;
-  color: inherit;
+  padding: 14px 6px;
+  border-radius: 14px;
+  border: 1px solid rgba(130, 89, 239, 0.4);
+  background: rgba(130, 89, 239, 0.1);
+  color: #d1d8ff;
+  font-family: var(--vs-mono);
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
 }
 
 .pv-chip:hover {
@@ -849,8 +963,10 @@ a.pv-friend:hover {
 }
 
 .pv-chip.is-active {
-  border-color: var(--vs-violet, #8259ef);
-  background: color-mix(in srgb, var(--vs-violet, #8259ef) 18%, transparent);
+  border-color: transparent;
+  background: var(--vs-gradient, linear-gradient(118deg, #8259ef, #4f46e5 44%, #0031ff));
+  color: #fff;
+  box-shadow: 0 0 20px rgba(130, 89, 239, 0.4);
 }
 
 .pv-tip-input {
@@ -897,6 +1013,65 @@ a.pv-friend:hover {
 .pv-tip-btn:disabled {
   opacity: 0.6;
   cursor: wait;
+}
+
+/* Big primary confirm button on the restyled tip sheet (brand pass). */
+.pv-tip-btn.pv-tip-confirm-btn {
+  padding: 16px;
+  border: none;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--vs-gradient, linear-gradient(118deg, #8259ef, #4f46e5 44%, #0031ff));
+  box-shadow: 0 8px 24px rgba(52, 62, 229, 0.25);
+}
+
+.pv-tip-btn.pv-tip-confirm-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: transparent;
+  box-shadow: 0 12px 28px rgba(52, 62, 229, 0.34);
+}
+
+/* Plain-words 98/2 breakdown panel (brand pass). */
+.pv-tip-break {
+  background: var(--vs-glass, rgba(255, 255, 255, 0.055));
+  border: 1px solid var(--vs-border, rgba(255, 255, 255, 0.12));
+  border-radius: 14px;
+  padding: 16px;
+  margin: 16px 0;
+}
+
+.pv-tip-break-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  padding: 5px 0;
+}
+
+.pv-tip-break-row span:last-child {
+  font-family: var(--vs-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pv-tip-break-fee {
+  font-size: 12.5px;
+  color: var(--vs-muted, #9b9b9d);
+}
+
+.pv-tip-break-note {
+  font-size: 13.5px;
+  color: var(--vs-muted, #9b9b9d);
+  line-height: 1.6;
+  margin: 0 0 16px;
+}
+
+.pv-tip-approve {
+  font-size: 13px;
+  color: var(--vs-muted, #9b9b9d);
+  text-align: center;
+  line-height: 1.6;
+  margin: 14px 0 0;
 }
 
 .pv-fee-note {

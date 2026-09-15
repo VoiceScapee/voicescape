@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
 import { resolveFounderBadge } from "@/lib/founders";
@@ -9,6 +9,8 @@ import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
 import { safeExternalUrl, openExternalUrl } from "@/lib/url";
+import { canonicalAddress } from "@/lib/session-message";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
   MUSIC_SOURCE_LABELS,
   trackEmbedHeight,
@@ -220,11 +222,113 @@ function MusicBlock({
   );
 }
 
+/**
+ * Tip jar card (brand pass): the blockpage tip card. Quiet label, the
+ * all-time on-chain HBAR total (public /api/earnings — the line renders
+ * ONLY when a real number loads, never a fabricated 0), the plain-words
+ * 98/2 split panel, and the tip CTA (or the disabled "Goal reached" badge
+ * when the fundraiser is complete).
+ */
+function TipJarCard({
+  block,
+  name,
+  owner,
+  tipInteractive,
+  onTip,
+  tipPaused,
+}: {
+  block: Extract<Block, { type: "tipJar" }>;
+  name: string;
+  owner?: string | null;
+  tipInteractive?: boolean;
+  onTip?: () => void;
+  tipPaused?: boolean;
+}) {
+  const { t } = useLanguage();
+  // undefined = loading, null = unavailable (omit the line), string = a real number.
+  const [hbarAllTime, setHbarAllTime] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    const evm = owner ? canonicalAddress(owner) : null;
+    if (!evm) {
+      setHbarAllTime(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/earnings?address=${evm}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setHbarAllTime(typeof d?.hbarAllTime === "string" ? d.hbarAllTime : null);
+      })
+      .catch(() => {
+        if (!cancelled) setHbarAllTime(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [owner]);
+
+  // Honest display: "312.0000" reads as "312"; non-numeric → omit the line.
+  const totalNum = hbarAllTime == null ? null : Number(hbarAllTime);
+  const totalText =
+    totalNum != null && Number.isFinite(totalNum) ? String(totalNum) : null;
+
+  // i18n-safe: the {total} placeholder may sit anywhere in the sentence.
+  const soFarParts = t("page.tippedSoFar").split("{total}");
+
+  return (
+    <section className="pv-block pv-tipjar-card" aria-label={t("page.tipJarLabel")}>
+      <p className="pv-tipjar-label">{t("page.tipJarLabel")}</p>
+      {totalText !== null && (
+        <div className="pv-tipjar-amt">
+          {soFarParts[0] && <span className="pv-tipjar-amt-cap">{soFarParts[0]}</span>}
+          <span className="pv-tipjar-amt-num">{totalText}</span>
+          {soFarParts[1] && <span className="pv-tipjar-amt-cap">{soFarParts[1]}</span>}
+        </div>
+      )}
+      {block.message && <p className="pv-tipjar-msg">{block.message}</p>}
+      <div className="pv-tipjar-split">
+        <div className="pv-tipjar-bar" aria-hidden="true">
+          <i className="pv-tipjar-bar-creator" />
+          <i className="pv-tipjar-bar-treasury" />
+        </div>
+        <p className="pv-tipjar-split-txt">{t("page.tipSplitExplain").replace("{name}", name)}</p>
+      </div>
+      {tipPaused ? (
+        <button
+          type="button"
+          className="pv-tipjar-btn pv-tipjar-btn-paused"
+          disabled
+          aria-disabled="true"
+          title="This fundraiser reached its goal"
+        >
+          <span aria-hidden="true">🎯</span>
+          <span>Goal reached — donations paused</span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          className="pv-tipjar-btn"
+          onClick={tipInteractive ? onTip : undefined}
+          disabled={!tipInteractive || !onTip}
+        >
+          {t("page.tipCta").replace("{name}", name)}
+        </button>
+      )}
+    </section>
+  );
+}
+
 function BlockView({
   block,
   onPayService,
   profileTrackIndex,
   isFounder,
+  tipName,
+  tipInteractive,
+  onTip,
+  tipPaused,
+  tipOwner,
 }: {
   block: Block;
   onPayService?: (s: ServiceItem) => void;
@@ -232,6 +336,14 @@ function BlockView({
   profileTrackIndex?: number;
   /** Render the platform Founder badge in the hero (not user-editable). */
   isFounder?: boolean;
+  /** Display name for the tip jar card (canonical route username, falls back to page.username). */
+  tipName: string;
+  /** Tip-jar card wiring — the card's CTA opens the tip flow on the live page. */
+  tipInteractive?: boolean;
+  onTip?: () => void;
+  tipPaused?: boolean;
+  /** On-chain owner account for the all-time earnings lookup. */
+  tipOwner?: string | null;
 }) {
   switch (block.type) {
     case "hero": {
@@ -286,12 +398,14 @@ function BlockView({
       );
     case "tipJar":
       return (
-        <section className="pv-block pv-tipjar" aria-label="Tip jar">
-          <span className="pv-tipjar-icon" aria-hidden="true">
-            <IconTip size={26} />
-          </span>
-          {block.message && <p>{block.message}</p>}
-        </section>
+        <TipJarCard
+          block={block}
+          name={tipName}
+          owner={tipOwner}
+          tipInteractive={tipInteractive}
+          onTip={onTip}
+          tipPaused={tipPaused}
+        />
       );
     case "guestbook":
       return (
@@ -670,6 +784,11 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
             block={block}
             onPayService={onPayService}
             isFounder={isFounder}
+            tipName={canonicalUsername ?? page.username}
+            tipInteractive={tipInteractive}
+            onTip={onTip}
+            tipPaused={tipPaused}
+            tipOwner={meta?.owner ?? null}
             profileTrackIndex={
               block.type === "music" &&
               page.profileSong &&

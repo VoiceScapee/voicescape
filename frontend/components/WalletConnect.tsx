@@ -10,7 +10,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ExternalLink from "./ExternalLink";
-import { deriveUsername } from "@/lib/identity";
+import { deriveUsername, getVanityName } from "@/lib/identity";
 import { NotificationBell } from "./NotificationBell";
 import {
   isHashPackInAppBrowser,
@@ -130,7 +130,10 @@ export function WalletConnect() {
 
   // Authenticated: address chip + sign out.
   if (isAuthenticated && account) {
-    const myUsername = deriveUsername(account);
+    // Prefer the wallet's claimed custom name (remembered at publish);
+    // the derived name is only the fallback. Otherwise a wallet that
+    // claimed a vanity name lands on a 404 for its derived username.
+    const myUsername = getVanityName(account) ?? deriveUsername(account);
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <NotificationBell address={account} />
@@ -200,7 +203,8 @@ export function WalletConnect() {
 
   // Connected but not signed in: prompt for the signature.
   if (account) {
-    const myUsername = deriveUsername(account);
+    // Same vanity-name preference as the authenticated branch above.
+    const myUsername = getVanityName(account) ?? deriveUsername(account);
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         {myUsername && (

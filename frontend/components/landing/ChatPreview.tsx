@@ -1,14 +1,15 @@
 "use client";
 
 /**
- * Live chat preview — the town-hall lobby, surfaced on the landing page
- * instead of hidden away. Read-only: latest lobby messages, auto-refreshing,
- * with a "join the conversation" CTA into /chat.
+ * Live lobby preview for the landing page ("Happening in the lobby").
+ *
+ * Same read-only feed as the town-hall preview: the last few public lobby
+ * messages from /api/townhall/chat/lobby, auto-refreshing. Renders as the
+ * mock's simple message list — no card chrome, no title, no CTA.
+ * Nothing to show (or chat unreachable) → renders nothing.
  */
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { T } from "@/components/T";
-import { IconArrowRight } from "@/components/icons";
 
 interface ChatMsg {
   seq: number;
@@ -52,40 +53,36 @@ export function ChatPreview() {
 
   return (
     <section className="vs-section" style={{ paddingTop: 0 }}>
-      <div className="vs-card">
-        <p className="vs-label" style={{ marginBottom: 8 }}>
-          <span className="vs-live-dot" aria-hidden="true" /> <T k="landing.chatLabel" />
-        </p>
-        <h2 style={{ fontSize: "clamp(1.3rem, 3.5vw, 1.8rem)", margin: "0 0 16px" }}>
-          <T k="landing.chatTitle" />
-        </h2>
-        <ul style={{ listStyle: "none", margin: "0 0 20px", padding: 0 }}>
-          {msgs.map((m) => (
-            <li
-              key={m.seq}
+      <p className="vs-label">
+        <T k="landing.lobbyLabel" />
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {msgs.map((m) => (
+          <div
+            key={m.seq}
+            className="vs-glass"
+            style={{
+              borderRadius: 14,
+              padding: "12px 14px",
+              fontSize: 14,
+              lineHeight: 1.5,
+              maxWidth: "92%",
+            }}
+          >
+            <span
+              className="vs-mono"
               style={{
-                padding: "10px 0",
-                borderTop: "1px solid var(--vs-border)",
-                fontSize: 15,
-                lineHeight: 1.6,
+                fontSize: 11,
+                color: "#cfc2ff",
+                display: "block",
+                marginBottom: 4,
               }}
             >
-              <span style={{ color: "var(--vs-cyan)", fontWeight: 600 }}>
-                {shortAuthor(m.author)}
-              </span>
-              <span style={{ color: "var(--vs-muted)" }}> · </span>
-              <span>{m.body}</span>
-            </li>
-          ))}
-        </ul>
-        <Link
-          href="/chat"
-          className="vs-btn vs-btn-primary"
-          style={{ textDecoration: "none", fontSize: 15 }}
-        >
-          <T k="landing.chatCta" />
-          <IconArrowRight size={18} />
-        </Link>
+              {shortAuthor(m.author)}
+            </span>
+            {m.body}
+          </div>
+        ))}
       </div>
     </section>
   );

@@ -8,6 +8,7 @@ import Logo from "@/components/Logo";
 import { VoiceInput } from "@/components/VoiceInput";
 import { consumeOnboardDraft, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
 import { markPublished } from "@/components/OnboardingTrigger";
+import { stashClaimCongrats } from "@/lib/claim-congrats";
 import {
   IconArrowRight,
   IconBolt,
@@ -38,6 +39,7 @@ import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
 import { pinAudioFile } from "@/lib/ipfs";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
 import { useSession, SignInButton } from "@/lib/session";
@@ -1556,6 +1558,8 @@ function PublishPanel({
   liaisonAssisted?: boolean;
 }) {
   const { account, getTxSender } = useWallet();
+  // Brand pass PORT-B: the only i18n in this file — the publish-helper line.
+  const { t } = useLanguage();
   const { requireSession, signIn, token } = useSession();
   const hcs = useHcsSubmit();
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
@@ -1808,6 +1812,10 @@ function PublishPanel({
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
       markPublished(target);
+      // One-time congrats card on Buddy's page (/forge): stash the claimed
+      // username now that publish has landed on-chain. Best-effort — never
+      // blocks publish.
+      stashClaimCongrats(target, account ?? "");
       // Record a referral if the user arrived via ?ref= (captured into
       // localStorage by RootProviders). Best-effort — never blocks publish.
       // The new user signs the referral via their wallet (transparent on-chain).
@@ -1978,6 +1986,9 @@ function PublishPanel({
         </button>
       </div>
 
+      {/* Brand pass PORT-B: plain-words publish promise from the approved mock. */}
+      <p className="vb-pub-helper">{t("builder.publishHelper")}</p>
+
       {status && <div className={`vb-status is-${status.kind}`}>{status.text}</div>}
 
       {txHash && (
@@ -2012,6 +2023,8 @@ type TabId = (typeof TABS)[number]["id"];
 function BuilderInner() {
   const chain = getActiveChain();
   const { account } = useWallet();
+  // Brand pass PORT-B: the only i18n in this component — the header chrome.
+  const { t } = useLanguage();
   // No wallet session required to design: preview mode lets anyone build and
   // preview. The publish flow asks for the wallet signature when it matters.
   const { isAuthenticated, token } = useSession();
@@ -2300,8 +2313,6 @@ function BuilderInner() {
         <Link href="/" className="vb-logo-link" aria-label="Voicescape home">
           <Logo size={30} withWordmark />
         </Link>
-        <span className="vb-header-divider" />
-        <h1 className="vb-header-title">Blockpage Builder</h1>
         {urlDraft?.ok && (
           <span
             className="vs-chip vb-draft-chip"
@@ -2334,6 +2345,15 @@ function BuilderInner() {
           <IconBolt size={14} /> {chain.label}
         </span>
       </header>
+
+      {/* Brand pass PORT-B: the mock's header chrome (eyebrow + title +
+          lede) replaces the old "Blockpage Builder" toolbar title. It sits
+          below the sticky toolbar so the 64px sticky offsets stay exact. */}
+      <div className="vb-brand">
+        <span className="vs-eyebrow">{t("builder.brandEyebrow")}</span>
+        <h1 className="vb-brand-title">{t("builder.brandTitle")}</h1>
+        <p className="vb-brand-lede">{t("builder.brandLede")}</p>
+      </div>
 
       {/* Preview mode: anyone can design + preview; the wallet is only
           needed when publishing on-chain. */}
