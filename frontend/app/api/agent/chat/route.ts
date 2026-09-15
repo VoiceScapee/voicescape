@@ -279,6 +279,18 @@ export async function POST(req: NextRequest) {
         "I got stuck checking the chain — try rephrasing your question.";
     }
     if (truncated) finalContent += " (note: my answer was cut short)";
+
+    // Meter + remember. Best-effort: the reply was already delivered, so a
+    // store failure here is logged, not surfaced — the pre-reply check is
+    // the fail-closed gate.
+    try {
+      await noteChatMessage(sessionId, access.kind);
+      await saveExchange(sessionId, message, finalContent);
+    } catch (e) {
+      console.error(
+        `[agent/chat] metering save failed: ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
     return NextResponse.json({ reply: finalContent });
   } catch (e: any) {
     const aborted = signal.aborted;

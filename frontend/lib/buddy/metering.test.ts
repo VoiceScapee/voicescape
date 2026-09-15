@@ -95,7 +95,10 @@ describe("spend claims (buddy:payspend:) — chat XOR build", () => {
     // Second spend attempt: denied.
     expect(await consumeBuild("sess-spent", store)).toBe(false);
     expect(await claimPaymentSpend("pay-spent-1", store)).toBe(false);
-    // Chat cannot reuse a build-spent payment either.
+    // Burn the free tier, then: chat cannot reuse a build-spent payment.
+    for (let i = 0; i < FREE_MESSAGES; i++) {
+      await noteChatMessage("sess-spent", "free", store);
+    }
     const access = await checkChatAccess("sess-spent", undefined, store);
     expect(access.allowed).toBe(false);
     const build = await checkBuildAccess("sess-spent", undefined, store);
@@ -140,6 +143,10 @@ describe("paid chat flow", () => {
     const store = createMemoryKvStore();
     const sid = "wallet-0xabc";
     expect(await creditPayment(sid, "pay-flow-1", store)).toBe(true);
+    // The free tier always comes first — burn it, then the paid path kicks in.
+    for (let i = 0; i < FREE_MESSAGES; i++) {
+      await noteChatMessage(sid, "free", store);
+    }
     const access = await checkChatAccess(sid, undefined, store);
     expect(access).toEqual({ allowed: true, kind: "paid", left: 50 });
     for (let i = 0; i < 50; i++) {

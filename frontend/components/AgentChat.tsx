@@ -5,10 +5,16 @@
  * POST /api/agent/chat. Degrades gracefully when the backend is unavailable
  * (503) or rate-limited (429). Read-only: the buddy can look things up but
  * never signs, spends, or publishes.
+ *
+ * Metered like the Agent Kit Buddy: 5 free messages per session, then
+ * 5 HBAR per 50 messages. The wallet session credential travels in the
+ * x-vs-session header (via getAuthHeaders) so signed-in users get
+ * wallet-scoped sessions; anonymous visitors share the free bucket.
  */
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { getAuthHeaders } from "../lib/auth-client";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -53,7 +59,7 @@ export default function AgentChat() {
         .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/agent/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ message: text, history }),
       });
       let reply: string;
@@ -130,7 +136,7 @@ export default function AgentChat() {
             }}
           >
             <div style={{ fontWeight: 700, fontSize: 15 }}>Blockpage Buddy</div>
-            <div style={{ fontSize: 11, opacity: 0.85 }}>beta · read-only</div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>beta · 5 free messages, then 5 HBAR per 50</div>
           </div>
 
           {/* Messages */}
