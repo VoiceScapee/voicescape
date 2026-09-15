@@ -288,6 +288,29 @@ describe("getHcs10RegistryTopic", () => {
   it("returns null for mainnet rather than guessing", () => {
     expect(getHcs10RegistryTopic("mainnet")).toBeNull();
   });
+
+  it("HCS10_REGISTRY_TOPIC env override wins on both networks", () => {
+    const prev = process.env.HCS10_REGISTRY_TOPIC;
+    process.env.HCS10_REGISTRY_TOPIC = "0.0.999999";
+    try {
+      expect(getHcs10RegistryTopic("mainnet")).toBe("0.0.999999");
+      expect(getHcs10RegistryTopic("testnet")).toBe("0.0.999999");
+    } finally {
+      if (prev === undefined) delete process.env.HCS10_REGISTRY_TOPIC;
+      else process.env.HCS10_REGISTRY_TOPIC = prev;
+    }
+  });
+
+  it("ignores a malformed HCS10_REGISTRY_TOPIC override", () => {
+    const prev = process.env.HCS10_REGISTRY_TOPIC;
+    process.env.HCS10_REGISTRY_TOPIC = "not-a-topic";
+    try {
+      expect(getHcs10RegistryTopic("mainnet")).toBeNull();
+    } finally {
+      if (prev === undefined) delete process.env.HCS10_REGISTRY_TOPIC;
+      else process.env.HCS10_REGISTRY_TOPIC = prev;
+    }
+  });
 });
 
 describe("hcs10RegistrationSteps", () => {
@@ -309,5 +332,18 @@ describe("hcs10RegistrationSteps", () => {
       network: "mainnet",
     });
     expect(steps.join("\n")).toContain("@hashgraphonline/standards-sdk");
+  });
+
+  it("step-1 inbound memo uses indexed=0, matching the unsigned transaction bytes", () => {
+    // Regression: the checklist once said indexed=1 while
+    // buildHcs10TopicTransactions emits indexed=0 — the words must match
+    // the bytes we hand the agent.
+    const steps = hcs10RegistrationSteps({
+      agentName: "Helper Bot",
+      accountId: "0.0.222",
+      network: "testnet",
+    });
+    expect(steps[0]).toContain("hcs-10:0:0:0:0.0.222");
+    expect(steps[0]).not.toContain("hcs-10:0:1:0:0.0.222");
   });
 });

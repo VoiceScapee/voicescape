@@ -19,9 +19,11 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("/api/agent/chat");
   });
 
-  it("greets with the Buddy intro message", () => {
-    expect(widgetSrc).toContain("Hey, I'm Buddy.");
-    expect(widgetSrc).toContain("What's up?");
+  it("greets with the Buddy onboarding welcome (no treasury pitch)", () => {
+    expect(widgetSrc).toContain("Hey, welcome to Voicescape!");
+    expect(widgetSrc).toContain("I'm Buddy.");
+    expect(widgetSrc).toContain("Want the quick tour, or ready to build your page?");
+    expect(widgetSrc).not.toContain("treasury");
   });
 
   it("shows the hammer bubble and the tagline header", () => {

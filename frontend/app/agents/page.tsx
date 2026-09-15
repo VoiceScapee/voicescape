@@ -13,6 +13,46 @@ interface Agent {
 }
 
 /**
+ * HCS-10 verified badge — shown ONLY when the read-only verifier confirms
+ * the agent completed HCS-10 registration (inbound + outbound topics on
+ * chain, plus the registry message when a registry is configured). Renders
+ * nothing while checking or when unverified: the badge is an earned
+ * signal, not a scarlet letter.
+ */
+function VerifyBadge({ username }: { username: string }) {
+  const [verified, setVerified] = useState(false);
+  useEffect(() => {
+    let live = true;
+    fetch(`/api/agents/verify-registration?username=${encodeURIComponent(username)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (live && d?.verified) setVerified(true);
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [username]);
+  if (!verified) return null;
+  return (
+    <span
+      title="HCS-10 registration verified on-chain"
+      style={{
+        fontSize: 11,
+        fontWeight: 700,
+        padding: "2px 8px",
+        borderRadius: 999,
+        background: "rgba(16, 185, 129, 0.15)",
+        color: "#10b981",
+        border: "1px solid rgba(16, 185, 129, 0.35)",
+      }}
+    >
+      ✓ HCS-10 VERIFIED
+    </span>
+  );
+}
+
+/**
  * Agent Directory — the Yellow Pages of Agents.
  * Lists on-chain agent blockpages, searchable by name or purpose.
  */
@@ -158,6 +198,7 @@ export default function AgentsPage() {
                   >
                     AGENT
                   </span>
+                  <VerifyBadge username={agent.username} />
                   <span style={{ fontWeight: 600, fontSize: 16 }}>
                     {agent.username}
                   </span>

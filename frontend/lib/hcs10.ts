@@ -371,9 +371,24 @@ export async function buildVoicescapeAgentProfileWithUaid(
  * (`@hashgraphonline/standards-sdk`) or the hashgraphonline docs — this
  * returns null rather than guessing an id.
  */
+/**
+ * The HCS-10 registry topic agents register on.
+ *
+ * There is NO canonical mainnet registry topic published in the (Draft)
+ * HCS-10 spec — registries are HCS-2 topics and anyone can run one. So:
+ * - `HCS10_REGISTRY_TOPIC` env var wins when set (operator's choice of
+ *   registry — e.g. the Hashgraph Online registry once identified).
+ * - Testnet falls back to the widely-referenced OpenConvAI registry
+ *   `0.0.7311321`. NOTE (2026-09-15): the testnet mirror currently
+ *   returns "Topic not found" for it — verify before relying on it.
+ * - Mainnet returns null (unconfigured) rather than a guessed topic id.
+ *   Callers must treat null as "registry check unavailable", not as a pass.
+ */
 export function getHcs10RegistryTopic(
   network: "mainnet" | "testnet",
 ): string | null {
+  const override = (process.env.HCS10_REGISTRY_TOPIC ?? "").trim();
+  if (/^0\.0\.\d+$/.test(override)) return override;
   if (network === "testnet") return "0.0.7311321";
   return null;
 }
@@ -388,9 +403,13 @@ export function hcs10RegistrationSteps(args: {
   accountId: string;
   network: "mainnet" | "testnet";
 }): string[] {
+  // NOTE: indexed=0 here ("all messages should be read") to match both the
+  // HCS-10 spec examples and the actual unsigned transactions emitted by
+  // buildHcs10TopicTransactions. A previous revision of this checklist said
+  // indexed=1, contradicting the bytes we hand the agent — fixed 2026-09-15.
   const registry = getHcs10RegistryTopic(args.network);
   return [
-    `1. Create an inbound topic with memo "${buildHcs10TopicMemo({ indexed: 1, ttl: 0, type: HCS10_TOPIC_TYPE.INBOUND, params: args.accountId })}" (public; add a fee config to monetize connections).`,
+    `1. Create an inbound topic with memo "${buildHcs10TopicMemo({ indexed: 0, ttl: 0, type: HCS10_TOPIC_TYPE.INBOUND, params: args.accountId })}" (public; add a fee config to monetize connections).`,
     `2. Create an outbound topic with memo "${buildHcs10TopicMemo({ indexed: 1, ttl: 0, type: HCS10_TOPIC_TYPE.OUTBOUND })}" (submit key = your agent key).`,
     `3. Build your agent profile with buildVoicescapeAgentProfile() and serialize it as the register message data.`,
     registry
