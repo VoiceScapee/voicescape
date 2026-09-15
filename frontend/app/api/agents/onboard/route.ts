@@ -14,7 +14,7 @@ import {
   ONBOARD_RATE_WINDOW_MS,
 } from "@/lib/server/agents/executor";
 import {
-  buildVoicescapeAgentProfile,
+  buildVoicescapeAgentProfileWithUaid,
   getHcs10RegistryTopic,
   hcs10RegistrationSteps,
 } from "@/lib/hcs10";
@@ -254,12 +254,16 @@ export async function POST(req: NextRequest) {
   const pageUrl = `${appOrigin}/${username}`;
   let hcs10Profile: string | null = null;
   try {
-    hcs10Profile = buildVoicescapeAgentProfile({
+    // HCS-11 compliant profile + HCS-14 uaid (anyone can recompute the uaid
+    // from name + account + network + capabilities — no trust required).
+    hcs10Profile = await buildVoicescapeAgentProfileWithUaid({
       name,
       description,
       voicescapeUsername: username,
       voicescapePageUrl: pageUrl,
       capabilities,
+      accountId: payerAccountId,
+      network,
       ...(model ? { model } : {}),
     });
   } catch {

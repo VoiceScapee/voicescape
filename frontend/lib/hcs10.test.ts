@@ -16,7 +16,10 @@ import {
   HCS10_TOPIC_TYPE,
   buildHcs10RegisterMessage,
   buildHcs10TopicMemo,
+  buildHcs14Uaid,
   buildVoicescapeAgentProfile,
+  buildVoicescapeAgentProfileWithUaid,
+  mapCapabilitiesToSkills,
   getHcs10RegistryTopic,
   hcs10RegistrationSteps,
   isHcs10TopicMemo,
@@ -172,6 +175,20 @@ describe("buildVoicescapeAgentProfile", () => {
     expect(p.capabilities).toEqual(["text-generation"]);
   });
 
+  it("emits HCS-11 canonical fields", () => {
+    const p = JSON.parse(buildVoicescapeAgentProfile(base));
+    expect(p.version).toBe("1.0");
+    expect(p.type).toBe(1);
+    expect(p.display_name).toBe("Helper Bot");
+    expect(p.name).toBe("Helper Bot"); // back-compat
+    expect(p.skills).toEqual([0]); // "text-generation" -> skill 0
+  });
+
+  it("omits uaid when the account is unknown rather than faking it", () => {
+    const p = JSON.parse(buildVoicescapeAgentProfile(base));
+    expect(p.uaid).toBeUndefined();
+  });
+
   it("normalizes @-prefixed usernames", () => {
     const p = JSON.parse(
       buildVoicescapeAgentProfile({ ...base, voicescapeUsername: "@Helper-Bot" }),
@@ -192,6 +209,74 @@ describe("buildVoicescapeAgentProfile", () => {
     expect(() =>
       buildVoicescapeAgentProfile({ ...base, capabilities: [] }),
     ).toThrow(/at least one capability/);
+  });
+});
+
+describe("mapCapabilitiesToSkills", () => {
+  it("maps keywords to HCS-14 skill ids, sorted and deduped", () => {
+    expect(mapCapabilitiesToSkills(["text-generation"])).toEqual([0]);
+    expect(mapCapabilitiesToSkills(["tipping", "hedera"])).toEqual([33]);
+    expect(mapCapabilitiesToSkills(["chat", "text generation"])).toEqual([0]);
+    expect(mapCapabilitiesToSkills(["mystery-capability-xyz"])).toEqual([]);
+    expect(mapCapabilitiesToSkills([])).toEqual([]);
+  });
+});
+
+describe("buildHcs14Uaid", () => {
+  const base = {
+    name: "Helper Bot",
+    accountId: "0.0.10862061",
+    network: "mainnet" as const,
+    capabilities: ["text-generation"],
+  };
+
+  it("builds a well-formed uaid:aid: identifier", async () => {
+    const uaid = await buildHcs14Uaid(base);
+    expect(uaid).toMatch(
+      /^uaid:aid:[1-9A-HJ-NP-Za-km-z]+;uid=0\.0\.10862061;registry=voicescape;proto=hcs-10;nativeId=hedera:mainnet:0\.0\.10862061$/,
+    );
+  });
+
+  it("is deterministic — same inputs, same uaid", async () => {
+    expect(await buildHcs14Uaid(base)).toBe(await buildHcs14Uaid(base));
+  });
+
+  it("changes when the account changes", async () => {
+    const other = await buildHcs14Uaid({ ...base, accountId: "0.0.999" });
+    expect(other).not.toBe(await buildHcs14Uaid(base));
+    expect(other).toContain("nativeId=hedera:mainnet:0.0.999");
+  });
+
+  it("rejects malformed account ids", async () => {
+    await expect(
+      buildHcs14Uaid({ ...base, accountId: "not-an-account" }),
+    ).rejects.toThrow(/malformed account id/);
+  });
+});
+
+describe("buildVoicescapeAgentProfileWithUaid", () => {
+  it("embeds a verifiable uaid anyone can recompute", async () => {
+    const json = await buildVoicescapeAgentProfileWithUaid({
+      name: "Helper Bot",
+      description: "Answers questions about Voicescape.",
+      voicescapeUsername: "helper-bot",
+      voicescapePageUrl: "https://voicescape.vercel.app/helper-bot",
+      capabilities: ["text-generation"],
+      accountId: "0.0.10862061",
+      network: "mainnet",
+    });
+    const p = JSON.parse(json);
+    expect(p.version).toBe("1.0");
+    expect(p.type).toBe(1);
+    expect(p.display_name).toBe("Helper Bot");
+    // The uaid recomputed from the same inputs must match — no trust needed.
+    const recomputed = await buildHcs14Uaid({
+      name: "Helper Bot",
+      accountId: "0.0.10862061",
+      network: "mainnet",
+      capabilities: ["text-generation"],
+    });
+    expect(p.uaid).toBe(recomputed);
   });
 });
 

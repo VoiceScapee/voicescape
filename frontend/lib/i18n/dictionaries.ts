@@ -412,7 +412,7 @@ const en = {
   "tip.breakdownNote": "{hbar} HBAR in → {toCreator} to {name}, {fee} keeps Voicescape running. No hidden anything.",
   "tip.approveNote": "You'll approve this in your wallet —\nnothing moves until you say so.",
   "tip.confirmCta": "Tip ${amount}",
-  "buddy.greeting": "Hey, I'm Buddy. I can look up any blockpage, check whether a tip landed, or show you how the treasury's doing. What's up?",
+  "buddy.greeting": "Hey, welcome to Voicescape! 👋 I'm Buddy. A blockpage is your own little corner of the internet — you own it, not us. Your wallet is your login (no passwords), and anything of value moves on-chain where you can verify it. Want the quick tour, or ready to build your page?",
   "buddy.tagline": "Ask me anything — I check the chain",
   "buddy.inputPlaceholder": "Ask Buddy…",
 

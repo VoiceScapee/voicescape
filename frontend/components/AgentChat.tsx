@@ -16,7 +16,7 @@ type Msg = { role: "user" | "assistant"; content: string };
 const GREETING: Msg = {
   role: "assistant",
   content:
-    "Hey, I'm Buddy. I can look up any blockpage, check whether a tip landed, or show you how the treasury's doing. What's up?",
+    "Hey, welcome to Voicescape! 👋 I'm Buddy. A blockpage is your own little corner of the internet — you own it, not us. Your wallet is your login (no passwords), and anything of value moves on-chain where you can verify it. Want the quick tour, or ready to build your page?",
 };
 
 /** One-time greeting after the visitor publishes their blockpage. */
