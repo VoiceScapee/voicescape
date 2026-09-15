@@ -12,7 +12,6 @@ import BuiltOnHedera from "@/components/BuiltOnHedera";
 import { WalletConnect } from "@/components/WalletConnect";
 import { T } from "@/components/T";
 import { MiningDePinCards } from "@/components/landing/MiningDePinCards";
-import { MINING_DEPIN_PROJECTS } from "@/lib/landing/mining-depin";
 
 export const metadata: Metadata = {
   title: "Mining & DePIN — Voicescape",
@@ -21,7 +20,6 @@ export const metadata: Metadata = {
 };
 
 export default function MiningDePinPage() {
-  const showReferralNote = MINING_DEPIN_PROJECTS.some((p) => p.referralUrl);
   return (
     <main style={{ minHeight: "100vh", background: "var(--vs-bg)" }}>
       <Navbar right={<WalletConnect />} />
@@ -50,20 +48,6 @@ export default function MiningDePinPage() {
           >
             <T k="mining.subtitle" />
           </p>
-          {showReferralNote && (
-            <p
-              style={{
-                textAlign: "center",
-                color: "var(--vs-muted)",
-                fontSize: 13,
-                maxWidth: 640,
-                margin: "0 auto",
-                lineHeight: 1.6,
-              }}
-            >
-              <T k="mining.referralNote" />
-            </p>
-          )}
         </section>
 
         {/* Mining */}

@@ -16,7 +16,7 @@ import {
 function ProjectCard({ p }: { p: MiningDePinProject }) {
   const { t } = useLanguage();
   const Icon = p.category === "mining" ? IconBolt : IconGlobe;
-  const href = p.referralUrl ?? p.url;
+  const href = p.url;
   return (
     <div className="vs-card" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -65,7 +65,7 @@ function ProjectCard({ p }: { p: MiningDePinProject }) {
           className="vs-btn vs-btn-primary"
           style={{ padding: "10px 22px", fontSize: 14, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 8 }}
         >
-          {p.referralUrl ? t("mining.referralVisit") : t("mining.visitSite")}
+          {t("mining.visitSite")}
           <IconExternal size={14} />
         </a>
         <span
@@ -80,21 +80,6 @@ function ProjectCard({ p }: { p: MiningDePinProject }) {
         >
           {t("mining.verifiedOn").replace("{date}", p.verifiedAt)}
         </span>
-        {p.referralProgram && !p.referralUrl && (
-          <span
-            className="vs-mono"
-            style={{
-              fontSize: 11,
-              color: "var(--vs-cyan)",
-              border: "1px dashed var(--vs-cyan)",
-              borderRadius: 999,
-              padding: "4px 10px",
-            }}
-            title={p.referralProgram}
-          >
-            {t("mining.referralAvailable")}
-          </span>
-        )}
       </div>
     </div>
   );
