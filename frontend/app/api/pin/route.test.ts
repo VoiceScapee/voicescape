@@ -37,6 +37,26 @@ vi.mock("../../../lib/server/publish.js", () => ({
 
 const GOOD_TOKEN = "tokgood.siggood";
 
+/** Minimal valid Voicescape page document (mirrors @/lib/schema). */
+const VALID_PAGE = {
+  version: 1,
+  username: "tester",
+  theme: {
+    background: "#0a0e1a",
+    foreground: "#e8ecf4",
+    accent: "#7c5cff",
+    fontFamily: "system-ui, sans-serif",
+  },
+  blocks: [{ type: "bio", text: "hello" }],
+};
+
+/** The /forge outage shape: hand-written page JSON missing its theme. */
+const PAGE_MISSING_THEME = {
+  version: 1,
+  username: "forge",
+  blocks: [{ type: "bio", text: "hello" }],
+};
+
 import { POST } from "./route";
 
 function pinReq(opts: { token?: string; json?: unknown }): NextRequest {
@@ -64,7 +84,7 @@ describe("POST /api/pin auth", () => {
 
   it("passes auth with a verifiable session and pins", async () => {
     const res = await POST(
-      pinReq({ token: GOOD_TOKEN, json: { title: "hello" } }),
+      pinReq({ token: GOOD_TOKEN, json: VALID_PAGE }),
     );
     expect(res.status).toBe(200);
     const json = (await res.json()) as { cid: string };
@@ -79,9 +99,9 @@ describe("POST /api/pin quota", () => {
     await globalQuotaStore().clearAll();
     try {
       const tok = GOOD_TOKEN;
-      expect((await POST(pinReq({ token: tok, json: { title: "a" } }))).status).toBe(200);
-      expect((await POST(pinReq({ token: tok, json: { title: "b" } }))).status).toBe(200);
-      const res = await POST(pinReq({ token: tok, json: { title: "c" } }));
+      expect((await POST(pinReq({ token: tok, json: VALID_PAGE }))).status).toBe(200);
+      expect((await POST(pinReq({ token: tok, json: VALID_PAGE }))).status).toBe(200);
+      const res = await POST(pinReq({ token: tok, json: VALID_PAGE }));
       expect(res.status).toBe(429);
       const json = (await res.json()) as { error: string; limit: number; resetsAt: string };
       expect(json.error).toBe("daily page pin limit reached (2/day)");
@@ -131,12 +151,36 @@ describe("POST /api/pin quota", () => {
     await globalQuotaStore().clearAll();
     try {
       expect((await POST(pinReq({}))).status).toBe(401);
-      const res = await POST(pinReq({ token: GOOD_TOKEN, json: { title: "x" } }));
+      const res = await POST(pinReq({ token: GOOD_TOKEN, json: VALID_PAGE }));
       expect(res.status).toBe(200);
     } finally {
       await globalQuotaStore().clearAll();
       if (old === undefined) delete process.env.PIN_DAILY_QUOTA;
       else process.env.PIN_DAILY_QUOTA = old;
     }
+  });
+});
+
+describe("POST /api/pin page validation", () => {
+  it("pins a valid page document", async () => {
+    const res = await POST(pinReq({ token: GOOD_TOKEN, json: VALID_PAGE }));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { cid: string };
+    expect(json.cid).toBe("bafytest");
+  });
+
+  it("rejects page JSON missing its theme (the /forge outage shape)", async () => {
+    const res = await POST(pinReq({ token: GOOD_TOKEN, json: PAGE_MISSING_THEME }));
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toMatch(/can't be published/i);
+  });
+
+  it("rejects non-page JSON with a plain-words error", async () => {
+    const res = await POST(pinReq({ token: GOOD_TOKEN, json: { title: "x" } }));
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toMatch(/can't be published/i);
+    expect(json.error).not.toMatch(/schema/i);
   });
 });

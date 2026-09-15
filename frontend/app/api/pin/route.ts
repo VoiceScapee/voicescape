@@ -7,6 +7,7 @@ import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "@/lib/se
 import { ipGate } from "@/lib/server/rate-limit";
 import { validateAudioUpload } from "@/lib/server/media-safety";
 import { checkContent } from "@/lib/server/townhall/content-filter";
+import { isValidPage } from "@/lib/schema";
 
 export const runtime = "nodejs";
 
@@ -184,6 +185,17 @@ export async function POST(req: NextRequest) {
     const piiBlock = pageJsonPiiCheck(body);
     if (piiBlock) {
       return NextResponse.json({ error: piiBlock }, { status: 400 });
+    }
+    // Schema: a JSON pin is always a Voicescape page document. Reject
+    // anything the page renderer would refuse to display — pinning an
+    // invalid page mints a permanent, unloadable IPFS object (this bit
+    // us on /forge, whose hand-written JSON was missing its theme).
+    // User-facing copy: no schema jargon.
+    if (!isValidPage(body)) {
+      return NextResponse.json(
+        { error: "This page can't be published because something's missing. Please rebuild it in the builder and try again." },
+        { status: 400 },
+      );
     }
     const { cid, provider } = await publishPageJson(body);
     return NextResponse.json({ cid, provider });
