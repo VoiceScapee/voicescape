@@ -8,7 +8,7 @@
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -21,6 +21,121 @@ const GREETING: Msg = {
 const UNAVAILABLE = "Chat is unavailable right now — try again later.";
 const RATE_LIMITED = "Slow down a little — try again in a bit.";
 const FAILED = "Something went wrong — mind trying again?";
+
+/**
+ * renderBuddyText — tiny safe formatter for Buddy's chat answers.
+ *
+ * The brain is told to speak in plain words, but as a backstop this turns
+ * any leftover lightweight markdown (**bold**, ### headings, - lists,
+ * numbered lists, `code`) into styled React elements so users never see
+ * raw ### or ** symbols. No external dependency and no innerHTML —
+ * everything is built as React elements, so chat text can't inject markup.
+ */
+function inlineFormat(text: string, keyBase: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const re = /(\*\*(.+?)\*\*|`([^`]+?)`|\*([^*\n]+?)\*)/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const k = `${keyBase}-${i++}`;
+    if (m[2] !== undefined) parts.push(<strong key={k}>{m[2]}</strong>);
+    else if (m[3] !== undefined)
+      parts.push(
+        <code
+          key={k}
+          style={{
+            background: "rgba(255,255,255,0.12)",
+            borderRadius: 4,
+            padding: "0 4px",
+            fontSize: 13,
+          }}
+        >
+          {m[3]}
+        </code>
+      );
+    else parts.push(<em key={k}>{m[4]}</em>);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length ? parts : [text];
+}
+
+function renderBuddyText(text: string): ReactNode[] {
+  const blocks: ReactNode[] = [];
+  let bullets: string[] | null = null;
+  let steps: string[] | null = null;
+  let key = 0;
+  const flushLists = () => {
+    if (bullets) {
+      const items = bullets;
+      bullets = null;
+      blocks.push(
+        <ul key={key++} style={{ margin: "6px 0 0 0", paddingLeft: 18 }}>
+          {items.map((t, i) => (
+            <li key={i} style={{ marginTop: i ? 4 : 0 }}>
+              {inlineFormat(t, `b${key}-${i}`)}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (steps) {
+      const items = steps;
+      steps = null;
+      blocks.push(
+        <ol key={key++} style={{ margin: "6px 0 0 0", paddingLeft: 18 }}>
+          {items.map((t, i) => (
+            <li key={i} style={{ marginTop: i ? 4 : 0 }}>
+              {inlineFormat(t, `s${key}-${i}`)}
+            </li>
+          ))}
+        </ol>
+      );
+    }
+  };
+
+  for (const raw of text.split("\n")) {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      flushLists();
+      continue;
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(trimmed);
+    if (h) {
+      flushLists();
+      blocks.push(
+        <div key={key++} style={{ fontWeight: 700, marginTop: 8 }}>
+          {inlineFormat(h[2], `h${key}`)}
+        </div>
+      );
+      continue;
+    }
+    const b = /^[-*]\s+(.*)$/.exec(trimmed);
+    if (b) {
+      if (steps) flushLists();
+      (bullets ??= []).push(b[1]);
+      continue;
+    }
+    const n = /^\d+[.)]\s+(.*)$/.exec(trimmed);
+    if (n) {
+      if (bullets) flushLists();
+      (steps ??= []).push(n[1]);
+      continue;
+    }
+    flushLists();
+    // Table row: show the cells as plain words, never raw pipes.
+    const cell = trimmed.startsWith("|") ? trimmed.replace(/\|/g, " ").trim() : trimmed;
+    blocks.push(
+      <div key={key++} style={{ marginTop: blocks.length ? 6 : 0 }}>
+        {inlineFormat(cell, `p${key}`)}
+      </div>
+    );
+  }
+  flushLists();
+  return blocks.length ? blocks : [text];
+}
 
 export default function AgentChat() {
   const [open, setOpen] = useState(false);
@@ -164,7 +279,7 @@ export default function AgentChat() {
                   color: "#fff",
                 }}
               >
-                {m.content}
+                {renderBuddyText(m.content)}
               </div>
             ))}
             {busy && (

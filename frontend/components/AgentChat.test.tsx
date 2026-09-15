@@ -43,4 +43,25 @@ describe("AgentChat", () => {
     expect(layoutSrc).toContain('import AgentChat from "@/components/AgentChat"');
     expect(layoutSrc).toContain("<AgentChat />");
   });
+
+  it("formats answers safely so users never see raw markdown", () => {
+    // Backstop formatter: converts leftover markdown into React elements.
+    expect(widgetSrc).toContain("renderBuddyText");
+    expect(widgetSrc).toContain("<strong");
+  });
+});
+
+describe("AgentChat formatter", () => {
+  it("never uses innerHTML for chat text (no markup injection)", () => {
+    // Everything renders as React elements — chat text can never inject markup.
+    expect(widgetSrc).not.toContain("dangerouslySetInnerHTML");
+  });
+
+  it("handles headings, bullets, numbered steps, and tables without raw symbols", () => {
+    expect(widgetSrc).toContain("/^(#{1,4})\\s+(.*)$/");
+    expect(widgetSrc).toContain("/^[-*]\\s+(.*)$/");
+    expect(widgetSrc).toContain("/^\\d+[.)]\\s+(.*)$/");
+    // Table rows render as plain words, never raw pipes.
+    expect(widgetSrc).toContain('trimmed.replace(/\\|/g, " ")');
+  });
 });

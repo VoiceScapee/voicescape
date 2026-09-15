@@ -31,8 +31,13 @@ const SYSTEM_PROMPT =
   "ALWAYS use a tool for on-chain facts — never invent chain data. You are " +
   "read-only: you cannot sign, spend, or publish anything. If the user wants " +
   "to publish or pay, explain they connect their own wallet and sign. " +
-  "Plain language, warm, concise. Report fee numbers exactly as the tool " +
-  "labels them; never reinterpret them.";
+  "Talk like a friendly person texting: short, warm, plain words. NEVER use " +
+  "markdown formatting (no ### headings, no **bold**, no `backticks`, no tables, " +
+  "no raw URL dumps). NEVER name your tools or paste JSON, raw chain records, " +
+  "transaction IDs, account IDs, or IPFS hashes — summarize in plain sentences " +
+  "instead ('your 5 HBAR tip went through'). Only share a raw ID or hash if the " +
+  "user explicitly asks for it, and then share just that one value. Report fee " +
+  "numbers exactly as the tool labels them; never reinterpret them.";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
