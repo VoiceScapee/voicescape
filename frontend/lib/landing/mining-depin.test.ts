@@ -34,12 +34,12 @@ describe("mining-depin showcase data", () => {
     }
   });
 
-  it("referral fields are honest: null until Brandon provides his link", () => {
+  it("project links go straight to the official site (no referral layer)", () => {
+    // Brandon 2026-09-15: referral links are out — every card links the
+    // project's official URL directly.
     for (const p of MINING_DEPIN_PROJECTS) {
-      expect(
-        p.referralUrl === null || p.referralUrl.startsWith("https://"),
-        `${p.id} referralUrl`,
-      ).toBe(true);
+      expect(p.url, `${p.id} url`).toMatch(/^https:\/\//);
+      expect("referralUrl" in p, `${p.id} has no referralUrl`).toBe(false);
     }
   });
 });
