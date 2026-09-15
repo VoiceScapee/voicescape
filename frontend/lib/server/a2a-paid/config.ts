@@ -42,14 +42,14 @@ export interface PaidConfig {
   /** Always the hardcoded testnet mirror base. */
   mirrorBase: string;
   /**
-   * The ONLY username buyers may pay via tipPage for a paid order.
-   * Brandon's standing rule (2026-09-15): blockpage-builder (and all paid
-   * agent endpoint) revenue goes to HIS wallet — never to the agent's
-   * wallet, never out to anyone else. On mainnet this will be Brandon's
-   * username (`user-10424063`): its page owner is his wallet 0.0.10424063
-   * and the treasury is the same wallet, so the atomic 98/2 split lands
-   * 100% with him. The endpoint is receive-only by construction — no
-   * server keys, no payout/withdraw code paths exist.
+   * The ONE username buyers pay via tipPage for a paid order — the AI
+   * agent/blockpage they are interacting with (mainnet: `forge`,
+   * Blockpage Buddy). Brandon's standing rule (2026-09-15, refined same
+   * day): keep it simple — the buyer pays the Buddy; the Buddy's wallet
+   * then forwards profits to BRANDON'S wallet (0.0.10424063) and to no
+   * one else. The atomic 98/2 split still applies per sale: 98% to the
+   * Buddy's wallet, 2% straight to Brandon's treasury. The endpoint
+   * itself is receive-only — no server keys, no payout/withdraw paths.
    */
   recipientUsername: string;
 }
@@ -104,7 +104,7 @@ export function getPaidConfig(
   if (!recipientUsername) {
     throw new Error(
       "paid_endpoint_misconfigured: A2A_RECIPIENT_USERNAME is not set — " +
-        "the one username buyers may pay (Brandon's wallet on mainnet)",
+        "the one agent username buyers may pay (Blockpage Buddy on mainnet)",
     );
   }
   return {

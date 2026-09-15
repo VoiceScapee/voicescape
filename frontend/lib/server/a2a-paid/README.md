@@ -4,17 +4,17 @@
 (see `config.ts`: hardcoded testnet mirror, mainnet contract ids rejected,
 `0.0.x`-only contract ids).
 
-**Money rule (Brandon, 2026-09-15 — standing):** blockpage-builder and paid
-endpoint revenue goes to BRANDON'S wallet, never to an agent wallet, never
-out to anyone else. The bill names the one username the buyer may pay
-(`payToUsername`); verification decodes the `tipPage(string)` calldata and
-rejects any payment to a different username (`wrong_recipient`, 422). On
-mainnet the recipient will be Brandon's username (`user-10424063`) — its
-page owner is his wallet `0.0.10424063` and the treasury is the same
-wallet, so the atomic 98/2 split lands 100% with him. The endpoint is
-receive-only by construction: the server holds no spend keys and no
-payout/withdraw code paths exist — money flows in from buyers, nothing
-flows out.
+**Money rule (Brandon, 2026-09-15 — standing, refined same day):** keep it
+simple — the buyer pays Blockpage Buddy itself, the agent they're
+interacting with (`payToUsername`, mainnet: `forge`). The atomic 98/2
+split applies per sale: 98% to the Buddy's wallet, 2% straight to
+Brandon's treasury (`0.0.10424063`). Buddy builds the template; the user
+claims it with their own unique wallet via the existing claim-a-blockpage
+flow. After it profits, the Buddy's wallet forwards profits to Brandon's
+wallet — and to no one else, ever (Danny ops runs the sweep on Brandon's
+word). The endpoint is receive-only by construction: the server holds no
+spend keys and no payout/withdraw code paths exist — money flows in from
+buyers, nothing flows out.
 
 ## Endpoints
 
@@ -45,9 +45,9 @@ Hiero SDK path is `setTransactionMemo(memo)`.
 ## Configuration
 
 `A2A_TESTNET_TIPS_ID` — the testnet Tips contract id (`0.0.x` form).
-`A2A_RECIPIENT_USERNAME` — the ONE username buyers may pay (Brandon's rule:
-revenue goes to his wallet; on mainnet this will be his username so the
-98/2 split lands 100% with him).
+`A2A_RECIPIENT_USERNAME` — the ONE agent username buyers may pay
+(Brandon's rule: buyers pay Blockpage Buddy itself; on mainnet `forge` —
+the Buddy's wallet forwards profits to Brandon's wallet, to no one else).
 Unset → the endpoints fail closed with 503. Mainnet ids are refused.
 
 ## Honest gaps (before mainnet)
