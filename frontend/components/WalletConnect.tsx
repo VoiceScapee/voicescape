@@ -277,7 +277,7 @@ export function WalletConnect() {
           })}
           disabled={isConnecting}
           className="vs-btn vs-btn-primary"
-          style={{ padding: "9px 22px", fontSize: 14 }}
+          style={{ padding: "12px 22px", fontSize: 14 }}
         >
           {t("wallet.connectHashPack")}
         </button>
@@ -291,7 +291,7 @@ export function WalletConnect() {
         onClick={() => setShowOptions((s) => !s)}
         disabled={isConnecting || signing}
         className="vs-btn vs-btn-primary"
-        style={{ padding: "9px 22px", fontSize: 14 }}
+        style={{ padding: "12px 22px", fontSize: 14 }}
       >
         {isConnecting ? t("wallet.connecting") : signing ? t("wallet.checkWallet") : t("wallet.signInWithWallet")}
       </button>
@@ -318,7 +318,7 @@ export function WalletConnect() {
               style={{
                 display: "block",
                 width: "100%",
-                padding: "10px 12px",
+                padding: "12px 12px",
                 textAlign: "left",
                 cursor: "pointer",
                 background: "none",

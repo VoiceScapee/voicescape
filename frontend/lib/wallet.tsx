@@ -115,11 +115,22 @@ export function isHashPackInAppBrowser(): boolean {
  * iframe-channel probe is worth the wait: on desktop the WalletConnect
  * modal is always the right fallback, so we skip the probe and show it
  * immediately.
+ *
+ * iPadOS 13+ in desktop mode sends a Macintosh UA with no iPad/Mobile
+ * token, so a bare UA regex misclassifies iPads as desktops. Touch-capable
+ * Macintosh UAs are iPads — real Macs report maxTouchPoints 0.
  */
 export function isMobileUserAgent(ua?: string): boolean {
   const agent =
     ua ?? (typeof navigator !== "undefined" ? navigator.userAgent : "");
-  return /iPhone|iPad|iPod|Android|Mobile/i.test(agent);
+  if (/iPhone|iPad|iPod|Android|Mobile/i.test(agent)) return true;
+  if (
+    /Macintosh/i.test(agent) &&
+    typeof navigator !== "undefined" &&
+    navigator.maxTouchPoints > 1
+  )
+    return true;
+  return false;
 }
 
 /**

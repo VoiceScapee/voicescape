@@ -366,14 +366,14 @@ a {
 
 /* Tighter than the default ghost button so the full desktop row fits. */
 .vs-btn.vs-nav-link {
-  padding: 8px 14px;
+  padding: 12px 14px;
   font-size: 14px;
   white-space: nowrap;
 }
 
 .vs-nav-burger {
   display: none;
-  padding: 8px 14px;
+  padding: 12px 14px;
   font-size: 18px;
   line-height: 1;
   margin-left: auto;

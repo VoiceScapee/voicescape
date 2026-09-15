@@ -3,10 +3,9 @@
 /**
  * InstallAppButton — shows a native "Install app" button when the browser
  * fires `beforeinstallprompt` (Chrome/Edge on desktop + Android).
- * Firefox never fires that event, so Firefox users get a manual install
- * hint instead of nothing. Hidden when the app is already installed
- * (standalone display mode).
- * iOS Safari users install via Share → Add to Home Screen, which needs no code.
+ * Firefox, desktop Safari, and iOS browsers never fire that event, so those
+ * users get a manual install hint instead of nothing. Hidden when the app
+ * is already installed (standalone display mode).
  */
 
 import { useEffect, useState } from "react";
@@ -16,10 +15,25 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+type ManualHint = "firefox" | "safari" | "ios" | null;
+
+const HINT_COPY: Record<Exclude<ManualHint, null>, string> = {
+  firefox:
+    "In Firefox: open the page menu (☰) and choose “Install”, or look for the install icon in the address bar.",
+  safari: "In Safari: choose File → Add to Dock to install Voicescape as an app.",
+  ios: "On iPhone or iPad: tap Share → Add to Home Screen to install Voicescape.",
+};
+
+const HINT_LABEL: Record<Exclude<ManualHint, null>, string> = {
+  firefox: "Firefox",
+  safari: "Safari",
+  ios: "iPhone or iPad",
+};
+
 export default function InstallAppButton() {
   const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
-  const [firefoxHint, setFirefoxHint] = useState(false);
+  const [manualHint, setManualHint] = useState<ManualHint>(null);
   const [hintOpen, setHintOpen] = useState(false);
 
   useEffect(() => {
@@ -37,14 +51,24 @@ export default function InstallAppButton() {
     };
     window.addEventListener("beforeinstallprompt", onPrompt);
     window.addEventListener("appinstalled", onInstalled);
-    // Firefox never fires beforeinstallprompt — after a grace period with no
-    // prompt event, offer Firefox users a manual install hint instead of
-    // rendering nothing.
+    // Firefox, desktop Safari, and iOS browsers never fire
+    // beforeinstallprompt — after a grace period with no prompt event, offer
+    // those users a manual install hint instead of rendering nothing.
+    const ua = navigator.userAgent;
+    const isIOS =
+      /iPhone|iPad|iPod/i.test(ua) ||
+      (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
     const isFirefox =
-      /firefox/i.test(navigator.userAgent) &&
-      !/seamonkey/i.test(navigator.userAgent);
+      /firefox/i.test(ua) && !/seamonkey/i.test(ua) && !isIOS;
+    const isSafariDesktop =
+      !isIOS &&
+      !isFirefox &&
+      /safari/i.test(ua) &&
+      !/chrome|chromium|crios|edg|opr\/|fxios|android/i.test(ua);
     const hintTimer = window.setTimeout(() => {
-      if (isFirefox) setFirefoxHint(true);
+      if (isIOS) setManualHint("ios");
+      else if (isFirefox) setManualHint("firefox");
+      else if (isSafariDesktop) setManualHint("safari");
     }, 2000);
     return () => {
       window.removeEventListener("beforeinstallprompt", onPrompt);
@@ -66,7 +90,7 @@ export default function InstallAppButton() {
       <button
         onClick={install}
         className="vs-btn vs-btn-ghost"
-        style={{ padding: "8px 20px", fontSize: 14 }}
+        style={{ padding: "12px 20px", fontSize: 14 }}
         aria-label="Install the Voicescape app"
       >
         ⬇ Install app
@@ -74,7 +98,7 @@ export default function InstallAppButton() {
     );
   }
 
-  if (firefoxHint) {
+  if (manualHint) {
     return (
       <div
         style={{
@@ -87,8 +111,8 @@ export default function InstallAppButton() {
         <button
           onClick={() => setHintOpen((v) => !v)}
           className="vs-btn vs-btn-ghost"
-          style={{ padding: "8px 20px", fontSize: 14 }}
-          aria-label="How to install the Voicescape app in Firefox"
+          style={{ padding: "12px 20px", fontSize: 14 }}
+          aria-label={`How to install the Voicescape app in ${HINT_LABEL[manualHint]}`}
           aria-expanded={hintOpen}
         >
           ⬇ Install app
@@ -103,8 +127,7 @@ export default function InstallAppButton() {
               margin: 0,
             }}
           >
-            In Firefox: open the page menu (☰) and choose “Install”, or look for
-            the install icon in the address bar.
+            {HINT_COPY[manualHint]}
           </p>
         )}
       </div>

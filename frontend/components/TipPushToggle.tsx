@@ -132,7 +132,16 @@ export function TipPushToggle({ wallet }: { wallet: string }) {
       }
       setState("on");
     } catch {
-      setMessage(t("push.error"));
+      // iOS only allows Web Push for apps installed to the Home Screen, so a
+      // subscribe() failure there almost always means "install first" — say so
+      // instead of the generic error.
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+      const isIOS =
+        /iPhone|iPad|iPod/i.test(ua) ||
+        (/Macintosh/i.test(ua) &&
+          typeof navigator !== "undefined" &&
+          navigator.maxTouchPoints > 1);
+      setMessage(isIOS ? t("push.iosInstall") : t("push.error"));
       setState("off");
     } finally {
       setBusy(false);
