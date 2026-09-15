@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { AbiCoder } from "ethers";
 
-import { POST, BUDDY_SYSTEM_PROMPT, sanitizeHistory } from "./route";
+import { POST } from "./route";
+import { BUDDY_SYSTEM_PROMPT, sanitizeHistory } from "./guardrails";
 import { resetAgentChatRateLimit } from "@/lib/agent/rate-limit";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
