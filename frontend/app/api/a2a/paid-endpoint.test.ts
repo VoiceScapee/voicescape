@@ -12,6 +12,17 @@ import { POST as paidPOST } from "./paid/route";
 
 const TIPS = "0.0.12345";
 const TIPS_LONG_ZERO = "0x0000000000000000000000000000000000003039";
+const RECIPIENT = "test-recipient";
+
+/** Build real tipPage(string) calldata for a username (selector + ABI string). */
+function tipCalldata(username: string): string {
+  const data = Buffer.from(username, "utf8");
+  const offsetWord = "0".repeat(62) + "20"; // 32
+  const lenWord = data.length.toString(16).padStart(64, "0");
+  const paddedLen = Math.ceil(data.length / 32) * 32;
+  const dataPadded = data.toString("hex").padEnd(paddedLen * 2, "0");
+  return "0x8b0de5cb" + offsetWord + lenWord + dataPadded;
+}
 
 function req(path: string, body: unknown): NextRequest {
   return new NextRequest(`http://localhost${path}`, {
@@ -45,7 +56,7 @@ function mockFetch() {
           status: "0x1",
           to: TIPS_LONG_ZERO,
           amount: String(5e8),
-          function_parameters: "0x8b0de5cb" + "00".repeat(96),
+          function_parameters: tipCalldata(RECIPIENT),
           contract_id: TIPS,
         }),
       } as Response;
@@ -75,6 +86,7 @@ beforeEach(async () => {
   __resetPaidStore();
   currentMemo = "";
   vi.stubEnv("A2A_TESTNET_TIPS_ID", TIPS);
+  vi.stubEnv("A2A_RECIPIENT_USERNAME", RECIPIENT);
   vi.stubEnv("IP_RATE_LIMIT_A2A_ORDERS", "60");
   vi.stubEnv("IP_RATE_LIMIT_A2A_PAID", "60");
   vi.stubGlobal("fetch", mockFetch());
@@ -94,6 +106,7 @@ describe("POST /api/a2a/orders", () => {
     const bill = await res.json();
     expect(bill.priceHbar).toBe(5);
     expect(bill.payTo).toBe(TIPS);
+    expect(bill.payToUsername).toBe(RECIPIENT);
     expect(bill.function).toBe("tipPage");
     expect(bill.memo).toBe(`vs-order:${bill.orderId}`);
   });
