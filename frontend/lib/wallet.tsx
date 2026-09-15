@@ -812,16 +812,25 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     );
   } catch (modalErr) {
     const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    // Desktop pairs through one shared QR modal no matter which adapter
+    // button was tapped, so the mobile advice ("try the WalletConnect option",
+    // "open this page in your wallet's built-in browser") is meaningless
+    // there — use channel-aware copy.
+    const onDesktop = !isMobileUserAgent();
     // "Failed to publish custom payload" is a WalletConnect relay rejection —
     // usually an invalid/rate-limited project ID or relay outage. Surface that
     // specifically instead of the generic fallback advice.
     if (/failed to publish/i.test(msg)) {
       throw new Error(
-        "The WalletConnect relay rejected the pairing request. This usually means the app's WalletConnect project ID is invalid or rate-limited. Please try again in a minute, or open this page in your wallet's built-in browser instead.",
+        onDesktop
+          ? "The WalletConnect relay rejected the pairing request. This usually means the app's WalletConnect project ID is invalid or rate-limited. Please try again in a minute."
+          : "The WalletConnect relay rejected the pairing request. This usually means the app's WalletConnect project ID is invalid or rate-limited. Please try again in a minute, or open this page in your wallet's built-in browser instead.",
       );
     }
     throw new Error(
-      `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`,
+      onDesktop
+        ? `Could not open the wallet pairing screen (${msg}). Please try again — if it keeps failing, make sure your wallet app is open and your connection is stable.`
+        : `Could not open the wallet pairing screen (${msg}). Try the WalletConnect option instead, or open this page in your wallet's built-in browser.`,
     );
   }
 
