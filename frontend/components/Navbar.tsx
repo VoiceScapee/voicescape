@@ -11,6 +11,12 @@ import type { NavDropdownItem } from "./NavDropdown";
 
 interface NavbarProps {
   right?: React.ReactNode;
+  /**
+   * Hide the logo link (Brandon 2026-09-15): the landing page shows the
+   * logo big in its hero, so the navbar's copy is redundant there.
+   * Every other destination stays exactly as-is.
+   */
+  hideLogo?: boolean;
 }
 
 /**
@@ -33,7 +39,7 @@ const COMMUNITY_ITEMS: NavDropdownItem[] = [
 
 const SUPPORT_HREF = "https://discord.gg/2KGzPduUN5";
 
-export default function Navbar({ right }: NavbarProps) {
+export default function Navbar({ right, hideLogo = false }: NavbarProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
 
@@ -83,22 +89,28 @@ export default function Navbar({ right }: NavbarProps) {
           position: "relative",
         }}
       >
-        <Link
-          href="/"
-          style={{
-            textDecoration: "none",
-            display: "inline-flex",
-            padding: "4px 0 4px 10px",
-            // Let the logo stretch across the row's free space (Brandon
-            // 2026-09-13); capped so it never crowds the nav buttons.
-            flex: "1 1 200px",
-            minWidth: 160,
-            maxWidth: 320,
-          }}
-          aria-label="Voicescape home"
-        >
-          <Logo size={44} fluid />
-        </Link>
+        {hideLogo ? (
+          // Landing page: the hero carries the logo, so keep an invisible
+          // spacer here to hold the row's balance (burger stays right).
+          <span aria-hidden="true" style={{ flex: "1 1 200px", minWidth: 0 }} />
+        ) : (
+          <Link
+            href="/"
+            style={{
+              textDecoration: "none",
+              display: "inline-flex",
+              padding: "4px 0 4px 10px",
+              // Let the logo stretch across the row's free space (Brandon
+              // 2026-09-13); capped so it never crowds the nav buttons.
+              flex: "1 1 200px",
+              minWidth: 160,
+              maxWidth: 320,
+            }}
+            aria-label="Voicescape home"
+          >
+            <Logo size={44} fluid />
+          </Link>
+        )}
         <button
           type="button"
           className="vs-btn vs-btn-ghost vs-nav-burger"

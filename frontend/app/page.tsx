@@ -35,6 +35,7 @@ export default function LandingPage() {
       <OnboardingTrigger />
       <main id="enter">
         <Navbar
+          hideLogo
           right={
             <WalletConnect />
           }

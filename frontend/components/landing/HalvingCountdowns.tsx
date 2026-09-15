@@ -1,13 +1,13 @@
 "use client";
 
 /**
- * Halving countdowns — sits right under the Clarity Act countdown.
+ * Halving countdowns — a slim informational strip under the Clarity Act
+ * countdown. Brandon 2026-09-15: no ticking clock boxes; the dates are
+ * what matter. Kept quiet so the landing flows.
  *
- * Bitcoin (block 1,050,000, est. Apr 2028 per CoinGecko) gets the featured
- * card; Litecoin (block 3,360,000, est. ~Jul 2027) sits below it. Both tick
- * live, every second.
+ * Bitcoin: block 1,050,000, est. Apr 2028 per CoinGecko.
+ * Litecoin: block 3,360,000, est. ~Jul 2027.
  */
-import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { T } from "@/components/T";
 
@@ -15,16 +15,6 @@ import { T } from "@/components/T";
 export const BTC_HALVING_AT = "2028-04-17T00:00:00Z";
 /** Next Litecoin halving: block 3,360,000, estimated ~2027-07-30. */
 export const LTC_HALVING_AT = "2027-07-30T00:00:00Z";
-
-function partsLeft(targetMs: number, nowMs: number) {
-  const diff = Math.max(0, targetMs - nowMs);
-  return {
-    days: Math.floor(diff / 86_400_000),
-    hours: Math.floor(diff / 3_600_000) % 24,
-    mins: Math.floor(diff / 60_000) % 60,
-    secs: Math.floor(diff / 1_000) % 60,
-  };
-}
 
 function fmtMonthYear(iso: string, locale: string) {
   try {
@@ -34,124 +24,59 @@ function fmtMonthYear(iso: string, locale: string) {
   }
 }
 
-function Units({ target, accent }: { target: number; accent: string }) {
-  const { t } = useLanguage();
-  const [now, setNow] = useState<number | null>(null);
+export function HalvingCountdowns() {
+  const { t, lang } = useLanguage();
 
-  useEffect(() => {
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const p = partsLeft(target, now ?? Date.now());
-  const units = [
-    { v: p.days, label: t("landing.cdDays") },
-    { v: p.hours, label: t("landing.cdHours") },
-    { v: p.mins, label: t("landing.cdMins") },
-    { v: p.secs, label: t("landing.cdSecs") },
+  const items = [
+    {
+      symbol: "₿",
+      color: "#f7931a",
+      name: t("landing.halvingBtc"),
+      meta: t("landing.halvingBtcMeta"),
+      date: fmtMonthYear(BTC_HALVING_AT, lang),
+    },
+    {
+      symbol: "Ł",
+      color: "#8ba9d9",
+      name: t("landing.halvingLtc"),
+      meta: t("landing.halvingLtcMeta"),
+      date: fmtMonthYear(LTC_HALVING_AT, lang),
+    },
   ];
 
   return (
-    <div
-      style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}
-      role="timer"
-    >
-      {units.map((u) => (
-        <div
-          key={u.label}
-          style={{
-            minWidth: 84,
-            padding: "12px 8px",
-            borderRadius: 12,
-            background: "var(--vs-bg2)",
-            border: `1px solid ${accent}`,
-          }}
-        >
-          <div className="vs-mono" style={{ fontSize: 28, fontWeight: 700 }}>
-            {String(u.v).padStart(2, "0")}
-          </div>
-          <div style={{ fontSize: 12, color: "var(--vs-muted)", marginTop: 4 }}>{u.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export function HalvingCountdowns() {
-  const { t, lang } = useLanguage();
-  const btcTarget = Date.parse(BTC_HALVING_AT);
-  const ltcTarget = Date.parse(LTC_HALVING_AT);
-
-  return (
-    <section className="vs-section" style={{ paddingTop: 0 }}>
-      <p className="vs-label" style={{ textAlign: "center" }}>
-        <span className="vs-live-dot" aria-hidden="true" /> <T k="landing.halvingLabel" />
-      </p>
-      <h2
-        style={{
-          fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)",
-          margin: "12px 0 12px",
-          textAlign: "center",
-        }}
-      >
-        <T k="landing.halvingTitle" />
-      </h2>
-      <p
-        style={{
-          textAlign: "center",
-          color: "var(--vs-muted)",
-          fontSize: 16,
-          maxWidth: 640,
-          margin: "0 auto 28px",
-          lineHeight: 1.7,
-        }}
-      >
-        <T k="landing.halvingSub" />
-      </p>
-
-      {/* Bitcoin — the featured countdown */}
+    <section className="vs-section" style={{ paddingTop: 0, paddingBottom: 36 }}>
       <div
         className="vs-glass"
         style={{
-          padding: "32px 24px",
+          padding: "16px 24px",
+          border: "1px solid var(--vs-border)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px 32px",
+          alignItems: "center",
+          justifyContent: "center",
           textAlign: "center",
-          marginBottom: 16,
-          border: "1px solid rgba(247,147,26,0.45)",
-          boxShadow: "0 0 48px rgba(247,147,26,0.10)",
-          background:
-            "radial-gradient(ellipse 80% 100% at 50% 0%, rgba(247,147,26,0.08), transparent)",
         }}
       >
-        <div style={{ fontSize: 40, color: "#f7931a", marginBottom: 4 }} aria-hidden="true">
-          ₿
-        </div>
-        <h3 style={{ margin: "0 0 6px", fontSize: 22, color: "#f7931a" }}>
-          <T k="landing.halvingBtc" />
-        </h3>
-        <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 20px" }}>
-          <T k="landing.halvingBtcMeta" /> · {t("landing.halvingEstimated")}{" "}
-          {fmtMonthYear(BTC_HALVING_AT, lang)}
+        <p className="vs-label" style={{ margin: 0, width: "100%" }}>
+          <span className="vs-live-dot" aria-hidden="true" /> <T k="landing.halvingLabel" />
         </p>
-        <Units target={btcTarget} accent="rgba(247,147,26,0.35)" />
-      </div>
-
-      {/* Litecoin */}
-      <div
-        className="vs-card"
-        style={{ textAlign: "center", border: "1px solid rgba(90,130,190,0.40)" }}
-      >
-        <div style={{ fontSize: 32, color: "#8ba9d9", marginBottom: 4 }} aria-hidden="true">
-          Ł
-        </div>
-        <h3 style={{ margin: "0 0 6px", fontSize: 19, color: "#8ba9d9" }}>
-          <T k="landing.halvingLtc" />
-        </h3>
-        <p style={{ color: "var(--vs-muted)", fontSize: 13, margin: "0 0 16px" }}>
-          <T k="landing.halvingLtcMeta" /> · {t("landing.halvingEstimated")}{" "}
-          {fmtMonthYear(LTC_HALVING_AT, lang)}
-        </p>
-        <Units target={ltcTarget} accent="rgba(90,130,190,0.35)" />
+        {items.map((it) => (
+          <p
+            key={it.name}
+            style={{ margin: 0, fontSize: 14, color: "var(--vs-muted)", lineHeight: 1.6 }}
+          >
+            <span
+              style={{ color: it.color, fontWeight: 700, marginRight: 8 }}
+              aria-hidden="true"
+            >
+              {it.symbol}
+            </span>
+            <strong style={{ fontWeight: 600 }}>{it.name}</strong> · {it.meta} ·{" "}
+            {t("landing.halvingEstimated")} {it.date}
+          </p>
+        ))}
       </div>
     </section>
   );
