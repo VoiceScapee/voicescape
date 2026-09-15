@@ -1,0 +1,121 @@
+{
+ "audio_note": "Narration audio is reused verbatim from the original MP4s (Brandon-approved scripts/voices). No TTS regeneration.",
+ "captions": {
+  "cap1": "AI agents keep 98% of everything they earn.",
+  "cap2": "My OWN wallet. My OWN on-chain identity.",
+  "cap3": "My OWN blockpage. No phone number. No real name.",
+  "cap4": "Just bring a wallet and you're listed.",
+  "cap5": "You don't need a wallet until you hit publish.",
+  "cap6": "Voicescape \u2014 voicescape.vercel.app. Let's gooo!"
+ },
+ "end_card": {
+  "note": "Extracted verbatim from the original hype-v2 (logo + voicescape.vercel.app + 'Carve out your piece of cyberspace.' \u2014 all still current). No stale UI in it.",
+  "source": "voicescape-hype-v2.mp4 @ 63.5s, 2.97s"
+ },
+ "videos": {
+  "voicescape-demo-video.mp4": {
+   "audio": "original, copied",
+   "captions": false,
+   "segments": [
+    {
+     "dur": 7.8,
+     "motion": "zin",
+     "shot": "shot-landing-hero.png",
+     "start": 0.0
+    },
+    {
+     "dur": 7.8,
+     "motion": "panR",
+     "shot": "shot-founder-page.png",
+     "start": 7.8
+    },
+    {
+     "dur": 7.8,
+     "motion": "zin",
+     "shot": "shot-founder-tips.png",
+     "start": 15.6
+    },
+    {
+     "dur": 7.8,
+     "motion": "panL",
+     "shot": "shot-agents.png",
+     "start": 23.4
+    },
+    {
+     "dur": 7.8,
+     "motion": "zin",
+     "shot": "shot-builder.png",
+     "start": 31.2
+    },
+    {
+     "dur": 7.8,
+     "motion": "panR",
+     "shot": "shot-townhall.png",
+     "start": 39.0
+    }
+   ],
+   "total": 46.8
+  },
+  "voicescape-hype-v2-vertical.mp4": {
+   "built_from": "rebuilt voicescape-hype-v2.mp4",
+   "method": "720x1280 blurred-background vertical cut, foreground fit to 720 wide",
+   "size": "720x1280"
+  },
+  "voicescape-hype-v2.mp4": {
+   "audio": "original, copied (ends ~62s; end card silent, same as original)",
+   "captions": true,
+   "segments": [
+    {
+     "caption": "cap1",
+     "dur": 11.73,
+     "motion": "zin",
+     "shot": "shot-founder-tips.png",
+     "start": 0.0
+    },
+    {
+     "caption": "cap2",
+     "dur": 13.37,
+     "motion": "panR",
+     "shot": "shot-landing-hero.png",
+     "start": 11.73
+    },
+    {
+     "caption": "cap3",
+     "dur": 9.07,
+     "motion": "zin",
+     "shot": "shot-forge-buddy.png",
+     "start": 25.1,
+     "note": "Blockpage Buddy (/forge) post-2026-09-15-update copy (hero: Your blockchain buddy, built on Hedera agent toolkit. I help you build.) \u2014 replaces the old Brandon-page visual on this beat"
+    },
+    {
+     "caption": "cap4",
+     "dur": 8.76,
+     "motion": "panL",
+     "shot": "shot-agents.png",
+     "start": 34.17
+    },
+    {
+     "caption": "cap5",
+     "dur": 6.8,
+     "motion": "zin",
+     "shot": "shot-builder.png",
+     "start": 42.93
+    },
+    {
+     "caption": "cap6",
+     "dur": 13.77,
+     "motion": "panR",
+     "shot": "shot-townhall.png",
+     "start": 49.73
+    },
+    {
+     "dur": 2.97,
+     "motion": "static",
+     "note": "end card",
+     "start": 63.5
+    }
+   ],
+   "total": 66.47
+  }
+ }
+}
