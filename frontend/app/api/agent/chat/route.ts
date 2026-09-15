@@ -8,8 +8,22 @@
  * the three chain tools are the kit's `Tool` objects from the Voicescape
  * read-only plugin (`@/lib/agent/agentkit`), executed through
  * `tool.execute` — not hand-rolled copies. All tools are TOOL_TYPE.QUERY
- * (asserted at build time); no client/operator key exists anywhere in this
- * route, so the agent can never sign, spend, or publish.
+ * (asserted at request time by getBuddyTools()); no client/operator key
+ * exists anywhere in this route, so the agent can never sign, spend, or
+ * publish.
+ *
+ * Guardrails for dapp visitors talking to Buddy:
+ * - The system prompt forbids site changes outright: no editing, deleting,
+ *   or configuring existing pages, posts, settings, or anyone's content,
+ *   and no touching anyone's connected wallet. The one exception is the
+ *   legitimate assisted build: Buddy may help a visitor plan and draft
+ *   THEIR OWN blockpage, but the visitor always publishes it themselves
+ *   from the builder, signing with their own wallet. Buddy never publishes
+ *   for anyone.
+ * - Client-supplied chat history is sanitized to user messages only, so a
+ *   visitor can't inject fake "assistant" replies ("Done — I updated your
+ *   page") into the context the model sees.
+ * - Unknown tool names fail closed (findTool allowlist).
  *
  * Fail-closed without GROQ_API_KEY (503). In-memory per-IP rate limit
  * (20/hour → 429).
@@ -35,14 +49,22 @@ const MAX_ITERATIONS = 5;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const AGENT_TIMEOUT_MS = 25_000;
 
-const SYSTEM_PROMPT =
+export const BUDDY_SYSTEM_PROMPT =
   "You are the Voicescape onboarding buddy. You help people understand " +
   "Voicescape and check real on-chain facts. You have three tools: " +
   "resolve_blockpage (is a username registered? who owns it?), verify_tip " +
   "(did a tip transaction settle?), treasury_stats (recent platform volume). " +
-  "ALWAYS use a tool for on-chain facts — never invent chain data. You are " +
-  "read-only: you cannot sign, spend, or publish anything. If the user wants " +
-  "to publish or pay, explain they connect their own wallet and sign. " +
+  "ALWAYS use a tool for on-chain facts — never invent chain data. " +
+  "You are read-only: you cannot sign, spend, or publish anything, and you " +
+  "never see, touch, or act on anyone's connected wallet. " +
+  "You cannot change anything on the Voicescape site itself: no editing, " +
+  "deleting, or configuring existing pages, posts, settings, or anyone's " +
+  "content. The one thing you DO do with people is help them build THEIR " +
+  "OWN blockpage: you can help plan and draft the page with them here, and " +
+  "when it's ready they publish it themselves from the builder, signing " +
+  "with their own wallet. You never publish for anyone. If someone asks " +
+  "you to change the site or do something with their wallet, say plainly " +
+  "you can't do that here and point them to the right place. " +
   "Plain language, warm, concise. Report fee numbers exactly as the tool " +
   "labels them; never reinterpret them.";
 
@@ -64,6 +86,21 @@ type ChatMessage = {
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 };
+
+/**
+ * Keep only the visitor's own messages from client-supplied history.
+ * Client "assistant" messages are dropped outright: otherwise anyone could
+ * inject fake Buddy replies ("Done — I updated your page") into the context
+ * the model sees. The widget keeps its own display history; the model gets
+ * a clean user-only transcript plus its live tool results.
+ */
+export function sanitizeHistory(raw: unknown): ChatMessage[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m: any) => m && m.role === "user" && typeof m.content === "string")
+    .slice(-6)
+    .map((m: any) => ({ role: "user", content: m.content.slice(0, 2000) }));
+}
 
 async function runToolCall(
   tools: Tool[],
@@ -116,7 +153,7 @@ async function callGroq(
     body: JSON.stringify({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
+      messages: [{ role: "system", content: BUDDY_SYSTEM_PROMPT }, ...messages],
       tools: toFunctionDefs(tools),
     }),
     signal,
@@ -153,15 +190,9 @@ export async function POST(req: NextRequest) {
   if (!message) {
     return NextResponse.json({ error: "message_required" }, { status: 400 });
   }
-  const rawHistory = Array.isArray(body?.history) ? body.history.slice(-6) : [];
-  const history: ChatMessage[] = rawHistory
-    .filter(
-      (m: any) =>
-        m &&
-        (m.role === "user" || m.role === "assistant") &&
-        typeof m.content === "string"
-    )
-    .map((m: any) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+  // Guardrail: only the visitor's own words are trusted — client-supplied
+  // "assistant" history is dropped by sanitizeHistory().
+  const history = sanitizeHistory(body?.history);
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
