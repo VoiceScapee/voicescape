@@ -5,6 +5,7 @@ import "./(townhall)/townhall.css";
 import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
+import AgentChat from "@/components/AgentChat";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
  * DM Sans 400–700 for body/UI, IBM Plex Mono 500/600 for numbers,
@@ -75,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <RootProviders>{children}</RootProviders>
         <Analytics />
+        <AgentChat />
       </body>
     </html>
   );
