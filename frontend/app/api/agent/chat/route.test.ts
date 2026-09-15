@@ -8,6 +8,7 @@ import { AbiCoder } from "ethers";
 
 import { POST } from "./route";
 import { resetAgentChatRateLimit } from "@/lib/agent/rate-limit";
+import { resetKvStoreSingleton } from "@/lib/server/store";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -95,6 +96,9 @@ function post(body: unknown, ip = "1.2.3.4"): NextRequest {
 
 beforeEach(() => {
   resetAgentChatRateLimit();
+  // Fresh metering store per test: the shared KvStore singleton would
+  // otherwise carry the anon session's free-tier usage across tests.
+  resetKvStoreSingleton();
   vi.stubEnv("GROQ_API_KEY", "test-key");
 });
 

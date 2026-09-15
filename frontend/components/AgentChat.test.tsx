@@ -23,9 +23,14 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("Hey! I can look up blockpages");
   });
 
-  it("labels itself beta and read-only", () => {
+  it("labels itself beta with the metering terms", () => {
     expect(widgetSrc).toContain("Blockpage Buddy");
-    expect(widgetSrc).toContain("beta · read-only");
+    expect(widgetSrc).toContain("beta · 5 free messages, then 5 HBAR per 50");
+  });
+
+  it("sends the wallet session credential so signed-in users get their own session", () => {
+    expect(widgetSrc).toContain("getAuthHeaders");
+    expect(widgetSrc).toContain("../lib/auth-client");
   });
 
   it("degrades gracefully when the backend is unavailable or rate-limited", () => {
