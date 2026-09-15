@@ -13,6 +13,15 @@
  *
  * Fail-closed without GROQ_API_KEY (503). In-memory per-IP rate limit
  * (20/hour → 429).
+ *
+ * Metered like the Agent Kit Buddy (Brandon's pricing): 5 free messages
+ * per session, then 5 HBAR per 50 messages (verified on-chain via the
+ * Tips contract's TipSent logs). Signed-in wallets get their own session
+ * (`wallet-<address>`); anonymous visitors share the `anon` bucket. The
+ * paywall check runs BEFORE the model, so denied users never burn model
+ * calls — the paywall copy is returned as the reply (same UX as the ops
+ * runtime). Metering state lives in the shared KvStore
+ * (`@/lib/server/store`, the site's Upstash DB), namespaced `buddy:`.
  */
 import { NextRequest, NextResponse } from "next/server";
 import type { Tool } from "@hashgraph/hedera-agent-kit";
@@ -26,6 +35,15 @@ import {
   agentChatClientIp,
   agentChatRateLimited,
 } from "@/lib/agent/rate-limit";
+import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
+import { defaultAuthPort } from "@/lib/server/townhall/auth";
+import {
+  checkChatAccess,
+  noteChatMessage,
+  paywallMessage,
+  type ChatAccess,
+} from "@/lib/buddy/metering";
+import { loadHistory, saveExchange } from "@/lib/buddy/session";
 
 export const runtime = "nodejs";
 
@@ -143,6 +161,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "rate_limited" }, { status: 429 });
   }
 
+  // Buddy metering: wallet-scoped sessions for signed-in users, a shared
+  // anonymous bucket otherwise. Checked BEFORE the model runs — denied
+  // users never burn model calls. Fail closed (503) when the store is
+  // unreachable: an unchecked quota must not silently become unlimited.
+  let sessionId = "anon";
+  let payer: string | undefined;
+  try {
+    const verified = await defaultAuthPort().verifySession(sessionCredentialFrom(req));
+    if (verified.ok) {
+      const addr = verified.session.address.toLowerCase();
+      sessionId = `wallet-${addr}`;
+      // Canonical 0x address — discoverPayments accepts it directly.
+      payer = addr;
+    }
+  } catch {
+    // Auth port failure: degrade to anonymous. The metering check below
+    // still gates spend, and the route stays read-only.
+  }
+
+  let access: ChatAccess;
+  try {
+    access = await checkChatAccess(sessionId, payer);
+  } catch (e) {
+    console.error(
+      `[agent/chat] metering unreachable: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return NextResponse.json({ error: "chat_unavailable" }, { status: 503 });
+  }
+  if (!access.allowed) {
+    // The paywall IS the reply — the widget just renders it (same UX as
+    // the ops runtime). Anonymous visitors are pointed at connecting a
+    // wallet; signed-in users at the 5 HBAR forge tip.
+    return NextResponse.json({ reply: paywallMessage(!payer) }, { status: 200 });
+  }
+
   let body: any;
   try {
     body = await req.json();
@@ -170,8 +223,29 @@ export async function POST(req: NextRequest) {
   // Buddy's tools come from Hedera's Agent Kit (read-only Voicescape plugin).
   const tools = getBuddyTools(signal);
 
+  // Server-side conversation memory (survives page reloads), merged with
+  // the widget's client-side history. Every exchange is saved server-side
+  // after the reply, so the two overlap — dedupe by content, bounded.
+  let storedHistory: ChatMessage[] = [];
   try {
-    const messages: ChatMessage[] = [...history, { role: "user", content: message }];
+    const clientContents = new Set(history.map((m) => m.content));
+    storedHistory = (await loadHistory(sessionId))
+      .filter((t) => !clientContents.has(t.text))
+      .slice(-10)
+      .map((t) => ({
+        role: t.role === "human" ? "user" : "assistant",
+        content: t.text,
+      }));
+  } catch {
+    // Memory is best-effort — a store hiccup must not break the reply.
+  }
+
+  try {
+    const messages: ChatMessage[] = [
+      ...storedHistory,
+      ...history,
+      { role: "user", content: message },
+    ];
     let finalContent: string | null = null;
     let truncated = false;
 
