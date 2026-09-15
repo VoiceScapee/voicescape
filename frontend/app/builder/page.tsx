@@ -1784,11 +1784,22 @@ function PublishPanel({
         try {
           const t = token();
           if (t) {
-            await fetch("/api/liaison/publish-confirm", {
+            const cr = await fetch("/api/liaison/publish-confirm", {
               method: "POST",
               headers: { "content-type": "application/json", "x-vs-session": t },
               body: JSON.stringify({ username: target, txHash: hash }),
             });
+            // Durable congratulations (browser lane): the server's
+            // celebration flag can be lost before the user returns (the
+            // server KV is still the ephemeral in-memory fallback), so
+            // keep a same-browser backup. The Danny panel shows it once
+            // and clears it.
+            if (cr.ok) {
+              const { stashBrowserCelebration } = await import(
+                "@/lib/liaison-celebrate"
+              );
+              stashBrowserCelebration(target, account ?? "");
+            }
           }
         } catch {
           /* draft cleanup is best-effort */

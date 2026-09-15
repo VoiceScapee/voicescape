@@ -23,6 +23,11 @@ import { useWallet } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { tipPage } from "@/lib/contracts";
+import {
+  clearBrowserCelebration,
+  congratsText,
+  takeBrowserCelebration,
+} from "@/lib/liaison-celebrate";
 import { TEMPLATES } from "@/lib/templates";
 import { friendlyWalletError } from "@/lib/wallet";
 
@@ -144,21 +149,37 @@ export default function DannyLiaisonPanel() {
         const s = (await res.json()) as LiaisonStatus;
         setStatus(s);
         // One-time congratulations: the user published a Danny-built page.
-        // The server clears the flag on read, so this shows exactly once.
+        // Server lane: the server clears its flag on read, so this shows
+        // exactly once. Browser lane: same-browser backup for when the
+        // server flag was lost (ephemeral server KV); also once, then
+        // cleared. Server lane wins — its flag also drops the backup so
+        // the message can never double-fire.
         if (s.celebratedUsername) {
+          clearBrowserCelebration();
           setMessages((m) => [
             ...m,
             {
               role: "danny",
-              text: `🎉 Your page @${s.celebratedUsername} is live! I loved building that with you. It's all yours now — share it, tip it, make it yours.`,
+              text: congratsText(s.celebratedUsername as string),
             },
           ]);
+        } else {
+          const pending = takeBrowserCelebration(Date.now(), account ?? undefined);
+          if (pending) {
+            setMessages((m) => [
+              ...m,
+              {
+                role: "danny",
+                text: congratsText(pending),
+              },
+            ]);
+          }
         }
       }
     } catch {
       /* panel stays usable without status */
     }
-  }, [authedFetch]);
+  }, [authedFetch, account]);
 
   // Re-verify a payment: scans on-chain for the user's newest unconsumed
   // tip and credits it, without requiring a new payment. For users hit by
