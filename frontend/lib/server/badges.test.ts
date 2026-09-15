@@ -19,15 +19,24 @@ const TIPSENT_TOPIC0 = ethers.id("TipSent(string,address,address,uint256,uint256
 const PAGE_REGISTERED_TOPIC0 = ethers.id("PageRegistered(string,address,string,uint8,address,string)");
 const WALLET_TOPIC = "0x" + "000000000000000000000000000000000000a11c".padStart(64, "0");
 const ZERO_TOPIC = "0x" + "0".repeat(64);
+// The code under test normalizes 0.0.x ids to their 0x EVM form before
+// querying (the mirror node accepts both forms, so production is fine);
+// the fetch mock must recognize either form.
+const REGISTRY_EVM = "0xd87f8113c5bcc47c40dc26a43ffa9b1629385a58";
+const TIPS_EVM = "0x571d6d0c5d5ee7fc1e47283ad864305b7f7a88e0";
 
 /** Scenario flags for the fetch mock. */
 let scenario = { hasPage: false, hasTip: false, fail: false };
 
 function mockLogsResponse(url: string): { logs: unknown[] } {
   if (scenario.fail) throw new Error("mirror down");
-  const u = String(url);
-  const isRegistry = u.includes(`/contracts/${REGISTRY}/results/logs`);
-  const isTips = u.includes(`/contracts/${TIPS}/results/logs`);
+  const u = String(url).toLowerCase();
+  const isRegistry =
+    u.includes(`/contracts/${REGISTRY}/results/logs`) ||
+    u.includes(`/contracts/${REGISTRY_EVM}/results/logs`);
+  const isTips =
+    u.includes(`/contracts/${TIPS}/results/logs`) ||
+    u.includes(`/contracts/${TIPS_EVM}/results/logs`);
   // ownsRegisteredPage: a PageRegistered log for the wallet (owner = topic2).
   if (isRegistry)
     return {
