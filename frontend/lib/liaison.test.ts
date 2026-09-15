@@ -112,9 +112,9 @@ describe("liaisonPriceFloorHbar + assertLiaisonPriceFloors", () => {
 });
 
 describe("revenue sweep config", () => {
-  it("defaults reserve to 1 HBAR and threshold to 0", () => {
+  it("defaults reserve to 1 HBAR and threshold to 0.01 HBAR (dust guard)", () => {
     expect(liaisonForwardReserveHbar({})).toBe(1);
-    expect(liaisonForwardThresholdHbar({})).toBe(0);
+    expect(liaisonForwardThresholdHbar({})).toBe(0.01);
   });
   it("honors env overrides", () => {
     expect(
