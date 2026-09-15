@@ -7,6 +7,10 @@
  * legislation moment, counting down in real time. The target date is a
  * config constant — update it if Congress moves the vote.
  * Past the date → flips to a "vote week is here" state, never a negative timer.
+ *
+ * Presentation (2026-09-15 cleanup): a slim strip, not a second big
+ * timer-card grid — the halving section below already owns the featured
+ * countdown look, so this one stays visually quiet and distinct.
  */
 import { useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -47,66 +51,57 @@ export function ClarityCountdown() {
   // takes over on the next tick; a sub-second skew self-corrects.
   const p = partsLeft(target, now ?? Date.now());
 
-  const units: { v: number; label: string }[] = [
-    { v: p.days, label: t("landing.cdDays") },
-    { v: p.hours, label: t("landing.cdHours") },
-    { v: p.mins, label: t("landing.cdMins") },
-    { v: p.secs, label: t("landing.cdSecs") },
-  ];
-
   return (
-    <section className="vs-section" style={{ paddingTop: 0 }}>
+    <section className="vs-section" style={{ paddingTop: 0, paddingBottom: 36 }}>
       <div
         className="vs-glass"
         style={{
-          padding: "28px 24px",
-          textAlign: "center",
+          padding: "20px 24px",
           border: "1px solid var(--vs-border)",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "8px 28px",
+          alignItems: "center",
+          justifyContent: "center",
         }}
       >
-        <p className="vs-label" style={{ marginBottom: 8 }}>
-          <span className="vs-live-dot" aria-hidden="true" /> {t("landing.clarityLabel")}
-        </p>
-        <h2 style={{ fontSize: "clamp(1.3rem, 3.5vw, 1.8rem)", margin: "0 0 8px" }}>
-          {p.live ? t("landing.clarityLiveTitle") : t("landing.clarityTitle")}
-        </h2>
-        <p style={{ color: "var(--vs-muted)", fontSize: 15, maxWidth: 620, margin: "0 auto 20px", lineHeight: 1.7 }}>
-          {p.live ? t("landing.clarityLiveBody") : t("landing.clarityBody")}
-        </p>
+        <div style={{ flex: "1 1 320px", maxWidth: 560, minWidth: 240 }}>
+          <p className="vs-label" style={{ marginBottom: 6 }}>
+            <span className="vs-live-dot" aria-hidden="true" /> {t("landing.clarityLabel")}
+          </p>
+          <h2 style={{ fontSize: "1.25rem", margin: "0 0 6px" }}>
+            {p.live ? t("landing.clarityLiveTitle") : t("landing.clarityTitle")}
+          </h2>
+          <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: 0, lineHeight: 1.65 }}>
+            {p.live ? t("landing.clarityLiveBody") : t("landing.clarityBody")}
+          </p>
+        </div>
         {!p.live && (
           <div
-            style={{
-              display: "flex",
-              gap: 12,
-              justifyContent: "center",
-              flexWrap: "wrap",
-            }}
+            className="vs-mono"
             role="timer"
             aria-label={t("landing.clarityLabel")}
+            style={{
+              fontSize: 19,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
           >
-            {units.map((u) => (
-              <div
-                key={u.label}
-                style={{
-                  minWidth: 76,
-                  padding: "12px 8px",
-                  borderRadius: 12,
-                  background: "var(--vs-bg2)",
-                  border: "1px solid var(--vs-border)",
-                }}
-              >
-                <div className="vs-mono" style={{ fontSize: 28, fontWeight: 700 }}>
-                  {String(u.v).padStart(2, "0")}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--vs-muted)", marginTop: 4 }}>{u.label}</div>
-              </div>
-            ))}
+            {p.days} {t("landing.cdDays")} · {p.hours} {t("landing.cdHours")} ·{" "}
+            {p.mins} {t("landing.cdMins")} · {p.secs} {t("landing.cdSecs")}
           </div>
         )}
-        <p style={{ color: "var(--vs-muted)", fontSize: 13, margin: "16px 0 0" }}>
-          {t("landing.clarityNote")}
-        </p>
       </div>
+      <p
+        style={{
+          color: "var(--vs-muted)",
+          fontSize: 13,
+          margin: "14px 0 0",
+          textAlign: "center",
+        }}
+      >
+        {t("landing.clarityNote")}
+      </p>
     </section>
   );
 }

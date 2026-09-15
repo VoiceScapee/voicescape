@@ -352,6 +352,89 @@ a {
   transform: none;
 }
 
+/* ------------------------------------------------------------------ */
+/* Navbar — one clean row on desktop, one menu on mobile                */
+/* ------------------------------------------------------------------ */
+
+.vs-nav-items {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
+/* Tighter than the default ghost button so the full desktop row fits. */
+.vs-btn.vs-nav-link {
+  padding: 8px 14px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.vs-nav-burger {
+  display: none;
+  padding: 8px 14px;
+  font-size: 18px;
+  line-height: 1;
+  margin-left: auto;
+}
+
+.vs-nav-mobile-only {
+  display: none;
+}
+
+.vs-nav-group-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vs-muted);
+  margin: 10px 4px 6px;
+}
+
+.vs-nav-group-label:first-child {
+  margin-top: 2px;
+}
+
+@media (max-width: 1023px) {
+  .vs-nav-desktop-only {
+    display: none;
+  }
+  .vs-nav-mobile-only {
+    display: block;
+    width: 100%;
+  }
+  .vs-nav-burger {
+    display: inline-flex;
+  }
+  .vs-nav-items {
+    display: none;
+  }
+  /* The single mobile menu: every nav item, no tall wrapping stack. */
+  .vs-nav-items.vs-nav-open {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 12px;
+    right: 12px;
+    margin-left: 0;
+    background: rgba(13, 16, 26, 0.98);
+    border: 1px solid var(--vs-border);
+    border-radius: 14px;
+    padding: 12px;
+    z-index: 60;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+  }
+  .vs-btn.vs-nav-link {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .vs-input {
   width: 100%;
   background: #0d111a;
