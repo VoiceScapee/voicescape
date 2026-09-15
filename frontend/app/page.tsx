@@ -1,33 +1,38 @@
 import Splash from "@/components/Splash";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
-import Logo from "@/components/Logo";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
-import LegalLinks from "@/components/LegalLinks";
+import ExternalLink from "@/components/ExternalLink";
 import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
 import { OnboardingTrigger } from "@/components/OnboardingTrigger";
-import { ClarityCountdown } from "@/components/landing/ClarityCountdown";
-import { HalvingCountdowns } from "@/components/landing/HalvingCountdowns";
-import { EcosystemSpotlight } from "@/components/landing/EcosystemSpotlight";
-import { CommunityPulse } from "@/components/landing/CommunityPulse";
+import { DateStrip } from "@/components/landing/DateStrip";
+import { ChainPulseStats } from "@/components/landing/ChainPulseStats";
+import { Headlines } from "@/components/landing/Headlines";
 import { ChatPreview } from "@/components/landing/ChatPreview";
-import {
-  IconArrowRight,
-  IconGrid,
-  IconLink,
-  IconSpark,
-  IconTip,
-} from "@/components/icons";
-import type { I18nKey } from "@/lib/i18n/dictionaries";
 
-const FEATURES: { icon: typeof IconGrid; titleKey: I18nKey; bodyKey: I18nKey }[] = [
-  { icon: IconGrid, titleKey: "landing.f1t", bodyKey: "landing.f1b" },
-  { icon: IconSpark, titleKey: "landing.f2t", bodyKey: "landing.f2b" },
-  { icon: IconLink, titleKey: "landing.f3t", bodyKey: "landing.f3b" },
-  { icon: IconTip, titleKey: "landing.f4t", bodyKey: "landing.f4b" },
+const SERIF = "Georgia, 'Times New Roman', serif";
+
+const FOOT_LINKS = [
+  { k: "nav.support" as const, href: "https://discord.gg/2KGzPduUN5", external: true },
+  { k: "nav.townHall" as const, href: "/townhall", external: false },
+  { k: "nav.agents" as const, href: "/agents", external: false },
+  { k: "nav.newToWeb3" as const, href: "/new-to-web3", external: false },
 ];
 
+/**
+ * Landing page — the approved brand-pass mockup (PORT-L).
+ *
+ * Order: Splash → navbar (no logo; wallet button right) → slim date strip →
+ * hero (eyebrow, gradient H1, sub, CTAs, 98/2 split strip) → community pulse
+ * (live on-chain stats) → Hedera headlines (live /api/pulse) → happening in
+ * the lobby (live chat preview) → founder quote (serif) → minimal footer.
+ *
+ * Deliberately NOT rendered here (per the approved mock): ClarityCountdown,
+ * HalvingCountdowns, proof chips, features grid, Hedera stack strip, closing
+ * CTA, EcosystemSpotlight, and the old CommunityPulse usage. Those component
+ * files still exist — they just aren't on this page anymore.
+ */
 export default function LandingPage() {
   return (
     <>
@@ -41,234 +46,145 @@ export default function LandingPage() {
           }
         />
 
-        {/* What is Voicescape */}
-        <section className="vs-section" style={{ textAlign: "center" }}>
-          <div className="vs-hero-logo-wrap" aria-hidden="true">
-            <div className="vs-hero-logo-glow" />
-            <Logo size={64} />
-          </div>
-          <p className="vs-label"><T k="landing.whatIs" /></p>
-          <h2 style={{ fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)", margin: "12px 0 20px" }}>
-            <T k="landing.hero1" /> <span className="vs-gradient-text"><T k="landing.hero2" /></span>
-          </h2>
-          <p style={{ lineHeight: 1.8, color: "var(--vs-muted)", maxWidth: 680, margin: "0 auto", fontSize: 17 }}>
-            <T k="landing.heroBody" />
+        {/* Slim date strip — no ticking boxes */}
+        <DateStrip />
+
+        {/* Hero */}
+        <section className="vs-section" style={{ textAlign: "center", paddingTop: 34 }}>
+          <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
+            <T k="brand.eyebrow" />
+          </span>
+          <h1 style={{ fontSize: "clamp(34px, 7.5vw, 58px)", maxWidth: "16em", margin: "0 auto" }}>
+            <T k="landing.brandH1a" />
+            <br />
+            <span className="vs-gradient-text"><T k="landing.brandH1b" /></span>
+          </h1>
+          <p style={{ color: "var(--vs-muted)", fontSize: "16.5px", lineHeight: 1.55, maxWidth: "34em", margin: "18px auto 26px" }}>
+            <T k="landing.brandSub" />
           </p>
-          <div style={{ marginTop: 28, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             <Link
               href="/builder"
               className="vs-btn vs-btn-primary"
-              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+              style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
             >
-              <T k="landing.openBuilder" />
-              <IconArrowRight size={18} />
+              <T k="landing.brandBuildCta" />
             </Link>
             <Link
               href="/explore"
               className="vs-btn vs-btn-ghost"
-              style={{ padding: "14px 32px", fontSize: 16, textDecoration: "none" }}
+              style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
             >
-              <T k="landing.exploreBlockpages" />
+              <T k="landing.brandExploreCta" />
             </Link>
           </div>
-          {/* Proof chips — real, verifiable claims only */}
+          {/* 98/2 split strip */}
           <div
             style={{
-              marginTop: 22,
               display: "flex",
               gap: 10,
               justifyContent: "center",
+              alignItems: "center",
+              margin: "26px 0 6px",
               flexWrap: "wrap",
             }}
           >
-            <a
-              href="https://hashscan.io/mainnet/contract/0.0.10854060"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="vs-glass"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 16px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--vs-muted)",
-                textDecoration: "none",
-              }}
-            >
-              <T k="landing.proof1" />
-              <IconArrowRight size={14} />
-            </a>
             <span
-              className="vs-glass"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "8px 16px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--vs-muted)",
-              }}
+              className="vs-display"
+              style={{ fontSize: 26, fontWeight: 700 }}
+              aria-hidden="true"
             >
-              <T k="landing.proof2" />
+              98<span style={{ color: "var(--vs-muted)" }}>/</span>2
             </span>
-            <Link
-              href="/user-10424063"
-              className="vs-glass"
+            <span
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 16px",
-                borderRadius: 999,
                 fontSize: 13,
-                fontWeight: 600,
                 color: "var(--vs-muted)",
-                textDecoration: "none",
+                maxWidth: 210,
+                textAlign: "left",
+                lineHeight: 1.45,
               }}
             >
-              <T k="landing.proof3" />
-              <IconArrowRight size={14} />
-            </Link>
-          </div>
-          <div style={{ marginTop: 20 }}>
-            <a
-              href="https://hedera.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="vs-glass"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 18px",
-                borderRadius: 999,
-                fontSize: 13,
-                fontWeight: 600,
-                color: "var(--vs-muted)",
-                textDecoration: "none",
-              }}
-            >
-              <span className="vs-live-dot" aria-hidden="true" />
-              Built on Hedera Mainnet
-            </a>
+              <T k="landing.splitExplain" />
+            </span>
           </div>
         </section>
 
-        {/* Community front door — reasons to come back */}
-        <ClarityCountdown />
-        <HalvingCountdowns />
-        <EcosystemSpotlight />
-        <CommunityPulse />
+        {/* Community pulse — live on-chain stats */}
+        <ChainPulseStats />
+
+        {/* Hedera headlines — 2 Hedera blog + 2 crypto press, live */}
+        <Headlines />
+
+        {/* Happening in the lobby — live chat preview */}
         <ChatPreview />
 
-        {/* Features */}
+        {/* Founder quote — serif is reserved for human-voice moments */}
         <section className="vs-section" style={{ paddingTop: 0 }}>
-          <div className="vs-grid-2">
-            {FEATURES.map((f) => (
-              <div key={f.titleKey} className="vs-card vs-card-hover" style={{ display: "flex", gap: 18 }}>
-                <div
-                  style={{
-                    flexShrink: 0,
-                    width: 48,
-                    height: 48,
-                    borderRadius: 12,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "linear-gradient(135deg, rgba(130,89,239,0.25), rgba(145,168,255,0.18))",
-                    border: "1px solid var(--vs-border)",
-                    color: "var(--vs-cyan)",
-                  }}
-                >
-                  <f.icon size={24} />
-                </div>
-                <div>
-                  <h3 style={{ margin: "0 0 8px", fontSize: 18 }}><T k={f.titleKey} /></h3>
-                  <p style={{ margin: 0, lineHeight: 1.7, color: "var(--vs-muted)", fontSize: 15 }}>
-                    <T k={f.bodyKey} />
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Hedera stack — positioning strip */}
-        <section className="vs-section" style={{ paddingTop: 0 }}>
-          <p className="vs-label" style={{ textAlign: "center" }}><T k="landing.stackLabel" /></p>
-          <h2 style={{ fontSize: "clamp(1.4rem, 4vw, 2rem)", margin: "12px 0 28px", textAlign: "center" }}>
-            <T k="landing.stackTitle" />
-          </h2>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "center" }}>
-            {(
-              [
-                { t: "landing.stack1t", b: "landing.stack1b" },
-                { t: "landing.stack2t", b: "landing.stack2b" },
-                { t: "landing.stack3t", b: "landing.stack3b" },
-                { t: "landing.stack4t", b: "landing.stack4b" },
-              ] as { t: I18nKey; b: I18nKey }[]
-            ).map((s) => (
-              <div
-                key={s.t}
-                className="vs-glass"
-                style={{ padding: "18px 20px", flex: "1 1 200px", maxWidth: 300 }}
-              >
-                <h3 className="vs-mono" style={{ margin: "0 0 8px", fontSize: 14, color: "var(--vs-cyan)" }}>
-                  <T k={s.t} />
-                </h3>
-                <p style={{ margin: 0, color: "var(--vs-muted)", lineHeight: 1.6, fontSize: 14 }}>
-                  <T k={s.b} />
-                </p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Closing CTA */}
-        <section
-          className="vs-section"
-          style={{
-            textAlign: "center",
-          }}
-        >
-          <h2
+          <blockquote
             style={{
-              fontSize: "clamp(1.6rem, 4.5vw, 2.4rem)",
-              margin: "0 0 12px",
+              fontFamily: SERIF,
+              fontStyle: "italic",
+              fontSize: 21,
+              lineHeight: 1.55,
+              color: "#e8e4f5",
+              maxWidth: "32em",
+              margin: "0 auto",
+              textAlign: "center",
             }}
           >
-            <span className="vs-gradient-text"><T k="splash.tagline" /></span>
-          </h2>
-          <p style={{ color: "var(--vs-muted)", fontSize: 16, margin: "0 0 28px" }}>
-            <T k="splash.sub" />
+            <T k="landing.founderQuote" />
+          </blockquote>
+          <p
+            className="vs-mono"
+            style={{
+              fontSize: 11,
+              color: "var(--vs-muted)",
+              margin: "12px 0 0",
+              textAlign: "center",
+              letterSpacing: "0.06em",
+            }}
+          >
+            <T k="landing.founderQuoteBy" />
           </p>
-          <Link href="/builder" className="vs-btn vs-btn-primary" style={{ fontSize: 18, padding: "15px 36px" }}>
-            <T k="landing.openBuilder" />
-            <IconArrowRight size={20} />
-          </Link>
         </section>
 
-        {/* Footer */}
+        {/* Minimal footer */}
         <footer
           style={{
-            borderTop: "1px solid var(--vs-border)",
-            padding: "32px 24px",
+            padding: "34px 22px 40px",
             textAlign: "center",
             color: "var(--vs-muted)",
             fontSize: 13,
           }}
         >
-          <div style={{ marginBottom: 12 }}>
-            <Logo size={24} />
+          <div>
+            {FOOT_LINKS.map((l) =>
+              l.external ? (
+                <ExternalLink
+                  key={l.k}
+                  href={l.href}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px" }}
+                >
+                  <T k={l.k} />
+                </ExternalLink>
+              ) : (
+                <Link
+                  key={l.k}
+                  href={l.href}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px" }}
+                >
+                  <T k={l.k} />
+                </Link>
+              ),
+            )}
           </div>
-          <p className="vs-mono" style={{ margin: 0 }}>
+          <p className="vs-mono" style={{ margin: "14px 0 0" }}>
+            <T k="landing.grassroots" />
+          </p>
+          <p className="vs-mono" style={{ margin: "10px 0 0" }}>
             <T k="landing.footerTagline" />
           </p>
-          <LegalLinks />
           <BuiltOnHedera />
         </footer>
       </main>

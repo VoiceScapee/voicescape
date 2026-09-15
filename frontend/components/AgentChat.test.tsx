@@ -19,13 +19,17 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("/api/agent/chat");
   });
 
-  it("greets with the onboarding message on open", () => {
-    expect(widgetSrc).toContain("Hey! I can look up blockpages");
+  it("greets with the Buddy intro message", () => {
+    expect(widgetSrc).toContain("Hey, I'm Buddy.");
+    expect(widgetSrc).toContain("What's up?");
   });
 
-  it("labels itself beta and read-only", () => {
+  it("shows the hammer bubble and the tagline header", () => {
     expect(widgetSrc).toContain("Blockpage Buddy");
-    expect(widgetSrc).toContain("beta · read-only");
+    expect(widgetSrc).toContain("Ask me anything — I check the chain");
+    expect(widgetSrc).toContain("Ask Buddy…");
+    expect(widgetSrc).toContain("🔨");
+    expect(widgetSrc).not.toContain("beta · read-only");
   });
 
   it("degrades gracefully when the backend is unavailable or rate-limited", () => {

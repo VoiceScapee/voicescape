@@ -60,6 +60,50 @@
   flex: 1;
 }
 
+/* ------------------------------------------------------------------ */
+/* Brand pass PORT-B: the mock's header chrome (eyebrow + title +      */
+/* lede). Sits below the sticky toolbar; tokens from globals.css.      */
+/* ------------------------------------------------------------------ */
+
+.vb-brand {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 26px 20px 6px;
+}
+
+.vb-brand .vs-eyebrow {
+  margin-bottom: 4px;
+}
+
+.vb-brand-title {
+  font-family: var(--font-display, "Montserrat"), var(--vs-font);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  font-size: clamp(24px, 5vw, 34px);
+  margin: 14px 0 6px;
+  color: var(--vs-text);
+}
+
+.vb-brand-lede {
+  color: var(--vs-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0 0 8px;
+  max-width: 60ch;
+}
+
+/* Brand pass PORT-B: plain-words publish promise under the publish
+   button, styled after the mock's helper line. */
+.vb-pub-helper {
+  font-size: 13.5px;
+  color: var(--vs-muted);
+  text-align: center;
+  margin: 12px 0 0;
+  line-height: 1.55;
+}
+
 /* ?draft= deep-link indicator chip */
 .vb-draft-chip {
   border-color: rgba(255, 202, 114, 0.45);
@@ -852,6 +896,10 @@ select.vs-input option {
 
   .vb-header-title {
     font-size: 14px;
+  }
+
+  .vb-brand {
+    padding: 20px 16px 4px;
   }
 
   .vb-draft-wrap {

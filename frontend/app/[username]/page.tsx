@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
 import { useSession } from "@/lib/session";
@@ -15,6 +15,7 @@ import { useFundingGoal, TIP_CONFIRMED_EVENT } from "@/hooks/useFundingGoal";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { markClaimCongratsSeen, readClaimCongrats } from "@/lib/claim-congrats";
 import {
   buildTipProofUrl,
   buildTipShareIntentUrl,
@@ -137,6 +138,17 @@ function TipBox({
     hbarPrice && usdValid
       ? `≈ ${(usdNum / hbarPrice).toFixed(4)} ${chain.nativeCurrency.symbol}`
       : `${chain.nativeCurrency.symbol} amount loading…`;
+
+  // Breakdown math for the plain-words 98/2 panel — valid only when the
+  // HBAR price has loaded and the USD amount parses.
+  const hbarAmt = hbarPrice && usdValid ? usdNum / hbarPrice : null;
+  const toCreatorAmt = hbarAmt != null ? hbarAmt * 0.98 : null;
+  const treasuryAmt = hbarAmt != null ? hbarAmt * 0.02 : null;
+  // Short display ("5" not "5.00") for the plain-words breakdown note.
+  const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
+  // Hedera-side network fee (existing display value), passed through the
+  // i18n placeholder rather than hard-coded into JSX copy.
+  const NETWORK_FEE_HBAR = "0.08";
 
   const tip = async () => {
     setError(null);
@@ -304,22 +316,15 @@ function TipBox({
                 <span className="pv-tip-title-icon" aria-hidden="true">
                   <IconTip size={20} />
                 </span>
-                Tip {username}
+                {t("tip.titleFor").replace("{name}", username)}
               </h2>
               <button type="button" className="pv-tip-close" onClick={onClose} aria-label="Close tip panel">
                 <IconClose size={18} />
               </button>
             </div>
-            <p className="pv-tip-sub">
-              Send a tip directly on-chain. Amounts are shown in USD.
-            </p>
+            <p className="pv-tip-sub">{t("tip.subtitle")}</p>
 
             <WalletConnect />
-
-            <div className="pv-tip-amount" aria-live="polite">
-              <span className="pv-tip-amount-value">${usdValid ? usdNum.toFixed(2) : "0.00"}</span>
-              <span className="pv-tip-amount-sym">USD</span>
-            </div>
 
             <div className="pv-chip-row" role="group" aria-label="Tip amount presets (USD)">
               {TIP_PRESETS_USD.map((p) => (
@@ -327,6 +332,7 @@ function TipBox({
                   key={p}
                   type="button"
                   className={`pv-chip${usd === p ? " is-active" : ""}`}
+                  aria-pressed={usd === p}
                   onClick={() => setUsd(p)}
                 >
                   ${p}
@@ -342,21 +348,39 @@ function TipBox({
               aria-label="Custom tip amount in USD"
             />
 
-            <div className="pv-pay-price-note" aria-live="polite" style={{ textAlign: "center", marginBottom: 8 }}>
-              You send {railDisplay}
-            </div>
-
-            {hbarPrice && usdValid && (
-              <div style={{ fontSize: 12, color: "var(--vs-muted)", textAlign: "center", marginBottom: 14, lineHeight: 1.6 }}>
-                <div>Creator gets ≈ {((usdNum / hbarPrice) * 0.98).toFixed(4)} HBAR (98%)</div>
-                <div>Treasury gets ≈ {((usdNum / hbarPrice) * 0.02).toFixed(4)} HBAR (2%)</div>
-                <div>Network fee ≈ 0.08 HBAR (paid to Hedera, not Voicescape)</div>
-              </div>
+            {hbarAmt != null && (
+              <>
+                <div className="pv-tip-break">
+                  <div className="pv-tip-break-row">
+                    <span>{t("tip.youSend")}</span>
+                    <span>≈ {hbarAmt.toFixed(4)} HBAR</span>
+                  </div>
+                  <div className="pv-tip-break-row">
+                    <span>{t("tip.creatorGets").replace("{name}", username)}</span>
+                    <span>≈ {(toCreatorAmt ?? 0).toFixed(4)} HBAR</span>
+                  </div>
+                  <div className="pv-tip-break-row">
+                    <span>{t("tip.treasuryGets")}</span>
+                    <span>≈ {(treasuryAmt ?? 0).toFixed(4)} HBAR</span>
+                  </div>
+                  <div className="pv-tip-break-row pv-tip-break-fee">
+                    <span>{t("tip.networkFee").replace("{fee}", NETWORK_FEE_HBAR)}</span>
+                    <span>≈ {NETWORK_FEE_HBAR} HBAR</span>
+                  </div>
+                </div>
+                <p className="pv-tip-break-note">
+                  {t("tip.breakdownNote")
+                    .replace("{hbar}", fmtHbarShort(hbarAmt))
+                    .replace("{toCreator}", fmtHbarShort(toCreatorAmt ?? 0))
+                    .replace("{name}", username)
+                    .replace("{fee}", fmtHbarShort(treasuryAmt ?? 0))}
+                </p>
+              </>
             )}
 
-            <button type="button" className="pv-tip-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || !hbarPrice}>
+            <button type="button" className="pv-tip-btn pv-tip-confirm-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || !hbarPrice}>
               <IconTip size={20} />
-              {confirmStatus === "confirming" ? "Confirming on Hedera…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : `Tip $${usdValid ? usdNum.toFixed(2) : "0.00"}`}
+              {confirmStatus === "confirming" ? "Confirming on Hedera…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : t("tip.confirmCta").replace("{amount}", usdValid ? usdNum.toFixed(2) : "0.00")}
             </button>
             {/* Phase A: wallet hasn't returned a hash yet — nothing has left
                 the wallet. Alive animation + the honest reassurance, never
@@ -378,8 +402,8 @@ function TipBox({
               />
             )}
 
-            <p className="pv-fee-note">
-              98% to the creator · 2% to the treasury — enforced on-chain
+            <p className="pv-tip-approve" style={{ whiteSpace: "pre-line" }}>
+              {t("tip.approveNote")}
             </p>
 
             {error && (
@@ -599,6 +623,64 @@ function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: 
 }
 
 /* ------------------------------------------------------------------ */
+/* One-time claim congrats card — Buddy's page (/forge) only            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Render the congrats body string with <b>…</b> pairs as real <b>
+ * elements — never dangerouslySetInnerHTML (the string comes from our own
+ * i18n dictionaries, but the rule is structural).
+ */
+function congratsBodyNodes(text: string): ReactNode {
+  const out: ReactNode[] = [];
+  const re = /<b>([\s\S]*?)<\/b>/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(
+      <b key={i++}>{m[1]}</b>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+function ClaimCongratsCard({ routeUsername }: { routeUsername: string }) {
+  const { t } = useLanguage();
+  const { account } = useWallet();
+  const [claimed, setClaimed] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Buddy's blockpage only — every other page renders nothing extra.
+    if (routeUsername.toLowerCase() !== "forge") return;
+    const flag = readClaimCongrats(Date.now(), account ?? undefined);
+    if (flag && !flag.seen) {
+      setClaimed(flag.username);
+      // Show once ever: mark seen in the same post-render effect.
+      markClaimCongratsSeen();
+    }
+  }, [routeUsername, account]);
+
+  if (!claimed) return null;
+  return (
+    <div role="status" className="vs-congrats">
+      <div className="vs-congrats-big" aria-hidden="true">
+        🎉
+      </div>
+      <h2>{t("congrats.title")}</h2>
+      <p>{congratsBodyNodes(t("congrats.body"))}</p>
+      <a href={`/${encodeURIComponent(claimed)}`} className="vs-btn vs-btn-primary">
+        {t("congrats.cta")}
+      </a>
+      <p className="vs-congrats-once">{t("congrats.once")}</p>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Public page                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -764,6 +846,7 @@ function PublicPageInner({ username }: { username: string }) {
 
   return (
     <>
+      <ClaimCongratsCard routeUsername={username} />
       <OnChainLiveBadge owner={state.meta.owner} />
       <PageRenderer
         page={state.page}

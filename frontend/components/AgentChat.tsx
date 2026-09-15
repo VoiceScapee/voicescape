@@ -15,8 +15,13 @@ type Msg = { role: "user" | "assistant"; content: string };
 const GREETING: Msg = {
   role: "assistant",
   content:
-    "Hey! I can look up blockpages, check tips, and answer questions about Voicescape — all from live chain data.",
+    "Hey, I'm Buddy. I can look up any blockpage, check whether a tip landed, or show you how the treasury's doing. What's up?",
 };
+
+/** Header tagline + input placeholder: hard-coded on purpose — this widget
+ *  mounts outside LanguageProvider, so useLanguage() is unavailable here. */
+const HEADER_TAGLINE = "Ask me anything — I check the chain";
+const INPUT_PLACEHOLDER = "Ask Buddy…";
 
 const UNAVAILABLE = "Chat is unavailable right now — try again later.";
 const RATE_LIMITED = "Slow down a little — try again in a bit.";
@@ -98,7 +103,7 @@ export default function AgentChat() {
           boxShadow: "0 8px 28px rgba(80, 60, 220, 0.45)",
         }}
       >
-        {open ? "✕" : "💬"}
+        🔨
       </button>
 
       {open && (
@@ -114,23 +119,53 @@ export default function AgentChat() {
             height: "min(520px, calc(100dvh - 120px))",
             display: "flex",
             flexDirection: "column",
-            borderRadius: 16,
+            borderRadius: 20,
             overflow: "hidden",
-            background: "#0d1119",
-            border: "1px solid rgba(130, 89, 239, 0.35)",
-            boxShadow: "0 16px 48px rgba(0,0,0,0.6)",
+            background: "linear-gradient(160deg, #181d2a, #12151f)",
+            border: "1px solid rgba(255, 255, 255, 0.09)",
+            boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)",
             color: "#e8eaf0",
           }}
         >
           {/* Header */}
           <div
             style={{
-              padding: "12px 14px",
-              background: "linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "13px 15px",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.09)",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Blockpage Buddy</div>
-            <div style={{ fontSize: 11, opacity: 0.85 }}>beta · read-only</div>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 9,
+                height: 9,
+                borderRadius: "50%",
+                background: "#3ddc84",
+                boxShadow: "0 0 8px #3ddc84",
+                flex: "none",
+              }}
+            />
+            <div>
+              {/* Buddy's blockpage: the one-time claim congrats card lives
+                  here — without this link nothing in the app points at
+                  /forge, so the card would be undiscoverable. */}
+              <a
+                href="/forge"
+                title="Visit Blockpage Buddy's blockpage"
+                style={{
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: "inherit",
+                  textDecoration: "none",
+                }}
+              >
+                🔨 Blockpage Buddy
+              </a>
+              <div style={{ fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)" }}>{HEADER_TAGLINE}</div>
+            </div>
           </div>
 
           {/* Messages */}
@@ -151,16 +186,21 @@ export default function AgentChat() {
                 style={{
                   alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                   maxWidth: "85%",
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  fontSize: 14,
-                  lineHeight: 1.45,
+                  padding: "10px 12px",
+                  borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                  border: "1px solid",
+                  borderColor:
+                    m.role === "user"
+                      ? "rgba(130, 89, 239, 0.4)"
+                      : "rgba(255, 255, 255, 0.09)",
+                  fontSize: 13.5,
+                  lineHeight: 1.55,
                   whiteSpace: "pre-wrap",
                   wordBreak: "break-word",
                   background:
                     m.role === "user"
-                      ? "linear-gradient(118deg, #8259ef 0%, #4f46e5 100%)"
-                      : "rgba(130, 89, 239, 0.12)",
+                      ? "rgba(130, 89, 239, 0.22)"
+                      : "rgba(255, 255, 255, 0.055)",
                   color: "#fff",
                 }}
               >
@@ -171,11 +211,12 @@ export default function AgentChat() {
               <div
                 style={{
                   alignSelf: "flex-start",
-                  padding: "8px 12px",
-                  borderRadius: 12,
-                  background: "rgba(130, 89, 239, 0.12)",
+                  padding: "10px 12px",
+                  borderRadius: "14px 14px 14px 4px",
+                  border: "1px solid rgba(255, 255, 255, 0.09)",
+                  background: "rgba(255, 255, 255, 0.055)",
                   color: "#fff",
-                  fontSize: 14,
+                  fontSize: 13.5,
                 }}
                 aria-label="Buddy is thinking"
               >
@@ -201,17 +242,17 @@ export default function AgentChat() {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about blockpages, tips…"
+              placeholder={INPUT_PLACEHOLDER}
               aria-label="Message Blockpage Buddy"
               maxLength={2000}
               style={{
                 flex: 1,
-                borderRadius: 10,
-                border: "1px solid rgba(130, 89, 239, 0.3)",
-                background: "#090b12",
+                borderRadius: 12,
+                border: "1px solid rgba(255, 255, 255, 0.09)",
+                background: "#0d111a",
                 color: "#fff",
                 padding: "10px 12px",
-                fontSize: 14,
+                fontSize: 13.5,
                 outline: "none",
               }}
             />

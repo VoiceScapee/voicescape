@@ -353,6 +353,67 @@ a {
 }
 
 /* ------------------------------------------------------------------ */
+/* One-time claim congrats card — shown once on Buddy's page (/forge)   */
+/* after a publish lands on-chain. Ports the approved brand-pass mock   */
+/* .p-congrats card verbatim (tokens only, no new colors).              */
+/* ------------------------------------------------------------------ */
+
+.vs-congrats {
+  background: linear-gradient(150deg, #1d1830, #141126);
+  border: 1px solid rgba(130, 89, 239, 0.5);
+  border-radius: 18px;
+  padding: 24px 22px;
+  text-align: center;
+  margin-bottom: 22px;
+  box-shadow: 0 0 44px rgba(130, 89, 239, 0.28);
+  animation: vsCongratsFadeUp 0.4s ease both;
+}
+
+.vs-congrats-big {
+  font-size: 42px;
+}
+
+.vs-congrats h2 {
+  font-size: 22px;
+  margin: 10px 0 8px;
+  color: var(--vs-text);
+}
+
+.vs-congrats p {
+  color: var(--vs-muted);
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0 0 14px;
+}
+
+.vs-congrats p b {
+  color: #e8e4f5;
+}
+
+.vs-congrats .vs-btn {
+  width: 100%;
+  justify-content: center;
+  margin-bottom: 2px;
+}
+
+.vs-congrats-once {
+  font-size: 12px;
+  color: var(--vs-muted);
+  margin: 12px 0 0;
+}
+
+@keyframes vsCongratsFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Navbar — one clean row on desktop, one menu on mobile                */
 /* ------------------------------------------------------------------ */
 
