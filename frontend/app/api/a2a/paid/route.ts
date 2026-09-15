@@ -24,6 +24,7 @@ function statusFor(err: ClaimError): number {
     case "wrong_contract":
     case "memo_mismatch":
     case "wrong_function":
+    case "wrong_recipient":
     case "underpaid":
       return 422;
     case "verification_timeout":

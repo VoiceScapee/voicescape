@@ -7,7 +7,7 @@ import { __resetPaidStore, getOrder } from "./store";
 import { PRICE_HBAR } from "./config";
 
 const TIPS = "0.0.12345";
-const ENV = { A2A_TESTNET_TIPS_ID: TIPS };
+const ENV = { A2A_TESTNET_TIPS_ID: TIPS, A2A_RECIPIENT_USERNAME: "test-recipient" };
 
 function mockFetch(balanceTinybar: bigint | null) {
   return vi.fn(async (input: RequestInfo | URL) => {
@@ -49,6 +49,7 @@ describe("issueOrder", () => {
     expect(res.bill.orderId).toBe("abc123");
     expect(res.bill.priceHbar).toBe(PRICE_HBAR);
     expect(res.bill.payTo).toBe(TIPS);
+    expect(res.bill.payToUsername).toBe("test-recipient");
     expect(res.bill.function).toBe("tipPage");
     expect(res.bill.memo).toBe("vs-order:abc123");
     expect(res.bill.expiresAt).toBe(1_000_000 + 15 * 60 * 1000);

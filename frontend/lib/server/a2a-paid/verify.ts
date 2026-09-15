@@ -11,6 +11,9 @@
  *  - tx memo contains the exact order-bound memo (vs-order:<orderId>)
  *  - contract result status == 0x1, `to` == Tips contract,
  *    function selector == tipPage, amount >= price
+ *  - the tipPage username argument == the order's recipientUsername
+ *    (Brandon's rule 2026-09-15: builder revenue goes to HIS wallet —
+ *    a payment to any other username is rejected, never re-routed)
  *  - txId never claimed before (idempotency key)
  */
 
@@ -49,6 +52,7 @@ export type ClaimErrorCode =
   | "wrong_contract"
   | "memo_mismatch"
   | "wrong_function"
+  | "wrong_recipient"
   | "underpaid"
   | "verification_timeout"
   | "misconfigured";
@@ -70,6 +74,36 @@ export interface ClaimDeps {
 }
 
 const defaultSleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Decode the single `string` argument of tipPage(string) from the mirror
+ * node's hex function_parameters (selector + ABI-encoded string).
+ * Returns null when the calldata is malformed. Hand-decoded with Buffer —
+ * no new dependencies.
+ */
+export function decodeTipPageUsername(
+  functionParameters: string | undefined,
+): string | null {
+  if (!functionParameters) return null;
+  const hex = functionParameters.startsWith("0x")
+    ? functionParameters.slice(2)
+    : functionParameters;
+  // selector (8 hex chars) + offset word (64) + length word (64) + data
+  if (hex.length < 8 + 64 + 64) return null;
+  const body = hex.slice(8);
+  const offset = parseInt(body.slice(0, 64), 16);
+  // A single string argument must sit at offset 32.
+  if (offset !== 32) return null;
+  const len = parseInt(body.slice(64, 128), 16);
+  if (!Number.isSafeInteger(len) || len <= 0 || len > 256) return null;
+  const dataHex = body.slice(128, 128 + len * 2);
+  if (dataHex.length !== len * 2) return null;
+  try {
+    return Buffer.from(dataHex, "hex").toString("utf8");
+  } catch {
+    return null;
+  }
+}
 
 export async function claimPayment(
   input: ClaimInput,
@@ -166,6 +200,18 @@ export async function claimPayment(
     const selector = (cr.function_parameters ?? "").slice(0, 10).toLowerCase();
     if (selector !== TIP_PAGE_SELECTOR) {
       return { ok: false, error: { code: "wrong_function", detail: selector || "none" } };
+    }
+    // Brandon's rule: the payment must go to HIS username. A buyer who
+    // tips any other username gets rejected — we never accept and re-route.
+    const paidUsername = decodeTipPageUsername(cr.function_parameters);
+    if (paidUsername !== order.recipientUsername) {
+      return {
+        ok: false,
+        error: {
+          code: "wrong_recipient",
+          detail: `paid "${paidUsername ?? "undecodable"}" — order requires "${order.recipientUsername}"`,
+        },
+      };
     }
     const amount = BigInt(cr.amount ?? "0");
     if (amount < requiredTinybar) {

@@ -24,6 +24,12 @@ export interface PaidOrder {
   priceHbar: number;
   /** Required tx memo binding the payment to this order. */
   memo: string;
+  /**
+   * The one username the buyer must pay via tipPage. Bound at order
+   * issuance from config (Brandon's wallet) — verify.ts rejects any
+   * payment to a different username.
+   */
+  recipientUsername: string;
   expiresAt: number;
   state: OrderState;
   txId?: string;

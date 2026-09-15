@@ -31,6 +31,8 @@ export interface OrderBill {
   orderId: string;
   priceHbar: number;
   payTo: string;
+  /** The username the buyer must pass to tipPage — Brandon's wallet. */
+  payToUsername: string;
   function: "tipPage";
   memo: string;
   expiresAt: number;
@@ -116,6 +118,7 @@ export async function issueOrder(
     buyerAccount,
     priceHbar: PRICE_HBAR,
     memo: memoForOrder(orderId),
+    recipientUsername: config.recipientUsername,
     expiresAt: now() + ORDER_TTL_MS,
     state: "issued",
   };
@@ -127,6 +130,7 @@ export async function issueOrder(
       orderId,
       priceHbar: PRICE_HBAR,
       payTo: config.tipsAccountId,
+      payToUsername: config.recipientUsername,
       function: "tipPage",
       memo: order.memo,
       expiresAt: order.expiresAt,

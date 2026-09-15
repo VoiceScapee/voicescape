@@ -12,27 +12,37 @@ import {
 } from "./config";
 
 const TESTNET_ID = "0.0.12345";
+const RECIPIENT = "test-recipient";
+const ENV = { A2A_TESTNET_TIPS_ID: TESTNET_ID, A2A_RECIPIENT_USERNAME: RECIPIENT };
 
 describe("getPaidConfig", () => {
   it("accepts a testnet 0.0.x tips id", () => {
-    const cfg = getPaidConfig({ A2A_TESTNET_TIPS_ID: TESTNET_ID });
+    const cfg = getPaidConfig(ENV);
     expect(cfg.tipsAccountId).toBe(TESTNET_ID);
     expect(cfg.mirrorBase).toBe(TESTNET_MIRROR_BASE);
+    expect(cfg.recipientUsername).toBe(RECIPIENT);
   });
 
   it("fails closed when the env var is missing", () => {
     expect(() => getPaidConfig({})).toThrow(/misconfigured/);
   });
 
+  it("fails closed when the recipient username is missing (Brandon's rule)", () => {
+    expect(() =>
+      getPaidConfig({ A2A_TESTNET_TIPS_ID: TESTNET_ID }),
+    ).toThrow(/RECIPIENT_USERNAME/);
+  });
+
   it("refuses the mainnet Tips contract id", () => {
-    expect(() => getPaidConfig({ A2A_TESTNET_TIPS_ID: "0.0.10854060" })).toThrow(
-      /mainnet_forbidden/,
-    );
+    expect(() =>
+      getPaidConfig({ ...ENV, A2A_TESTNET_TIPS_ID: "0.0.10854060" }),
+    ).toThrow(/mainnet_forbidden/);
   });
 
   it("refuses the mainnet Tips EVM address", () => {
     expect(() =>
       getPaidConfig({
+        ...ENV,
         A2A_TESTNET_TIPS_ID: "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0",
       }),
     ).toThrow(/misconfigured|mainnet_forbidden/);
@@ -40,7 +50,7 @@ describe("getPaidConfig", () => {
 
   it("rejects non-0.0.x forms", () => {
     expect(() =>
-      getPaidConfig({ A2A_TESTNET_TIPS_ID: "0x1234abcd" }),
+      getPaidConfig({ ...ENV, A2A_TESTNET_TIPS_ID: "0x1234abcd" }),
     ).toThrow(/0\.0\.x/);
   });
 });

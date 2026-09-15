@@ -41,6 +41,17 @@ export interface PaidConfig {
   tipsAccountId: string;
   /** Always the hardcoded testnet mirror base. */
   mirrorBase: string;
+  /**
+   * The ONLY username buyers may pay via tipPage for a paid order.
+   * Brandon's standing rule (2026-09-15): blockpage-builder (and all paid
+   * agent endpoint) revenue goes to HIS wallet — never to the agent's
+   * wallet, never out to anyone else. On mainnet this will be Brandon's
+   * username (`user-10424063`): its page owner is his wallet 0.0.10424063
+   * and the treasury is the same wallet, so the atomic 98/2 split lands
+   * 100% with him. The endpoint is receive-only by construction — no
+   * server keys, no payout/withdraw code paths exist.
+   */
+  recipientUsername: string;
 }
 
 export function isAccountIdForm(id: string): boolean {
@@ -62,7 +73,9 @@ export function assertTestnetMirror(url: string): void {
  * Read and validate the prototype config. Throws (fail-closed) when:
  * - A2A_TESTNET_TIPS_ID is unset/empty,
  * - it is not `0.0.x` form,
- * - it is a known mainnet Tips contract id.
+ * - it is a known mainnet Tips contract id,
+ * - A2A_RECIPIENT_USERNAME is unset/empty (Brandon's rule: revenue goes to
+ *   HIS wallet — the paid endpoint must know the one username it accepts).
  */
 export function getPaidConfig(
   env: Record<string, string | undefined> = process.env,
@@ -87,7 +100,18 @@ export function getPaidConfig(
     );
   }
   assertTestnetMirror(TESTNET_MIRROR_BASE);
-  return { tipsAccountId: raw, mirrorBase: TESTNET_MIRROR_BASE };
+  const recipientUsername = (env.A2A_RECIPIENT_USERNAME ?? "").trim();
+  if (!recipientUsername) {
+    throw new Error(
+      "paid_endpoint_misconfigured: A2A_RECIPIENT_USERNAME is not set — " +
+        "the one username buyers may pay (Brandon's wallet on mainnet)",
+    );
+  }
+  return {
+    tipsAccountId: raw,
+    mirrorBase: TESTNET_MIRROR_BASE,
+    recipientUsername,
+  };
 }
 
 /** Normalize a contract-result `to` field (long-zero EVM or 0.0.x) to 0.0.x. */

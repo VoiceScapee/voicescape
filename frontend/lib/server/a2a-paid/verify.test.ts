@@ -18,7 +18,8 @@ import { ORDER_TTL_MS, PRICE_HBAR } from "./config";
 
 const TIPS = "0.0.12345";
 const TIPS_LONG_ZERO = "0x0000000000000000000000000000000000003039"; // 0.0.12345
-const ENV = { A2A_TESTNET_TIPS_ID: TIPS };
+const RECIPIENT = "test-recipient";
+const ENV = { A2A_TESTNET_TIPS_ID: TIPS, A2A_RECIPIENT_USERNAME: RECIPIENT };
 const NOW = 1_000_000;
 
 function makeOrder(overrides: Partial<PaidOrder> = {}): PaidOrder {
@@ -29,10 +30,21 @@ function makeOrder(overrides: Partial<PaidOrder> = {}): PaidOrder {
     buyerAccount: "0.0.999",
     priceHbar: PRICE_HBAR,
     memo: `vs-order:${orderId}`,
+    recipientUsername: RECIPIENT,
     expiresAt: NOW + ORDER_TTL_MS,
     state: "issued",
     ...overrides,
   };
+}
+
+/** Build real tipPage(string) calldata for a username (selector + ABI string). */
+function tipCalldata(username: string): string {
+  const data = Buffer.from(username, "utf8");
+  const offsetWord = "0".repeat(62) + "20"; // 32
+  const lenWord = data.length.toString(16).padStart(64, "0");
+  const paddedLen = Math.ceil(data.length / 32) * 32;
+  const dataPadded = data.toString("hex").padEnd(paddedLen * 2, "0");
+  return "0x8b0de5cb" + offsetWord + lenWord + dataPadded;
 }
 
 function b64(s: string): string {
@@ -57,7 +69,7 @@ function contractResult(overrides: Record<string, unknown> = {}) {
     status: "0x1",
     to: TIPS_LONG_ZERO,
     amount: String(5e8),
-    function_parameters: "0x8b0de5cb" + "00".repeat(96),
+    function_parameters: tipCalldata(RECIPIENT),
     contract_id: TIPS,
     ...overrides,
   };
@@ -223,6 +235,37 @@ describe("claimPayment", () => {
     expect(res.error.code).toBe("wrong_function");
   });
 
+  it("rejects a payment to the wrong username (Brandon's rule)", async () => {
+    const res = await claimPayment(
+      { orderId: "ord1", txId: "0.0.999-1789000000-000000000" },
+      {
+        ...fastDeps,
+        fetchFn: mockFetch({
+          cr: contractResult({ function_parameters: tipCalldata("someone-else") }),
+        }),
+      },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("wrong_recipient");
+    expect(getOrder("ord1")?.state).toBe("issued"); // never half-accepted
+  });
+
+  it("rejects undecodable tipPage calldata", async () => {
+    const res = await claimPayment(
+      { orderId: "ord1", txId: "0.0.999-1789000000-000000000" },
+      {
+        ...fastDeps,
+        fetchFn: mockFetch({
+          cr: contractResult({ function_parameters: "0x8b0de5cb" + "00".repeat(96) }),
+        }),
+      },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("wrong_recipient");
+  });
+
   it("times out when the tx never appears on the mirror node", async () => {
     const res = await claimPayment(
       { orderId: "ord1", txId: "0.0.999-1789000000-000000000" },
@@ -248,6 +291,20 @@ describe("claimPayment", () => {
     const res = await claimPayment(
       { orderId: "ord1", txId: "0.0.999-1789000000-000000000" },
       { ...fastDeps, env: {}, fetchFn: mockFetch() },
+    );
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error.code).toBe("misconfigured");
+  });
+
+  it("fails closed when the recipient username is missing", async () => {
+    const res = await claimPayment(
+      { orderId: "ord1", txId: "0.0.999-1789000000-000000000" },
+      {
+        ...fastDeps,
+        env: { A2A_TESTNET_TIPS_ID: TIPS },
+        fetchFn: mockFetch(),
+      },
     );
     expect(res.ok).toBe(false);
     if (res.ok) return;
