@@ -147,9 +147,14 @@ export function buildHcs10RegisterMessage(args: {
 }
 
 /**
- * Voicescape agent profile (HCS-11 style). Ties the on-chain HCS-10
+ * Voicescape agent profile (HCS-11 compliant). Ties the on-chain HCS-10
  * identity to the agent's Voicescape page so humans can verify who
- * they're talking to.
+ * they're talking to — and so any HCS-11 reader on Hedera can parse it.
+ *
+ * Spec fields: `version`, `type: 1` (agent), `display_name`, `uaid`
+ * (HCS-14 universal agent ID). `name` is kept alongside `display_name`
+ * for back-compat with readers of the pre-compliance shape. The
+ * `voicescape` object is a namespaced extension (permitted by the spec).
  */
 export interface VoicescapeAgentProfile {
   /** Display name of the agent. */
@@ -164,10 +169,142 @@ export interface VoicescapeAgentProfile {
   capabilities: string[];
   /** Model/provider label, e.g. "claude-3". Optional. */
   model?: string;
+  /** The agent's Hedera account id, e.g. "0.0.1234". Enables the HCS-14 `uaid`. */
+  accountId?: string;
+  /** Network for the HCS-14 `nativeId`. Defaults to "mainnet" when accountId is given. */
+  network?: "mainnet" | "testnet";
   /** Filled in after the agent creates its HCS-10 topics. */
   inboundTopicId?: string;
   /** Filled in after the agent creates its HCS-10 topics. */
   outboundTopicId?: string;
+}
+
+/* ------------------------------------------------------------------ */
+/* HCS-14 universal agent ID (uaid:aid:...)                            */
+/* ------------------------------------------------------------------ */
+
+const BASE58_ALPHABET =
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/** Base58-encode bytes (bitcoin alphabet). Tiny inline impl — no new dep. */
+function base58Encode(bytes: Uint8Array): string {
+  let zeroes = 0;
+  while (zeroes < bytes.length && bytes[zeroes] === 0) zeroes++;
+  const digits: number[] = [0];
+  for (let i = zeroes; i < bytes.length; i++) {
+    let carry = bytes[i];
+    for (let j = 0; j < digits.length; j++) {
+      carry += digits[j] << 8;
+      digits[j] = carry % 58;
+      carry = Math.floor(carry / 58);
+    }
+    while (carry > 0) {
+      digits.push(carry % 58);
+      carry = Math.floor(carry / 58);
+    }
+  }
+  let out = "1".repeat(zeroes);
+  for (let i = digits.length - 1; i >= 0; i--) out += BASE58_ALPHABET[digits[i]];
+  return out;
+}
+
+/**
+ * Keyword map: free-text capability tags -> HCS-14 skill enum ids (0-39).
+ * Mirrors the spec's own keyword-mapping approach (see the A2A integration
+ * example in HCS-14). Conservative on purpose — unknown tags map to nothing.
+ */
+const SKILL_KEYWORDS: Array<[RegExp, number]> = [
+  [/text|writing|content|conversation/i, 0],
+  [/image|visual|art|picture|photo/i, 1],
+  [/audio|speech|music|sound|voice/i, 2],
+  [/video|animation/i, 3],
+  [/code|develop|programming|software|debug/i, 4],
+  [/translat/i, 5],
+  [/summar/i, 6],
+  [/knowledge|research|retriev/i, 7],
+  [/chart|dashboard|visualiz/i, 8],
+  [/market|finance|trading|invest|econom/i, 9],
+  [/transaction|analytic/i, 10],
+  [/contract.*audit|audit.*contract|smart.contract/i, 11],
+  [/govern|vot|dao|proposal/i, 12],
+  [/threat|monitor|anomal/i, 13],
+  [/compliance|legal|regulat/i, 14],
+  [/fraud/i, 15],
+  [/multi.agent|coordinat/i, 16],
+  [/api|integrat|webhook/i, 17],
+  [/automat|workflow/i, 18],
+  [/messag|communicat|realtime|live|notif/i, 19],
+  [/file|document|pdf/i, 29],
+  [/schedul|calendar|reminder/i, 30],
+  [/search|query|find|discover/i, 31],
+  [/orchestrat/i, 32],
+  [/blockchain|hedera|hbar|crypto|token|nft|defi|web3|onchain|on.chain|consensus/i, 33],
+  [/identity|verif|kyc/i, 35],
+  [/encrypt|signing/i, 36],
+  [/stream|event/i, 37],
+  [/reputat|trust|rating|review|attest/i, 39],
+  [/memory|context|session/i, 27],
+  [/web|brows|internet/i, 25],
+  [/data/i, 7],
+];
+
+/** Map free-text capability tags to sorted, deduped HCS-14 skill ids. */
+export function mapCapabilitiesToSkills(capabilities: string[]): number[] {
+  const ids = new Set<number>();
+  for (const cap of capabilities) {
+    const text = String(cap ?? "");
+    if (!text.trim()) continue;
+    for (const [re, id] of SKILL_KEYWORDS) {
+      if (re.test(text)) ids.add(id);
+    }
+  }
+  return [...ids].sort((a, b) => a - b);
+}
+
+/**
+ * Build an HCS-14 `uaid:aid:` identifier for a Voicescape agent.
+ *
+ * Follows the normative hash-generation steps: validate, normalize
+ * (lowercase registry/protocol, trim), sort keys lexicographically and
+ * skills numerically, SHA-384 over UTF-8 canonical JSON, Base58 encode.
+ * Parameters are ordered uid, registry, proto, nativeId per the spec.
+ *
+ * uid is the Hedera account id until the agent's HCS-10 topics exist
+ * (then it becomes `inboundTopicId@accountId` — outside the hash, so the
+ * AID stays stable across that upgrade).
+ */
+export async function buildHcs14Uaid(args: {
+  name: string;
+  accountId: string;
+  network: "mainnet" | "testnet";
+  capabilities?: string[];
+}): Promise<string> {
+  const { createHash } = await import("node:crypto");
+  const name = args.name.trim();
+  const accountId = args.accountId.trim();
+  if (!name) throw new Error("hcs14: name must not be empty");
+  if (!/^0\.0\.\d+$/.test(accountId)) {
+    throw new Error(`hcs14: malformed account id "${args.accountId}"`);
+  }
+  const skills = mapCapabilitiesToSkills(args.capabilities ?? []);
+  const canonical: Record<string, unknown> = {
+    name,
+    nativeId: `hedera:${args.network}:${accountId}`,
+    protocol: "hcs-10",
+    registry: "voicescape",
+    skills,
+    version: "1.0.0",
+  };
+  const sortedJson = JSON.stringify(
+    canonical,
+    Object.keys(canonical).sort(),
+  );
+  const hash = createHash("sha384").update(sortedJson, "utf8").digest();
+  const id = base58Encode(hash);
+  return (
+    `uaid:aid:${id};uid=${accountId};registry=voicescape;` +
+    `proto=hcs-10;nativeId=hedera:${args.network}:${accountId}`
+  );
 }
 
 /** Build a Voicescape agent profile payload (serialized as the `data` of a register message). */
@@ -185,9 +322,15 @@ export function buildVoicescapeAgentProfile(
   if (!Array.isArray(p.capabilities) || p.capabilities.length === 0) {
     throw new Error("hcs10: at least one capability is required");
   }
+  const skills = mapCapabilitiesToSkills(p.capabilities);
   return JSON.stringify({
-    name,
+    // HCS-11 canonical fields.
+    version: "1.0",
+    type: 1,
+    display_name: name,
+    name, // back-compat with pre-compliance readers
     description,
+    skills,
     voicescape: {
       username,
       pageUrl: p.voicescapePageUrl,
@@ -197,6 +340,27 @@ export function buildVoicescapeAgentProfile(
     ...(p.inboundTopicId ? { inboundTopicId: p.inboundTopicId } : {}),
     ...(p.outboundTopicId ? { outboundTopicId: p.outboundTopicId } : {}),
   });
+}
+
+/**
+ * buildVoicescapeAgentProfile + the HCS-14 `uaid` (async: needs the hash).
+ * The uaid is computed from name + accountId + network + capabilities, so
+ * any agent can recompute and verify it — no trust in Voicescape required.
+ */
+export async function buildVoicescapeAgentProfileWithUaid(
+  p: VoicescapeAgentProfile & {
+    accountId: string;
+    network: "mainnet" | "testnet";
+  },
+): Promise<string> {
+  const uaid = await buildHcs14Uaid({
+    name: p.name,
+    accountId: p.accountId,
+    network: p.network,
+    capabilities: p.capabilities,
+  });
+  const profile = JSON.parse(buildVoicescapeAgentProfile(p));
+  return JSON.stringify({ ...profile, uaid });
 }
 
 /**
