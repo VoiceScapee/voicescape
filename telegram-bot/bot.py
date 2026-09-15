@@ -24,6 +24,7 @@ Copy rules (Brandon's standing directives):
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 import urllib.parse
@@ -42,7 +43,15 @@ ALLOWED_HOSTS = ["api.telegram.org"]
 CREDENTIAL = "custom.telegram"  # Secure Vault connector (BotFather token)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ESCALATION_LOG = os.path.join(BASE_DIR, "escalations.log")
+BUDDY_LOG = os.path.join(BASE_DIR, "buddy.log")
 OFFSET_FILE = os.path.join(BASE_DIR, ".offset")
+
+# Blockpage Buddy's Agent Kit brain (read-only chain tools). BUDDY_PUBLIC=1
+# keeps the labeled wallet-tracking report out of this public bot — per
+# Brandon, wallet tracking stays in private chat reports only.
+BUDDY_JS = "/home/hatch/workspace/ops/buddy-agentkit/dist/buddy.js"
+BUDDY_TIMEOUT = 150
+BUDDY_MAX_REPLY = 4000
 
 
 # The egress proxy pattern-matches the literal `hsurr:` prefix to swap in the
@@ -266,9 +275,78 @@ def log_escalation(chat, text):
     print(f"[bot] ESCALATED from @{entry['username']}: {text[:80]}", flush=True)
 
 
+def log_buddy(chat, question, reply):
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "chat_id": chat.get("id"),
+        "username": chat.get("username"),
+        "question": question[:500],
+        "reply": (reply or "")[:500],
+    }
+    with open(BUDDY_LOG, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def _clean_buddy_reply(text):
+    # Buddy sometimes emits markdown; this bot sends plain text.
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = text.replace("`", "")
+    return text.strip()[:BUDDY_MAX_REPLY].strip()
+
+
+def ask_buddy(text):
+    """Ask Blockpage Buddy's Agent Kit brain. Returns reply text or None."""
+    question = text.strip()[:2000]
+    if not question:
+        return None
+    env = dict(os.environ)
+    env["BUDDY_PUBLIC"] = "1"
+    try:
+        proc = subprocess.run(
+            ["node", BUDDY_JS, question],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=BUDDY_TIMEOUT,
+        )
+    except Exception as e:  # noqa: BLE001 - timeouts, missing node, etc.
+        print(f"[bot] buddy call failed: {e}", flush=True)
+        return None
+    reply = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not reply:
+        print(f"[bot] buddy error rc={proc.returncode}: "
+              f"{(proc.stderr or '')[:200]}", flush=True)
+        return None
+    return _clean_buddy_reply(reply)
+
+
 # ---------------------------------------------------------------- routing
 
 _last_reply = {}
+
+# Questions that want a live on-chain fact go to Buddy first — the keyword
+# FAQ can't answer "is X registered?" or "did my tip settle?".
+ONCHAIN_HINTS = [
+    "registered", "owner", "owns", "transaction", "verify", "settled",
+    "treasury", "go through", "did my tip",
+]
+_ACCOUNT_RE = re.compile(r"0\.0\.\d+")
+
+
+def _looks_onchain(lowered):
+    return _ACCOUNT_RE.search(lowered) is not None or any(
+        h in lowered for h in ONCHAIN_HINTS)
+
+
+def _try_buddy(chat, chat_id, text):
+    """Send Buddy's reply. Returns True if he answered."""
+    reply = ask_buddy(text)
+    if reply:
+        log_buddy(chat, text, reply)
+        send_message(chat_id, reply)
+        return True
+    return False
+
 
 def handle_text(chat, text):
     chat_id = chat["id"]
@@ -295,13 +373,22 @@ def handle_text(chat, text):
         send_message(chat_id, HOLDING)
         return
 
+    # On-chain fact questions go to Buddy's Agent Kit brain first.
+    if _looks_onchain(lowered):
+        if _try_buddy(chat, chat_id, text):
+            return
+
     # Keyword FAQ.
     for keywords, reply in FAQ_KEYWORDS:
         if any(k in lowered for k in keywords):
             send_message(chat_id, reply)
             return
 
-    # Unknown: say so, log it, don't invent.
+    # Anything else goes to Blockpage Buddy (Agent Kit brain, read-only
+    # chain tools). If Buddy can't answer, fall back to the old path:
+    # say so, log it for the team, don't invent.
+    if _try_buddy(chat, chat_id, text):
+        return
     log_escalation(chat, text)
     send_message(chat_id, UNKNOWN)
 
