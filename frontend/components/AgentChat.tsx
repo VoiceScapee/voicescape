@@ -80,7 +80,7 @@ export default function AgentChat() {
       {/* Floating button */}
       <button
         type="button"
-        aria-label={open ? "Close Voicescape Buddy chat" : "Open Voicescape Buddy chat"}
+        aria-label={open ? "Close Blockpage Buddy chat" : "Open Blockpage Buddy chat"}
         onClick={() => setOpen((v) => !v)}
         style={{
           position: "fixed",
@@ -104,7 +104,7 @@ export default function AgentChat() {
       {open && (
         <div
           role="dialog"
-          aria-label="Voicescape Buddy chat"
+          aria-label="Blockpage Buddy chat"
           style={{
             position: "fixed",
             zIndex: 60,
@@ -129,7 +129,7 @@ export default function AgentChat() {
               background: "linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%)",
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 15 }}>Voicescape Buddy</div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>Blockpage Buddy</div>
             <div style={{ fontSize: 11, opacity: 0.85 }}>beta · read-only</div>
           </div>
 
@@ -202,7 +202,7 @@ export default function AgentChat() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about blockpages, tips…"
-              aria-label="Message Voicescape Buddy"
+              aria-label="Message Blockpage Buddy"
               maxLength={2000}
               style={{
                 flex: 1,

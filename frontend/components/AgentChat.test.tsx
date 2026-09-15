@@ -24,7 +24,7 @@ describe("AgentChat", () => {
   });
 
   it("labels itself beta and read-only", () => {
-    expect(widgetSrc).toContain("Voicescape Buddy");
+    expect(widgetSrc).toContain("Blockpage Buddy");
     expect(widgetSrc).toContain("beta · read-only");
   });
 
