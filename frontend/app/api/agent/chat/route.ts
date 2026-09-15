@@ -4,12 +4,24 @@
  * Body: { message: string, history?: Array<{ role: "user"|"assistant", content: string }> }
  * Response: { reply: string }
  *
+ * Buddy's brain runs on Hedera's official `@hashgraph/hedera-agent-kit`:
+ * the three chain tools are the kit's `Tool` objects from the Voicescape
+ * read-only plugin (`@/lib/agent/agentkit`), executed through
+ * `tool.execute` — not hand-rolled copies. All tools are TOOL_TYPE.QUERY
+ * (asserted at build time); no client/operator key exists anywhere in this
+ * route, so the agent can never sign, spend, or publish.
+ *
  * Fail-closed without GROQ_API_KEY (503). In-memory per-IP rate limit
- * (20/hour → 429). The model only reads chain data through the three
- * read-only tools in @/lib/agent/tools — it can never sign, spend, or publish.
+ * (20/hour → 429).
  */
 import { NextRequest, NextResponse } from "next/server";
-import { resolveBlockpage, treasuryStats, verifyTip } from "@/lib/agent/tools";
+import type { Tool } from "@hashgraph/hedera-agent-kit";
+import {
+  findTool,
+  getBuddyTools,
+  toFunctionDefs,
+  type BuddyContext,
+} from "@/lib/agent/agentkit";
 import {
   agentChatClientIp,
   agentChatRateLimited,
@@ -38,71 +50,7 @@ const SYSTEM_PROMPT =
 // Tool definitions (OpenAI function-calling shape)
 // ---------------------------------------------------------------------------
 
-const TOOL_DEFS = [
-  {
-    type: "function",
-    function: {
-      name: "resolve_blockpage",
-      description:
-        "Check whether a Voicescape username is registered on-chain. Returns the owner account, owner type (human/agent), IPFS hash, operator, and purpose. Read-only.",
-      parameters: {
-        type: "object",
-        properties: {
-          username: {
-            type: "string",
-            minLength: 1,
-            maxLength: 64,
-            description: "Voicescape blockpage username, e.g. 'forge'",
-          },
-        },
-        required: ["username"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "verify_tip",
-      description:
-        "Verify a tip/payment transaction on Hedera mainnet. Reports success, HBAR amounts, the recipient, whether the Tips contract was called, and the called function. Read-only.",
-      parameters: {
-        type: "object",
-        properties: {
-          transactionId: {
-            type: "string",
-            pattern: "^\\d+\\.\\d+\\.\\d+-\\d+-\\d+$",
-            description:
-              "Mirror node transaction id, e.g. '0.0.10424063-1789415526-674972740'",
-          },
-        },
-        required: ["transactionId"],
-        additionalProperties: false,
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "treasury_stats",
-      description:
-        "Recent tip volume through the Voicescape Tips contract over a lookback window in hours. Read-only.",
-      parameters: {
-        type: "object",
-        properties: {
-          hoursBack: {
-            type: "integer",
-            minimum: 1,
-            maximum: 168,
-            default: 24,
-            description: "Lookback window in hours",
-          },
-        },
-        additionalProperties: false,
-      },
-    },
-  },
-] as const;
+
 
 type ToolCall = {
   id: string;
@@ -117,7 +65,15 @@ type ChatMessage = {
   tool_call_id?: string;
 };
 
-async function runToolCall(call: ToolCall, signal: AbortSignal): Promise<string> {
+async function runToolCall(
+  tools: Tool[],
+  call: ToolCall,
+  signal: AbortSignal
+): Promise<string> {
+  const tool = findTool(tools, call.function.name);
+  if (!tool) {
+    return JSON.stringify({ error: `unknown tool: ${call.function.name}` });
+  }
   let args: Record<string, unknown> = {};
   try {
     args = call.function.arguments ? JSON.parse(call.function.arguments) : {};
@@ -125,18 +81,15 @@ async function runToolCall(call: ToolCall, signal: AbortSignal): Promise<string>
     return JSON.stringify({ error: "tool arguments were not valid JSON" });
   }
   try {
-    switch (call.function.name) {
-      case "resolve_blockpage":
-        return JSON.stringify(await resolveBlockpage(String(args.username ?? ""), signal));
-      case "verify_tip":
-        return JSON.stringify(await verifyTip(String(args.transactionId ?? ""), signal));
-      case "treasury_stats": {
-        const h = Number(args.hoursBack ?? 24);
-        return JSON.stringify(await treasuryStats(Number.isFinite(h) ? h : 24, signal));
-      }
-      default:
-        return JSON.stringify({ error: `unknown tool: ${call.function.name}` });
-    }
+    // Zod-validated by the kit tool itself; execute returns a JSON string.
+    // No Hedera client is passed — these are pure mirror-node query tools.
+    const parsed = tool.parameters.parse(args);
+    const out = await tool.execute(
+      undefined as never,
+      { signal } as BuddyContext,
+      parsed
+    );
+    return typeof out === "string" ? out : JSON.stringify(out);
   } catch (e: any) {
     return JSON.stringify({
       error: `tool failed: ${String(e?.message ?? e).slice(0, 300)}`,
@@ -146,6 +99,7 @@ async function runToolCall(call: ToolCall, signal: AbortSignal): Promise<string>
 
 async function callGroq(
   apiKey: string,
+  tools: Tool[],
   messages: ChatMessage[],
   signal: AbortSignal
 ): Promise<any> {
@@ -163,7 +117,7 @@ async function callGroq(
       model: MODEL,
       max_tokens: MAX_TOKENS,
       messages: [{ role: "system", content: SYSTEM_PROMPT }, ...messages],
-      tools: TOOL_DEFS,
+      tools: toFunctionDefs(tools),
     }),
     signal,
   });
@@ -213,13 +167,16 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
   const signal = controller.signal;
 
+  // Buddy's tools come from Hedera's Agent Kit (read-only Voicescape plugin).
+  const tools = getBuddyTools(signal);
+
   try {
     const messages: ChatMessage[] = [...history, { role: "user", content: message }];
     let finalContent: string | null = null;
     let truncated = false;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const data = await callGroq(apiKey, messages, signal);
+      const data = await callGroq(apiKey, tools, messages, signal);
       const choice = data?.choices?.[0];
       const msg = choice?.message;
       if (!msg) throw new Error("groq response had no choices[0].message");
@@ -238,7 +195,7 @@ export async function POST(req: NextRequest) {
         tool_calls: toolCalls,
       });
       for (const call of toolCalls) {
-        const content = await runToolCall(call, signal);
+        const content = await runToolCall(tools, call, signal);
         messages.push({ role: "tool", tool_call_id: call.id, content });
       }
     }
