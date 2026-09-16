@@ -43,7 +43,7 @@ function tipLog(timestamp: string, index: number) {
   };
 }
 
-function mockMirror(batches: unknown[][]) {
+function mockMirror(batches: unknown[][], evmAddress = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734") {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: unknown) => {
@@ -51,6 +51,11 @@ function mockMirror(batches: unknown[][]) {
       if (u.includes("/results/logs")) {
         const batch = batches.shift() ?? [];
         return { ok: true, json: async () => ({ logs: batch }) };
+      }
+      if (/\/accounts\/0\.0\.\d+$/.test(u)) {
+        // Mirror account lookup: wallets with ECDSA keys report their
+        // key-derived EVM address (what contracts see as msg.sender).
+        return { ok: true, json: async () => ({ evm_address: evmAddress }) };
       }
       throw new Error(`unexpected fetch: ${u}`);
     })
@@ -203,6 +208,34 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // Second build needs a second payment.
     expect(await consumeBuild(evm)).toBe(false);
     expect((await checkBuildAccess(evm)).allowed).toBe(false);
+  });
+
+  it("resolves the wallet's key-derived EVM address for the log filter", async () => {
+    // Sessions canonicalize 0.0.x to the long-zero form, but TipSent logs
+    // msg.sender as the wallet's key-derived address. The discovery must
+    // query the mirror for the real sender address (verified 2026-09-16:
+    // 0.0.10860063 -> 0x0c243aae85131bf396d3fc4c6005a0f885bd7734).
+    const longZero = "0x" + BigInt(10860063).toString(16).padStart(40, "0");
+    const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: unknown) => {
+        const u = String(url);
+        seen.push(u);
+        if (/\/accounts\/0\.0\.\d+$/.test(u)) {
+          return { ok: true, json: async () => ({ evm_address: keyDerived }) };
+        }
+        if (u.includes("/results/logs")) {
+          return { ok: true, json: async () => ({ logs: [tipLog("1789520950.000000009", 9)] }) };
+        }
+        throw new Error(`unexpected fetch: ${u}`);
+      })
+    );
+    expect((await checkBuildAccess(longZero)).allowed).toBe(true);
+    const logUrl = seen.find((u) => u.includes("/results/logs"))!;
+    // topic2 must carry the key-derived address, not the long-zero form.
+    expect(logUrl).toContain(`topic2=0x${keyDerived.slice(2).padStart(64, "0")}`);
   });
 
   it("tips under 5 HBAR do not count", async () => {

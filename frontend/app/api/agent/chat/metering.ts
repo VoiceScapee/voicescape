@@ -322,6 +322,33 @@ function topic1Forge(): string {
 }
 
 /**
+ * The EVM address a Hedera wallet actually uses as msg.sender.
+ *
+ * Sessions canonicalize 0.0.x accounts to the long-zero form
+ * (0x0000...<num>), but a wallet with an ECDSA key calls contracts from
+ * its KEY-DERIVED 0x address — and TipSent logs msg.sender as that
+ * key-derived address. Filtering logs by the long-zero form matches
+ * nothing, so no payment is ever discovered. Resolve via the official
+ * mirror node; fall back to the input on any hiccup (fail-closed: a
+ * wrong filter finds no payments, never a false credit).
+ */
+async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
+  const m = /^0x0{24}([0-9a-fA-F]{16})$/.exec(evmAddress.trim());
+  if (!m) return evmAddress.toLowerCase();
+  const accountId = `0.0.${BigInt("0x" + m[1]).toString()}`;
+  try {
+    const res = await fetch(`${MIRROR_BASE}/accounts/${accountId}`);
+    if (!res.ok) return evmAddress.toLowerCase();
+    const body = (await res.json()) as { evm_address?: string };
+    return typeof body.evm_address === "string" && /^0x[0-9a-fA-F]{40}$/.test(body.evm_address)
+      ? body.evm_address.toLowerCase()
+      : evmAddress.toLowerCase();
+  } catch {
+    return evmAddress.toLowerCase();
+  }
+}
+
+/**
  * Find fresh 5-HBAR tipPage("forge") payments from this wallet by reading
  * the Tips contract's TipSent logs on the official mirror node. Returns
  * payment ids (`<consensusTimestamp>-<txIndex>`, unique per on-chain
@@ -333,8 +360,8 @@ async function discoverFreshPayments(
   knownIds: string[]
 ): Promise<string[]> {
   try {
-    const topic2 =
-      "0x" + evmAddress.slice(2).toLowerCase().padStart(64, "0");
+    const sender = await resolveSenderEvmAddress(evmAddress);
+    const topic2 = "0x" + sender.slice(2).toLowerCase().padStart(64, "0");
     // Mirror node REQUIRES a bounded timestamp range (strictly under 7d)
     // for topic searches — verified 2026-09-16 against mainnet: without it
     // the query silently returns zero logs and a paid build would NEVER be
