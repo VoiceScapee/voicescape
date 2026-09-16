@@ -15,6 +15,7 @@
 "use client";
 
 import PageRenderer from "./PageRenderer";
+import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import type { VoicescapePage } from "@/lib/schema";
 
 export default function BuddyDraftPreview({ page }: { page: VoicescapePage }) {
@@ -48,7 +49,18 @@ export default function BuddyDraftPreview({ page }: { page: VoicescapePage }) {
           pointerEvents: "none",
         }}
       >
-        <PageRenderer page={page} preview />
+        {/*
+          The Buddy widget mounts outside RootProviders, so neither
+          LanguageProvider nor SessionProvider wraps this tree (live
+          failure 2026-09-16: TipJarCard's useLanguage() and ChatBox's
+          useSession() threw here, and the error boundary swallowed the
+          whole visual mock). Provide i18n locally; ChatBox degrades to
+          logged-out via useSessionOptional and renders its inert preview
+          placeholder for chat blocks.
+        */}
+        <LanguageProvider>
+          <PageRenderer page={page} preview />
+        </LanguageProvider>
       </div>
     </figure>
   );

@@ -440,13 +440,12 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   const EVM_FAILED = "0xdddddddddddddddddddddddddddddddddddddddd";
   const EVM_REPEAT = "0x1212121212121212121212121212121212121212";
 
-  it("a schema-valid mock with missing block arrays is normalized before delivery — never unrendersable", async () => {
-    // The live crash (2026-09-16, 3/3 repros): the model emits a mock that
-    // passes isValidPage (valid envelope, valid block types) but whose
-    // blocks are missing the arrays PageRenderer maps over. Rendering that
-    // threw "Cannot read properties of undefined (reading 'map')" and
-    // unmounted the whole app. The preview path must normalize every block
-    // (fill missing arrays, drop unknown types) before emitting build.preview.
+  it("model JSON is ignored — the deterministic template is always the served mock (round 4)", async () => {
+    // ROUND 4: the visual mock is built deterministically server-side from
+    // the collected slots; the model writes conversational text only. Even
+    // when the model emits a schema-valid mock with missing block arrays
+    // (the round-2 live crash), the served mock is the template — valid,
+    // normalized, grounded in the build slots, placeholder art only.
     const unsafeMock =
       "Here's your mock!\n```json\n" +
       JSON.stringify({
@@ -481,33 +480,29 @@ describe("build entitlement (5 HBAR per custom build)", () => {
       ],
       ip: "10.0.0.41",
     });
+    // No raw JSON ever reaches the visitor...
     expect(last.reply).not.toContain("```json");
+    expect(last.reply).not.toContain('"version": 1');
+    // ...the deterministic template was served instead of the model JSON.
     const preview = last.build.preview;
     expect(preview).toBeTruthy();
-    // Every array-bearing block now carries its array...
+    expect(preview.username).toBe("testpilotbuddy");
+    expect(last.build.previewSource).toBe("template");
+    // Grounded in the collected bio/vibe slots...
+    expect(JSON.stringify(preview.blocks)).toContain("chiptune");
+    // ...every block normalized (arrays present)...
     for (const b of preview.blocks) {
       if (b.type === "links" || b.type === "services" || b.type === "booking")
         expect(Array.isArray(b.items)).toBe(true);
-      if (b.type === "guestbook" || b.type === "reviews")
-        expect(Array.isArray(b.entries)).toBe(true);
-      if (b.type === "music") expect(Array.isArray(b.tracks)).toBe(true);
-      if (b.type === "gallery") expect(Array.isArray(b.images)).toBe(true);
-      if (b.type === "top8") expect(Array.isArray(b.friends)).toBe(true);
-      if (b.type === "capabilities") expect(Array.isArray(b.items)).toBe(true);
     }
-    // ...the music block got its tracks array, and the hero block is untouched.
-    const music = preview.blocks.find((b: { type: string; tracks?: unknown }) => b.type === "music");
-    expect(Array.isArray(music.tracks)).toBe(true);
-    expect(preview.blocks[0]).toMatchObject({ type: "hero", title: "testpilotbuddy" });
-    // The allowance was consumed exactly once — the mock was served.
+    // ...and the allowance was consumed exactly once.
     expect(last.build.previewsLeft).toBe(1);
   });
 
-  it("truncated mock (unclosed fence) triggers one retry — valid retry mock is delivered, raw JSON never leaks", async () => {
-    // Live failure 2026-09-16 attempt 2: the model hit max tokens mid-JSON,
-    // the fence never closed, and raw JSON leaked into the visible reply.
-    // The route must retry once with a JSON-only instruction; a valid
-    // retry mock is delivered as the visual preview.
+  it("truncated model output never leaks and triggers no retry — template delivered deterministically", async () => {
+    // Live failure 2026-09-16 attempt 2: the model hit max tokens mid-JSON
+    // and raw JSON leaked into the visible reply. Round 4: model output is
+    // never parsed for the mock — no retry needed, nothing to leak.
     const truncated =
       "Here's your mock!\n```json\n" +
       '{"version": 1, "username": "testpilotbuddy", "theme": {"background": "#0a0a12", "foreground": "#ffffff", "accent": "#8259ef", "fontFamily": "sans"}, "blocks": [{"type": "hero", "title": "testpilotbuddy"}, {"type": "top8", "friends": [{"name": "H';
@@ -517,40 +512,29 @@ describe("build entitlement (5 HBAR per custom build)", () => {
         groqFinal("t2"),
         groqFinal("t3"),
         groqFinal(truncated),
-        groqFinal(mockReply("Retry mock here!")),
       ],
       ip: "10.0.0.42",
     });
-    // One extra Groq call: the retry.
-    expect(calls.groqBodies).toHaveLength(5);
-    const retryBody = calls.groqBodies[4];
-    const retrySystems = retryBody.messages
-      .filter((m: { role: string }) => m.role === "system")
-      .map((m: { content: string }) => m.content)
-      .join("\n");
-    expect(retrySystems).toContain("MOCK PREVIEW RETRY");
-    // The retry carried no tools (image tool stays withheld on preview turns).
-    expect(retryBody.tools).toHaveLength(0);
-    // No raw JSON in the visible reply; the retry mock was delivered.
+    // No retry call: exactly the 4 build-flow turns hit Groq.
+    expect(calls.groqBodies).toHaveLength(4);
+    // No raw JSON in the visible reply; the template mock was delivered.
     expect(last.reply).not.toContain("```json");
     expect(last.reply).not.toContain('"version": 1');
     const preview = last.build.preview;
     expect(preview).toBeTruthy();
     expect(preview.username).toBe("testpilotbuddy");
-    expect(preview.blocks[0]).toMatchObject({ type: "hero", title: "testpilotbuddy" });
+    expect(preview.blocks[0].type).toBe("hero");
+    expect(last.build.previewSource).toBe("template");
     expect(last.build.previewsLeft).toBe(1);
   });
 
-  it("truncated mock + failed retry falls back to the deterministic template — still a visual mock, never raw JSON", async () => {
-    const truncated =
-      "Here's your mock!\n```json\n" + '{"version": 1, "username": "testpilotbuddy", "blocks": [{"type": "hero"';
+  it("garbage model prose still delivers the deterministic template — previewSource marks the path", async () => {
     const { last } = await runBuildFlow({
       groqReplies: [
         groqFinal("t1"),
         groqFinal("t2"),
         groqFinal("t3"),
-        groqFinal(truncated),
-        // Retry also fails: prose with no valid mock.
+        // The model completely ignores its instructions: prose, no mock.
         groqFinal("Sorry, I can't quite get the JSON right today."),
       ],
       ip: "10.0.0.43",
@@ -558,13 +542,15 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // No raw JSON leaked anywhere in the visible reply.
     expect(last.reply).not.toContain("```json");
     expect(last.reply).not.toContain('"version": 1');
-    // The template fallback was delivered: valid, grounded in the build
-    // slots, placeholder art only.
+    // The deterministic template was delivered: valid, grounded in the
+    // build slots, placeholder art only — and the response says which path
+    // served it (not user-visible; for live debugging).
     const preview = last.build.preview;
     expect(preview).toBeTruthy();
     expect(preview.username).toBe("testpilotbuddy");
     expect(JSON.stringify(preview.blocks)).toContain("chiptune");
     expect(preview.blocks[0].type).toBe("hero");
+    expect(last.build.previewSource).toBe("template");
     // The allowance was still consumed exactly once.
     expect(last.build.previewsLeft).toBe(1);
   });
@@ -617,23 +603,20 @@ describe("build entitlement (5 HBAR per custom build)", () => {
         String(m.content).includes("[MOCK PREVIEW")
       )
     ).toBe(true);
-    // The prompt spells out the validator's envelope and bans junk
-    // placeholders, so the model can't emit a mock that fails validation
-    // (the live bug: raw JSON shown, no mock rendered).
+    // The prompt tells the model the mock is built automatically and it
+    // must NOT output JSON — the deterministic template is the only mock
+    // path (round 4: model JSON proved unreliable live three times).
     const note = systems
       .map((m: any) => String(m.content))
       .find((c: string) => c.includes("[MOCK PREVIEW"));
-    expect(note).toContain('"version": 1');
-    expect(note).toContain('"username"');
-    expect(note).toContain("Never 'Item 1'");
+    expect(note).toContain("do NOT need to output any JSON");
   });
 
-  it("an invalid mock is stripped, retried, then template-fallback delivers a visual mock consuming one preview", async () => {
+  it("an invalid model mock is ignored — deterministic template served, consuming one preview; a tweak revises it deterministically", async () => {
     // The model emits a fence that fails validation (no version/username
-    // envelope, junk placeholders) — the live failure mode. The route
-    // retries once (no more mocked replies -> retry throws -> caught), then
-    // falls back to the deterministic server-built template so the visitor
-    // ALWAYS gets a visual mock: never raw JSON, never nothing.
+    // envelope, junk placeholders). Round 4: model output is never parsed
+    // for the mock — the deterministic template is served instead, so the
+    // visitor ALWAYS gets a visual mock: never raw JSON, never nothing.
     const badMock =
       "Here's a mock of your page!\n```json\n" +
       JSON.stringify({
@@ -661,19 +644,20 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // Raw JSON/fences never reach the visitor...
     expect(last.reply).not.toContain("```json");
     expect(last.reply).not.toContain("tipJar");
-    // ...the template fallback was delivered as the visual mock, grounded
-    // in the collected slots, placeholder art only...
+    // ...the deterministic template was delivered as the visual mock,
+    // grounded in the collected slots, placeholder art only...
     const preview = last.build.preview;
     expect(preview).toBeTruthy();
     expect(preview.username).toBe("testpilotbuddy");
     expect(JSON.stringify(preview.blocks)).toContain("chiptune");
+    expect(last.build.previewSource).toBe("template");
     // ...and the free allowance WAS consumed (a mock was served).
     expect(last.build.previewsLeft).toBe(1);
     expect(last.build.paywall).toBeNull();
 
-    // A plain-text follow-up revises the served template (mock 2 of 2) via
-    // the server-side last-mock store — not a paywall — and the 2nd mock
-    // ships with the paywall panel.
+    // A plain-text follow-up revises the served template deterministically
+    // (mock 2 of 2) via the server-side last-mock store — not a paywall —
+    // and the 2nd mock ships with the paywall panel.
     const { calls: r5calls } = mockFetch([groqFinal(mockReply("Fresh mock!"))]);
     const r5 = await POST(
       post({ message: "make it darker", build_state: buildState }, ip)
@@ -682,6 +666,10 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const d5 = await r5.json();
     expect(d5.build.preview).toBeTruthy();
     expect(d5.build.preview.username).toBe("testpilotbuddy");
+    // The tweak was applied deterministically: darker theme + note.
+    expect(d5.build.preview.theme.background).toBe("#1e1e1e");
+    expect(d5.build.previewSource).toBe("template-tweak");
+    expect(d5.reply).toContain("darker theme");
     expect(d5.build.previewsLeft).toBe(0);
     expect(d5.build.paywall).toBe("anon");
     expect(d5.reply).not.toContain("```json");
@@ -697,7 +685,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     ).not.toContain("generate_page_image");
   });
 
-  it("a plain-text tweak without preview_draft echo revises the served mock (mock 2), not a paywall", async () => {
+  it("a plain-text tweak without preview_draft echo revises the served mock deterministically (mock 2), not a paywall", async () => {
     const { last, buildState, ip } = await runBuildFlow({
       groqReplies: [
         groqFinal("t1"),
@@ -709,9 +697,12 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     });
     expect(last.build.preview).toBeTruthy();
     expect(last.build.previewsLeft).toBe(1);
+    expect(last.build.previewSource).toBe("template");
 
     // Turn 5: the visitor just types the tweak — no preview_draft echo.
-    // The live bug fell through to the paywall with no mock 2.
+    // The tweak is applied deterministically server-side: "make the hero
+    // bigger" → bolder hero (dark theme + rocket avatar), visibly
+    // different from mock 1.
     const { calls: r5calls } = mockFetch([groqFinal(mockReply("Revised mock!"))]);
     const r5 = await POST(
       post({ message: "make the hero bigger", build_state: buildState }, ip)
@@ -720,13 +711,16 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const d5 = await r5.json();
     expect(d5.build.preview).toBeTruthy();
     expect(d5.build.preview.username).toBe("testpilotbuddy");
+    expect(d5.build.previewSource).toBe("template-tweak");
+    const hero = d5.build.preview.blocks.find((b: any) => b.type === "hero");
+    expect(hero.avatarEmoji).toBe("🚀");
+    expect(d5.reply).toContain("bolder hero");
     expect(d5.build.previewsLeft).toBe(0);
     // The 2nd mock ships WITH the paywall panel (anon) — pay without
     // another round trip.
     expect(d5.build.paywall).toBe("anon");
     expect(d5.reply).not.toContain("```json");
-    // The model revised the served mock: the revision note was built from
-    // the server-side last-mock store, and no image tool was offered.
+    // The revision note reached the model; still no image tool.
     const r5body = r5calls.groqBodies[0];
     const systems = r5body.messages.filter((m: any) => m.role === "system");
     expect(
@@ -751,6 +745,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     });
     const mock1 = last.build.preview;
     expect(mock1.username).toBe("testpilotbuddy");
+    expect(last.build.previewSource).toBe("template");
 
     // Turn 5: revise the mock (the widget echoes preview_draft in
     // tweak-the-mock mode).
@@ -769,6 +764,9 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const d5 = await r5.json();
     expect(d5.build.preview.username).toBe("testpilotbuddy");
     expect(d5.build.previewsLeft).toBe(0);
+    // The tweak was applied deterministically to the echoed mock.
+    expect(d5.build.previewSource).toBe("template-tweak");
+    expect(d5.build.preview.theme.background).toBe("#1e1e1e");
     // Free previews exhausted: the paywall panel ships WITH the 2nd mock.
     expect(d5.build.paywall).toBe("anon");
     expect(d5.reply).not.toContain("```json");
@@ -858,9 +856,12 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const d5 = await r5.json();
     expect(d5.build.previewsLeft).toBe(0);
     expect(d5.build.paywall).toBe("unpaid");
-    // The 2nd mock ships WITH the panel: reply stays the mock prose,
-    // build.paywall drives the widget's payment panel.
-    expect(d5.reply).toBe("Darker!");
+    expect(d5.build.previewSource).toBe("template-tweak");
+    // The 2nd mock ships WITH the panel: reply stays the mock prose plus
+    // the deterministic tweak note; build.paywall drives the widget's
+    // payment panel.
+    expect(d5.reply).toContain("Darker!");
+    expect(d5.reply).toContain("darker theme");
   });
 
   it("paid build after previews delivers the draft and consumes exactly one payment", async () => {
@@ -1397,9 +1398,12 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
       );
       const dd5 = await rr5.json();
       expect(dd5.build.paywall).toBe("unpaid");
-      // The 2nd mock ships WITH the panel: reply stays the mock prose,
-      // build.paywall drives the widget's payment panel.
-      expect(dd5.reply).toBe("Darker!");
+      expect(dd5.build.previewSource).toBe("template-tweak");
+      // The 2nd mock ships WITH the panel: reply stays the mock prose plus
+      // the deterministic tweak note; build.paywall drives the widget's
+      // payment panel.
+      expect(dd5.reply).toContain("Darker!");
+      expect(dd5.reply).toContain("darker theme");
     }
 
     // Paid build: no paywall on the delivery turn.

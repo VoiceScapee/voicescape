@@ -336,6 +336,7 @@ export default function AgentChat() {
               paywall?: string;
               preview?: unknown;
               previewsLeft?: number;
+              previewSource?: string | null;
             };
           } | null
         )?.build;
@@ -364,6 +365,10 @@ export default function AgentChat() {
           setPreviewsLeft(
             typeof b.previewsLeft === "number" ? b.previewsLeft : null
           );
+          // Not user-visible: which server path served the mock (live debugging).
+          if (typeof b.previewSource === "string") {
+            console.debug(`[buddy] preview served via ${b.previewSource}`);
+          }
           setTweakingPreview(false);
         }
       }

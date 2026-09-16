@@ -464,7 +464,60 @@ export function normalizeBlockForRender(input: unknown): Block | null {
  * the collected username/bio/vibe — placeholder art only, never AI image
  * generation. Always passes isValidPage and always renders. The visitor
  * never sees raw JSON, never sees a crash, never sees nothing.
+ *
+ * ROUND 4 (2026-09-16): the template is now the PRIMARY mock path, not
+ * just the fallback — the model writes conversational text only and the
+ * mock is built here deterministically every time, so a garbled model
+ * reply can never break the visual preview.
  */
+const PREVIEW_DARK_THEME = {
+  background: "#1e1e1e",
+  foreground: "#f5f5f5",
+  accent: "#ffcc00",
+  fontFamily: "system-ui, sans-serif",
+};
+const PREVIEW_LIGHT_THEME = {
+  background: "#fafafa",
+  foreground: "#1a1a1a",
+  accent: "#7c3aed",
+  fontFamily: "system-ui, sans-serif",
+};
+
+/** Accent palette cycled for visible mock-to-mock variation. */
+const PREVIEW_ACCENTS = [
+  "#ffcc00",
+  "#a855f7",
+  "#3b82f6",
+  "#22c55e",
+  "#ec4899",
+  "#22d3ee",
+  "#f97316",
+] as const;
+
+const PREVIEW_COLOR_WORDS: Array<{ re: RegExp; name: string; hex: string }> = [
+  { re: /\b(purple|violet|lavender)\b/, name: "purple", hex: "#a855f7" },
+  { re: /\b(blue|navy|azure)\b/, name: "blue", hex: "#3b82f6" },
+  { re: /\b(green|emerald|mint)\b/, name: "green", hex: "#22c55e" },
+  { re: /\b(pink|magenta|rose)\b/, name: "pink", hex: "#ec4899" },
+  { re: /\b(red|crimson|scarlet)\b/, name: "red", hex: "#ef4444" },
+  { re: /\b(gold|yellow|amber)\b/, name: "gold", hex: "#ffcc00" },
+  { re: /\b(cyan|teal|turquoise|aqua)\b/, name: "cyan", hex: "#22d3ee" },
+  { re: /\b(orange|tangerine|peach)\b/, name: "orange", hex: "#f97316" },
+];
+
+const PREVIEW_EMOJI_WORDS: Array<{ re: RegExp; emoji: string; name: string }> = [
+  { re: /\brocket\b/, emoji: "🚀", name: "rocket" },
+  { re: /\b(music|guitar|band|rock)\b/, emoji: "🎸", name: "guitar" },
+  { re: /\b(art|paint|draw)\b/, emoji: "🎨", name: "art" },
+  { re: /\b(game|gaming|gamer)\b/, emoji: "🎮", name: "gaming" },
+  { re: /\b(moon|night)\b/, emoji: "🌙", name: "moon" },
+  { re: /\bfire\b/, emoji: "🔥", name: "fire" },
+  { re: /\b(crown|king|queen|royal)\b/, emoji: "👑", name: "crown" },
+  { re: /\b(alien|space)\b/, emoji: "👽", name: "alien" },
+  { re: /\bheart\b/, emoji: "💜", name: "heart" },
+  { re: /\bstar\b/, emoji: "✨", name: "star" },
+];
+
 export function templatePreviewPage(
   username: string,
   bio: string,
@@ -475,9 +528,7 @@ export function templatePreviewPage(
   const vibeLower = (vibe || "").toLowerCase();
   const dark = /dark|midnight|noir|grunge|metal|night|emo|goth/.test(vibeLower);
   const light = /light|clean|minimal|bright|pastel|soft/.test(vibeLower) && !dark;
-  const theme = dark || !light
-    ? { background: "#1e1e1e", foreground: "#f5f5f5", accent: "#ffcc00", fontFamily: "system-ui, sans-serif" }
-    : { background: "#fafafa", foreground: "#1a1a1a", accent: "#7c3aed", fontFamily: "system-ui, sans-serif" };
+  const theme = dark || !light ? { ...PREVIEW_DARK_THEME } : { ...PREVIEW_LIGHT_THEME };
   const avatarEmoji = /music|dj|band|rock/.test(vibeLower)
     ? "🎸"
     : /art|design|paint/.test(vibeLower)
@@ -506,4 +557,82 @@ export function templatePreviewPage(
       { type: "tipJar", message: "Thanks for stopping by — tips keep the lights on! 💜" },
     ],
   };
+}
+
+export interface PreviewTweakResult {
+  page: VoicescapePage;
+  /** Short human sentence describing the visible change (appended to the reply). */
+  note: string;
+}
+
+/**
+ * Deterministic mock revision (mock #2 of the free preview flow). Applies
+ * the visitor's plain-text tweak to the served mock: theme (dark/light),
+ * accent color words, avatar emoji words, and a "bigger/bolder hero"
+ * intent. Unknown tweaks still produce a VISIBLE variation (accent cycle)
+ * plus a note asking for specifics — mock #2 is never identical to mock
+ * #1 and never fails to render. Pure and dependency-free.
+ */
+export function applyPreviewTweak(
+  base: VoicescapePage,
+  tweak: string
+): PreviewTweakResult {
+  const safeBase = isValidPage(base)
+    ? (JSON.parse(JSON.stringify(base)) as VoicescapePage)
+    : templatePreviewPage("you", "", "");
+  const page = safeBase;
+  const t = (tweak || "").toLowerCase();
+  const changes: string[] = [];
+
+  if (/\bdarker\b|\bdark mode\b|\bgo dark\b/.test(t)) {
+    page.theme = { ...page.theme, ...PREVIEW_DARK_THEME };
+    changes.push("a darker theme");
+  } else if (/\blighter\b|\blight mode\b|\bgo light\b|\bbrighter\b|\bbright\b/.test(t)) {
+    page.theme = { ...page.theme, ...PREVIEW_LIGHT_THEME };
+    changes.push("a lighter theme");
+  }
+  for (const c of PREVIEW_COLOR_WORDS) {
+    if (c.re.test(t)) {
+      page.theme = { ...page.theme, accent: c.hex };
+      changes.push(`${c.name} accents`);
+      break;
+    }
+  }
+  const hero = page.blocks.find((b) => b.type === "hero");
+  for (const e of PREVIEW_EMOJI_WORDS) {
+    if (e.re.test(t) && hero && hero.type === "hero") {
+      (hero as { avatarEmoji?: string }).avatarEmoji = e.emoji;
+      changes.push(`a ${e.name} avatar`);
+      break;
+    }
+  }
+  if (
+    /\bhero\b/.test(t) &&
+    /\b(bigger|big|bold|bolder|large|larger|huge|punchier|prominent)\b/.test(t)
+  ) {
+    page.theme = { ...page.theme, ...PREVIEW_DARK_THEME };
+    if (hero && hero.type === "hero") {
+      (hero as { avatarEmoji?: string }).avatarEmoji = "🚀";
+    }
+    changes.push("a bolder hero");
+  }
+
+  if (changes.length === 0) {
+    // Unknown tweak: still visibly different — cycle the accent palette
+    // deterministically off the tweak text, and say what happened.
+    let hash = 0;
+    for (const ch of t) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    const currentIdx = PREVIEW_ACCENTS.indexOf(
+      page.theme.accent as (typeof PREVIEW_ACCENTS)[number]
+    );
+    const next =
+      PREVIEW_ACCENTS[(hash + Math.max(0, currentIdx) + 1) % PREVIEW_ACCENTS.length];
+    page.theme = { ...page.theme, accent: next };
+    return {
+      page,
+      note:
+        "I gave your mock a fresh accent color — tell me exactly what to change (like “darker”, “purple”, or “rocket avatar”) and I'll apply it.",
+    };
+  }
+  return { page, note: `Updated your mock: ${changes.join(", ")}.` };
 }

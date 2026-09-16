@@ -6,7 +6,8 @@
  * Response: { reply: string, build_state: string,
  *             build: { paywall: "anon" | "unpaid" | null,
  *                      preview: VoicescapePage | null,
- *                      previewsLeft: number | null } }
+ *                      previewsLeft: number | null,
+ *                      previewSource: "template" | "template-tweak" | null } }
  *
  * refine_draft is the widget echoing the visitor's current page draft so a
  * follow-up message can revise it ("tweak" flow). It is validated against
@@ -15,9 +16,11 @@
  * never get a free build this way.
  *
  * preview_draft is the widget echoing the current FREE visual mock so a
- * follow-up can revise it (preview 2 of 2). Previews are pure model output
- * with placeholder art — the image tool is withheld on preview turns, so a
- * preview can never burn image generation.
+ * follow-up can revise it (preview 2 of 2). Previews are DETERMINISTIC
+ * server-built mocks (templatePreviewPage / applyPreviewTweak) with
+ * placeholder art — the model writes conversational text only and the
+ * image tool is withheld on preview turns, so a preview can never burn
+ * image generation and a garbled model reply can never break the mock.
  *
  * The `build.paywall` field is machine-readable UI signal for the widget:
  * "anon" = builds need a connected wallet, "unpaid" = the signed-in wallet
@@ -26,6 +29,9 @@
  * BuddyDraftPreview — never the "Open in Builder"/"Publish" path, which is
  * reserved for the paid build). `build.previewsLeft` is the remaining free
  * previews for this build (null when previews don't apply this turn).
+ * `build.previewSource` ("template" for mock #1, "template-tweak" for mock
+ * #2, null otherwise) is not user-visible — it tells live debugging which
+ * path served the mock.
  *
  * build_state is the server's HMAC-signed build-progress token (see
  * ./build-state.ts): the widget echoes it back each turn so the model can
@@ -124,6 +130,7 @@ import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { verifySessionToken } from "@/lib/server/townhall/auth";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import {
+  applyPreviewTweak,
   isValidPage,
   normalizeBlockForRender,
   templatePreviewPage,
@@ -268,47 +275,29 @@ const PREVIEW_APPROVAL_RE =
   /^(go|yes|yeah|yep|yup|sure|ok|okay|do it|build it|looks good|great|perfect|awesome|amazing|ship it|let'?s (do it|go|build)|proceed|approved?|i'?m ready|pay)\b[.!?\s]*$/i;
 
 /**
- * System note for a free visual-mock preview turn. Overrides the build
- * note's "generate the artwork" instruction: the visitor has NOT paid, so
- * this is a MOCK with placeholder art only — never real image generation.
- * Production-grade means the full block vocabulary and a real theme, not
- * a bare stub. The envelope is spelled out exactly because a mock missing
- * it fails validation and the visitor would see raw JSON.
+ * System note for a free visual-mock preview turn. ROUND 4 (2026-09-16):
+ * the visual mock is built DETERMINISTICALLY server-side from the
+ * collected username/bio/vibe — the model writes conversational text
+ * ONLY and must not output any JSON. (Three live rounds proved model
+ * JSON unreliable: truncation, wrong-typed scalars, and a provider-less
+ * render crash. The template always renders.)
  */
 const PREVIEW_NOTE = [
-  "[MOCK PREVIEW — this overrides the 'generate the artwork' instruction in the build note above. The visitor has NOT paid yet: this is a FREE preview, not the build.]",
-  "Output the page as ONE complete ```json fenced block. It MUST be valid JSON matching this exact envelope — no comments, no trailing commas:",
-  '{ "version": 1, "username": "<the exact collected username, lowercase>", "theme": { "background": "<css color>", "foreground": "<css color>", "accent": "<css color>", "fontFamily": "<css font stack>" }, "blocks": [ ... ] }',
-  "Every block needs a valid type: hero, bio, links, tipJar, guestbook, music, gallery, top8, services, capabilities, operator, reviews, booking, livestream, chat.",
-  "CONTENT RULES — realistic and specific to THEIR username/bio/vibe, never placeholder junk:",
-  "- hero: title is a display name from the username, subtitle a tagline from their bio/vibe, avatarEmoji one fitting emoji (NEVER avatarImage).",
-  "- bio: expand their one-liner into 1-2 vivid sentences.",
-  "- links: 3-5 links with realistic labels and plausible https URLs (e.g. https://x.com/<username>). Never 'Link 1', never 'Item N', never example.com.",
-  "- top8: friends with realistic names/handles and a fitting avatarEmoji each. Never 'Item 1'.",
-  "- gallery: emoji images ONLY (e.g. [\"🎨\",\"📸\",\"✨\"]) with an effect (float, marquee, or dance). Never URLs.",
-  "- music: include ONLY if the visitor named a specific artist/song — never invent track IDs.",
-  "- tipJar: one warm thank-you line.",
-  "- 6-9 blocks total. Theme colors and font must match the vibe exactly.",
-  "PLACEHOLDER ART ONLY: never URLs, never IPFS, never call generate_page_image — the tool is unavailable this turn.",
-  "Keep your visible reply to one or two short sentences: present the mock, invite one tweak, and say that saying \"go\" builds the real page with custom AI artwork for 5 HBAR.",
+  "[MOCK PREVIEW — the visitor has NOT paid yet: this is a FREE preview, not the build.]",
+  "A visual mock of their page is generated for them automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
+  "Reply in one or two short sentences: present their free preview, invite one tweak, and say that saying “go” builds the real page with custom AI artwork for 5 HBAR.",
+  "PLACEHOLDER ART ONLY: never call generate_page_image — the image tool is unavailable this turn.",
 ].join("\n");
 
-/** System note for the one-shot preview retry after a truncated/invalid mock. */
-const PREVIEW_RETRY_NOTE = [
-  "[MOCK PREVIEW RETRY — your previous reply was cut off or the mock JSON was invalid, so no preview was delivered.]",
-  "Output ONLY the complete page as a single ```json fenced block matching the envelope from the preview instructions — no prose before or after, no apologies. Keep it to 4-6 blocks so it fits. Placeholder art only (emoji, never URLs/IPFS); the image tool is unavailable.",
-].join("\n");
-
-/** System note for revising the free mock (preview 2 of 2). */
-function previewReviseNote(mock: VoicescapePage): string {
+/** System note for revising the free mock (preview 2 of 2). The revised
+ *  mock is applied deterministically server-side from the visitor's tweak
+ *  text — the model writes conversational text only, never JSON. */
+function previewReviseNote(tweak: string): string {
   return [
     "[MOCK PREVIEW REVISION — the visitor is revising their FREE preview. They have NOT paid.]",
-    "Current mock JSON:",
-    JSON.stringify(mock).slice(0, MAX_REFINE_BYTES),
-    "Revise ONLY what they asked for; keep everything else identical. Still placeholder art only (emoji, never URLs/IPFS) — do NOT call generate_page_image: the tool is unavailable this turn. " +
-      "Keep every visible label realistic — never placeholder text like \"Item 1\". " +
-      "Output the FULL revised page as a single ```json fenced block matching the page schema envelope from the preview instructions. " +
-      'Keep your visible reply to one short sentence, ending with: say "go" any time and the 5 HBAR build makes the real page.',
+    `The visitor's tweak request: "${tweak.slice(0, 300)}"`,
+    "Their preview updates automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
+    "Reply in one short sentence acknowledging the tweak, ending with: say “go” any time and the 5 HBAR build makes the real page.",
   ].join("\n");
 }
 
@@ -473,7 +462,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             reply: BUILD_PAYWALL_ANON,
             build_state: signBuildState(buildState),
-            build: { paywall: "anon", preview: null, previewsLeft: previewsLeftNow },
+            build: { paywall: "anon", preview: null, previewsLeft: previewsLeftNow, previewSource: null },
           });
         }
       } else {
@@ -484,7 +473,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             reply: BUILD_STORE_ERROR,
             build_state: signBuildState(buildState),
-            build: { paywall: null, preview: null, previewsLeft: previewsLeftNow },
+            build: { paywall: null, preview: null, previewsLeft: previewsLeftNow, previewSource: null },
           });
         }
         let freeFallback = false;
@@ -495,7 +484,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({
               reply: BUILD_STORE_ERROR,
               build_state: signBuildState(buildState),
-              build: { paywall: null, preview: null, previewsLeft: previewsLeftNow },
+              build: { paywall: null, preview: null, previewsLeft: previewsLeftNow, previewSource: null },
             });
           }
         }
@@ -505,7 +494,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({
             reply: access.reason,
             build_state: signBuildState(buildState),
-            build: { paywall: "unpaid", preview: null, previewsLeft: previewsLeftNow },
+            build: { paywall: "unpaid", preview: null, previewsLeft: previewsLeftNow, previewSource: null },
           });
         }
         // Paid (access.allowed): fall through — the model runs WITH the
@@ -612,19 +601,14 @@ export async function POST(req: NextRequest) {
     let finalContent: string | null = null;
     let truncated = false;
 
-    // Free-mock instruction (overrides the build note's "generate the
-    // artwork" line): the model outputs a placeholder-art mock, never
-    // real images. On a fallback revision (no widget echo) the mock comes
-    // from the server-side last-mock store.
-    const reviseMock = previewDraftEcho ?? fallbackMock;
+    // Free-mock instruction: the model writes conversational text only —
+    // the visual mock itself is built deterministically server-side.
     const previewNote =
       previewMode === "new"
         ? PREVIEW_NOTE
-        : previewMode === "revise" && reviseMock
-          ? previewReviseNote(reviseMock)
-          : previewMode === "revise"
-            ? PREVIEW_NOTE // unreachable: demoted to "new" above; safety
-            : null;
+        : previewMode === "revise"
+          ? previewReviseNote(message)
+          : null;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const data = await callGroq(
@@ -676,83 +660,69 @@ export async function POST(req: NextRequest) {
     // must have build history (it paid for a build before), but no second
     // payment is consumed. A wallet with no build history gets the unpaid
     // paywall instead of a free draft.
-    // Free-mock delivery: pull the mock out of the reply prose (the widget
-    // renders it from build.preview — never as a paid draft), count it
-    // against the free allowance, remember it for plain-text follow-up
-    // tweaks, and attach the 2nd mock's paywall so the visitor can pay
-    // without another round trip. A model glitch that produced no valid
-    // mock never consumes the allowance — and raw JSON/fences are stripped
-    // from the visible reply regardless, so the visitor never sees them.
+    // Free-mock delivery (ROUND 4): the visual mock is built
+    // DETERMINISTICALLY server-side — never from model JSON. The model
+    // writes conversational text only. This is what finally killed the
+    // live failures: truncated JSON, wrong-typed scalars, and the
+    // provider-less render crash are all impossible when the mock never
+    // depends on model output. The widget renders it from build.preview
+    // (never as a paid draft); serving it consumes one free-preview
+    // allowance; it's remembered for follow-up tweaks; and the 2nd mock
+    // ships with the paywall so the visitor can pay without another round
+    // trip. previewSource tells live debugging which path served the mock.
     let previewPage: VoicescapePage | null = null;
     let previewsLeftOut: number | null = null;
+    let previewSource: "template" | "template-tweak" | null = null;
     if (previewMode && !meteringBypass()) {
-      let mock = extractPageDraft(finalContent);
-      // One retry when the mock was truncated or invalid: a single
-      // JSON-only shot (no tools — the image tool is withheld on preview
-      // turns anyway). Truncation was the live failure: the fence never
-      // closed, extraction returned null, and raw JSON leaked into chat.
-      if (!mock) {
-        try {
-          const retryData = await callGroq(
-            apiKey,
-            [],
-            messages,
-            signal,
-            buildNote,
-            [PREVIEW_RETRY_NOTE],
-            PREVIEW_MAX_TOKENS
+      if (previewMode === "revise") {
+        // Mock #2: apply the visitor's tweak to the served mock (widget
+        // echo preferred, server-stored last mock as fallback, fresh
+        // template when neither exists). Always visibly different, always
+        // valid, always renders.
+        const base =
+          previewDraftEcho ??
+          fallbackMock ??
+          templatePreviewPage(
+            buildState.u ?? "you",
+            buildState.b ?? "",
+            buildState.v ?? ""
           );
-          const retryContent: unknown =
-            retryData?.choices?.[0]?.message?.content;
-          if (typeof retryContent === "string" && retryContent) {
-            finalContent = retryContent;
-            mock = extractPageDraft(retryContent);
-          }
-        } catch {
-          // Retry is best-effort — the template fallback below still
-          // guarantees a visual mock.
-        }
-      }
-      previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
-      if (!mock) {
-        // Deterministic fallback: the model failed twice. Build a valid
-        // mock server-side from the collected slots so the visitor ALWAYS
-        // gets a visual mock — never raw JSON, never a crash, never
-        // nothing. Placeholder art only; never burns image generation.
-        mock = templatePreviewPage(
+        const tweaked = applyPreviewTweak(base, message);
+        previewPage = tweaked.page;
+        previewSource = "template-tweak";
+        const prose = stripPageDraft(finalContent);
+        finalContent = `${prose || "Done — here's the updated mock."} ${tweaked.note}`;
+      } else {
+        previewPage = templatePreviewPage(
           buildState.u ?? "you",
           buildState.b ?? "",
           buildState.v ?? ""
         );
-        finalContent =
-          "Here's a quick mock I put together for you — tell me what to tweak, or say “go” and I'll build the real page with custom AI artwork for 5 HBAR.";
-      }
-      if (mock) {
-        // Render-safety: the model can emit a schema-valid mock whose
-        // blocks are missing the arrays PageRenderer maps over (e.g. a
-        // music block without `tracks`) — rendering that crashed the whole
-        // app (3/3 live repros). Normalize every block (fill missing
-        // arrays, drop unknown types) before it ever reaches the client.
-        previewPage = {
-          ...mock,
-          blocks: mock.blocks
-            .map(normalizeBlockForRender)
-            .filter((b): b is NonNullable<ReturnType<typeof normalizeBlockForRender>> => b !== null),
-        };
+        previewSource = "template";
         const prose = stripPageDraft(finalContent);
         finalContent =
           prose ||
           "Here's a mock of your page — tell me what to tweak, or say “go” and I'll build the real thing.";
-        try {
-          previewsUsed = await notePreview(previewIdentity, buildState.u ?? "");
-          await saveLastMock(previewIdentity, buildState.u ?? "", previewPage);
-        } catch {
-          // Served mocks aren't revoked over an accounting hiccup (same
-          // precedent as chat accounting below); the pre-model check above
-          // is what fails closed.
-        }
-        previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
       }
+      // Render-safety belt-and-suspenders: normalize every block before it
+      // ever reaches the client (the template is already clean; this costs
+      // nothing and keeps the invariant that build.preview is always
+      // renderer-safe).
+      previewPage = {
+        ...previewPage,
+        blocks: previewPage.blocks
+          .map(normalizeBlockForRender)
+          .filter((b): b is NonNullable<ReturnType<typeof normalizeBlockForRender>> => b !== null),
+      };
+      try {
+        previewsUsed = await notePreview(previewIdentity, buildState.u ?? "");
+        await saveLastMock(previewIdentity, buildState.u ?? "", previewPage);
+      } catch {
+        // Served mocks aren't revoked over an accounting hiccup (same
+        // precedent as chat accounting below); the pre-model check above
+        // is what fails closed.
+      }
+      previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
       if (previewsLeftOut === 0) {
         if (!buildWallet) {
           paywallKind = "anon";
@@ -818,11 +788,14 @@ export async function POST(req: NextRequest) {
       // "" when no secret is configured (state feature off).
       build_state: signBuildState(buildState),
       // Machine-readable build signal for the widget (paywall UI + free
-      // visual-mock preview).
+      // visual-mock preview). previewSource ("template" | "template-tweak"
+      // | null) is not user-visible — it tells live debugging which path
+      // served the mock.
       build: {
         paywall: paywallKind,
         preview: previewPage,
         previewsLeft: previewsLeftOut,
+        previewSource,
       },
       // Metering metadata for the widget (free-messages-left caption).
       chat: {

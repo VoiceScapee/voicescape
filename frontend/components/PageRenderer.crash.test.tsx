@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
 import PageRenderer from "@/components/PageRenderer";
-import { isValidPage, normalizeBlockForRender, templatePreviewPage, type VoicescapePage } from "@/lib/schema";
+import { applyPreviewTweak, isValidPage, normalizeBlockForRender, templatePreviewPage, type VoicescapePage } from "@/lib/schema";
 
 const theme = { background: "#000", foreground: "#fff", accent: "#f0f", fontFamily: "sans" };
 
@@ -219,5 +219,78 @@ describe("templatePreviewPage — deterministic mock fallback", () => {
     // No URLs that could burn image generation, no junk placeholders.
     expect(JSON.stringify(page)).not.toContain("ipfs");
     expect(JSON.stringify(page.blocks)).not.toContain("Item 1");
+  });
+});
+
+describe("applyPreviewTweak — deterministic mock revision (mock #2)", () => {
+  const base = () =>
+    templatePreviewPage("testpilotbuddy", "chiptune musician", "neon arcade");
+
+  function renders(page: VoicescapePage): string {
+    // Full client path: validity gate + render, like the widget.
+    expect(isValidPage(page)).toBe(true);
+    return renderToString(
+      <LanguageProvider>
+        <PageRenderer page={page} preview />
+      </LanguageProvider>
+    );
+  }
+
+  it("'make it darker' applies the dark theme with a note", () => {
+    const { page, note } = applyPreviewTweak(base(), "make it darker");
+    expect(page.theme.background).toBe("#1e1e1e");
+    expect(page.theme.foreground).toBe("#f5f5f5");
+    expect(note).toContain("darker theme");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("'lighter' applies the light theme", () => {
+    const { page, note } = applyPreviewTweak(base(), "lighter please");
+    expect(page.theme.background).toBe("#fafafa");
+    expect(note).toContain("lighter theme");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("color words set the accent", () => {
+    const { page, note } = applyPreviewTweak(base(), "purple accents");
+    expect(page.theme.accent).toBe("#a855f7");
+    expect(note).toContain("purple");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("emoji words swap the hero avatar", () => {
+    const { page, note } = applyPreviewTweak(base(), "give me a rocket avatar");
+    const hero = page.blocks.find((b) => b.type === "hero");
+    expect(hero).toMatchObject({ type: "hero", avatarEmoji: "🚀" });
+    expect(note).toContain("rocket");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("'bigger hero' pumps up the hero", () => {
+    const { page, note } = applyPreviewTweak(base(), "make the hero bigger");
+    const hero = page.blocks.find((b) => b.type === "hero");
+    expect(hero).toMatchObject({ type: "hero", avatarEmoji: "🚀" });
+    expect(note).toContain("bolder hero");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("unknown tweaks still produce a visibly different mock plus a guidance note", () => {
+    const before = base();
+    const { page, note } = applyPreviewTweak(before, "make it pop with pizzazz");
+    expect(isValidPage(page)).toBe(true);
+    // Visibly different from mock #1...
+    expect(page.theme.accent).not.toBe(before.theme.accent);
+    // ...and the note asks for specifics instead of failing silently.
+    expect(note).toContain("fresh accent color");
+    expect(renders(page).length).toBeGreaterThan(100);
+  });
+
+  it("an invalid base falls back to a fresh template, never a broken mock", () => {
+    const { page } = applyPreviewTweak(
+      { version: 1, username: 42, theme: {}, blocks: "nope" } as unknown as VoicescapePage,
+      "darker"
+    );
+    expect(isValidPage(page)).toBe(true);
+    expect(renders(page).length).toBeGreaterThan(100);
   });
 });
