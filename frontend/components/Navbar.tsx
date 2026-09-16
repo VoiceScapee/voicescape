@@ -26,6 +26,7 @@ interface NavbarProps {
  */
 const LEARN_ITEMS: NavDropdownItem[] = [
   { href: "/new-to-web3", label: <T k="nav.newToWeb3" /> },
+  { href: "/creators", label: <>For Creators</> },
   { href: "/mining-depin", label: <T k="nav.miningDePIN" /> },
 ];
 
