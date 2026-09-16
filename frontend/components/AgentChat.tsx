@@ -15,6 +15,8 @@ import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
 import { type VoicescapePage } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import { saveBuddyDraft } from "./Onboarding";
+import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
+import { SESSION_STORAGE_KEY } from "@/lib/session";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -119,6 +121,25 @@ const UNAVAILABLE = "Chat is unavailable right now — try again later.";
 const RATE_LIMITED = "Slow down a little — try again in a bit.";
 const FAILED = "Something went wrong — mind trying again?";
 
+/**
+ * The wallet session header, when the visitor is signed in. This widget
+ * mounts outside SessionProvider, so it reads the persisted session
+ * directly (same storage the provider uses). Lets the server enforce the
+ * 5-HBAR build entitlement on build turns; anonymous visitors simply send
+ * no header and are stopped at the paywall when a build starts.
+ */
+function sessionHeader(): Record<string, string> {
+  try {
+    const { session } = restoreSession(
+      window.localStorage.getItem(SESSION_STORAGE_KEY)
+    );
+    if (session?.token) return { [SESSION_HEADER]: session.token };
+  } catch {
+    /* storage unavailable — anonymous */
+  }
+  return {};
+}
+
 export default function AgentChat() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([GREETING]);
@@ -168,7 +189,10 @@ export default function AgentChat() {
         .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/agent/chat", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...sessionHeader(),
+        },
         body: JSON.stringify({
           message: text,
           history,

@@ -74,6 +74,18 @@ import {
   signBuildState,
   verifyBuildState,
 } from "./build-state";
+import {
+  BUILD_FINALIZE_ERROR,
+  BUILD_PAYWALL_ANON,
+  BUILD_RACE_MESSAGE,
+  BUILD_STORE_ERROR,
+  checkBuildAccess,
+  consumeBuild,
+  meteringBypass,
+} from "./build-metering";
+import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
+import { verifySessionToken } from "@/lib/server/townhall/auth";
+import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
@@ -192,11 +204,53 @@ export async function POST(req: NextRequest) {
   // turn falls back to no-state behavior. The state advances from the new
   // user message BEFORE the model runs, so the model always knows exactly
   // what is collected and what to ask next.
-  const buildState = advanceBuildState(
-    verifyBuildState(body?.build_state),
-    message
-  );
+  const prevState = verifyBuildState(body?.build_state);
+  const buildState = advanceBuildState(prevState, message);
   const buildNote = buildStateNote(buildState);
+
+  // Build entitlement (5 HBAR per custom build, Brandon's pricing). The
+  // state is complete when username + bio + vibe are all collected — that
+  // is the turn the model generates the artwork and the draft JSON.
+  const prevComplete = !!(prevState?.u && prevState?.b && prevState?.v);
+  const buildComplete = !!(buildState.u && buildState.b && buildState.v);
+  const justCompleted = buildComplete && !prevComplete;
+
+  // The signed-in wallet (EVM address), or null for anonymous visitors.
+  // Builds need a wallet — anonymous users are stopped at the paywall.
+  let buildWallet: string | null = null;
+  if (buildComplete && !meteringBypass()) {
+    const cred = sessionCredentialFrom(req);
+    const verified =
+      typeof cred === "string" ? verifySessionToken(cred) : null;
+    if (verified && verified.ok) buildWallet = verified.session.address;
+  }
+
+  if (justCompleted && !meteringBypass()) {
+    // Fail fast BEFORE the model burns image generations on an unpaid
+    // build. Anonymous visitors get the connect-wallet paywall; signed-in
+    // wallets without a 5-HBAR build payment get the tip paywall.
+    if (!buildWallet) {
+      return NextResponse.json({
+        reply: BUILD_PAYWALL_ANON,
+        build_state: signBuildState(buildState),
+      });
+    }
+    let access;
+    try {
+      access = await checkBuildAccess(buildWallet);
+    } catch {
+      return NextResponse.json({
+        reply: BUILD_STORE_ERROR,
+        build_state: signBuildState(buildState),
+      });
+    }
+    if (!access.allowed) {
+      return NextResponse.json({
+        reply: access.reason,
+        build_state: signBuildState(buildState),
+      });
+    }
+  }
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
@@ -241,6 +295,31 @@ export async function POST(req: NextRequest) {
         "I got stuck checking the chain — try rephrasing your question.";
     }
     if (truncated) finalContent += " (note: my answer was cut short)";
+
+    // Build consumption: the 5-HBAR payment is spent only when the reply
+    // actually delivers a VALID page draft. A failed draft (no valid JSON)
+    // never consumes — the user keeps their build credit. When the payment
+    // can't be spent (lost a concurrent race, or the store is unreachable),
+    // the draft is withheld instead of given away: the reply never carries
+    // a draft the user wasn't charged for.
+    if (buildComplete && !meteringBypass() && extractPageDraft(finalContent)) {
+      if (!buildWallet) {
+        const prose = stripPageDraft(finalContent);
+        finalContent = prose ? `${prose}\n\n${BUILD_PAYWALL_ANON}` : BUILD_PAYWALL_ANON;
+      } else {
+        let spent = false;
+        let finalizeFailed = false;
+        try {
+          spent = await consumeBuild(buildWallet);
+        } catch {
+          finalizeFailed = true;
+        }
+        if (!spent) {
+          finalContent = finalizeFailed ? BUILD_FINALIZE_ERROR : BUILD_RACE_MESSAGE;
+        }
+      }
+    }
+
     return NextResponse.json({
       reply: finalContent,
       // Opaque to the widget: the signed build state to echo back next turn.

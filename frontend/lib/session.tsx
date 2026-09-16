@@ -56,7 +56,9 @@ import {
 export type { StoredSession };
 export { SignInRequired, SESSION_HEADER };
 
-const STORAGE_KEY = "vs-session-v1";
+/** localStorage key for the persisted wallet session (readable outside the provider). */
+export const SESSION_STORAGE_KEY = "vs-session-v1";
+const STORAGE_KEY = SESSION_STORAGE_KEY;
 
 export type SessionStatus =
   | "loading" // restoring from storage
