@@ -10,10 +10,12 @@
  * - Offline is the default. Twitch shows the player only after the player
  *   fires ONLINE; YouTube only after the server status check says live.
  * - Never show a raw platform error state — an offline card always stands in.
- * - Chat is the official platform embed (Twitch chat, or YouTube live_chat
- *   for the currently-playing video) — never faked. On phones it is a
- *   floating, draggable widget so viewers watch and chat at the same time;
- *   desktop keeps it side-by-side with the player.
+ * - Chat is two-layer: the official platform embed (Twitch chat, or YouTube
+ *   live_chat for the currently-playing video) — never faked. On phones it is
+ *   a floating, draggable widget so viewers watch and chat at the same time;
+ *   desktop keeps it side-by-side with the player. UNDER the player sits the
+ *   page's NATIVE chat (ChatBox): anyone can chat with a username, no
+ *   platform account needed, and the page owner + their mods filter.
  * - Tips reuse the page's existing onTip flow (atomic 98/2 contract).
  *   No new money code here.
  */
@@ -23,6 +25,7 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeLivestreamChannel, type Block } from "@/lib/schema";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
 import { IconPlay, IconTip } from "./icons";
+import ChatBox from "./ChatBox";
 
 type LivestreamBlockT = Extract<Block, { type: "livestream" }>;
 
@@ -374,12 +377,15 @@ export default function LivestreamBlock({
   tipInteractive,
   onTip,
   preview,
+  username,
 }: {
   block: LivestreamBlockT;
   tipInteractive?: boolean;
   onTip?: () => void;
   /** Builder preview: shows a quiet note when the channel can't be embedded. */
   preview?: boolean;
+  /** Page username — renders the native page chat below the player. */
+  username?: string;
 }) {
   const { t } = useLanguage();
   const [unmuted, setUnmuted] = useState(false);
@@ -524,6 +530,11 @@ export default function LivestreamBlock({
           {t("livestream.follow")} ↗
         </a>
       </div>
+
+      {/* Native page chat: anyone can chat with a username, the page owner
+          and their mods filter. Renders on live pages (ChatBox shows a quiet
+          placeholder in builder preview). */}
+      {username ? <ChatBox room={username} preview={preview} /> : null}
     </section>
   );
 }

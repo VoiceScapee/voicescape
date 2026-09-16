@@ -1974,3 +1974,156 @@ a.pv-friend:hover {
     animation: none;
   }
 }
+
+/* ------------------------- native page chatbox ------------------------- */
+.vs-chatbox .pv-block-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vs-chatbox-toolsbtn {
+  font-size: 0.8rem;
+  padding: 4px 10px;
+}
+.vs-chatbox-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--vs-border, rgba(127, 127, 127, 0.35));
+  border-radius: 10px;
+}
+.vs-chatbox-toolsrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+}
+.vs-chatbox-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.15);
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+}
+.vs-chatbox-chip button {
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+  padding: 0 2px;
+  color: inherit;
+}
+.vs-chatbox-chip-ban {
+  background: rgba(200, 40, 40, 0.18);
+}
+.vs-chatbox-addrow {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.vs-chatbox-addrow .vs-input {
+  width: 130px;
+  padding: 4px 8px;
+  font-size: 0.85rem;
+}
+.vs-chatbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  margin-bottom: 10px;
+}
+.vs-chatbox-msg {
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(127, 127, 127, 0.08);
+}
+.vs-chatbox-msghead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.vs-chatbox-name {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.vs-chatbox-verified {
+  color: #2f9e44;
+  margin-left: 4px;
+  font-size: 0.8rem;
+}
+.vs-chatbox-time {
+  font-size: 0.72rem;
+  color: var(--vs-muted);
+}
+.vs-chatbox-menubtn {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--vs-muted);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.vs-chatbox-body {
+  margin: 0;
+  font-size: 0.92rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.vs-chatbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.vs-chatbox-actions button {
+  border: 1px solid var(--vs-border, rgba(127, 127, 127, 0.35));
+  background: none;
+  border-radius: 8px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: inherit;
+}
+.vs-chatbox-error {
+  color: #c92a2a;
+  font-size: 0.85rem;
+  margin: 0 0 8px;
+}
+.vs-chatbox-composer {
+  display: flex;
+  gap: 8px;
+}
+.vs-chatbox-nameinput {
+  width: 110px;
+  flex: none;
+}
+.vs-chatbox-textinput {
+  flex: 1;
+  min-width: 0;
+}
+.vs-chatbox-hint {
+  font-size: 0.78rem;
+  margin: 8px 0 0;
+}
+@media (max-width: 480px) {
+  .vs-chatbox-composer {
+    flex-wrap: wrap;
+  }
+  .vs-chatbox-nameinput {
+    width: 100%;
+  }
+}

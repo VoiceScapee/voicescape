@@ -31,6 +31,7 @@ import {
   IconUsers,
 } from "@/components/icons";
 import LivestreamBlock from "@/components/LivestreamBlock";
+import ChatBox from "@/components/ChatBox";
 import "./renderer.css";
 
 interface RendererProps {
@@ -547,8 +548,11 @@ function BlockView({
           tipInteractive={tipInteractive}
           onTip={onTip}
           preview={preview}
+          username={tipName}
         />
       );
+    case "chat":
+      return <ChatBox room={tipName} title={block.title} preview={preview} />;
     default:
       return null;
   }

@@ -31,7 +31,13 @@ export type Block =
    * (OBS/phone app) and the block only embeds the platform's player.
    * `channel` is the Twitch login name or the YouTube UC… channel ID.
    */
-  | { type: "livestream"; platform: "twitch" | "youtube"; channel: string; title?: string };
+  | { type: "livestream"; platform: "twitch" | "youtube"; channel: string; title?: string }
+  /**
+   * Native page chat room. Anyone with a wallet session can chat; the page
+   * owner moderates (mute/ban/delete, promote/demote mods). Off-chain relay,
+   * rate-limited — the page's own chat, no platform account needed.
+   */
+  | { type: "chat"; title?: string };
 
 /** On-chain owner type. 0 = HUMAN, 1 = AGENT (matches VoicescapeRegistry). */
 export type OwnerType = "human" | "agent";
@@ -149,6 +155,7 @@ export const BLOCK_TYPES = [
   "reviews",
   "booking",
   "livestream",
+  "chat",
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
@@ -198,6 +205,8 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
       };
     case "livestream":
       return { type: "livestream", platform: "twitch", channel: "" };
+    case "chat":
+      return { type: "chat", title: "Chat" };
   }
 }
 
@@ -233,6 +242,11 @@ export function isValidPage(input: unknown): input is VoicescapePage {
       if (lb.platform !== "twitch" && lb.platform !== "youtube") return false;
       if (typeof lb.channel !== "string" || lb.channel.length > 64) return false;
       if (lb.title !== undefined && typeof lb.title !== "string") return false;
+    }
+    // Chat blocks: optional title only.
+    if (type === "chat") {
+      const cb = b as Record<string, unknown>;
+      if (cb.title !== undefined && typeof cb.title !== "string") return false;
     }
     return true;
   });
