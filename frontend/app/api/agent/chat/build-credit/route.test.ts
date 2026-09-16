@@ -63,8 +63,8 @@ function sessionHeaders(evm: string): Record<string, string> {
 
 /** One qualifying 5-HBAR TipSent log for the forge page. */
 function tipLog(timestamp: string, index: number) {
-  const amount = (5_000_000_000_000_000_000n).toString(16).padStart(64, "0");
-  const fee = (100_000_000_000_000_000n).toString(16).padStart(64, "0");
+  const amount = (500_000_000n).toString(16).padStart(64, "0");
+  const fee = (10_000_000n).toString(16).padStart(64, "0");
   return { data: "0x" + amount + fee, timestamp, transaction_index: index };
 }
 

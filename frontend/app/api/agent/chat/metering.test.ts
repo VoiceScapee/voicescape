@@ -30,10 +30,12 @@ import { getKvStore } from "@/lib/server/store";
 
 const EVM = (n: string) => `0x${n.repeat(40)}`;
 
-/** One mirror-node TipSent log for a 5-HBAR tipPage("forge") tip. */
+/** One mirror-node TipSent log for a 5-HBAR tipPage("forge") tip.
+ *  TipSent `amount` is denominated in tinybars on Hedera (verified
+ *  2026-09-16 against mainnet: a 5-HBAR tip logs amount=500_000_000). */
 function tipLog(timestamp: string, index: number) {
-  const amount = (5_000_000_000_000_000_000n).toString(16).padStart(64, "0");
-  const fee = (100_000_000_000_000_000n).toString(16).padStart(64, "0");
+  const amount = (500_000_000n).toString(16).padStart(64, "0");
+  const fee = (10_000_000n).toString(16).padStart(64, "0");
   return {
     data: "0x" + amount + fee,
     timestamp,
@@ -204,7 +206,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   });
 
   it("tips under 5 HBAR do not count", async () => {
-    const amount = (4_999_000_000_000_000_000n).toString(16).padStart(64, "0");
+    const amount = (499_999_999n).toString(16).padStart(64, "0");
     const fee = (0n).toString(16).padStart(64, "0");
     mockMirror([
       [{ data: "0x" + amount + fee, timestamp: "1789521000.1", transaction_index: 4 }],

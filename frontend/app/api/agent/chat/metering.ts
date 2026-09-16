@@ -62,7 +62,11 @@ const BUDDY_USERNAME = "forge";
 const TIPS_CONTRACT_ID = "0.0.10854060";
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 const WEI_PER_TINYBAR = 10_000_000_000n;
-const MIN_PAYMENT_WEI = BigInt(CHAT_PRICE_TINYBAR) * WEI_PER_TINYBAR; // 5 HBAR in wei
+// TipSent `amount` is denominated in tinybars on Hedera (the EVM value
+// unit is the tinybar: a 5-HBAR tipPage logs amount=500_000_000, verified
+// 2026-09-16 against mainnet). Do NOT scale by WEI_PER_TINYBAR here —
+// doing so sets the bar at 5e18 and no real payment is ever credited.
+const MIN_PAYMENT_TINYBAR = BigInt(CHAT_PRICE_TINYBAR); // 5 HBAR in tinybars
 
 // Atomic claim keys — identical to the ops agentkit metering.
 const PAY_CLAIM_PREFIX = "buddy:payclaim:"; // credit: one winner records the payment
@@ -356,7 +360,8 @@ async function discoverFreshPayments(
     for (const log of body.logs ?? []) {
       const id = `${log.timestamp ?? "?"}-${log.transaction_index ?? "?"}`;
       if (knownIds.includes(id)) continue;
-      // data = abi(amount uint256, fee uint256); amount is total tipped (wei)
+      // data = abi(amount uint256, fee uint256); amount is total tipped
+      // (tinybars on Hedera — see MIN_PAYMENT_TINYBAR above)
       const data = log.data ?? "";
       if (data.length < 66) continue;
       let amount = 0n;
@@ -365,7 +370,7 @@ async function discoverFreshPayments(
       } catch {
         continue;
       }
-      if (amount >= MIN_PAYMENT_WEI) fresh.push(id);
+      if (amount >= MIN_PAYMENT_TINYBAR) fresh.push(id);
     }
     return fresh;
   } catch {

@@ -394,10 +394,10 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   function tipLog(
     timestamp: string,
     index: number,
-    amountWei: bigint = 5_000_000_000_000_000_000n
+    amountTinybar: bigint = 500_000_000n
   ) {
-    const amount = amountWei.toString(16).padStart(64, "0");
-    const fee = (100_000_000_000_000_000n).toString(16).padStart(64, "0");
+    const amount = amountTinybar.toString(16).padStart(64, "0");
+    const fee = (10_000_000n).toString(16).padStart(64, "0");
     return { data: "0x" + amount + fee, timestamp, transaction_index: index };
   }
 
@@ -1106,8 +1106,8 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
   }
 
   function tipLog(timestamp: string, index: number) {
-    const amount = (5_000_000_000_000_000_000n).toString(16).padStart(64, "0");
-    const fee = (100_000_000_000_000_000n).toString(16).padStart(64, "0");
+    const amount = (500_000_000n).toString(16).padStart(64, "0");
+    const fee = (10_000_000n).toString(16).padStart(64, "0");
     return { data: "0x" + amount + fee, timestamp, transaction_index: index };
   }
 
@@ -1520,8 +1520,8 @@ describe("chat metering (5 free off-topic, 5 HBAR per 50)", () => {
           {
             data:
               "0x" +
-              (5_000_000_000_000_000_000n).toString(16).padStart(64, "0") +
-              (100_000_000_000_000_000n).toString(16).padStart(64, "0"),
+              (500_000_000n).toString(16).padStart(64, "0") +
+              (10_000_000n).toString(16).padStart(64, "0"),
             timestamp: "1789521300.000000007",
             transaction_index: 7,
           },
