@@ -573,6 +573,48 @@ function BlockEditor({
         </>
       )}
 
+      {block.type === "livestream" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              placeholder="Title (optional)"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Platform</span>
+            <select
+              className="vs-input"
+              value={block.platform}
+              onChange={(e) =>
+                onChange({ ...block, platform: e.target.value as "twitch" | "youtube" })
+              }
+              aria-label="Livestream platform"
+            >
+              <option value="twitch">Twitch</option>
+              <option value="youtube">YouTube</option>
+            </select>
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Channel</span>
+            <input
+              className="vs-input"
+              value={block.channel}
+              placeholder={block.platform === "twitch" ? "your_twitch_name" : "UCxxxxxxxxxxxxxxxxxxxxxx"}
+              onChange={(e) => onChange({ ...block, channel: e.target.value })}
+            />
+            <span className="vs-hint">
+              {block.platform === "twitch"
+                ? "Twitch: your channel name (letters, numbers, underscores)."
+                : "YouTube: your UC… channel ID (not the @handle — find it in YouTube Studio → Settings → Channel)."}
+            </span>
+          </label>
+        </>
+      )}
+
       {block.type === "gallery" && (
         <>
           <span className="vs-label">Images</span>
@@ -2514,11 +2556,11 @@ function BuilderInner() {
                     </button>
                   </div>
                 </div>
-                <PageRenderer page={aiDraft.page} />
+                <PageRenderer page={aiDraft.page} preview />
               </div>
             </div>
           ) : (
-            <PageRenderer page={page} />
+            <PageRenderer page={page} preview />
           )}
         </div>
       </div>

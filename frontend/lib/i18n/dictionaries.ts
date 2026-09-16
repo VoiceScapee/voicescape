@@ -421,6 +421,17 @@ const en = {
   "congrats.body": "You carved out your piece of cyberspace — it's <b>yours</b> now. Your wallet, your page, your money, and <b>98% of everything</b> that comes in stays with you.",
   "congrats.cta": "See my blockpage",
   "congrats.once": "This shows once, the first time you visit Buddy's page after claiming. Then it's gone — no nagging.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Livestream",
+  "livestream.live": "LIVE",
+  "livestream.offline": "Currently offline",
+  "livestream.stream": "Stream",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Tip the streamer",
+  "livestream.tapForSound": "Tap for sound",
+  "livestream.follow": "Follow",
+  "livestream.invalidChannel": "Livestream block: enter a valid channel — a Twitch name, or a YouTube UC… channel ID.",
 } as const;
 
 export type I18nKey = keyof typeof en;
@@ -813,6 +824,17 @@ const es: Record<I18nKey, string> = {
   "congrats.body": "Tallaste tu pedazo del ciberespacio — ahora es <b>tuyo</b>. Tu billetera, tu página, tu dinero, y <b>el 98% de todo</b> lo que entre se queda contigo.",
   "congrats.cta": "Ver mi blockpage",
   "congrats.once": "Esto aparece una sola vez, la primera vez que visitas la página de Buddy después de reclamarla. Después desaparece — sin molestias.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "En directo",
+  "livestream.live": "EN VIVO",
+  "livestream.offline": "Sin emisión",
+  "livestream.stream": "Video",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Propina al streamer",
+  "livestream.tapForSound": "Toca para el sonido",
+  "livestream.follow": "Seguir",
+  "livestream.invalidChannel": "Bloque de directo: introduce un canal válido (nombre de Twitch o ID de canal UC… de YouTube).",
 };
 const zh: Record<I18nKey, string> = {
   // Navbar
@@ -1200,6 +1222,17 @@ const zh: Record<I18nKey, string> = {
   "congrats.body": "你已经在网络世界里开辟了属于你的一块地——现在它<b>属于你</b>了。你的钱包、你的页面、你的钱，进来的钱<b>98% 都归你</b>。",
   "congrats.cta": "查看我的 blockpage",
   "congrats.once": "这条消息只会出现一次——在你认领之后第一次访问 Buddy 的页面时。之后就没了，不会烦你。",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "直播",
+  "livestream.live": "直播中",
+  "livestream.offline": "当前未开播",
+  "livestream.stream": "直播",
+  "livestream.chat": "聊天",
+  "livestream.tipStreamer": "打赏主播",
+  "livestream.tapForSound": "点击开启声音",
+  "livestream.follow": "关注",
+  "livestream.invalidChannel": "直播模块：请输入有效的频道（Twitch 用户名或 YouTube UC… 频道 ID）。",
 };
 const hi: Record<I18nKey, string> = {
   // Navbar
@@ -1587,6 +1620,17 @@ const hi: Record<I18nKey, string> = {
   "congrats.body": "आपने साइबरस्पेस में अपना हिस्सा बना लिया है — अब ये <b>आपका</b> है। आपका वॉलेट, आपका पेज, आपका पैसा, और आने वाले हर पैसे का <b>98% आपके पास</b> रहेगा।",
   "congrats.cta": "मेरा blockpage देखें",
   "congrats.once": "ये सिर्फ एक बार दिखेगा — क्लेम करने के बाद पहली बार जब आप Buddy का पेज खोलेंगे। फिर ये चला जाएगा — कोई परेशानी नहीं।",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "लाइवस्ट्रीम",
+  "livestream.live": "लाइव",
+  "livestream.offline": "फिलहाल ऑफ़लाइन",
+  "livestream.stream": "स्ट्रीम",
+  "livestream.chat": "चैट",
+  "livestream.tipStreamer": "स्ट्रीमर को टिप दें",
+  "livestream.tapForSound": "आवाज़ के लिए टैप करें",
+  "livestream.follow": "फ़ॉलो करें",
+  "livestream.invalidChannel": "लाइवस्ट्रीम ब्लॉक: सही चैनल डालें (Twitch नाम या YouTube UC… चैनल ID)।",
 };
 const ar: Record<I18nKey, string> = {
   // Navbar
@@ -1974,6 +2018,17 @@ const ar: Record<I18nKey, string> = {
   "congrats.body": "لقد اقتطعت قطعتك من الفضاء السيبراني — أصبحت <b>ملكك</b> الآن. محفظتك، صفحتك، أموالك، و<b>98% من كل</b> ما يأتي سيبقى معك.",
   "congrats.cta": "شاهد الـ blockpage الخاصة بي",
   "congrats.once": "يظهر هذا مرة واحدة فقط، في أول زيارة لصفحة Buddy بعد الاستلام. ثم يختفي — بدون إزعاج.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "بث مباشر",
+  "livestream.live": "مباشر",
+  "livestream.offline": "غير متصل حالياً",
+  "livestream.stream": "البث",
+  "livestream.chat": "الدردشة",
+  "livestream.tipStreamer": "إكرامية للمذيع",
+  "livestream.tapForSound": "انقر للصوت",
+  "livestream.follow": "تابع",
+  "livestream.invalidChannel": "مكوّن البث: أدخل قناة صالحة (اسم Twitch أو معرّف قناة YouTube الذي يبدأ بـ UC…).",
 };
 const pt: Record<I18nKey, string> = {
   // Navbar
@@ -2361,6 +2416,17 @@ const pt: Record<I18nKey, string> = {
   "congrats.body": "Você esculpiu seu pedaço do ciberespaço — agora é <b>seu</b>. Sua carteira, sua página, seu dinheiro, e <b>98% de tudo</b> que entrar fica com você.",
   "congrats.cta": "Ver meu blockpage",
   "congrats.once": "Isso aparece uma vez só, na primeira vez que você visita a página do Buddy depois de resgatá-lo. Depois some — sem insistência.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Ao vivo",
+  "livestream.live": "AO VIVO",
+  "livestream.offline": "Offline no momento",
+  "livestream.stream": "Transmissão",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Dar gorjeta ao streamer",
+  "livestream.tapForSound": "Toque para ativar o som",
+  "livestream.follow": "Seguir",
+  "livestream.invalidChannel": "Bloco de live: insira um canal válido (nome da Twitch ou ID de canal UC… do YouTube).",
 };
 const fr: Record<I18nKey, string> = {
   // Navbar
@@ -2749,6 +2815,17 @@ const fr: Record<I18nKey, string> = {
   "congrats.body": "Vous avez taillé votre morceau du cyberespace — il est <b>à vous</b> maintenant. Votre portefeuille, votre page, votre argent, et <b>98 % de tout</b> ce qui arrive reste avec vous.",
   "congrats.cta": "Voir mon blockpage",
   "congrats.once": "Ça n'apparaît qu'une fois, la première fois que vous visitez la page de Buddy après l'avoir réclamée. Ensuite c'est fini — pas de harcèlement.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "En direct",
+  "livestream.live": "EN DIRECT",
+  "livestream.offline": "Hors ligne pour le moment",
+  "livestream.stream": "Diffusion",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Donner un pourboire au streamer",
+  "livestream.tapForSound": "Touchez pour le son",
+  "livestream.follow": "Suivre",
+  "livestream.invalidChannel": "Bloc de diffusion : saisissez une chaîne valide (nom Twitch ou ID de chaîne YouTube UC…).",
 };
 
 const ja: Record<I18nKey, string> = {
@@ -3097,6 +3174,17 @@ const ja: Record<I18nKey, string> = {
   "congrats.body": "サイバースペースの一角を切り取りましたね——今は<b>あなたのもの</b>です。あなたのウォレット、あなたのページ、あなたのお金。入ってくるものは<b>98% があなた</b>のものです。",
   "congrats.cta": "自分の blockpage を見る",
   "congrats.once": "これは一度だけ表示されます——受け取り後に初めて Buddy のページを訪れたときだけ。その後はもう出てきません——しつこくしません。",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "ライブ配信",
+  "livestream.live": "配信中",
+  "livestream.offline": "現在オフライン",
+  "livestream.stream": "配信",
+  "livestream.chat": "チャット",
+  "livestream.tipStreamer": "配信者にチップ",
+  "livestream.tapForSound": "タップで音声オン",
+  "livestream.follow": "フォロー",
+  "livestream.invalidChannel": "ライブブロック：有効なチャンネルを入力してください（Twitch名またはYouTubeのUC…チャンネルID）。",
 };
 
 const ko: Record<I18nKey, string> = {
@@ -3445,6 +3533,17 @@ const ko: Record<I18nKey, string> = {
   "congrats.body": "사이버스페이스의 한 조각을 차지하셨어요 — 이제 <b>당신 것</b>입니다. 당신의 지갑, 당신의 페이지, 당신의 돈, 그리고 들어오는 모든 것의 <b>98%가 당신</b>에게 돌아가요。",
   "congrats.cta": "내 blockpage 보기",
   "congrats.once": "이건 딱 한 번만 뜹니다 — 클레임 후 처음 Buddy의 페이지를 방문할 때. 그 다음엔 사라져요 — 귀찮게 하지 않아요.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "라이브",
+  "livestream.live": "생방송 중",
+  "livestream.offline": "현재 오프라인",
+  "livestream.stream": "방송",
+  "livestream.chat": "채팅",
+  "livestream.tipStreamer": "스트리머에게 팁",
+  "livestream.tapForSound": "소리를 켜려면 탭",
+  "livestream.follow": "팔로우",
+  "livestream.invalidChannel": "라이브 블록: 유효한 채널을 입력하세요 (Twitch 이름 또는 YouTube UC… 채널 ID).",
 };
 
 const vi: Record<I18nKey, string> = {
@@ -3793,6 +3892,17 @@ const vi: Record<I18nKey, string> = {
   "congrats.body": "Bạn đã tạc nên góc trời riêng của mình trên không gian mạng — giờ nó <b>thuộc về bạn</b>. Ví của bạn, trang của bạn, tiền của bạn, và <b>98% của mọi thứ</b> thu về đều ở lại với bạn.",
   "congrats.cta": "Xem blockpage của tôi",
   "congrats.once": "Điều này chỉ hiện một lần duy nhất, lần đầu tiên bạn ghé thăm trang của Buddy sau khi nhận. Sau đó nó biến mất — không làm phiền.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Trực tiếp",
+  "livestream.live": "ĐANG TRỰC TIẾP",
+  "livestream.offline": "Hiện đang ngoại tuyến",
+  "livestream.stream": "Phát trực tiếp",
+  "livestream.chat": "Trò chuyện",
+  "livestream.tipStreamer": "Tip cho streamer",
+  "livestream.tapForSound": "Chạm để bật tiếng",
+  "livestream.follow": "Theo dõi",
+  "livestream.invalidChannel": "Khối livestream: nhập kênh hợp lệ (tên Twitch hoặc ID kênh UC… của YouTube).",
 };
 
 const id: Record<I18nKey, string> = {
@@ -4141,6 +4251,17 @@ const id: Record<I18nKey, string> = {
   "congrats.body": "Kamu sudah mengukir bagianmu di dunia siber — sekarang <b>milikmu</b>. Dompetmu, halamanmu, uangmu, dan <b>98% dari semua</b> yang masuk tetap menjadi milikmu.",
   "congrats.cta": "Lihat blockpage-ku",
   "congrats.once": "Ini cuma muncul sekali, saat pertama kali kamu mengunjungi halaman Buddy setelah klaim. Setelah itu hilang — nggak bakal nagih.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Siaran langsung",
+  "livestream.live": "SEDANG LIVE",
+  "livestream.offline": "Sedang offline",
+  "livestream.stream": "Siaran",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Beri tip ke streamer",
+  "livestream.tapForSound": "Ketuk untuk suara",
+  "livestream.follow": "Ikuti",
+  "livestream.invalidChannel": "Blok livestream: masukkan channel yang valid (nama Twitch atau ID channel UC… YouTube).",
 };
 
 const th: Record<I18nKey, string> = {
@@ -4489,6 +4610,17 @@ const th: Record<I18nKey, string> = {
   "congrats.body": "คุณได้แกะสลักพื้นที่ของตัวเองในไซเบอร์สเปซแล้ว — ตอนนี้มันเป็น<b>ของคุณ</b>แล้ว กระเป๋าของคุณ เพจของคุณ เงินของคุณ และ <b>98% ของทุกอย่าง</b>ที่เข้ามาจะอยู่กับคุณ",
   "congrats.cta": "ดู blockpage ของฉัน",
   "congrats.once": "ข้อความนี้จะแสดงแค่ครั้งเดียว ตอนที่คุณเข้าชมเพจของ Buddy เป็นครั้งแรกหลังรับสิทธิ์ หลังจากนั้นมันจะหายไป — ไม่มีอะไรมากวนใจ",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "ถ่ายทอดสด",
+  "livestream.live": "กำลังถ่ายทอดสด",
+  "livestream.offline": "ออฟไลน์อยููใ่นีณะนี้",
+  "livestream.stream": "สตรีม",
+  "livestream.chat": "แชท",
+  "livestream.tipStreamer": "ให้ทิปสตรีมเมอร์",
+  "livestream.tapForSound": "แตะเพื่อเปิดเสียง",
+  "livestream.follow": "ติดตาม",
+  "livestream.invalidChannel": "บล็อกไลฟ์สตรีม: ใส่ช่องที่ถถูกต้อง (ชื่อ Twitch หรือรหัสช่อง UC… ของ YouTube)",
 };
 
 const tl: Record<I18nKey, string> = {
@@ -4837,6 +4969,17 @@ const tl: Record<I18nKey, string> = {
   "congrats.body": "Naukit mo na ang sarili mong piraso ng cyberspace — <b>sa iyo</b> na ito ngayon. Ang wallet mo, ang page mo, ang pera mo, at <b>98% ng lahat</b> ng papasok ay mananatili sa iyo.",
   "congrats.cta": "Tingnan ang blockpage ko",
   "congrats.once": "Lalabas ito nang isang beses lang, sa unang pagbisita mo sa page ni Buddy pagkatapos mong i-claim. Pagkatapos ay mawawala na ito — walang pambubulahaw.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Livestream",
+  "livestream.live": "LIVE",
+  "livestream.offline": "Kasalukuyang offline",
+  "livestream.stream": "Stream",
+  "livestream.chat": "Chat",
+  "livestream.tipStreamer": "Mag-tip sa streamer",
+  "livestream.tapForSound": "I-tap para sa tunog",
+  "livestream.follow": "I-follow",
+  "livestream.invalidChannel": "Livestream block: maglagay ng valid na channel (Twitch name o YouTube UC… channel ID).",
 };
 
 const tr: Record<I18nKey, string> = {
@@ -5185,6 +5328,17 @@ const tr: Record<I18nKey, string> = {
   "congrats.body": "Siber uzaydaki kendi parçanı oyup çıkardın — artık <b>senin</b>. Cüzdanın, sayfan, paran ve gelen her şeyin <b>%98'i sende</b> kalıyor.",
   "congrats.cta": "blockpage'imi gör",
   "congrats.once": "Bu sadece bir kez görünür, sahiplendikten sonra Buddy'nin sayfasını ilk ziyaret ettiğinde. Sonra kaybolur — ısrar yok.",
+
+  // Livestream block (Phase 1)
+  "livestream.title": "Canlı yayın",
+  "livestream.live": "CANLI",
+  "livestream.offline": "Şu anda çevrimdışı",
+  "livestream.stream": "Yayın",
+  "livestream.chat": "Sohbet",
+  "livestream.tipStreamer": "Yayıncıya bahşiş ver",
+  "livestream.tapForSound": "Ses için dokun",
+  "livestream.follow": "Takip et",
+  "livestream.invalidChannel": "Canlı yayın bloğu: geçerli bir kanal girin (Twitch adı veya YouTube UC… kanal kimliği).",
 };
 
 export const dictionaries: Record<Lang, Record<I18nKey, string>> = { en, es, zh, hi, ar, pt, fr, ja, ko, vi, id, th, tl, tr };

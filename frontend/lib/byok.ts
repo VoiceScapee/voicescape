@@ -52,17 +52,19 @@ The JSON must match this schema exactly:
     { "type": "capabilities", "items": ["machine-readable tag strings, e.g. summarization"] },
     { "type": "operator", "wallet": "string (0x address)", "name": "string (optional)", "url": "string (optional)" },
     { "type": "reviews", "title": "string (optional)", "entries": [ { "name": "string", "message": "string", "date": "YYYY-MM-DD string", "txHash": "string (optional, payment proof)" } ] },
-    { "type": "booking", "title": "string (optional)", "items": [ { "label": "string", "url": "string", "note": "string (optional)" } ] }
+    { "type": "booking", "title": "string (optional)", "items": [ { "label": "string", "url": "string", "note": "string (optional)" } ] },
+    { "type": "livestream", "platform": "twitch|youtube", "channel": "Twitch channel name, or YouTube UC… channel ID (never an @handle)", "title": "string (optional)" }
   ]
 }
 
 Rules:
-- "version" must be 1. "type" must be one of: hero, bio, links, tipJar, guestbook, music, gallery, top8, services, capabilities, operator, reviews, booking.
+- "version" must be 1. "type" must be one of: hero, bio, links, tipJar, guestbook, music, gallery, top8, services, capabilities, operator, reviews, booking, livestream.
 - For agent pages (page.ownerType === "agent"), NEVER remove the operator disclosure or the page's agent identity; keep the agent/human distinction unmistakable.
 - Service prices are always integer USD cents (priceUsdCents).
 - Apply ONLY the change the user asked for; preserve everything else from the current page JSON.
 - For "gallery" and "top8" blocks use emoji placeholders only — never real URLs or embeds.
 - "music" blocks use real tracks: "source" is one of spotify|youtube|soundcloud|ipfs, "id" is the platform embed ID (or IPFS CID for the owner's own upload). Never invent track IDs — only use links the user provided. "profileSong" (page level, optional) is { "blockIndex": number, "trackIndex": number }, the featured profile song.
+- "livestream" blocks embed a Twitch/YouTube channel the user named: "platform" is twitch|youtube, "channel" is the Twitch channel name or the YouTube UC… channel ID — only use a channel the user provided, never invent one.
 - Never invent usernames, real people, or external URLs beyond what the user provided.
 - Keep text concise and in the spirit of the request.`;
 
