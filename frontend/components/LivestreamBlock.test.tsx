@@ -86,8 +86,11 @@ describe("LivestreamBlock — YouTube wiring", () => {
   it("renders the real YouTube live_chat embed once a live video id is known", () => {
     // Chat panel is no longer Twitch-only: YouTube gets the official
     // live_chat embed for the currently-playing video, hidden until live.
+    // Desktop renders it in the inline side-by-side column…
     expect(src).toContain("youTubeLiveChatSrc");
-    expect(src).toMatch(/\{\(isTwitch \|\| youTubeChat\) && \(\s*<div[^>]*vs-livestream-chat/);
+    expect(src).toMatch(/\{activeChatSrc && !isMobile && \(\s*<div className="vs-livestream-chat">/);
+    // …while phones get the floating widget (one chat iframe at a time).
+    expect(src).toMatch(/\{activeChatSrc && isMobile && <FloatingChatWidget chatSrc=\{activeChatSrc\}/);
     // Never a faked chat: the iframe src is the official live_chat endpoint.
     expect(src).toContain("https://www.youtube.com/live_chat?v=");
     expect(src).toContain("embed_domain=");
@@ -117,8 +120,14 @@ describe("LivestreamBlock — YouTube wiring", () => {
     expect(src).toContain("offline-first");
   });
 
-  it("Stream/Chat mobile tabs appear for YouTube chat too", () => {
-    expect(src).toMatch(/\{showChat && \(\s*<div className="vs-livestream-tabs"/);
+  it("mobile chat is a floating widget, not Stream/Chat tabs", () => {
+    // Brandon's call: on phones viewers watch and chat at the same time, so
+    // the tab switcher is gone — chat is a floating, draggable widget.
+    expect(src).not.toContain('role="tablist"');
+    expect(src).not.toContain("vs-livestream-tabs");
+    expect(src).not.toContain("mobileTab");
+    expect(src).toContain("FloatingChatWidget");
+    expect(src).toContain("vs-chatfloat");
   });
 
   it("YouTube offline card links to the channel page", () => {
@@ -153,10 +162,28 @@ describe("LivestreamBlock — tips reuse the existing flow", () => {
 });
 
 describe("LivestreamBlock — responsive layout", () => {
-  it("has Stream/Chat tabs for Twitch (mobile pattern)", () => {
-    expect(src).toContain('role="tablist"');
-    expect(src).toContain("livestream.stream");
-    expect(src).toContain("livestream.chat");
+  it("phone chat is a collapsible, draggable floating widget", () => {
+    // Starts as a bubble so it never covers the video on load; the header
+    // drags via pointer events; collapsing slides it off-screen instead of
+    // unmounting so the live chat stays connected.
+    expect(src).toContain("vs-chatfloat-bubble");
+    expect(src).toContain("vs-chatfloat-header");
+    expect(src).toContain("onPointerDown");
+    expect(src).toContain("setPointerCapture");
+    expect(src).toContain("vs-chatfloat-collapsed");
+    expect(src).toContain('useMatchMedia("(max-width: 640px)")');
+  });
+
+  it("desktop keeps chat side-by-side with the player", () => {
+    expect(src).toMatch(/\{activeChatSrc && !isMobile && \(\s*<div className="vs-livestream-chat">/);
+    const css = readFileSync(join(here, "renderer.css"), "utf8");
+    // The widget is phone-only; the inline column is hidden on phones.
+    expect(css).toMatch(
+      /@media \(min-width: 641px\)[\s\S]*?\.vs-chatfloat-root[\s\S]*?display:\s*none/,
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 640px\)[\s\S]*?\.vs-livestream-chat[\s\S]*?display:\s*none/,
+    );
   });
 
   it("player keeps 16:9", () => {

@@ -8,14 +8,16 @@
  *
  * Honesty rules:
  * - Offline is the default. Twitch shows the player only after the player
- *   fires ONLINE; YouTube only after the IFrame API reports PLAYING.
+ *   fires ONLINE; YouTube only after the server status check says live.
  * - Never show a raw platform error state — an offline card always stands in.
- * - Twitch chat is the official embed. YouTube has no chat in Phase 1
- *   (player only — no fake chat).
+ * - Chat is the official platform embed (Twitch chat, or YouTube live_chat
+ *   for the currently-playing video) — never faked. On phones it is a
+ *   floating, draggable widget so viewers watch and chat at the same time;
+ *   desktop keeps it side-by-side with the player.
  * - Tips reuse the page's existing onTip flow (atomic 98/2 contract).
  *   No new money code here.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeLivestreamChannel, type Block } from "@/lib/schema";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
@@ -236,6 +238,136 @@ export function youTubeLiveChatSrc(videoId: string, hostname: string): string {
   );
 }
 
+/**
+ * Media-query hook so exactly one chat iframe exists at a time: the floating
+ * widget on phones, the inline column on desktop. Defaults from
+ * window.innerWidth so the first paint already matches the device.
+ */
+function useMatchMedia(query: string): boolean {
+  const [matches, setMatches] = useState(
+    () => typeof window !== "undefined" && window.innerWidth <= 640,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia(query);
+    setMatches(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+/**
+ * Floating chat widget (phones): starts as a small bubble so it never covers
+ * the video on load. Tapping it opens a panel that drags by its header and
+ * collapses back to the bubble with the X. The chat iframe mounts on first
+ * open and stays mounted while collapsed (slid off-screen) so the live
+ * conversation doesn't reload every time it's tucked away.
+ */
+function FloatingChatWidget({ chatSrc, t }: { chatSrc: string; t: (k: I18nKey) => string }) {
+  const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; dx: number; dy: number } | null>(null);
+
+  const openPanel = () => {
+    setMounted(true);
+    setOpen(true);
+  };
+
+  const onHeaderPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    // Let the close button receive its own tap — never start a drag from it.
+    if ((e.target as HTMLElement).closest("button")) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+    const rect = panel.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: e.pointerId,
+      dx: e.clientX - rect.left,
+      dy: e.clientY - rect.top,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* pointer capture is best-effort */
+    }
+  };
+
+  const onHeaderPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = dragRef.current;
+    if (!d || d.pointerId !== e.pointerId) return;
+    const panel = panelRef.current;
+    if (!panel || typeof window === "undefined") return;
+    const w = panel.offsetWidth;
+    const x = Math.max(8, Math.min(e.clientX - d.dx, window.innerWidth - w - 8));
+    // Keep the header reachable: never drag the panel fully off the top.
+    const y = Math.max(8, Math.min(e.clientY - d.dy, window.innerHeight - 96));
+    setPos({ x, y });
+  };
+
+  const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (dragRef.current && dragRef.current.pointerId === e.pointerId) dragRef.current = null;
+  };
+
+  return (
+    <div className="vs-chatfloat-root">
+      {!open && (
+        <button
+          type="button"
+          className="vs-chatfloat-bubble"
+          onClick={openPanel}
+          aria-label={t("livestream.chat")}
+        >
+          <span aria-hidden="true">💬</span>
+        </button>
+      )}
+      {mounted && (
+        <div
+          ref={panelRef}
+          role="dialog"
+          aria-label={t("livestream.chat")}
+          className={`vs-chatfloat-panel${open ? "" : " vs-chatfloat-collapsed"}`}
+          style={
+            pos ? { left: pos.x, top: pos.y, right: "auto", bottom: "auto" } : undefined
+          }
+        >
+          <div
+            className="vs-chatfloat-header"
+            onPointerDown={onHeaderPointerDown}
+            onPointerMove={onHeaderPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            <span>
+              <span aria-hidden="true">💬 </span>
+              {t("livestream.chat")}
+            </span>
+            <button
+              type="button"
+              className="vs-chatfloat-close"
+              onClick={() => setOpen(false)}
+              aria-label={t("livestream.chat")}
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
+          <div className="vs-chatfloat-body">
+            <iframe
+              src={chatSrc}
+              title={t("livestream.chat")}
+              className="vs-chatfloat-frame"
+              allowFullScreen
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LivestreamBlock({
   block,
   tipInteractive,
@@ -249,8 +381,9 @@ export default function LivestreamBlock({
   preview?: boolean;
 }) {
   const { t } = useLanguage();
-  const [mobileTab, setMobileTab] = useState<"stream" | "chat">("stream");
   const [unmuted, setUnmuted] = useState(false);
+  // One chat iframe at a time: floating widget on phones, inline column on desktop.
+  const isMobile = useMatchMedia("(max-width: 640px)");
 
   const channel = sanitizeLivestreamChannel(block.platform, block.channel);
 
@@ -272,11 +405,11 @@ export default function LivestreamBlock({
   const isTwitch = block.platform === "twitch";
   const { live, unmute } = isTwitch ? twitch : youTube;
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-  const chatSrc = `https://www.twitch.tv/embed/${channel}/chat?parent=${encodeURIComponent(hostname)}&darkpopout`;
+  const twitchChatSrc = `https://www.twitch.tv/embed/${channel}/chat?parent=${encodeURIComponent(hostname)}&darkpopout`;
   // YouTube chat exists only while a concrete live video is playing.
   const youTubeChat =
     !isTwitch && live && youTube.videoId ? youTubeLiveChatSrc(youTube.videoId, hostname) : null;
-  const showChat = isTwitch || youTubeChat;
+  const activeChatSrc = isTwitch ? twitchChatSrc : youTubeChat;
   const youTubeSrc =
     live && youTube.videoId
       ? // Live: embed the concrete video directly — the well-trodden path.
@@ -312,33 +445,8 @@ export default function LivestreamBlock({
         )}
       </h2>
 
-      {showChat && (
-        <div className="vs-livestream-tabs" role="tablist" aria-label={title}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileTab === "stream"}
-            className={mobileTab === "stream" ? "vs-tab-active" : ""}
-            onClick={() => setMobileTab("stream")}
-          >
-            {t("livestream.stream")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mobileTab === "chat"}
-            className={mobileTab === "chat" ? "vs-tab-active" : ""}
-            onClick={() => setMobileTab("chat")}
-          >
-            {t("livestream.chat")}
-          </button>
-        </div>
-      )}
-
       <div className="vs-livestream-layout">
-        <div
-          className={`vs-livestream-player${showChat && mobileTab === "chat" ? " vs-mobile-hidden" : ""}`}
-        >
+        <div className="vs-livestream-player">
           {isTwitch ? (
             <div className="vs-livestream-embedwrap">
               {/* The player mounts underneath; it appears only on the ONLINE event. */}
@@ -373,12 +481,12 @@ export default function LivestreamBlock({
           )}
         </div>
 
-        {(isTwitch || youTubeChat) && (
-          <div
-            className={`vs-livestream-chat${mobileTab === "stream" ? " vs-mobile-hidden" : ""}`}
-          >
+        {/* Desktop keeps chat side-by-side; phones get the floating widget
+            below so viewers watch and chat at the same time. */}
+        {activeChatSrc && !isMobile && (
+          <div className="vs-livestream-chat">
             <iframe
-              src={isTwitch ? chatSrc : (youTubeChat as string)}
+              src={activeChatSrc}
               title={t("livestream.chat")}
               className="vs-livestream-frame"
               allowFullScreen
@@ -386,6 +494,8 @@ export default function LivestreamBlock({
           </div>
         )}
       </div>
+
+      {activeChatSrc && isMobile && <FloatingChatWidget chatSrc={activeChatSrc} t={t} />}
 
       <div className="vs-livestream-actions">
         {live && !unmuted && (
