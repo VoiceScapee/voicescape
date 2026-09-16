@@ -1066,6 +1066,33 @@ a.pv-friend:hover {
   margin: 0 0 16px;
 }
 
+.pv-tip-how {
+  font-size: 13px;
+  color: var(--vs-muted, #9b9b9d);
+  line-height: 1.6;
+  margin: 0 0 16px;
+  border: 1px solid var(--vs-line, rgba(255, 255, 255, 0.09));
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.pv-tip-how summary {
+  cursor: pointer;
+  color: var(--vs-text, #f2f2f4);
+  font-weight: 600;
+  font-size: 13.5px;
+}
+
+.pv-tip-how p {
+  margin: 8px 0 0;
+}
+
+.pv-tip-how a {
+  color: var(--vs-accent, #a78bfa);
+  text-decoration: underline;
+  word-break: break-all;
+}
+
 .pv-tip-approve {
   font-size: 13px;
   color: var(--vs-muted, #9b9b9d);

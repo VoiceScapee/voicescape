@@ -375,6 +375,27 @@ function TipBox({
                     .replace("{name}", username)
                     .replace("{fee}", fmtHbarShort(treasuryAmt ?? 0))}
                 </p>
+                <details className="pv-tip-how">
+                  <summary>How the 98/2 split works</summary>
+                  <p>
+                    Two public smart contracts on Hedera handle the money — anyone can inspect them.
+                  </p>
+                  <p>
+                    <strong>The Registry</strong> links every blockpage name to its creator&apos;s wallet,
+                    so your tip can only land in {username}&apos;s wallet.{" "}
+                    <a href="https://hashscan.io/mainnet/contract/0.0.10854058" target="_blank" rel="noreferrer">
+                      0.0.10854058
+                    </a>
+                  </p>
+                  <p>
+                    <strong>The Tips contract</strong> splits your payment in a single transaction: 98% goes
+                    straight to the creator, 2% keeps Voicescape running. Nobody holds your money in
+                    between.{" "}
+                    <a href="https://hashscan.io/mainnet/contract/0.0.10854060" target="_blank" rel="noreferrer">
+                      0.0.10854060
+                    </a>
+                  </p>
+                </details>
               </>
             )}
 
