@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "dep:watch": "node scripts/dep-security-watch.mjs",
     "townhall:init": "tsx scripts/townhall-init.ts"
   },
   "dependencies": {
