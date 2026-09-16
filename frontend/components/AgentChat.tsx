@@ -22,11 +22,25 @@ import { recordConversionEvent } from "@/lib/metrics";
 
 type Msg = { role: "user" | "assistant"; content: string; failed?: boolean };
 
-const GREETING: Msg = {
-  role: "assistant",
-  content:
-    "Hey, welcome to Voicescape! 👋 I'm Buddy. A blockpage is your own little corner of the internet — you own it, not us. Your wallet is your login (no passwords), and anything of value moves on-chain where you can verify it. Want the quick tour, or ready to build your page? If you build with me, just give me a username, a short bio, and the vibe — I'll make the artwork and the whole page for you.",
-};
+/**
+ * Onboarding: two short sequenced messages instead of one long monologue
+ * (chatbot UX consensus: 1–2 short sentences, one invited response), with
+ * quick-reply chips as the entry points. The read-only trust line ships
+ * in the first message — Ada's no-human-pretense pattern for crypto trust.
+ */
+const GREETING_MSGS: Msg[] = [
+  {
+    role: "assistant",
+    content:
+      "Hey, welcome to Voicescape! 👋 I'm Buddy. I look things up on-chain for you — I never sign, spend, or publish, so your wallet stays yours.",
+  },
+  {
+    role: "assistant",
+    content: "Want the quick tour, or ready to build your page?",
+  },
+];
+/** Greeting quick-reply chips: tapping one posts it as the user's message. */
+const GREETING_CHIPS = ["✨ Quick tour", "🛠️ Build with me", "⛓️ Check my wallet"];
 
 /** Assistant replies, rendered as styled markdown for a narrow chat bubble. */
 function BuddyMarkdown({ content }: { content: string }) {
@@ -147,17 +161,24 @@ function sessionHeader(): Record<string, string> {
 
 export default function AgentChat() {
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState<Msg[]>([GREETING]);
+  const [msgs, setMsgs] = useState<Msg[]>(GREETING_MSGS);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const launcherRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   // Server-signed build-progress token (opaque): echoed back each turn so
   // Buddy can track the multi-turn blockpage flow. Never displayed.
   const buildStateRef = useRef<string>("");
   // Free off-topic messages remaining (null = unknown / not metered).
   // Voicescape & blockchain questions are always free and never count.
-  const [freeLeft, setFreeLeft] = useState<number | null>(null);
+  // Anonymous visitors start at the documented allowance so the pill is
+  // visible from message one; the server corrects it on the first metered
+  // turn (report's "show the countdown from the start" win).
+  const [freeLeft, setFreeLeft] = useState<number | null>(() =>
+    Object.keys(sessionHeader()).length === 0 ? 5 : null
+  );
 
   // Funnel telemetry: fire "buddy_preview_shown" once per assistant message
   // that renders a page draft (the "Open in Builder" path). Message indices
@@ -179,8 +200,43 @@ export default function AgentChat() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [msgs, busy, open]);
 
+  // Focus the input when the panel opens. Esc closes the panel, Tab is
+  // trapped inside while open, and focus returns to the launcher on
+  // close — Intercom's verified-live accessible-dialog pattern.
+  const everOpenedRef = useRef(false);
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (!open) {
+      // Never steal focus on first mount — only return it after a close.
+      if (everOpenedRef.current) launcherRef.current?.focus();
+      return;
+    }
+    everOpenedRef.current = true;
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        return;
+      }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const focusables = panel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !panel.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
   }, [open ]);
 
   // One-time "🎉 Your blockpage is live!" greeting after a publish.
@@ -210,12 +266,20 @@ export default function AgentChat() {
     if (busy) return;
     const lastUser = [...msgs].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
-    // Drop trailing failed bubble(s), then re-send against the trimmed list.
+    // Drop the failed bubble(s) and the user message being re-sent, then
+    // re-send against the trimmed list (sendMessage appends one copy).
     const trimmed = [...msgs];
     while (trimmed.length > 0) {
       const tail = trimmed[trimmed.length - 1];
       if (tail.role === "assistant" && tail.failed) trimmed.pop();
       else break;
+    }
+    if (
+      trimmed.length > 0 &&
+      trimmed[trimmed.length - 1].role === "user" &&
+      trimmed[trimmed.length - 1].content === lastUser.content
+    ) {
+      trimmed.pop();
     }
     setMsgs(trimmed);
     void sendMessage(lastUser.content, trimmed);
@@ -230,7 +294,7 @@ export default function AgentChat() {
     const timeout = setTimeout(() => ctrl.abort(), CLIENT_TIMEOUT_MS);
     try {
       const history = next
-        .filter((m) => m !== GREETING)
+        .filter((m) => !GREETING_MSGS.includes(m))
         .slice(-6)
         .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/agent/chat", {
@@ -299,6 +363,7 @@ export default function AgentChat() {
     <>
       {/* Floating button */}
       <button
+        ref={launcherRef}
         type="button"
         aria-label={open ? "Close Blockpage Buddy chat" : "Open Blockpage Buddy chat"}
         onClick={() => setOpen((v) => !v)}
@@ -325,6 +390,7 @@ export default function AgentChat() {
         <div
           role="dialog"
           aria-label="Blockpage Buddy chat"
+          ref={panelRef}
           style={{
             position: "fixed",
             zIndex: 60,
@@ -353,7 +419,8 @@ export default function AgentChat() {
             }}
           >
             <span
-              aria-hidden="true"
+              role="img"
+              aria-label="Online"
               style={{
                 width: 9,
                 height: 9,
@@ -386,6 +453,8 @@ export default function AgentChat() {
           {/* Messages */}
           <div
             ref={listRef}
+            role="log"
+            aria-label="Chat with Blockpage Buddy"
             style={{
               flex: 1,
               overflowY: "auto",
@@ -406,8 +475,20 @@ export default function AgentChat() {
                 <div
                   key={i}
                   onClick={failedBubble ? retryLast : undefined}
+                  onKeyDown={
+                    failedBubble
+                      ? (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            retryLast();
+                          }
+                        }
+                      : undefined
+                  }
                   title={failedBubble ? "Tap to retry" : undefined}
                   role={failedBubble ? "button" : undefined}
+                  tabIndex={failedBubble ? 0 : undefined}
+                  aria-label={failedBubble ? "Retry sending message" : undefined}
                   style={{
                     alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                     maxWidth: "85%",
@@ -453,6 +534,24 @@ export default function AgentChat() {
                           >
                             Open in Builder →
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => inputRef.current?.focus()}
+                            style={{
+                              marginTop: 6,
+                              width: "100%",
+                              padding: "8px 12px",
+                              borderRadius: 10,
+                              border: "1px solid rgba(255, 255, 255, 0.16)",
+                              cursor: "pointer",
+                              fontWeight: 600,
+                              fontSize: 13,
+                              color: "#d9ccff",
+                              background: "transparent",
+                            }}
+                          >
+                            Keep editing in chat
+                          </button>
                         </>
                       )}
                     </>
@@ -475,10 +574,49 @@ export default function AgentChat() {
                 }}
                 aria-label="Buddy is thinking"
               >
-                <span className="agent-chat-dots">● ● ●</span>
+                <span className="agent-chat-dots" aria-hidden="true">
+                  ● ● ●
+                </span>
+                <span className="agent-chat-sr">Buddy is typing.</span>
               </div>
             )}
           </div>
+
+          {/* Quick-reply chips: greeting entry points. Tapping one posts
+              it as the user's message; they dismiss after the first
+              user turn (Skype pattern — no stale taps). Free text always
+              stays available. */}
+          {!msgs.some((m) => m.role === "user") && (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                padding: "10px 12px 0",
+              }}
+            >
+              {GREETING_CHIPS.map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void sendMessage(chip)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 999,
+                    border: "1px solid rgba(130, 89, 239, 0.55)",
+                    background: "rgba(130, 89, 239, 0.14)",
+                    color: "#d9ccff",
+                    fontSize: 13,
+                    cursor: busy ? "default" : "pointer",
+                    opacity: busy ? 0.5 : 1,
+                  }}
+                >
+                  {chip}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Input */}
           {freeLeft !== null && freeLeft > 0 && (
@@ -547,6 +685,8 @@ export default function AgentChat() {
 
       <style>{`@keyframes agentChatBlink { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
 .agent-chat-dots { animation: agentChatBlink 1.2s infinite; letter-spacing: 2px; }
+@media (prefers-reduced-motion: reduce) { .agent-chat-dots { animation: none; } }
+.agent-chat-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .buddy-md > *:last-child { margin-bottom: 0 !important; }
 .buddy-md pre code { background: transparent !important; padding: 0 !important; }`}</style>
     </>
