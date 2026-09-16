@@ -31,6 +31,14 @@ export async function GET(req: NextRequest) {
   }
   try {
     const access = await checkBuildAccess(verified.session.address);
+    const debug = req.nextUrl.searchParams.get("debug") === "1";
+    if (debug) {
+      return NextResponse.json({
+        signedIn: true,
+        hasCredit: access.allowed,
+        debugAddr: verified.session.address,
+      });
+    }
     return NextResponse.json({ signedIn: true, hasCredit: access.allowed });
   } catch {
     return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });
