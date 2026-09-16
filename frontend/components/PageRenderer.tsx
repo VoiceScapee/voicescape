@@ -30,6 +30,7 @@ import {
   IconTip,
   IconUsers,
 } from "@/components/icons";
+import LivestreamBlock from "@/components/LivestreamBlock";
 import "./renderer.css";
 
 interface RendererProps {
@@ -54,6 +55,12 @@ interface RendererProps {
    * omits it (falls back to page.username for preview purposes only).
    */
   canonicalUsername?: string | null;
+  /**
+   * Builder preview: blocks may show quiet config notes instead of rendering
+   * nothing (used by the livestream block's invalid-channel note). Never set
+   * on a live page.
+   */
+  preview?: boolean;
 }
 
 export type ServiceItem = Extract<Block, { type: "services" }>["items"][number];
@@ -329,6 +336,7 @@ function BlockView({
   onTip,
   tipPaused,
   tipOwner,
+  preview,
 }: {
   block: Block;
   onPayService?: (s: ServiceItem) => void;
@@ -344,6 +352,8 @@ function BlockView({
   tipPaused?: boolean;
   /** On-chain owner account for the all-time earnings lookup. */
   tipOwner?: string | null;
+  /** Builder preview flag (forwarded to blocks that need it). */
+  preview?: boolean;
 }) {
   switch (block.type) {
     case "hero": {
@@ -530,6 +540,15 @@ function BlockView({
       return <ReviewsBlock block={block} />;
     case "booking":
       return <BookingBlock block={block} />;
+    case "livestream":
+      return (
+        <LivestreamBlock
+          block={block}
+          tipInteractive={tipInteractive}
+          onTip={onTip}
+          preview={preview}
+        />
+      );
     default:
       return null;
   }
@@ -751,7 +770,7 @@ function AgentBanner({ meta }: { meta: RegistryMeta }) {
   );
 }
 
-export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, meta, onPayService, canonicalUsername }: RendererProps) {
+export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, meta, onPayService, canonicalUsername, preview }: RendererProps) {
   const { theme } = page;
   const themeStyle = {
     "--pv-bg": theme.background,
@@ -804,6 +823,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
             onTip={onTip}
             tipPaused={tipPaused}
             tipOwner={meta?.owner ?? null}
+            preview={preview}
             profileTrackIndex={
               block.type === "music" &&
               page.profileSong &&

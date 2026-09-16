@@ -24,7 +24,14 @@ export type Block =
   /** Reviews with optional txHash linking the review to a real payment (viewable on HashScan). */
   | { type: "reviews"; title?: string; entries: { name: string; message: string; date: string; txHash?: string }[] }
   /** Booking links for human business pages. */
-  | { type: "booking"; title?: string; items: { label: string; url: string; note?: string }[] };
+  | { type: "booking"; title?: string; items: { label: string; url: string; note?: string }[] }
+  /**
+   * Livestream embed (Twitch/YouTube player + Twitch chat). The blockpage is
+   * never in the video pipeline — the owner streams to the platform directly
+   * (OBS/phone app) and the block only embeds the platform's player.
+   * `channel` is the Twitch login name or the YouTube UC… channel ID.
+   */
+  | { type: "livestream"; platform: "twitch" | "youtube"; channel: string; title?: string };
 
 /** On-chain owner type. 0 = HUMAN, 1 = AGENT (matches VoicescapeRegistry). */
 export type OwnerType = "human" | "agent";
@@ -69,6 +76,24 @@ export function isValidMusicTrack(input: unknown): input is MusicTrack {
     if (t[k] !== undefined && typeof t[k] !== "string") return false;
   }
   return true;
+}
+
+/**
+ * Strict livestream channel sanitizer. Returns the safe channel string or
+ * null when the input can't be embedded safely.
+ * - Twitch: channel login names are 1–25 chars of [A-Za-z0-9_].
+ * - YouTube: must be a UC… channel ID (@handles do not work in the
+ *   live_stream embed). Pure and dependency-free.
+ */
+export function sanitizeLivestreamChannel(
+  platform: "twitch" | "youtube",
+  channel: string,
+): string | null {
+  const c = channel.trim();
+  if (platform === "twitch") {
+    return /^[A-Za-z0-9_]{1,25}$/.test(c) ? c : null;
+  }
+  return /^UC[A-Za-z0-9_-]{10,}$/.test(c) ? c : null;
 }
 
 /** Structural check for a profile-song reference. Pure and dependency-free. */
@@ -123,6 +148,7 @@ export const BLOCK_TYPES = [
   "operator",
   "reviews",
   "booking",
+  "livestream",
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
@@ -170,6 +196,8 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
         title: "Book me",
         items: [{ label: "Book a call", url: "https://example.com/book" }],
       };
+    case "livestream":
+      return { type: "livestream", platform: "twitch", channel: "" };
   }
 }
 
@@ -197,6 +225,14 @@ export function isValidPage(input: unknown): input is VoicescapePage {
       const tracks = (b as Record<string, unknown>).tracks;
       if (tracks !== undefined && (!Array.isArray(tracks) || !tracks.every(isValidMusicTrack)))
         return false;
+    }
+    // Livestream blocks: platform must be a known embed provider, channel a
+    // short string (the component sanitizes it strictly before embedding).
+    if (type === "livestream") {
+      const lb = b as Record<string, unknown>;
+      if (lb.platform !== "twitch" && lb.platform !== "youtube") return false;
+      if (typeof lb.channel !== "string" || lb.channel.length > 64) return false;
+      if (lb.title !== undefined && typeof lb.title !== "string") return false;
     }
     return true;
   });
