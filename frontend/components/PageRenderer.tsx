@@ -8,7 +8,7 @@ import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
-import { safeExternalUrl, openExternalUrl } from "@/lib/url";
+import { safeExternalUrl, safeImageUrl, openExternalUrl } from "@/lib/url";
 import { canonicalAddress } from "@/lib/session-message";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
@@ -348,11 +348,20 @@ function BlockView({
   switch (block.type) {
     case "hero": {
       const initial = (block.title || "?").trim().charAt(0).toUpperCase() || "?";
+      const avatarSrc = safeImageUrl(block.avatarImage);
       return (
         <section className="pv-block pv-hero">
           <div className="pv-avatar-ring">
             <div className="pv-avatar" aria-hidden="true">
-              {block.avatarEmoji || initial}
+              {avatarSrc ? (
+                <img
+                  src={avatarSrc}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+                />
+              ) : (
+                block.avatarEmoji || initial
+              )}
             </div>
           </div>
           <h1 className="pv-title">{block.title}</h1>
@@ -442,6 +451,12 @@ function BlockView({
         <div key={i} className="pv-gallery-tile" style={delay ? { animationDelay: delay } : undefined}>
           {img === ":logo:" ? (
             <img src="/voicescape-logo.webp" alt="Voicescape logo" className="pv-gallery-logo" />
+          ) : safeImageUrl(img) ? (
+            <img
+              src={safeImageUrl(img) as string}
+              alt=""
+              style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: 12 }}
+            />
           ) : (
             img
           )}

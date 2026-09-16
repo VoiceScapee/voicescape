@@ -228,7 +228,7 @@ async function pinFileViaPinata(data, filename, contentType, jwt) {
   );
   form.append(
     "pinataMetadata",
-    JSON.stringify({ name: `voicescape-audio-${filename || "upload"}` }),
+    JSON.stringify({ name: `voicescape-${filename || "upload"}` }),
   );
 
   let res;
@@ -281,6 +281,37 @@ export async function publishAudioFile(data, filename, contentType) {
   if (!data || data.byteLength > MAX_AUDIO_BYTES) {
     throw new Error(
       `Audio upload too large (max ${(MAX_AUDIO_BYTES / 1024 / 1024).toFixed(0)} MB).`,
+    );
+  }
+  const pinataJwt = process.env[ENV.PINATA_JWT];
+  if (!pinataJwt) {
+    throw new Error("PINATA_UNAVAILABLE");
+  }
+  return pinFileViaPinata(data, filename, contentType, pinataJwt);
+}
+
+/** Max Buddy-generated image: 5 MB. Keeps pins cheap and gateway-friendly. */
+export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Pin a Buddy-generated image to IPFS via Pinata.
+ * Requires PINATA_JWT. Re-validates MIME + size server-side.
+ *
+ * @param {Buffer|Uint8Array} data - Image bytes.
+ * @param {string} filename - Neutral filename (never user-controlled).
+ * @param {string} contentType - MIME type; must start with "image/".
+ * @returns {Promise<PublishResult>} `{ cid, provider }`.
+ * @throws {Error} If validation fails, PINATA_JWT is unset, or Pinata errors.
+ */
+export async function publishImageFile(data, filename, contentType) {
+  if (!contentType || !contentType.startsWith("image/")) {
+    throw new Error(
+      `Refusing to pin non-image upload (content-type "${contentType || "missing"}").`,
+    );
+  }
+  if (!data || data.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image too large (max ${(MAX_IMAGE_BYTES / 1024 / 1024).toFixed(0)} MB).`,
     );
   }
   const pinataJwt = process.env[ENV.PINATA_JWT];

@@ -181,6 +181,7 @@ describe("POST /api/agent/chat", () => {
         "resolve_blockpage",
         "verify_tip",
         "treasury_stats",
+        "generate_page_image",
       ]);
     }
   });

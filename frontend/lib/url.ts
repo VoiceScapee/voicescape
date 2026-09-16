@@ -21,6 +21,27 @@ export function safeExternalUrl(raw: unknown): string | null {
 }
 
 /**
+ * Sanitize a user-supplied URL before rendering it as an <img src>.
+ *
+ * Stricter than safeExternalUrl: only absolute https: URLs are allowed.
+ * http: is rejected to avoid mixed-content blocking on the https site;
+ * javascript:, data:, blob:, and relative paths return null. Data-URI
+ * images would let a page smuggle arbitrary binary content past every
+ * other check, so they are never rendered.
+ *
+ * This is the choke point for all user-controlled images on public pages
+ * (hero avatar, gallery tiles). Never render a page-JSON string as an
+ * image src without it.
+ */
+export function safeImageUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v) return null;
+  if (/^https:\/\//i.test(v)) return v;
+  return null;
+}
+
+/**
  * Open an external URL from a tap/click.
  *
  * Wallet dapp browsers (in-app WebViews like HashPack's) silently swallow

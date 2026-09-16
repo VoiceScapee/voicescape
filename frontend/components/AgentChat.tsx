@@ -9,15 +9,94 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
+import { type VoicescapePage } from "@/lib/schema";
+import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
+import { saveBuddyDraft } from "./Onboarding";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
 const GREETING: Msg = {
   role: "assistant",
   content:
-    "Hey, welcome to Voicescape! 👋 I'm Buddy. A blockpage is your own little corner of the internet — you own it, not us. Your wallet is your login (no passwords), and anything of value moves on-chain where you can verify it. Want the quick tour, or ready to build your page?",
+    "Hey, welcome to Voicescape! 👋 I'm Buddy. A blockpage is your own little corner of the internet — you own it, not us. Your wallet is your login (no passwords), and anything of value moves on-chain where you can verify it. Want the quick tour, or ready to build your page? If you build with me, just give me a username, a short bio, and the vibe — I'll make the artwork and the whole page for you.",
 };
+
+/** Assistant replies, rendered as styled markdown for a narrow chat bubble. */
+function BuddyMarkdown({ content }: { content: string }) {
+  return (
+    <div className="buddy-md">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ node, ...props }) => <p style={{ margin: "0 0 8px" }} {...props} />,
+          h1: ({ node, ...props }) => <h1 style={{ margin: "10px 0 6px", fontSize: 15 }} {...props} />,
+          h2: ({ node, ...props }) => <h2 style={{ margin: "10px 0 6px", fontSize: 14.5 }} {...props} />,
+          h3: ({ node, ...props }) => <h3 style={{ margin: "10px 0 6px", fontSize: 14 }} {...props} />,
+          h4: ({ node, ...props }) => <h4 style={{ margin: "10px 0 6px", fontSize: 13.5 }} {...props} />,
+          ul: ({ node, ...props }) => <ul style={{ margin: "0 0 8px", paddingLeft: 18 }} {...props} />,
+          ol: ({ node, ...props }) => <ol style={{ margin: "0 0 8px", paddingLeft: 18 }} {...props} />,
+          li: ({ node, ...props }) => <li style={{ margin: "2px 0" }} {...props} />,
+          a: ({ node, ...props }) => (
+            <a style={{ color: "#c4b5fd", textDecoration: "underline" }} target="_blank" rel="noreferrer" {...props} />
+          ),
+          code: ({ node, ...props }) => (
+            <code
+              style={{
+                background: "rgba(255,255,255,0.12)",
+                padding: "1px 5px",
+                borderRadius: 5,
+                fontSize: 12.5,
+                fontFamily: "ui-monospace, monospace",
+              }}
+              {...props}
+            />
+          ),
+          pre: ({ node, ...props }) => (
+            <pre
+              style={{
+                background: "rgba(0,0,0,0.35)",
+                padding: 10,
+                borderRadius: 10,
+                overflowX: "auto",
+                fontSize: 12.5,
+                margin: "0 0 8px",
+              }}
+              {...props}
+            />
+          ),
+          blockquote: ({ node, ...props }) => (
+            <blockquote
+              style={{ borderLeft: "3px solid rgba(167,139,250,0.5)", paddingLeft: 10, margin: "0 0 8px", opacity: 0.92 }}
+              {...props}
+            />
+          ),
+          hr: ({ node, ...props }) => <hr style={{ borderColor: "rgba(255,255,255,0.15)", margin: "10px 0" }} {...props} />,
+          table: ({ node, ...props }) => (
+            <table style={{ width: "100%", borderCollapse: "collapse", margin: "0 0 8px", fontSize: 12.5 }} {...props} />
+          ),
+          th: ({ node, ...props }) => (
+            <th style={{ border: "1px solid rgba(255,255,255,0.14)", padding: "4px 8px", textAlign: "left" }} {...props} />
+          ),
+          td: ({ node, ...props }) => (
+            <td style={{ border: "1px solid rgba(255,255,255,0.14)", padding: "4px 8px" }} {...props} />
+          ),
+          img: ({ node, ...props }) => <img style={{ maxWidth: "100%", borderRadius: 8 }} {...props} />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+/** One-tap handoff: save the Buddy-built page and open the builder with it. */
+function openInBuilder(page: VoicescapePage) {
+  saveBuddyDraft(page);
+  window.location.href = "/builder";
+}
 
 /** One-time greeting after the visitor publishes their blockpage. */
 function celebrationMsg(username: string | null): Msg {
@@ -208,33 +287,64 @@ export default function AgentChat() {
               gap: 8,
             }}
           >
-            {msgs.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  alignSelf: m.role === "user" ? "flex-end" : "flex-start",
-                  maxWidth: "85%",
-                  padding: "10px 12px",
-                  borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                  border: "1px solid",
-                  borderColor:
-                    m.role === "user"
-                      ? "rgba(130, 89, 239, 0.4)"
-                      : "rgba(255, 255, 255, 0.09)",
-                  fontSize: 13.5,
-                  lineHeight: 1.55,
-                  whiteSpace: "pre-wrap",
-                  wordBreak: "break-word",
-                  background:
-                    m.role === "user"
-                      ? "rgba(130, 89, 239, 0.22)"
-                      : "rgba(255, 255, 255, 0.055)",
-                  color: "#fff",
-                }}
-              >
-                {m.content}
-              </div>
-            ))}
+            {msgs.map((m, i) => {
+              const draft = m.role === "assistant" ? extractPageDraft(m.content) : null;
+              // The raw page JSON is machine handoff, not reading material —
+              // hide it and show the one-tap builder button instead.
+              const visible = draft != null ? stripPageDraft(m.content) : m.content;
+              return (
+                <div
+                  key={i}
+                  style={{
+                    alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+                    maxWidth: "85%",
+                    padding: "10px 12px",
+                    borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                    border: "1px solid",
+                    borderColor:
+                      m.role === "user"
+                        ? "rgba(130, 89, 239, 0.4)"
+                        : "rgba(255, 255, 255, 0.09)",
+                    fontSize: 13.5,
+                    lineHeight: 1.55,
+                    wordBreak: "break-word",
+                    background:
+                      m.role === "user"
+                        ? "rgba(130, 89, 239, 0.22)"
+                        : "rgba(255, 255, 255, 0.055)",
+                    color: "#fff",
+                  }}
+                >
+                  {m.role === "assistant" ? (
+                    <>
+                      <BuddyMarkdown content={visible} />
+                      {draft != null && (
+                        <button
+                          type="button"
+                          onClick={() => openInBuilder(draft)}
+                          style={{
+                            marginTop: 8,
+                            width: "100%",
+                            padding: "10px 12px",
+                            borderRadius: 10,
+                            border: "none",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            fontSize: 14,
+                            color: "#fff",
+                            background: "linear-gradient(135deg, #8259ef, #b45cf0)",
+                          }}
+                        >
+                          Open in Builder →
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    <span style={{ whiteSpace: "pre-wrap" }}>{m.content}</span>
+                  )}
+                </div>
+              );
+            })}
             {busy && (
               <div
                 style={{
@@ -307,7 +417,9 @@ export default function AgentChat() {
       )}
 
       <style>{`@keyframes agentChatBlink { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
-.agent-chat-dots { animation: agentChatBlink 1.2s infinite; letter-spacing: 2px; }`}</style>
+.agent-chat-dots { animation: agentChatBlink 1.2s infinite; letter-spacing: 2px; }
+.buddy-md > *:last-child { margin-bottom: 0 !important; }
+.buddy-md pre code { background: transparent !important; padding: 0 !important; }`}</style>
     </>
   );
 }

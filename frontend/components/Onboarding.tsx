@@ -17,6 +17,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
+import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
 export interface OnboardDraft {
   templateId: string;
@@ -28,6 +29,34 @@ export interface OnboardDraft {
 
 export const ONBOARDED_KEY = "vs_onboarded";
 export const ONBOARD_DRAFT_KEY = "vs_onboard_draft";
+/**
+ * Buddy's one-tap handoff: a complete Buddy-built page (JSON) waiting for
+ * the builder. Written by the chat widget when the visitor taps
+ * "Open in Builder"; consumed once by the builder on mount.
+ */
+export const BUDDY_DRAFT_KEY = "vs_buddy_draft";
+
+/** Save a complete Buddy-built page for one-tap handoff to the builder. */
+export function saveBuddyDraft(page: VoicescapePage): void {
+  try {
+    localStorage.setItem(BUDDY_DRAFT_KEY, JSON.stringify(page));
+  } catch {
+    /* storage unavailable — builder will start blank */
+  }
+}
+
+/** Read + clear the Buddy draft (builder consumes it once on mount). */
+export function consumeBuddyDraft(): VoicescapePage | null {
+  try {
+    const raw = localStorage.getItem(BUDDY_DRAFT_KEY);
+    if (!raw) return null;
+    localStorage.removeItem(BUDDY_DRAFT_KEY);
+    const data: unknown = JSON.parse(raw);
+    return isValidPage(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
 
 export function isOnboarded(): boolean {
   if (typeof window === "undefined") return true; // SSR: never show

@@ -61,4 +61,28 @@ describe("AgentChat", () => {
     expect(triggerSrc).toContain('BUDDY_CELEBRATE_KEY = "vs_buddy_celebrate"');
     expect(triggerSrc).toContain("localStorage.setItem(BUDDY_CELEBRATE_KEY");
   });
+
+  it("renders assistant replies as styled markdown, not raw text", () => {
+    expect(widgetSrc).toContain("react-markdown");
+    expect(widgetSrc).toContain("remark-gfm");
+    expect(widgetSrc).toContain("BuddyMarkdown");
+    // User messages stay plain; assistant messages go through markdown.
+    expect(widgetSrc).toContain("m.role === \"assistant\" ? (");
+  });
+
+  it("offers one-tap builder handoff for Buddy-built page drafts", () => {
+    expect(widgetSrc).toContain("extractPageDraft");
+    expect(widgetSrc).toContain("stripPageDraft");
+    expect(widgetSrc).toContain("saveBuddyDraft");
+    expect(widgetSrc).toContain("Open in Builder");
+    expect(widgetSrc).toContain('"/builder"');
+  });
+
+  it("Onboarding stores Buddy drafts under a dedicated key", () => {
+    const onboardingSrc = readFileSync(join(here, "Onboarding.tsx"), "utf8");
+    expect(onboardingSrc).toContain('BUDDY_DRAFT_KEY = "vs_buddy_draft"');
+    expect(onboardingSrc).toContain("saveBuddyDraft");
+    expect(onboardingSrc).toContain("consumeBuddyDraft");
+    expect(onboardingSrc).toContain("isValidPage(data)");
+  });
 });

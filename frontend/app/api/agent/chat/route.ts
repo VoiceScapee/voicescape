@@ -12,6 +12,12 @@
  * exists anywhere in this route, so the agent can never sign, spend, or
  * publish.
  *
+ * Buddy also gets one creative tool, `generate_page_image`
+ * (`@/lib/agent/image-tool`): it generates blockpage artwork and pins it
+ * to IPFS. It is not a chain tool — it has no chain access, no client,
+ * and no keys — so the "nothing here can sign/spend" invariant still
+ * holds. Image abuse is bounded by a per-IP daily quota.
+ *
  * Guardrails for dapp visitors talking to Buddy:
  * - The system prompt forbids site changes outright: no editing, deleting,
  *   or configuring existing pages, posts, settings, or anyone's content,
@@ -36,6 +42,7 @@ import {
   toFunctionDefs,
   type BuddyContext,
 } from "@/lib/agent/agentkit";
+import { makeImageTool } from "@/lib/agent/image-tool";
 import {
   agentChatClientIp,
   agentChatRateLimited,
@@ -45,9 +52,10 @@ export const runtime = "nodejs";
 
 const MODEL = "openai/gpt-oss-20b";
 const MAX_TOKENS = 2048;
-const MAX_ITERATIONS = 5;
+const MAX_ITERATIONS = 8;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const AGENT_TIMEOUT_MS = 25_000;
+// Image generation can take up to a minute; the chat loop stays well under this.
+const AGENT_TIMEOUT_MS = 120_000;
 
 import {
   BUDDY_SYSTEM_PROMPT,
@@ -163,8 +171,9 @@ export async function POST(req: NextRequest) {
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
   const signal = controller.signal;
 
-  // Buddy's tools come from Hedera's Agent Kit (read-only Voicescape plugin).
-  const tools = getBuddyTools(signal);
+  // Buddy's tools: Hedera's Agent Kit (read-only Voicescape plugin) plus the
+  // image-generation tool (no chain access — artwork only).
+  const tools = [...getBuddyTools(signal), makeImageTool(agentChatClientIp(req))];
 
   try {
     const messages: ChatMessage[] = [...history, { role: "user", content: message }];

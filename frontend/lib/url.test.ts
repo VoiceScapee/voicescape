@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { safeExternalUrl, openExternalUrl } from "./url";
+import { safeExternalUrl, safeImageUrl, openExternalUrl } from "./url";
 
 describe("safeExternalUrl", () => {
   it("allows https URLs", () => {
@@ -99,5 +99,36 @@ describe("openExternalUrl", () => {
     openExternalUrl("");
     expect(openSpy).not.toHaveBeenCalled();
     expect(assignSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("safeImageUrl", () => {
+  it("allows https image URLs", () => {
+    expect(safeImageUrl("https://ipfs.io/ipfs/QmX")).toBe(
+      "https://ipfs.io/ipfs/QmX"
+    );
+  });
+
+  it("blocks http URLs (mixed content)", () => {
+    expect(safeImageUrl("http://example.com/img.png")).toBeNull();
+  });
+
+  it("blocks javascript: URLs", () => {
+    expect(safeImageUrl("javascript:alert(1)")).toBeNull();
+  });
+
+  it("blocks data: URLs", () => {
+    expect(safeImageUrl("data:image/png;base64,AAA")).toBeNull();
+  });
+
+  it("blocks blob: URLs and relative paths", () => {
+    expect(safeImageUrl("blob:abc")).toBeNull();
+    expect(safeImageUrl("/uploads/img.png")).toBeNull();
+  });
+
+  it("blocks empty and non-string input", () => {
+    expect(safeImageUrl("")).toBeNull();
+    expect(safeImageUrl(null)).toBeNull();
+    expect(safeImageUrl(undefined)).toBeNull();
   });
 });

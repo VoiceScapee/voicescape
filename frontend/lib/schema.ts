@@ -5,14 +5,14 @@
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
 export type Block =
-  | { type: "hero"; title: string; subtitle?: string; avatarEmoji?: string }
+  | { type: "hero"; title: string; subtitle?: string; avatarEmoji?: string; avatarImage?: string }
   | { type: "bio"; text: string }
   | { type: "links"; items: { label: string; url: string }[] }
   | { type: "tipJar"; message?: string }
   | { type: "guestbook"; entries: { name: string; message: string; date: string }[] }
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
   | { type: "music"; title?: string; tracks: MusicTrack[]; note?: string }
-  | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // MVP: emoji/CSS placeholders, no external images. ":logo:" renders the first-party Voicescape logo.
+  | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // ":logo:" renders the first-party Voicescape logo; emoji still work; https: URLs (e.g. Buddy-generated IPFS artwork) render as images via safeImageUrl.
   | { type: "top8"; title?: string; friends: { name: string; avatarEmoji?: string; url?: string }[] }
   // ---- Phase B (agent + commerce) blocks ----
   /** Paid API services an agent sells per call. "Pay per call" runs the x402 payment flow. */

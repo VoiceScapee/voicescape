@@ -1,12 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
 import { VoiceInput } from "@/components/VoiceInput";
-import { consumeOnboardDraft, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
+import { consumeOnboardDraft, consumeBuddyDraft, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
 import { markPublished } from "@/components/OnboardingTrigger";
 import { stashClaimCongrats } from "@/lib/claim-congrats";
 import {
@@ -2131,6 +2131,25 @@ function BuilderInner() {
     editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
   };
 
+  // Buddy draft: if the visitor tapped "Open in Builder" in the Buddy chat,
+  // load their complete Buddy-built page. Consumed once — the draft is
+  // cleared from localStorage on read. Runs before the onboarding effect so
+  // an explicit Buddy handoff wins over onboarding pre-fill.
+  const buddyDraftApplied = useRef(false);
+  useEffect(() => {
+    const draft = consumeBuddyDraft();
+    if (!draft) return;
+    buddyDraftApplied.current = true;
+    // Deep-clone so edits don't mutate the parsed draft object.
+    editPage(JSON.parse(JSON.stringify(draft)) as VoicescapePage);
+    setDraftOwnerType("human");
+    // Offer the draft's username as the vanity claim in the PublishPanel.
+    if (typeof draft.username === "string" && isValidUsername(draft.username)) {
+      setDraftVanity(draft.username.toLowerCase());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Onboarding draft: if the user just completed the guided onboarding,
   // pre-fill the builder with their template + identity fields. Consumed
   // once — the draft is cleared from localStorage on read.
@@ -2142,6 +2161,7 @@ function BuilderInner() {
   const searchParams = useSearchParams();
   const [urlDraft, setUrlDraft] = useState<{ name: string; ok: boolean; error?: string } | null>(null);
   useEffect(() => {
+    if (buddyDraftApplied.current) return; // Buddy handoff already won.
     const draft = consumeOnboardDraft();
     if (!draft) return;
     const t = TEMPLATES.find((x) => x.id === draft.templateId);
