@@ -22,6 +22,7 @@ import {
 import { useSession } from "@/lib/session";
 import { getActiveChain } from "@/lib/chains";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { recordConversionEvent } from "@/lib/metrics";
 
 /* Wallet sign-in button (reskinned in the design pass)                     */
 /* ------------------------------------------------------------------ */
@@ -104,6 +105,9 @@ export function WalletConnect() {
     if (!session || session.status !== "connected" || !account) return;
     if (autoSignFor.current === account) return;
     autoSignFor.current = account;
+    // Funnel telemetry: a wallet connection succeeded. Aggregate counter
+    // only — recordConversionEvent never throws and never stores identity.
+    recordConversionEvent("wallet_connected");
     void session.signIn().catch(() => {
       // Dismissal surfaces via session.error; the user can sign in later.
     });

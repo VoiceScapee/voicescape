@@ -17,6 +17,7 @@ import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import { saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
+import { recordConversionEvent } from "@/lib/metrics";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -153,6 +154,21 @@ export default function AgentChat() {
   // Free off-topic messages remaining (null = unknown / not metered).
   // Voicescape & blockchain questions are always free and never count.
   const [freeLeft, setFreeLeft] = useState<number | null>(null);
+
+  // Funnel telemetry: fire "buddy_preview_shown" once per assistant message
+  // that renders a page draft (the "Open in Builder" path). Message indices
+  // are append-only, so a Set of fired indices is a stable once-per-draft
+  // guard. Aggregate counter only — never throws, never affects chat.
+  const previewFiredRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    msgs.forEach((m, i) => {
+      if (m.role !== "assistant" || previewFiredRef.current.has(i)) return;
+      if (extractPageDraft(m.content) != null) {
+        previewFiredRef.current.add(i);
+        recordConversionEvent("buddy_preview_shown");
+      }
+    });
+  }, [msgs]);
 
   useEffect(() => {
     const el = listRef.current;

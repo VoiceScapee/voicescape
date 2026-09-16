@@ -38,6 +38,12 @@ export const CONVERSION_EVENTS = [
   "proposal_failed",
   "chat_sent",
   "chat_failed",
+  // Onboarding funnel (aggregate only — same privacy rules as everything
+  // above: no wallet, IP, page, or tx stored, ever).
+  "wallet_connected",
+  "builder_opened",
+  "buddy_preview_shown",
+  "page_published",
 ] as const;
 
 export type ConversionEvent = (typeof CONVERSION_EVENTS)[number];

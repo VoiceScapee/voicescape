@@ -55,6 +55,7 @@ import {
   setByokKey,
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
+import { recordConversionEvent } from "@/lib/metrics";
 import { registerPage, updatePage, ZERO_ADDRESS, getRegistryAddress } from "@/lib/contracts";
 import {
   deriveUsername,
@@ -1821,6 +1822,9 @@ function PublishPanel({
         await new Promise((r) => setTimeout(r, 3000));
       }
       setStatus({ kind: "ok", text: "Published!" });
+      // Funnel telemetry: a blockpage was published. Aggregate counter
+      // only — recordConversionEvent never throws and never affects publish.
+      recordConversionEvent("page_published");
       // Liaison loop-close: if this page came from Danny's draft, confirm
       // the publish with the server so the draft is deleted (the liaison
       // keeps no copy) and the completion is recorded. Best-effort — the
@@ -2077,6 +2081,15 @@ function BuilderInner() {
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+
+  // Funnel telemetry: the builder was opened. Once per mount — aggregate
+  // counter only, never throws, never blocks the builder.
+  const builderOpenedFired = useRef(false);
+  useEffect(() => {
+    if (builderOpenedFired.current) return;
+    builderOpenedFired.current = true;
+    recordConversionEvent("builder_opened");
+  }, []);
 
   // Liaison slice-1: the wallet-bound premade blockpage Danny built for this
   // user. Fetched with their session — invisible to every other wallet.
