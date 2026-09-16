@@ -31,6 +31,23 @@ export async function GET(req: NextRequest) {
   }
   try {
     const access = await checkBuildAccess(verified.session.address);
+    const debug = req.nextUrl.searchParams.get("debug");
+    if (debug === "ledger") {
+      const { loadLedger } = await import("@/app/api/agent/chat/metering");
+      const { getKvStore: gks } = await import("@/lib/server/store");
+      const store = gks();
+      const identity = { kind: "wallet" as const, evm: verified.session.address };
+      const ledger = await loadLedger(store, identity);
+      return NextResponse.json({
+        signedIn: true,
+        hasCredit: access.allowed,
+        ledger: {
+          payments: ledger.payments,
+          consumed: ledger.consumed,
+          freeUsed: ledger.freeUsed,
+        },
+      });
+    }
     return NextResponse.json({ signedIn: true, hasCredit: access.allowed });
   } catch {
     return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });

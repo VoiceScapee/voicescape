@@ -248,7 +248,7 @@ function normalizeLedger(raw: unknown): Ledger {
   return out;
 }
 
-async function loadLedger(
+export async function loadLedger(
   store: KvStore,
   identity: ChatIdentity
 ): Promise<Ledger> {
