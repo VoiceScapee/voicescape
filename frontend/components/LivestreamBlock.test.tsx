@@ -90,7 +90,7 @@ describe("LivestreamBlock — YouTube wiring", () => {
     expect(src).toContain("youTubeLiveChatSrc");
     expect(src).toMatch(/\{activeChatSrc && !isMobile && \(\s*<div className="vs-livestream-chat">/);
     // …while phones get the floating widget (one chat iframe at a time).
-    expect(src).toMatch(/\{activeChatSrc && isMobile && <FloatingChatWidget chatSrc=\{activeChatSrc\}/);
+    expect(src).toMatch(/\{activeChatSrc && isMobile &&[\s\S]*createPortal\(<FloatingChatWidget/);
     // Never a faked chat: the iframe src is the official live_chat endpoint.
     expect(src).toContain("https://www.youtube.com/live_chat?v=");
     expect(src).toContain("embed_domain=");
@@ -172,6 +172,10 @@ describe("LivestreamBlock — responsive layout", () => {
     expect(src).toContain("setPointerCapture");
     expect(src).toContain("vs-chatfloat-collapsed");
     expect(src).toContain('useMatchMedia("(max-width: 640px)")');
+    // Portaled to document.body: .pv-block keeps a transform after its
+    // entrance animation, which would silently break position:fixed inside it.
+    expect(src).toContain("createPortal");
+    expect(src).toMatch(/createPortal\(<FloatingChatWidget/);
   });
 
   it("desktop keeps chat side-by-side with the player", () => {

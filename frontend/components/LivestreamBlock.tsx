@@ -18,6 +18,7 @@
  *   No new money code here.
  */
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { createPortal } from "react-dom";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeLivestreamChannel, type Block } from "@/lib/schema";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
@@ -495,7 +496,13 @@ export default function LivestreamBlock({
         )}
       </div>
 
-      {activeChatSrc && isMobile && <FloatingChatWidget chatSrc={activeChatSrc} t={t} />}
+      {/* Portal to document.body: .pv-block keeps a transform after its
+          entrance animation, and any transformed ancestor silently turns
+          position:fixed into position-relative-to-the-block. The portal
+          keeps the widget truly viewport-fixed (and drag math consistent). */}
+      {activeChatSrc && isMobile && typeof document !== "undefined"
+        ? createPortal(<FloatingChatWidget chatSrc={activeChatSrc} t={t} />, document.body)
+        : null}
 
       <div className="vs-livestream-actions">
         {live && !unmuted && (
