@@ -85,4 +85,11 @@ describe("AgentChat", () => {
     expect(onboardingSrc).toContain("consumeBuddyDraft");
     expect(onboardingSrc).toContain("isValidPage(data)");
   });
+
+  it("echoes the server's signed build-state token each turn (never displays it)", () => {
+    expect(widgetSrc).toContain("buildStateRef");
+    expect(widgetSrc).toContain("build_state: buildStateRef.current");
+    expect(widgetSrc).toContain('typeof data.build_state === "string"');
+    expect(widgetSrc).toContain("buildStateRef.current = data.build_state");
+  });
 });

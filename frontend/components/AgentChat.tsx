@@ -126,6 +126,9 @@ export default function AgentChat() {
   const [busy, setBusy] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Server-signed build-progress token (opaque): echoed back each turn so
+  // Buddy can track the multi-turn blockpage flow. Never displayed.
+  const buildStateRef = useRef<string>("");
 
   useEffect(() => {
     const el = listRef.current;
@@ -166,7 +169,11 @@ export default function AgentChat() {
       const res = await fetch("/api/agent/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text, history }),
+        body: JSON.stringify({
+          message: text,
+          history,
+          build_state: buildStateRef.current || undefined,
+        }),
       });
       let reply: string;
       if (res.status === 503) reply = UNAVAILABLE;
@@ -178,6 +185,10 @@ export default function AgentChat() {
           data && typeof data.reply === "string" && data.reply
             ? data.reply
             : FAILED;
+        // Keep the signed build token for the next turn (opaque string).
+        if (data && typeof data.build_state === "string") {
+          buildStateRef.current = data.build_state;
+        }
       }
       setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {

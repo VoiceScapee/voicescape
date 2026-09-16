@@ -263,4 +263,50 @@ describe("POST /api/agent/chat", () => {
       error: "unknown tool: delete_page",
     });
   });
+
+  it("carries signed build state across turns and advances it", async () => {
+    vi.stubEnv("SESSION_SECRET", "route-test-secret");
+    const { calls } = mockFetch([
+      groqFinal("Great! What username do you want?"),
+      groqFinal("Nice — now a short bio?"),
+    ]);
+    // Turn 1: build intent activates the flow.
+    const r1 = await POST(post({ message: "I want to build my own blockpage" }));
+    expect(r1.status).toBe(200);
+    const d1 = await r1.json();
+    expect(typeof d1.reply).toBe("string");
+    expect(typeof d1.build_state).toBe("string");
+    expect(d1.build_state).not.toBe("");
+    const sys1 = calls.groqBodies[0].messages[1].content as string;
+    expect(sys1).toContain("[Build state");
+    expect(sys1).toContain("username: MISSING");
+    // Turn 2: echo the token back with the username answer.
+    const r2 = await POST(
+      post({ message: "testpilotbuddy", build_state: d1.build_state } as any)
+    );
+    expect(r2.status).toBe(200);
+    const d2 = await r2.json();
+    expect(typeof d2.build_state).toBe("string");
+    const sys2 = calls.groqBodies[1].messages[1].content as string;
+    expect(sys2).toContain('username (collected): "testpilotbuddy"');
+    expect(sys2).toContain("bio: MISSING");
+    expect(sys2).toContain("Ask ONLY for the bio next");
+  });
+
+  it("ignores a tampered build_state token", async () => {
+    vi.stubEnv("SESSION_SECRET", "route-test-secret");
+    const { calls } = mockFetch([groqFinal("ok")]);
+    const res = await POST(
+      post({ message: "hello", build_state: "forged.payload" } as any)
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(typeof body.reply).toBe("string");
+    // No [Build state] note was injected for the forged token.
+    const systems = calls.groqBodies[0].messages.filter(
+      (m: any) => m.role === "system"
+    );
+    expect(systems).toHaveLength(1);
+    expect(systems[0].content).toBe(BUDDY_SYSTEM_PROMPT);
+  });
 });

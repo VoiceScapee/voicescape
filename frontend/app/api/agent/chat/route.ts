@@ -1,8 +1,14 @@
 /**
  * POST /api/agent/chat — Voicescape onboarding buddy (read-only).
  *
- * Body: { message: string, history?: Array<{ role: "user"|"assistant", content: string }> }
- * Response: { reply: string }
+ * Body: { message: string, history?: Array<{ role: "user"|"assistant", content: string }>,
+ *          build_state?: string }
+ * Response: { reply: string, build_state: string }
+ *
+ * build_state is the server's HMAC-signed build-progress token (see
+ * ./build-state.ts): the widget echoes it back each turn so the model can
+ * run the multi-turn blockpage flow even though client "assistant" history
+ * is stripped for prompt-injection safety.
  *
  * Buddy's brain runs on Hedera's official `@hashgraph/hedera-agent-kit`:
  * the three chain tools are the kit's `Tool` objects from the Voicescape
@@ -62,6 +68,12 @@ import {
   sanitizeHistory,
   type ChatMessage,
 } from "./guardrails";
+import {
+  advanceBuildState,
+  buildStateNote,
+  signBuildState,
+  verifyBuildState,
+} from "./build-state";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
@@ -111,7 +123,11 @@ async function callGroq(
   apiKey: string,
   tools: Tool[],
   messages: ChatMessage[],
-  signal: AbortSignal
+  signal: AbortSignal,
+  // Server-tracked build progress (username/bio/vibe collected so far).
+  // Lets the model run the multi-turn build flow even though client
+  // "assistant" history is stripped for prompt-injection safety.
+  buildNote: string | null
 ): Promise<any> {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -126,7 +142,11 @@ async function callGroq(
     body: JSON.stringify({
       model: MODEL,
       max_tokens: MAX_TOKENS,
-      messages: [{ role: "system", content: BUDDY_SYSTEM_PROMPT }, ...messages],
+      messages: [
+        { role: "system", content: BUDDY_SYSTEM_PROMPT },
+        ...(buildNote ? [{ role: "system", content: buildNote }] : []),
+        ...messages,
+      ],
       tools: toFunctionDefs(tools),
     }),
     signal,
@@ -167,6 +187,17 @@ export async function POST(req: NextRequest) {
   // "assistant" history is dropped by sanitizeHistory().
   const history = sanitizeHistory(body?.history);
 
+  // Server-controlled build state: the widget echoes back the HMAC-signed
+  // token from the previous turn; tampered tokens verify to null and the
+  // turn falls back to no-state behavior. The state advances from the new
+  // user message BEFORE the model runs, so the model always knows exactly
+  // what is collected and what to ask next.
+  const buildState = advanceBuildState(
+    verifyBuildState(body?.build_state),
+    message
+  );
+  const buildNote = buildStateNote(buildState);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AGENT_TIMEOUT_MS);
   const signal = controller.signal;
@@ -181,7 +212,7 @@ export async function POST(req: NextRequest) {
     let truncated = false;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const data = await callGroq(apiKey, tools, messages, signal);
+      const data = await callGroq(apiKey, tools, messages, signal, buildNote);
       const choice = data?.choices?.[0];
       const msg = choice?.message;
       if (!msg) throw new Error("groq response had no choices[0].message");
@@ -210,7 +241,12 @@ export async function POST(req: NextRequest) {
         "I got stuck checking the chain — try rephrasing your question.";
     }
     if (truncated) finalContent += " (note: my answer was cut short)";
-    return NextResponse.json({ reply: finalContent });
+    return NextResponse.json({
+      reply: finalContent,
+      // Opaque to the widget: the signed build state to echo back next turn.
+      // "" when no secret is configured (state feature off).
+      build_state: signBuildState(buildState),
+    });
   } catch (e: any) {
     const aborted = signal.aborted;
     return NextResponse.json(
