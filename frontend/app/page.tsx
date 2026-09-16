@@ -10,6 +10,7 @@ import { DateStrip } from "@/components/landing/DateStrip";
 import { ChainPulseStats } from "@/components/landing/ChainPulseStats";
 import { Headlines } from "@/components/landing/Headlines";
 import { ChatPreview } from "@/components/landing/ChatPreview";
+import { FeaturedBlockpages } from "@/components/landing/FeaturedBlockpages";
 
 const SERIF = "Georgia, 'Times New Roman', serif";
 
@@ -118,6 +119,9 @@ export default function LandingPage() {
 
         {/* Happening in the lobby — live chat preview */}
         <ChatPreview />
+
+        {/* Featured blockpages — curated, ranked live by followers + badges */}
+        <FeaturedBlockpages />
 
         {/* Founder quote — serif is reserved for human-voice moments */}
         <section className="vs-section" style={{ paddingTop: 0 }}>
