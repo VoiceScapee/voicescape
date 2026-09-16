@@ -47,6 +47,15 @@ export const CHAT_PRICE_TINYBAR = 500_000_000; // 5 HBAR
 export const BUILD_PRICE_TINYBAR = 500_000_000; // 5 HBAR
 export const FREE_MESSAGES = 5;
 export const CHAT_MESSAGES_PER_PAYMENT = 50;
+/**
+ * Free visual-mock previews per build (Brandon's 2026-09-16 spec): after
+ * the username/bio/vibe are collected, the visitor sees up to 2 free
+ * visual mocks BEFORE any paywall. Mocks are pure model output with
+ * placeholder art — no image generation, so they cost ~$0.001 each.
+ * Counted per identity + build username; a paid build resets the count
+ * so a brand-new build repeats the whole process.
+ */
+export const MAX_FREE_PREVIEWS = 2;
 
 const BUDDY_USERNAME = "forge";
 const TIPS_CONTRACT_ID = "0.0.10854060";
@@ -569,6 +578,67 @@ export async function noteChatMessage(
   });
 }
 
+// Preview counters: free visual mocks per identity + build username.
+// Keyed separately from the payment ledger — previews are free, so they
+// never touch payments; the username scope means a brand-new build (new
+// username) gets its own 2 previews.
+const PREVIEW_PREFIX = "buddy:preview:";
+const PREVIEW_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches the app session
+
+function previewKeyFor(identity: ChatIdentity, username: string): string {
+  const who =
+    identity.kind === "wallet"
+      ? `wallet:${identity.evm.toLowerCase()}`
+      : `anon:${identity.ip}`;
+  return `${PREVIEW_PREFIX}${who}:${username.toLowerCase()}`;
+}
+
+/**
+ * How many free visual-mock previews this identity has used for this
+ * build username. Throws when the store is unreachable (fail closed).
+ */
+export async function getPreviewsUsed(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<number> {
+  if (meteringBypass()) return 0;
+  const raw = await store.get(previewKeyFor(identity, username));
+  const n = raw === null ? 0 : Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Record one delivered free preview. Resolves the new total used. Only
+ * call after a valid mock was actually delivered — a model glitch that
+ * produced no mock must not eat the visitor's allowance. Throws when the
+ * store is unreachable (fail closed).
+ */
+export async function notePreview(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<number> {
+  if (meteringBypass()) return 0;
+  return store.incr(previewKeyFor(identity, username), PREVIEW_TTL_MS);
+}
+
+/**
+ * Reset the free-preview counters for this identity (all build usernames).
+ * Called when a build payment is consumed: the next brand-new build
+ * repeats the whole process (2 free previews -> 5 HBAR -> build).
+ */
+export async function resetBuildPreviews(
+  identity: ChatIdentity,
+  store: KvStore = getKvStore()
+): Promise<void> {
+  const who =
+    identity.kind === "wallet"
+      ? `wallet:${identity.evm.toLowerCase()}`
+      : `anon:${identity.ip}`;
+  await store.clearPrefix(`${PREVIEW_PREFIX}${who}:`);
+}
+
 // ---------------------------------------------------------------------------
 // Build access
 // ---------------------------------------------------------------------------
@@ -649,6 +719,15 @@ export async function consumeBuild(
       ) {
         p.kind = "build";
         await saveLedger(store, identity, ledger);
+        // A paid build resets the free-preview counters: the visitor's
+        // next brand-new build repeats the whole process (2 free previews
+        // -> 5 HBAR -> build) instead of hitting an exhausted allowance.
+        try {
+          await resetBuildPreviews(identity, store);
+        } catch {
+          // Non-fatal: the payment is already spent and recorded. A stale
+          // preview counter only affects future free previews, never money.
+        }
         return true;
       }
     }

@@ -13,12 +13,16 @@ import {
   CHAT_PAYWALL_ANON,
   CHAT_PAYWALL_WALLET,
   FREE_MESSAGES,
+  MAX_FREE_PREVIEWS,
   checkBuildAccess,
   checkChatAccess,
   consumeBuild,
+  getPreviewsUsed,
   hasBuildHistory,
   isOnTopicMessage,
   noteChatMessage,
+  notePreview,
+  resetBuildPreviews,
 } from "./metering";
 import { getKvStore } from "@/lib/server/store";
 
@@ -270,5 +274,63 @@ describe("build paywall copy", () => {
       expect(copy).toContain("forge");
     }
     expect(BUILD_PAYWALL_ANON).toContain("connected wallet");
+  });
+});
+
+describe("free visual-mock previews (2 per build)", () => {
+  it("the free-preview allowance is 2", () => {
+    expect(MAX_FREE_PREVIEWS).toBe(2);
+  });
+
+  it("starts at zero and increments per delivered preview", async () => {
+    const id = { kind: "anon", ip: "203.0.113.77" } as const;
+    expect(await getPreviewsUsed(id, "alice")).toBe(0);
+    expect(await notePreview(id, "alice")).toBe(1);
+    expect(await getPreviewsUsed(id, "alice")).toBe(1);
+    expect(await notePreview(id, "alice")).toBe(2);
+    expect(await getPreviewsUsed(id, "alice")).toBe(2);
+  });
+
+  it("counts separately per build username", async () => {
+    const id = { kind: "anon", ip: "203.0.113.78" } as const;
+    await notePreview(id, "alice");
+    expect(await getPreviewsUsed(id, "bob")).toBe(0);
+    expect(await getPreviewsUsed(id, "alice")).toBe(1);
+  });
+
+  it("counts separately per identity (wallet vs anon)", async () => {
+    const anon = { kind: "anon", ip: "203.0.113.79" } as const;
+    const wallet = { kind: "wallet", evm: EVM("5") } as const;
+    await notePreview(anon, "alice");
+    expect(await getPreviewsUsed(wallet, "alice")).toBe(0);
+    expect(await getPreviewsUsed(anon, "alice")).toBe(1);
+  });
+
+  it("previews never touch the payment ledger", async () => {
+    const id = { kind: "anon", ip: "203.0.113.80" } as const;
+    await notePreview(id, "alice");
+    await notePreview(id, "alice");
+    const raw = await getKvStore().get(`buddy:chat:anon:${id.ip}`);
+    expect(raw).toBeNull();
+  });
+
+  it("consumeBuild resets the preview counters so a new build repeats the process", async () => {
+    mockMirror([[tipLog("1789520900.000000001", 31)]]);
+    const evm = EVM("6");
+    const id = { kind: "wallet", evm } as const;
+    await checkBuildAccess(evm); // credits the payment
+    await notePreview(id, "alice");
+    await notePreview(id, "alice");
+    expect(await getPreviewsUsed(id, "alice")).toBe(2);
+    expect(await consumeBuild(evm)).toBe(true);
+    expect(await getPreviewsUsed(id, "alice")).toBe(0);
+  });
+
+  it("resetBuildPreviews clears counters for a fresh build without spending", async () => {
+    const id = { kind: "anon", ip: "203.0.113.81" } as const;
+    await notePreview(id, "alice");
+    expect(await getPreviewsUsed(id, "alice")).toBe(1);
+    await resetBuildPreviews(id);
+    expect(await getPreviewsUsed(id, "alice")).toBe(0);
   });
 });

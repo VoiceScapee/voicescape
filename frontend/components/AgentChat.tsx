@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
-import { type VoicescapePage } from "@/lib/schema";
+import { type VoicescapePage, isValidPage } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import BuddyDraftPreview from "./BuddyDraftPreview";
 import BuddyPayButton from "./BuddyPayButton";
@@ -184,6 +184,16 @@ export default function AgentChat() {
   // The draft currently being refined ("tweak" flow): echoed to the server
   // as refine_draft so follow-ups revise THIS draft, and validated there.
   const [tweakDraft, setTweakDraft] = useState<VoicescapePage | null>(null);
+  // The current FREE visual mock (from the server's machine-readable
+  // `build.preview`): rendered in-chat with BuddyDraftPreview. This is a
+  // mock with placeholder art — never the paid build, so it gets no
+  // "Open in Builder" / "Publish" buttons; those stay on the paid draft.
+  const [previewDraft, setPreviewDraft] = useState<VoicescapePage | null>(null);
+  // Free previews remaining for this build (null = previews don't apply).
+  const [previewsLeft, setPreviewsLeft] = useState<number | null>(null);
+  // Explicit "tweak the mock" mode: while on, the current mock is echoed
+  // as preview_draft so the next message revises it (preview 2 of 2).
+  const [tweakingPreview, setTweakingPreview] = useState(false);
 
   useEffect(() => {
     const el = listRef.current;
@@ -281,6 +291,14 @@ export default function AgentChat() {
           // "Tweak" flow: echo the current draft so the server revises THIS
           // draft. Validated server-side against the page schema.
           refine_draft: tweakDraft ? JSON.stringify(tweakDraft) : undefined,
+          // Free-mock revision flow: echo the current mock so the next
+          // message revises it (preview 2 of 2). Only in explicit
+          // tweak-the-mock mode, so unrelated questions never burn a
+          // preview.
+          preview_draft:
+            tweakingPreview && previewDraft
+              ? JSON.stringify(previewDraft)
+              : undefined,
         }),
       });
       let reply: string;
@@ -307,22 +325,44 @@ export default function AgentChat() {
         } else if (chat?.metered) {
           setFreeLeft(0);
         }
-        // Machine-readable build paywall ("anon" | "unpaid" | null): drives
-        // the in-chat payment panel. Start polling the credit endpoint so
-        // "Payment detected" appears when the on-chain tip lands.
-        const pw = (data as { build?: { paywall?: string } } | null)?.build
-          ?.paywall;
+        // Machine-readable build signal: paywall ("anon" | "unpaid" | null)
+        // drives the in-chat payment panel; preview carries the free visual
+        // mock. Start polling the credit endpoint so "Payment detected"
+        // appears when the on-chain tip lands.
+        const b = (
+          data as {
+            build?: {
+              paywall?: string;
+              preview?: unknown;
+              previewsLeft?: number;
+            };
+          } | null
+        )?.build;
+        const pw = b?.paywall;
         if (pw === "anon" || pw === "unpaid") {
           setPaywall(pw);
           startCreditPoll();
         }
+        // A free mock arrived: validate client-side too, then show it in
+        // the preview panel — never as a paid draft.
+        if (b && isValidPage(b.preview)) {
+          setPreviewDraft(b.preview as VoicescapePage);
+          setPreviewsLeft(
+            typeof b.previewsLeft === "number" ? b.previewsLeft : null
+          );
+          setTweakingPreview(false);
+        }
       }
       const newDraft = extractPageDraft(reply);
       if (newDraft) {
-        // A draft arrived — the build is live. Clear the paywall panel and
-        // chain tweaks onto the newest draft.
+        // A draft arrived — the paid build is live. Clear the paywall panel
+        // and the free mock (superseded), and chain tweaks onto the newest
+        // draft.
         setPaywall(null);
         stopCreditPoll();
+        setPreviewDraft(null);
+        setPreviewsLeft(null);
+        setTweakingPreview(false);
         setTweakDraft((cur) => (cur ? newDraft : cur));
       }
       setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -558,6 +598,100 @@ export default function AgentChat() {
             )}
           </div>
 
+          {/* Free visual-mock preview (placeholder art — not the paid build).
+              The mock renders with BuddyDraftPreview but never gets the
+              "Open in Builder" / "Publish" buttons: those stay on the paid
+              draft's card. */}
+          {previewDraft && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid rgba(61, 220, 132, 0.25)",
+                background: "rgba(61, 220, 132, 0.06)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>
+                  🎨 Preview{" "}
+                  <span
+                    style={{
+                      fontWeight: 400,
+                      color: "rgba(232, 234, 240, 0.6)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {previewsLeft != null && previewsLeft > 0
+                      ? `· ${previewsLeft} free ${
+                          previewsLeft === 1 ? "tweak" : "tweaks"
+                        } left`
+                      : "· free previews used"}
+                  </span>
+                </strong>
+                <button
+                  type="button"
+                  aria-label="Dismiss preview"
+                  onClick={() => {
+                    setPreviewDraft(null);
+                    setPreviewsLeft(null);
+                    setTweakingPreview(false);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(232, 234, 240, 0.6)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <BuddyDraftPreview page={previewDraft} />
+              {previewsLeft != null && previewsLeft > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTweakingPreview(true);
+                    inputRef.current?.focus();
+                  }}
+                  style={{
+                    marginTop: 8,
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255, 255, 255, 0.18)",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    color: "#fff",
+                    background: "rgba(255, 255, 255, 0.07)",
+                  }}
+                >
+                  ✏️ Tweak this preview
+                </button>
+              ) : (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12.5,
+                    color: "rgba(232, 234, 240, 0.75)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  This mock uses placeholder art. Pay 5 HBAR below and
+                  I&apos;ll build the real page with custom AI artwork.
+                </div>
+              )}
+            </div>
+          )}
           {/* Input */}
           {paywall && (
             <div
@@ -648,6 +782,37 @@ export default function AgentChat() {
               )}
             </div>
           )}
+          {tweakingPreview && previewDraft && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderTop: "1px solid rgba(61, 220, 132, 0.25)",
+                background: "rgba(61, 220, 132, 0.07)",
+                fontSize: 12.5,
+                color: "rgba(232, 234, 240, 0.9)",
+              }}
+            >
+              <span>🎨 Tweaking your preview — tell me what to change.</span>
+              <button
+                type="button"
+                aria-label="Stop tweaking preview"
+                onClick={() => setTweakingPreview(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(232, 234, 240, 0.6)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {tweakDraft && (
             <div
               style={{
@@ -713,7 +878,9 @@ export default function AgentChat() {
               placeholder={
                 tweakDraft
                   ? `Tell Buddy what to change on @${tweakDraft.username}…`
-                  : INPUT_PLACEHOLDER
+                  : tweakingPreview
+                    ? "Tell Buddy what to tweak on the preview…"
+                    : INPUT_PLACEHOLDER
               }
               aria-label="Message Blockpage Buddy"
               maxLength={2000}

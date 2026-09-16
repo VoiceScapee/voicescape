@@ -129,4 +129,56 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("refine_draft");
     expect(widgetSrc).toContain("Tell Buddy what to change");
   });
+
+  it("renders the free visual-mock preview in-chat via BuddyDraftPreview", () => {
+    expect(widgetSrc).toContain("build.preview");
+    expect(widgetSrc).toContain("isValidPage(b.preview)");
+    expect(widgetSrc).toContain("setPreviewDraft(b.preview as VoicescapePage)");
+    expect(widgetSrc).toContain("setPreviewsLeft(");
+    expect(widgetSrc).toContain("<BuddyDraftPreview page={previewDraft} />");
+  });
+
+  it("the free-mock panel labels remaining tweaks and placeholder-art status", () => {
+    expect(widgetSrc).toContain("🎨 Preview");
+    expect(widgetSrc).toContain("free previews used");
+    // Rendered as "· 1 free tweak left" / "· 2 free tweaks left" via a
+    // template literal — assert the tokens.
+    expect(widgetSrc).toContain("free ${");
+    expect(widgetSrc).toContain('"tweak"');
+    expect(widgetSrc).toContain('"tweaks"');
+    expect(widgetSrc).toContain("This mock uses placeholder art.");
+    expect(widgetSrc).toContain("Pay 5 HBAR below and");
+  });
+
+  it("the free-mock panel has no Open in Builder / Publish page buttons", () => {
+    // The preview panel renders BuddyDraftPreview and the tweak control;
+    // "Open in Builder" and "Publish page" only appear on the paid-draft
+    // card. (Slice from the panel's JSX, past its own comment.)
+    const panelStart = widgetSrc.indexOf("{previewDraft && (");
+    const previewBlock = widgetSrc.slice(
+      panelStart,
+      widgetSrc.indexOf("{/* Input */}")
+    );
+    expect(panelStart).toBeGreaterThan(-1);
+    expect(previewBlock).toContain("<BuddyDraftPreview page={previewDraft} />");
+    expect(previewBlock).toContain("Tweak this preview");
+    expect(previewBlock).not.toContain("Open in Builder");
+    expect(previewBlock).not.toContain("Publish page");
+  });
+
+  it("'Tweak this preview' arms tweak mode and the message sends preview_draft", () => {
+    expect(widgetSrc).toContain("✏️ Tweak this preview");
+    expect(widgetSrc).toContain("setTweakingPreview(true)");
+    expect(widgetSrc).toContain("preview_draft:");
+    expect(widgetSrc).toContain("tweakingPreview && previewDraft");
+    expect(widgetSrc).toContain("JSON.stringify(previewDraft)");
+  });
+
+  it("a paid draft supersedes the free mock (clears it and the tweak state)", () => {
+    expect(widgetSrc).toContain("the free mock (superseded)");
+    expect(widgetSrc).toContain("const newDraft = extractPageDraft(reply)");
+    // The paid-draft branch resets the preview state.
+    const paidBranch = widgetSrc.slice(widgetSrc.indexOf("const newDraft = extractPageDraft(reply)"));
+    expect(paidBranch).toContain("setPreviewDraft(null)");
+  });
 });

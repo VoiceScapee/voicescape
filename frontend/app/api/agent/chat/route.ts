@@ -2,9 +2,11 @@
  * POST /api/agent/chat — Voicescape onboarding buddy (read-only).
  *
  * Body: { message: string, history?: Array<{ role: "user"|"assistant", content: string }>,
- *          build_state?: string, refine_draft?: string }
+ *          build_state?: string, refine_draft?: string, preview_draft?: string }
  * Response: { reply: string, build_state: string,
- *             build: { paywall: "anon" | "unpaid" | null } }
+ *             build: { paywall: "anon" | "unpaid" | null,
+ *                      preview: VoicescapePage | null,
+ *                      previewsLeft: number | null } }
  *
  * refine_draft is the widget echoing the visitor's current page draft so a
  * follow-up message can revise it ("tweak" flow). It is validated against
@@ -12,9 +14,18 @@
  * never consumes a second payment, but a wallet with no build history can
  * never get a free build this way.
  *
+ * preview_draft is the widget echoing the current FREE visual mock so a
+ * follow-up can revise it (preview 2 of 2). Previews are pure model output
+ * with placeholder art — the image tool is withheld on preview turns, so a
+ * preview can never burn image generation.
+ *
  * The `build.paywall` field is machine-readable UI signal for the widget:
  * "anon" = builds need a connected wallet, "unpaid" = the signed-in wallet
  * has no 5-HBAR build credit yet, null = no paywall on this turn.
+ * `build.preview` carries the free visual mock (rendered by the widget with
+ * BuddyDraftPreview — never the "Open in Builder"/"Publish" path, which is
+ * reserved for the paid build). `build.previewsLeft` is the remaining free
+ * previews for this build (null when previews don't apply this turn).
  *
  * build_state is the server's HMAC-signed build-progress token (see
  * ./build-state.ts): the widget echoes it back each turn so the model can
@@ -92,13 +103,16 @@ import {
   BUILD_RACE_MESSAGE,
   BUILD_STORE_ERROR,
   CHAT_METER_ERROR,
+  MAX_FREE_PREVIEWS,
   checkBuildAccess,
   checkChatAccess,
   consumeBuild,
+  getPreviewsUsed,
   hasBuildHistory,
   isOnTopicMessage,
   meteringBypass,
   noteChatMessage,
+  notePreview,
   type ChatIdentity,
 } from "./metering";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
@@ -215,6 +229,56 @@ function parseRefineDraft(raw: unknown): VoicescapePage | null {
   }
 }
 
+/**
+ * Validate a widget-echoed FREE mock for the preview-revision flow. Same
+ * shape rules as refine drafts, plus the username must match the
+ * server-tracked build username — a mock for another build can't be
+ * smuggled in. Never throws.
+ */
+function parsePreviewDraft(
+  raw: unknown,
+  username: string | undefined
+): VoicescapePage | null {
+  const page = parseRefineDraft(raw);
+  if (!page || !username) return null;
+  return page.username.toLowerCase() === username ? page : null;
+}
+
+/**
+ * Whole-message approval of the mock ("go", "looks good", "build it").
+ * Anchored: "looks good but make it darker" is a revision, not approval.
+ * An approval skips any remaining free previews and goes to the paywall
+ * (or straight to the paid build when credit already exists).
+ */
+const PREVIEW_APPROVAL_RE =
+  /^(go|yes|yeah|yep|yup|sure|ok|okay|do it|build it|looks good|great|perfect|awesome|amazing|ship it|let'?s (do it|go|build)|proceed|approved?|i'?m ready|pay)\b[.!?\s]*$/i;
+
+/**
+ * System note for a free visual-mock preview turn. Overrides the build
+ * note's "generate the artwork" instruction: the visitor has NOT paid, so
+ * this is a MOCK with placeholder art only — never real image generation.
+ * Production-grade means the full block vocabulary and a real theme, not
+ * a bare stub.
+ */
+const PREVIEW_NOTE = [
+  "[MOCK PREVIEW — this overrides the 'generate the artwork' instruction in the build note above. The visitor has NOT paid yet: this is a FREE preview, not the build.]",
+  "Output the page as ONE complete ```json fenced block matching the page schema exactly. Make it production-grade and rich — use the full block vocabulary: hero, bio, links, music, gallery (with an effect), tipJar, top8, and booking/livestream/chat blocks when they fit the vibe. Write a complete theme (background, foreground, accent, fontFamily) that matches the vibe.",
+  "PLACEHOLDER ART ONLY: hero avatarEmoji (pick a fitting emoji — NEVER avatarImage), gallery images as emoji only (e.g. [\"🎨\",\"📸\",\"✨\"]) — never URLs, never IPFS. Do NOT call generate_page_image: the tool is unavailable this turn.",
+  "Keep your visible reply to one or two short sentences: present the mock, invite one tweak, and say that when they love it they say \"go\" and the 5 HBAR build makes the real page with custom AI artwork.",
+].join("\n");
+
+/** System note for revising the free mock (preview 2 of 2). */
+function previewReviseNote(mock: VoicescapePage): string {
+  return [
+    "[MOCK PREVIEW REVISION — the visitor is revising their FREE preview. They have NOT paid.]",
+    "Current mock JSON:",
+    JSON.stringify(mock).slice(0, MAX_REFINE_BYTES),
+    "Revise ONLY what they asked for; keep everything else identical. Still placeholder art only (emoji, never URLs/IPFS) — do NOT call generate_page_image: the tool is unavailable this turn. " +
+      "Output the FULL revised page as a single ```json fenced block matching the page schema. " +
+      'Keep your visible reply to one short sentence, ending with: say "go" any time and the 5 HBAR build makes the real page.',
+  ].join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Route
 // ---------------------------------------------------------------------------
@@ -297,33 +361,81 @@ export async function POST(req: NextRequest) {
   }
   const buildWallet = buildComplete ? walletEvm : null;
 
-  if (justCompleted && !meteringBypass()) {
-    // Fail fast BEFORE the model burns image generations on an unpaid
-    // build. Anonymous visitors get the connect-wallet paywall; signed-in
-    // wallets without a 5-HBAR build payment get the tip paywall.
-    if (!buildWallet) {
-      return NextResponse.json({
-        reply: BUILD_PAYWALL_ANON,
-        build_state: signBuildState(buildState),
-        build: { paywall: "anon" },
-      });
-    }
-    let access;
+  // Free visual-mock previews (Brandon's 2026-09-16 spec): once the three
+  // slots are collected, the visitor gets up to 2 free visual mocks BEFORE
+  // any paywall. Mocks are pure model output with placeholder art — the
+  // image tool is withheld on preview turns (see tools below), so a
+  // preview can never burn image generation. After the 2nd mock, or on an
+  // explicit "go", the paywall appears; 5 HBAR then unlocks ONE full
+  // production-grade build with real AI artwork.
+  //
+  // Preview identity follows the chat-metering pattern: the signed-in
+  // wallet when present, else the IP. Counted per build username and reset
+  // when a build payment is consumed, so a brand-new build repeats the
+  // whole process (2 free previews -> 5 HBAR -> build).
+  const previewIdentity: ChatIdentity =
+    walletEvm != null
+      ? { kind: "wallet", evm: walletEvm }
+      : { kind: "anon", ip: agentChatClientIp(req) };
+  const previewDraftEcho = parsePreviewDraft(body?.preview_draft, buildState.u);
+  const isApproval = PREVIEW_APPROVAL_RE.test(message);
+  const isPreviewRevisionTurn =
+    buildComplete && !justCompleted && !isApproval && previewDraftEcho != null;
+
+  let previewMode: "new" | "revise" | null = null;
+  let previewsUsed = 0;
+  // Decided pre-model on paywalled turns, post-model on preview turns
+  // (the 2nd mock ships with the paywall panel); null otherwise.
+  let paywallKind: "anon" | "unpaid" | null = null;
+
+  if (!meteringBypass() && buildComplete) {
     try {
-      access = await checkBuildAccess(buildWallet);
+      previewsUsed = await getPreviewsUsed(
+        previewIdentity,
+        buildState.u ?? ""
+      );
     } catch {
-      return NextResponse.json({
-        reply: BUILD_STORE_ERROR,
-        build_state: signBuildState(buildState),
-        build: { paywall: null },
-      });
+      return NextResponse.json(
+        { error: "preview_meter_unavailable", reply: BUILD_STORE_ERROR },
+        { status: 503 }
+      );
     }
-    if (!access.allowed) {
-      return NextResponse.json({
-        reply: access.reason,
-        build_state: signBuildState(buildState),
-        build: { paywall: "unpaid" },
-      });
+    const previewsLeftNow = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
+    if (justCompleted && previewsLeftNow > 0) {
+      previewMode = "new";
+    } else if (isPreviewRevisionTurn && previewsLeftNow > 0) {
+      previewMode = "revise";
+    } else if (!isRefineTurn) {
+      // No free previews left (or the visitor approved the mock) and this
+      // isn't a paid tweak: the model would generate the build now. Never
+      // burn image generations without a payment — check entitlement
+      // BEFORE the model runs.
+      if (!buildWallet) {
+        return NextResponse.json({
+          reply: BUILD_PAYWALL_ANON,
+          build_state: signBuildState(buildState),
+          build: { paywall: "anon", preview: null, previewsLeft: previewsLeftNow },
+        });
+      }
+      let access;
+      try {
+        access = await checkBuildAccess(buildWallet);
+      } catch {
+        return NextResponse.json({
+          reply: BUILD_STORE_ERROR,
+          build_state: signBuildState(buildState),
+          build: { paywall: null, preview: null, previewsLeft: previewsLeftNow },
+        });
+      }
+      if (!access.allowed) {
+        return NextResponse.json({
+          reply: access.reason,
+          build_state: signBuildState(buildState),
+          build: { paywall: "unpaid", preview: null, previewsLeft: previewsLeftNow },
+        });
+      }
+      // Paid: fall through — the model runs WITH the image tool and the
+      // post-model block consumes the payment on a valid draft.
     }
   }
 
@@ -357,7 +469,7 @@ export async function POST(req: NextRequest) {
   const inBuildFlow = buildState.active && !buildComplete;
   // Build revisions are product questions (same as the page-editing
   // vocabulary in isOnTopicMessage) — tweaks never eat free chat messages.
-  const onTopic = inBuildFlow || isRefineTurn || isOnTopicMessage(message);
+  const onTopic = inBuildFlow || isRefineTurn || isPreviewRevisionTurn || isOnTopicMessage(message);
   const chatIdentity: ChatIdentity =
     walletEvm != null
       ? { kind: "wallet", evm: walletEvm }
@@ -392,12 +504,27 @@ export async function POST(req: NextRequest) {
 
   // Buddy's tools: Hedera's Agent Kit (read-only Voicescape plugin) plus the
   // image-generation tool (no chain access — artwork only).
-  const tools = [...getBuddyTools(signal), makeImageTool(agentChatClientIp(req))];
+  // ECONOMICS INVARIANT: preview turns NEVER get the image tool — a free
+  // mock is pure model output with placeholder art, so even a misbehaving
+  // model can't burn image generation before payment.
+  const tools = previewMode
+    ? getBuddyTools(signal)
+    : [...getBuddyTools(signal), makeImageTool(agentChatClientIp(req))];
 
   try {
     const messages: ChatMessage[] = [...history, { role: "user", content: message }];
     let finalContent: string | null = null;
     let truncated = false;
+
+    // Free-mock instruction (overrides the build note's "generate the
+    // artwork" line): the model outputs a placeholder-art mock, never
+    // real images.
+    const previewNote =
+      previewMode === "new"
+        ? PREVIEW_NOTE
+        : previewMode === "revise" && previewDraftEcho
+          ? previewReviseNote(previewDraftEcho)
+          : null;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       const data = await callGroq(
@@ -406,7 +533,7 @@ export async function POST(req: NextRequest) {
         messages,
         signal,
         buildNote,
-        refineNote ? [refineNote] : []
+        [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : [])]
       );
       const choice = data?.choices?.[0];
       const msg = choice?.message;
@@ -448,8 +575,48 @@ export async function POST(req: NextRequest) {
     // must have build history (it paid for a build before), but no second
     // payment is consumed. A wallet with no build history gets the unpaid
     // paywall instead of a free draft.
-    let paywallKind: "anon" | "unpaid" | null = null;
-    if (buildComplete && !meteringBypass() && extractPageDraft(finalContent)) {
+    // Free-mock delivery: pull the mock out of the reply prose (the widget
+    // renders it from build.preview — never as a paid draft), count it
+    // against the free allowance, and attach the 2nd mock's paywall so the
+    // visitor can pay without another round trip. A model glitch that
+    // produced no valid mock never consumes the allowance.
+    let previewPage: VoicescapePage | null = null;
+    let previewsLeftOut: number | null = null;
+    if (previewMode && !meteringBypass()) {
+      const mock = extractPageDraft(finalContent);
+      previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
+      if (mock) {
+        previewPage = mock;
+        const prose = stripPageDraft(finalContent);
+        finalContent =
+          prose ||
+          "Here's a mock of your page — tell me what to tweak, or say “go” and I'll build the real thing.";
+        try {
+          previewsUsed = await notePreview(previewIdentity, buildState.u ?? "");
+        } catch {
+          // Served mocks aren't revoked over an accounting hiccup (same
+          // precedent as chat accounting below); the pre-model check above
+          // is what fails closed.
+        }
+        previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
+      }
+      if (previewsLeftOut === 0) {
+        if (!buildWallet) {
+          paywallKind = "anon";
+        } else {
+          try {
+            const access = await checkBuildAccess(buildWallet);
+            paywallKind = access.allowed ? null : "unpaid";
+          } catch {
+            // Mirror hiccup: no panel this turn — the visitor can still say
+            // "go" and the paid-build gate checks entitlement again.
+            paywallKind = null;
+          }
+        }
+      }
+    }
+
+    if (buildComplete && !meteringBypass() && !previewMode && extractPageDraft(finalContent)) {
       if (!buildWallet) {
         const prose = stripPageDraft(finalContent);
         finalContent = prose ? `${prose}\n\n${BUILD_PAYWALL_ANON}` : BUILD_PAYWALL_ANON;
@@ -497,8 +664,13 @@ export async function POST(req: NextRequest) {
       // Opaque to the widget: the signed build state to echo back next turn.
       // "" when no secret is configured (state feature off).
       build_state: signBuildState(buildState),
-      // Machine-readable build signal for the widget (paywall UI).
-      build: { paywall: paywallKind },
+      // Machine-readable build signal for the widget (paywall UI + free
+      // visual-mock preview).
+      build: {
+        paywall: paywallKind,
+        preview: previewPage,
+        previewsLeft: previewsLeftOut,
+      },
       // Metering metadata for the widget (free-messages-left caption).
       chat: {
         metered: chatMetered,
