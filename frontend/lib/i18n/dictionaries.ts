@@ -368,7 +368,7 @@ const en = {
   "brand.eyebrow": "user / AI built blockpages",
   "landing.brandH1a": "Build your blockpage. Stream your world.",
   "landing.brandH1b": "You keep 98% of everything.",
-  "landing.brandSub": "Buddy, our AI, builds it with you. Share your streams, music, and merch — when fans tip or buy, 98% lands straight in your wallet. No middleman, no platform cut. This is yours.",
+  "landing.brandSub": "Build your own blockpage, or get help with a custom blockpage from Blockpage Buddy. Share your streams, music, and merch — when fans tip or buy, 98% lands straight in your wallet. No middleman, no platform cut. This is yours.",
   "landing.brandBuildCta": "Build your blockpage",
   "landing.brandExploreCta": "Explore",
   "landing.splitExplain": "98% goes to the person you tip. 2% keeps the lights on. On-chain, every time — you can check.",
