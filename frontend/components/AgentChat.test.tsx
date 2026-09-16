@@ -97,4 +97,36 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain('typeof data.build_state === "string"');
     expect(widgetSrc).toContain("buildStateRef.current = data.build_state");
   });
+
+  it("shows the in-chat Pay 5 HBAR control on the build paywall", () => {
+    expect(widgetSrc).toContain("BuddyPayButton");
+    expect(widgetSrc).toContain("build.paywall");
+    expect(widgetSrc).toContain('"anon"');
+    expect(widgetSrc).toContain('"unpaid"');
+    expect(widgetSrc).toContain("/api/agent/chat/build-credit");
+    expect(widgetSrc).toContain("Payment detected");
+    expect(widgetSrc).toContain("No build credit detected yet");
+  });
+
+  it("the pay button reuses the existing forge tip path (no new money code)", () => {
+    const paySrc = readFileSync(join(here, "BuddyPayButton.tsx"), "utf8");
+    expect(paySrc).toContain("Pay 5 HBAR");
+    expect(paySrc).toContain("BUILD_PAYMENT_WEI = 5_000_000_000_000_000_000n");
+    expect(paySrc).toContain('tipPage(BUDDY_PAGE_USERNAME, BUILD_PAYMENT_WEI, sender)');
+    expect(paySrc).toContain('BUDDY_PAGE_USERNAME = "forge"');
+    expect(paySrc).toContain("resolvePage(");
+    expect(paySrc).toContain("friendlyWalletError");
+    // No custom payment rail: no raw contract addresses, no ethers-as-signer.
+    expect(paySrc).not.toMatch(/0x[a-fA-F0-9]{40}/);
+    expect(paySrc).not.toContain("ethers");
+  });
+
+  it("offers Publish page and Tweak next to Open in Builder", () => {
+    expect(widgetSrc).toContain("Publish page");
+    expect(widgetSrc).toContain("publishDraft(draft)");
+    expect(widgetSrc).toContain("BUDDY_PUBLISH_INTENT_KEY");
+    expect(widgetSrc).toContain("✏️ Tweak");
+    expect(widgetSrc).toContain("refine_draft");
+    expect(widgetSrc).toContain("Tell Buddy what to change");
+  });
 });

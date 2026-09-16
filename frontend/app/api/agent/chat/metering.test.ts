@@ -16,6 +16,7 @@ import {
   checkBuildAccess,
   checkChatAccess,
   consumeBuild,
+  hasBuildHistory,
   isOnTopicMessage,
   noteChatMessage,
 } from "./metering";
@@ -226,6 +227,29 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const ledger = JSON.parse(raw!);
     expect(ledger.payments).toHaveLength(1);
     expect(ledger.payments[0].kind).toBe(null);
+  });
+});
+
+describe("hasBuildHistory — tweak eligibility without a second charge", () => {
+  it("false for a wallet that never paid", async () => {
+    mockMirror([[/* no tips */]]);
+    expect(await hasBuildHistory(EVM("2"))).toBe(false);
+  });
+
+  it("true when an unused build payment sits on the ledger", async () => {
+    mockMirror([[tipLog("1789521300.000000006", 7)]]);
+    const evm = EVM("3");
+    expect((await checkBuildAccess(evm)).allowed).toBe(true);
+    expect(await hasBuildHistory(evm)).toBe(true);
+  });
+
+  it("true after the payment was spent on a build (tweaks ride the original)", async () => {
+    mockMirror([[tipLog("1789521400.000000007", 8)]]);
+    const evm = EVM("4");
+    expect((await checkBuildAccess(evm)).allowed).toBe(true);
+    expect(await consumeBuild(evm)).toBe(true);
+    expect((await checkBuildAccess(evm)).allowed).toBe(false);
+    expect(await hasBuildHistory(evm)).toBe(true);
   });
 });
 

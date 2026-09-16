@@ -15,7 +15,8 @@ import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
 import { type VoicescapePage } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import BuddyDraftPreview from "./BuddyDraftPreview";
-import { saveBuddyDraft } from "./Onboarding";
+import BuddyPayButton from "./BuddyPayButton";
+import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
 
@@ -101,6 +102,21 @@ function openInBuilder(page: VoicescapePage) {
   window.location.href = "/builder";
 }
 
+/**
+ * Publish path: save the draft and open the builder straight on its
+ * Publish tab (via BUDDY_PUBLISH_INTENT_KEY). The builder's own publish
+ * flow does the signing — the widget never duplicates wallet logic.
+ */
+function publishDraft(page: VoicescapePage) {
+  saveBuddyDraft(page);
+  try {
+    sessionStorage.setItem(BUDDY_PUBLISH_INTENT_KEY, "1");
+  } catch {
+    /* storage unavailable — builder opens normally */
+  }
+  window.location.href = "/builder";
+}
+
 /** One-time greeting after the visitor publishes their blockpage. */
 function celebrationMsg(username: string | null): Msg {
   return {
@@ -154,6 +170,20 @@ export default function AgentChat() {
   // Free off-topic messages remaining (null = unknown / not metered).
   // Voicescape & blockchain questions are always free and never count.
   const [freeLeft, setFreeLeft] = useState<number | null>(null);
+  // Build-paywall state (from the server's machine-readable `build.paywall`
+  // field): "anon" = builds need a connected wallet, "unpaid" = signed-in
+  // wallet has no 5-HBAR credit yet. null = no paywall on this turn.
+  const [paywall, setPaywall] = useState<"anon" | "unpaid" | null>(null);
+  // Latest build-credit check (GET /api/agent/chat/build-credit): answers
+  // only about the caller's own session wallet.
+  const [credit, setCredit] = useState<{
+    signedIn: boolean;
+    hasCredit: boolean;
+  } | null>(null);
+  const creditTimer = useRef<number | null>(null);
+  // The draft currently being refined ("tweak" flow): echoed to the server
+  // as refine_draft so follow-ups revise THIS draft, and validated there.
+  const [tweakDraft, setTweakDraft] = useState<VoicescapePage | null>(null);
 
   useEffect(() => {
     const el = listRef.current;
@@ -179,6 +209,53 @@ export default function AgentChat() {
     }
   }, []);
 
+  // Build-credit status (GET /api/agent/chat/build-credit): answers only
+  // about the caller's own session wallet. Called when the paywall shows
+  // and polled after the visitor pays (mirror-node discovery lags).
+  function stopCreditPoll() {
+    if (creditTimer.current != null) {
+      window.clearInterval(creditTimer.current);
+      creditTimer.current = null;
+    }
+  }
+  async function queryCredit(): Promise<boolean> {
+    try {
+      const res = await fetch("/api/agent/chat/build-credit", {
+        headers: { ...sessionHeader() },
+        // The endpoint is read-only but answers about a live payment —
+        // never serve it from cache.
+        cache: "no-store",
+      });
+      if (!res.ok) return false;
+      const data = (await res.json().catch(() => null)) as {
+        signedIn?: boolean;
+        hasCredit?: boolean;
+      } | null;
+      if (data && typeof data.signedIn === "boolean") {
+        const found = data.signedIn && !!data.hasCredit;
+        setCredit({ signedIn: data.signedIn, hasCredit: found });
+        return found;
+      }
+    } catch {
+      /* keep the last known state */
+    }
+    return false;
+  }
+  function startCreditPoll() {
+    stopCreditPoll();
+    setCredit(null);
+    let tries = 0;
+    const tick = () => {
+      tries += 1;
+      void queryCredit().then((found) => {
+        if (found || tries >= 6) stopCreditPoll();
+      });
+    };
+    tick();
+    creditTimer.current = window.setInterval(tick, 20_000);
+  }
+  useEffect(() => stopCreditPoll, []);
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
@@ -201,6 +278,9 @@ export default function AgentChat() {
           message: text,
           history,
           build_state: buildStateRef.current || undefined,
+          // "Tweak" flow: echo the current draft so the server revises THIS
+          // draft. Validated server-side against the page schema.
+          refine_draft: tweakDraft ? JSON.stringify(tweakDraft) : undefined,
         }),
       });
       let reply: string;
@@ -227,6 +307,23 @@ export default function AgentChat() {
         } else if (chat?.metered) {
           setFreeLeft(0);
         }
+        // Machine-readable build paywall ("anon" | "unpaid" | null): drives
+        // the in-chat payment panel. Start polling the credit endpoint so
+        // "Payment detected" appears when the on-chain tip lands.
+        const pw = (data as { build?: { paywall?: string } } | null)?.build
+          ?.paywall;
+        if (pw === "anon" || pw === "unpaid") {
+          setPaywall(pw);
+          startCreditPoll();
+        }
+      }
+      const newDraft = extractPageDraft(reply);
+      if (newDraft) {
+        // A draft arrived — the build is live. Clear the paywall panel and
+        // chain tweaks onto the newest draft.
+        setPaywall(null);
+        stopCreditPoll();
+        setTweakDraft((cur) => (cur ? newDraft : cur));
       }
       setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -389,6 +486,51 @@ export default function AgentChat() {
                           >
                             Open in Builder →
                           </button>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              marginTop: 8,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => publishDraft(draft)}
+                              style={{
+                                flex: 1,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(130, 89, 239, 0.4)",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#fff",
+                                background: "rgba(130, 89, 239, 0.18)",
+                              }}
+                            >
+                              Publish page
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTweakDraft(draft);
+                                inputRef.current?.focus();
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(255, 255, 255, 0.18)",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#fff",
+                                background: "rgba(255, 255, 255, 0.07)",
+                              }}
+                            >
+                              ✏️ Tweak
+                            </button>
+                          </div>
                         </>
                       )}
                     </>
@@ -417,6 +559,129 @@ export default function AgentChat() {
           </div>
 
           {/* Input */}
+          {paywall && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid rgba(130, 89, 239, 0.2)",
+                background: "rgba(130, 89, 239, 0.08)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>🏗️ Build payment</strong>
+                <button
+                  type="button"
+                  aria-label="Dismiss build payment panel"
+                  onClick={() => {
+                    setPaywall(null);
+                    stopCreditPoll();
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(232, 234, 240, 0.6)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              {paywall === "anon" ? (
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "rgba(232, 234, 240, 0.85)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  A custom blockpage build is 5 HBAR and needs a connected
+                  wallet. Connect your wallet (top-right), then tap Check
+                  again.
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => startCreditPoll()}
+                      style={{
+                        padding: "9px 14px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(130, 89, 239, 0.4)",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        color: "#fff",
+                        background: "rgba(130, 89, 239, 0.18)",
+                      }}
+                    >
+                      Check again
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <BuddyPayButton onPaid={() => startCreditPoll()} />
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "rgba(232, 234, 240, 0.75)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {credit === null
+                      ? "Checking payment status…"
+                      : !credit.signedIn
+                        ? "No wallet signed in yet — sign in to check your credit."
+                        : credit.hasCredit
+                          ? "✅ Payment detected — say “go” and I'll start building."
+                          : "No build credit detected yet — pay above and I'll pick it up automatically."}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {tweakDraft && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderTop: "1px solid rgba(130, 89, 239, 0.2)",
+                background: "rgba(61, 220, 132, 0.07)",
+                fontSize: 12.5,
+                color: "rgba(232, 234, 240, 0.9)",
+              }}
+            >
+              <span>
+                ✏️ Refining your draft — tell me what to change.{" "}
+                <strong>@{tweakDraft.username}</strong>
+              </span>
+              <button
+                type="button"
+                aria-label="Stop refining draft"
+                onClick={() => setTweakDraft(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(232, 234, 240, 0.6)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {freeLeft !== null && freeLeft > 0 && (
             <div
               style={{
@@ -445,7 +710,11 @@ export default function AgentChat() {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={INPUT_PLACEHOLDER}
+              placeholder={
+                tweakDraft
+                  ? `Tell Buddy what to change on @${tweakDraft.username}…`
+                  : INPUT_PLACEHOLDER
+              }
               aria-label="Message Blockpage Buddy"
               maxLength={2000}
               style={{

@@ -594,6 +594,24 @@ export async function checkBuildAccess(
 }
 
 /**
+ * Has this wallet ever paid for a build — i.e. does it hold an unspent
+ * build payment, or has it spent one on a build before? Used for draft
+ * refinements ("tweaks"): a tweak revises the already-paid build, so it
+ * must not consume another payment — but a wallet that never paid must
+ * not get a free build by sending a fabricated refine draft. Throws when
+ * the store is unreachable (fail closed).
+ */
+export async function hasBuildHistory(
+  evmAddress: string,
+  store: KvStore = getKvStore()
+): Promise<boolean> {
+  if (meteringBypass()) return true;
+  const identity: ChatIdentity = { kind: "wallet", evm: evmAddress };
+  const ledger = await loadLedger(store, identity);
+  return ledger.payments.some((p) => p.kind === null || p.kind === "build");
+}
+
+/**
  * Spend one unused 5-HBAR payment on a build. Resolves true when THIS call
  * spent a payment, false when none was available (or a concurrent build
  * won the race for the last one). Call only after the draft validated —

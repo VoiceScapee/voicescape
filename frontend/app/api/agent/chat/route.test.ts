@@ -513,6 +513,272 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   });
 });
 
+describe("build refinement (tweak — revises the paid draft, no second charge)", () => {
+  // NOTE: distinct mirror-log timestamps per test (= distinct payment ids),
+  // so the exactly-once spend claims never collide across tests.
+  beforeEach(() => {
+    vi.stubEnv("SESSION_SECRET", "route-test-secret");
+  });
+
+  async function runBuildFlow(opts: {
+    groqReplies: unknown[];
+    mirrorBatches?: unknown[][];
+    headers?: Record<string, string>;
+    ip?: string;
+  }) {
+    const { calls } = mockFetch(opts.groqReplies, opts.mirrorBatches ?? []);
+    const ip = opts.ip ?? "10.1.0.1";
+    const turns = [
+      "i want to build my own blockpage",
+      "testpilotbuddy",
+      "I make chiptune music and collect retro consoles",
+      "neon arcade, dark purple and cyan",
+    ];
+    let buildState = "";
+    let last: any = null;
+    for (const message of turns) {
+      const res = await POST(
+        post(
+          { message, ...(buildState ? { build_state: buildState } : {}) },
+          ip,
+          opts.headers ?? {}
+        )
+      );
+      expect(res.status).toBe(200);
+      last = await res.json();
+      buildState = last.build_state ?? "";
+    }
+    return { last, calls, buildState, ip };
+  }
+
+  function walletHeaders(evm: string): Record<string, string> {
+    const token = issueSessionToken(
+      {
+        address: evm,
+        chainId: 295,
+        nonce: "ef".repeat(16),
+        expiresAtMs: Date.now() + 86_400_000,
+      },
+      Date.now()
+    );
+    return { "x-vs-session": token };
+  }
+
+  function tipLog(timestamp: string, index: number) {
+    const amount = (5_000_000_000_000_000_000n).toString(16).padStart(64, "0");
+    const fee = (100_000_000_000_000_000n).toString(16).padStart(64, "0");
+    return { data: "0x" + amount + fee, timestamp, transaction_index: index };
+  }
+
+  const DRAFT = {
+    version: 1,
+    username: "testpilotbuddy",
+    theme: {
+      background: "#0a0a12",
+      foreground: "#ffffff",
+      accent: "#8259ef",
+      fontFamily: "sans",
+    },
+    blocks: [{ type: "hero", title: "testpilotbuddy" }],
+  };
+  const draftReply = (text = "Here is your page!") =>
+    `${text} 🎉\n\`\`\`json\n${JSON.stringify(DRAFT)}\n\`\`\`\nOpen it in the builder to review.`;
+
+  const EVM_TWEAK = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+  const EVM_EVIL = "0xffffffffffffffffffffffffffffffffffffffff";
+  const EVM_TAMPER = "0x9999999999999999999999999999999999999999";
+
+  it("paid tweak delivers the revised draft without consuming a second payment", async () => {
+    const { buildState, ip, calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(draftReply()),
+      ],
+      mirrorBatches: [[tipLog("1789520800.111111111", 21)]],
+      headers: walletHeaders(EVM_TWEAK),
+      ip: "10.1.0.2",
+    });
+
+    // The visitor taps "Tweak": the widget echoes the current draft.
+    const { calls: tweakCalls } = mockFetch([
+      groqFinal(draftReply("Tweaked, punchier bio!")),
+    ]);
+    const res = await POST(
+      post(
+        {
+          message: "make the bio punchier",
+          build_state: buildState,
+          refine_draft: JSON.stringify(DRAFT),
+        },
+        ip,
+        walletHeaders(EVM_TWEAK)
+      )
+    );
+    const tweak = await res.json();
+    expect(tweak.reply).toContain("```json");
+    expect(tweak.build.paywall).toBeNull();
+
+    // The refine note reached the model as a system message.
+    const tweakBody = tweakCalls.groqBodies[0];
+    const systems = tweakBody.messages.filter((m: any) => m.role === "system");
+    expect(
+      systems.some((m: any) =>
+        String(m.content).includes("[Draft revision")
+      )
+    ).toBe(true);
+
+    // Exactly one payment exists on the ledger and it is still the single
+    // consumed build payment — no second payment was touched.
+    const raw = await getKvStore().get(`buddy:chat:${EVM_TWEAK}`);
+    const ledger = JSON.parse(raw!);
+    expect(ledger.payments).toHaveLength(1);
+    expect(ledger.payments[0].kind).toBe("build");
+  });
+
+  it("fabricated refine draft from a wallet with no build history is paywalled", async () => {
+    // Attacker completes the flow but never pays (turn 4 → unpaid paywall).
+    const { buildState, ip, calls } = await runBuildFlow({
+      groqReplies: [groqFinal("t1"), groqFinal("t2"), groqFinal("t3")],
+      mirrorBatches: [[/* no tips */]],
+      headers: walletHeaders(EVM_EVIL),
+      ip: "10.1.0.3",
+    });
+    const groqCallsBefore = calls.groqBodies.length;
+
+    // They echo a perfectly valid draft for the tracked username anyway.
+    const { calls: evilCalls } = mockFetch([groqFinal(draftReply("Free page!"))]);
+    const res = await POST(
+      post(
+        {
+          message: "make the bio punchier",
+          build_state: buildState,
+          refine_draft: JSON.stringify(DRAFT),
+        },
+        ip,
+        walletHeaders(EVM_EVIL)
+      )
+    );
+    const tweak = await res.json();
+    expect(tweak.reply).toBe(BUILD_PAYWALL_UNPAID);
+    expect(tweak.reply).not.toContain("```json");
+    expect(tweak.build.paywall).toBe("unpaid");
+    // The model was never invoked for the free-build attempt.
+    expect(calls.groqBodies.length).toBe(groqCallsBefore);
+    expect(evilCalls.groqBodies).toHaveLength(0);
+  });
+
+  it("refine draft for a different username is ignored (not a refine turn)", async () => {
+    const { buildState, ip } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(draftReply()),
+      ],
+      mirrorBatches: [[tipLog("1789520801.222222222", 22)]],
+      headers: walletHeaders(EVM_TAMPER),
+      ip: "10.1.0.4",
+    });
+
+    // The echoed draft names another username — lineage check fails, so
+    // this is an ordinary (already-complete) build turn: the model runs,
+    // the new draft can't be consumed (payment spent), and the draft is
+    // withheld instead of given away.
+    const evilDraft = { ...DRAFT, username: "someoneelse" };
+    mockFetch([groqFinal(draftReply("Hijacked!"))]);
+    const res = await POST(
+      post(
+        {
+          message: "make the bio punchier",
+          build_state: buildState,
+          refine_draft: JSON.stringify(evilDraft),
+        },
+        ip,
+        walletHeaders(EVM_TAMPER)
+      )
+    );
+    const tweak = await res.json();
+    expect(tweak.reply).toBe(BUILD_RACE_MESSAGE);
+    expect(tweak.reply).not.toContain("```json");
+  });
+
+  it("invalid refine_draft JSON is ignored, not a crash", async () => {
+    const EVM_BADJSON = "0x8888888888888888888888888888888888888888";
+    const { buildState, ip } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(draftReply()),
+      ],
+      mirrorBatches: [[tipLog("1789520803.444444444", 24)]],
+      headers: walletHeaders(EVM_BADJSON),
+      ip: "10.1.0.6",
+    });
+    // Garbage refine_draft fails validation → ordinary turn → the payment
+    // is already spent, so the new draft is withheld, not given away.
+    mockFetch([groqFinal(draftReply("Another one!"))]);
+    const res = await POST(
+      post(
+        {
+          message: "make the bio punchier",
+          build_state: buildState,
+          refine_draft: "{not json",
+        },
+        ip,
+        walletHeaders(EVM_BADJSON)
+      )
+    );
+    expect(res.status).toBe(200);
+    const tweak = await res.json();
+    expect(tweak.reply).toBe(BUILD_RACE_MESSAGE);
+    expect(tweak.reply).not.toContain("```json");
+  });
+
+  it("build.paywall metadata tracks the paywall state", async () => {
+    // Anonymous turn: paywall "anon".
+    {
+      const { last } = await runBuildFlow({
+        groqReplies: [groqFinal("t1"), groqFinal("t2"), groqFinal("t3")],
+        ip: "10.1.0.7",
+      });
+      expect(last.reply).toBe(BUILD_PAYWALL_ANON);
+      expect(last.build.paywall).toBe("anon");
+    }
+    // Signed-in but unpaid: paywall "unpaid".
+    {
+      const EVM_META = "0x7777777777777777777777777777777777777777";
+      const { last } = await runBuildFlow({
+        groqReplies: [groqFinal("t1"), groqFinal("t2"), groqFinal("t3")],
+        mirrorBatches: [[/* no tips */]],
+        headers: walletHeaders(EVM_META),
+        ip: "10.1.0.8",
+      });
+      expect(last.reply).toBe(BUILD_PAYWALL_UNPAID);
+      expect(last.build.paywall).toBe("unpaid");
+    }
+    // Paid build: no paywall on the delivery turn.
+    {
+      const EVM_META2 = "0x6666666666666666666666666666666666666666";
+      const { last } = await runBuildFlow({
+        groqReplies: [
+          groqFinal("t1"),
+          groqFinal("t2"),
+          groqFinal("t3"),
+          groqFinal(draftReply()),
+        ],
+        mirrorBatches: [[tipLog("1789520804.555555555", 25)]],
+        headers: walletHeaders(EVM_META2),
+        ip: "10.1.0.9",
+      });
+      expect(last.reply).toContain("```json");
+      expect(last.build.paywall).toBeNull();
+    }
+  });
+});
+
 describe("chat metering (5 free off-topic, 5 HBAR per 50)", () => {
   beforeEach(() => {
     vi.stubEnv("SESSION_SECRET", "route-test-secret");

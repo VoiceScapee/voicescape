@@ -2,8 +2,19 @@
  * POST /api/agent/chat — Voicescape onboarding buddy (read-only).
  *
  * Body: { message: string, history?: Array<{ role: "user"|"assistant", content: string }>,
- *          build_state?: string }
- * Response: { reply: string, build_state: string }
+ *          build_state?: string, refine_draft?: string }
+ * Response: { reply: string, build_state: string,
+ *             build: { paywall: "anon" | "unpaid" | null } }
+ *
+ * refine_draft is the widget echoing the visitor's current page draft so a
+ * follow-up message can revise it ("tweak" flow). It is validated against
+ * the page schema and tied to the server-tracked build username — a tweak
+ * never consumes a second payment, but a wallet with no build history can
+ * never get a free build this way.
+ *
+ * The `build.paywall` field is machine-readable UI signal for the widget:
+ * "anon" = builds need a connected wallet, "unpaid" = the signed-in wallet
+ * has no 5-HBAR build credit yet, null = no paywall on this turn.
  *
  * build_state is the server's HMAC-signed build-progress token (see
  * ./build-state.ts): the widget echoes it back each turn so the model can
@@ -77,12 +88,14 @@ import {
 import {
   BUILD_FINALIZE_ERROR,
   BUILD_PAYWALL_ANON,
+  BUILD_PAYWALL_UNPAID,
   BUILD_RACE_MESSAGE,
   BUILD_STORE_ERROR,
   CHAT_METER_ERROR,
   checkBuildAccess,
   checkChatAccess,
   consumeBuild,
+  hasBuildHistory,
   isOnTopicMessage,
   meteringBypass,
   noteChatMessage,
@@ -91,6 +104,7 @@ import {
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { verifySessionToken } from "@/lib/server/townhall/auth";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
+import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
@@ -144,7 +158,9 @@ async function callGroq(
   // Server-tracked build progress (username/bio/vibe collected so far).
   // Lets the model run the multi-turn build flow even though client
   // "assistant" history is stripped for prompt-injection safety.
-  buildNote: string | null
+  buildNote: string | null,
+  // Extra server-authored system notes (e.g. draft-revision context).
+  extraNotes: string[] = []
 ): Promise<any> {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -162,6 +178,7 @@ async function callGroq(
       messages: [
         { role: "system", content: BUDDY_SYSTEM_PROMPT },
         ...(buildNote ? [{ role: "system", content: buildNote }] : []),
+        ...extraNotes.map((content) => ({ role: "system", content })),
         ...messages,
       ],
       tools: toFunctionDefs(tools),
@@ -173,6 +190,29 @@ async function callGroq(
     throw new Error(`groq HTTP ${res.status} ${detail.slice(0, 200)}`);
   }
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Draft refinement ("tweak") helpers
+// ---------------------------------------------------------------------------
+
+/** Cap on the echoed draft — pages are small; anything bigger is rejected. */
+const MAX_REFINE_BYTES = 20_480;
+
+/**
+ * Validate a widget-echoed draft for the tweak flow. Returns the page when
+ * it parses and validates against the page schema, else null. Never throws.
+ */
+function parseRefineDraft(raw: unknown): VoicescapePage | null {
+  if (typeof raw !== "string" || !raw || raw.length > MAX_REFINE_BYTES) {
+    return null;
+  }
+  try {
+    const data: unknown = JSON.parse(raw);
+    return isValidPage(data) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +260,30 @@ export async function POST(req: NextRequest) {
   const buildComplete = !!(buildState.u && buildState.b && buildState.v);
   const justCompleted = buildComplete && !prevComplete;
 
+  // Draft refinement ("tweak"): the widget echoes the visitor's current
+  // draft so a follow-up message revises it. The draft must validate AND
+  // its username must match the server-tracked build username — this ties
+  // the tweak to the paid build lineage, so a fabricated draft can never
+  // buy a free build. Refinement only applies once the build is complete
+  // (mid-flow drafts don't exist yet).
+  const refineDraft = parseRefineDraft(body?.refine_draft);
+  const isRefineTurn =
+    buildComplete &&
+    refineDraft != null &&
+    buildState.u != null &&
+    refineDraft.username.toLowerCase() === buildState.u;
+  const refineNote = isRefineTurn
+    ? [
+        "[Draft revision — the visitor already paid for this build and has a complete page draft. They asked for a tweak.]",
+        "Current draft JSON:",
+        JSON.stringify(refineDraft).slice(0, MAX_REFINE_BYTES),
+        "Revise ONLY what they asked for; keep everything else identical, including all image URLs. " +
+          "Do NOT regenerate images unless they explicitly ask for visual/artwork changes. " +
+          "Output the FULL revised page as a single ```json fenced block matching the page schema. " +
+          "Keep your visible reply to one short sentence.",
+      ].join("\n")
+    : null;
+
   // The signed-in wallet (EVM address), or null for anonymous visitors.
   // Builds need a wallet — anonymous users are stopped at the paywall.
   // The wallet also identifies chat metering (anonymous chat is keyed by
@@ -241,6 +305,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         reply: BUILD_PAYWALL_ANON,
         build_state: signBuildState(buildState),
+        build: { paywall: "anon" },
       });
     }
     let access;
@@ -250,12 +315,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         reply: BUILD_STORE_ERROR,
         build_state: signBuildState(buildState),
+        build: { paywall: null },
       });
     }
     if (!access.allowed) {
       return NextResponse.json({
         reply: access.reason,
         build_state: signBuildState(buildState),
+        build: { paywall: "unpaid" },
+      });
+    }
+  }
+
+  // Refine turns ride on the ORIGINAL build payment: the wallet must have
+  // build history (it paid for a build before). No history → unpaid
+  // paywall before the model runs, so a fabricated refine draft can never
+  // buy a free build (and never costs us a model call).
+  if (isRefineTurn && !meteringBypass() && buildWallet) {
+    let history = false;
+    try {
+      history = await hasBuildHistory(buildWallet);
+    } catch {
+      history = false;
+    }
+    if (!history) {
+      return NextResponse.json({
+        reply: BUILD_PAYWALL_UNPAID,
+        build_state: signBuildState(buildState),
+        build: { paywall: "unpaid" },
       });
     }
   }
@@ -268,7 +355,9 @@ export async function POST(req: NextRequest) {
   // skips the chat check entirely. In-progress build answers are on-topic
   // by construction (they fill the username / bio / vibe slots).
   const inBuildFlow = buildState.active && !buildComplete;
-  const onTopic = inBuildFlow || isOnTopicMessage(message);
+  // Build revisions are product questions (same as the page-editing
+  // vocabulary in isOnTopicMessage) — tweaks never eat free chat messages.
+  const onTopic = inBuildFlow || isRefineTurn || isOnTopicMessage(message);
   const chatIdentity: ChatIdentity =
     walletEvm != null
       ? { kind: "wallet", evm: walletEvm }
@@ -311,7 +400,14 @@ export async function POST(req: NextRequest) {
     let truncated = false;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const data = await callGroq(apiKey, tools, messages, signal, buildNote);
+      const data = await callGroq(
+        apiKey,
+        tools,
+        messages,
+        signal,
+        buildNote,
+        refineNote ? [refineNote] : []
+      );
       const choice = data?.choices?.[0];
       const msg = choice?.message;
       if (!msg) throw new Error("groq response had no choices[0].message");
@@ -347,10 +443,28 @@ export async function POST(req: NextRequest) {
     // can't be spent (lost a concurrent race, or the store is unreachable),
     // the draft is withheld instead of given away: the reply never carries
     // a draft the user wasn't charged for.
+    //
+    // Tweaks (refine turns) ride on the original build payment: the wallet
+    // must have build history (it paid for a build before), but no second
+    // payment is consumed. A wallet with no build history gets the unpaid
+    // paywall instead of a free draft.
+    let paywallKind: "anon" | "unpaid" | null = null;
     if (buildComplete && !meteringBypass() && extractPageDraft(finalContent)) {
       if (!buildWallet) {
         const prose = stripPageDraft(finalContent);
         finalContent = prose ? `${prose}\n\n${BUILD_PAYWALL_ANON}` : BUILD_PAYWALL_ANON;
+        paywallKind = "anon";
+      } else if (isRefineTurn) {
+        let history = false;
+        try {
+          history = await hasBuildHistory(buildWallet);
+        } catch {
+          history = false;
+        }
+        if (!history) {
+          finalContent = BUILD_PAYWALL_UNPAID;
+          paywallKind = "unpaid";
+        }
       } else {
         let spent = false;
         let finalizeFailed = false;
@@ -383,6 +497,8 @@ export async function POST(req: NextRequest) {
       // Opaque to the widget: the signed build state to echo back next turn.
       // "" when no secret is configured (state feature off).
       build_state: signBuildState(buildState),
+      // Machine-readable build signal for the widget (paywall UI).
+      build: { paywall: paywallKind },
       // Metering metadata for the widget (free-messages-left caption).
       chat: {
         metered: chatMetered,

@@ -6,7 +6,7 @@ import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
 import Logo from "@/components/Logo";
 import { VoiceInput } from "@/components/VoiceInput";
-import { consumeOnboardDraft, consumeBuddyDraft, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
+import { consumeOnboardDraft, consumeBuddyDraft, consumeBuddyPublishIntent, ONBOARD_DRAFT_KEY } from "@/components/Onboarding";
 import { markPublished } from "@/components/OnboardingTrigger";
 import { stashClaimCongrats } from "@/lib/claim-congrats";
 import {
@@ -2188,6 +2188,22 @@ function BuilderInner() {
     // Offer the draft's username as the vanity claim in the PublishPanel.
     if (typeof draft.username === "string" && isValidUsername(draft.username)) {
       setDraftVanity(draft.username.toLowerCase());
+    }
+    // "Publish page" from the chat widget: open the builder on its Publish
+    // tab so the visitor signs and publishes through the existing flow.
+    if (consumeBuddyPublishIntent()) setTab("publish");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Deep link: /builder?tab=publish selects the Publish tab (used after a
+  // Buddy draft handoff when the widget goes straight to publishing).
+  useEffect(() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("tab") === "publish") {
+        setTab("publish");
+      }
+    } catch {
+      /* URL unavailable — keep the default tab */
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
