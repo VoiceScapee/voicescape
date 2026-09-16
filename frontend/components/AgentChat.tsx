@@ -195,6 +195,17 @@ export default function AgentChat() {
   // Explicit "tweak the mock" mode: while on, the current mock is echoed
   // as preview_draft so the next message revises it (preview 2 of 2).
   const [tweakingPreview, setTweakingPreview] = useState(false);
+  // Async paid build in flight: the server can't finish a paid build
+  // inside one serverless turn, so the "go" reply carries a signed
+  // job-start token and the widget drives start -> poll -> deliver via
+  // /api/agent/chat/build-job. While set, this renders the live progress
+  // bubble below the messages. The 5-HBAR payment is consumed only when a
+  // valid draft is delivered — failed builds never charge.
+  const [buildJob, setBuildJob] = useState<{
+    progress: number;
+    note: string;
+  } | null>(null);
+  const buildJobAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const el = listRef.current;
@@ -265,7 +276,128 @@ export default function AgentChat() {
     tick();
     creditTimer.current = window.setInterval(tick, 20_000);
   }
-  useEffect(() => stopCreditPoll, []);
+  useEffect(() => {
+    stopCreditPoll();
+    // Abandon any in-flight paid build when the widget unmounts. The job
+    // itself stays resumable server-side; the payment is untouched until a
+    // valid draft is delivered.
+    return () => {
+      buildJobAbort.current?.abort();
+      buildJobAbort.current = null;
+    };
+  }, []);
+
+  // Drive an async paid build: POST start (idempotent per wallet+username),
+  // then poll step until the server delivers a valid draft. Each step call
+  // runs one bounded build step server-side; a timed-out step just retries.
+  // The payment is consumed server-side only on valid draft delivery.
+  async function driveBuildJob(token: string) {
+    const abort = new AbortController();
+    buildJobAbort.current = abort;
+    setBusy(true);
+    setPaywall(null);
+    stopCreditPoll();
+    setPreviewDraft(null);
+    setPreviewsLeft(null);
+    setTweakingPreview(false);
+    setBuildJob({ progress: 0.05, note: "Starting your build…" });
+    const call = async (
+      payload: Record<string, unknown>
+    ): Promise<Record<string, any> | null> => {
+      const res = await fetch("/api/agent/chat/build-job", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...sessionHeader(),
+        },
+        body: JSON.stringify(payload),
+        signal: abort.signal,
+      });
+      if (!res.ok) throw new Error(`build-job HTTP ${res.status}`);
+      return (await res.json().catch(() => null)) as Record<string, any> | null;
+    };
+    try {
+      const started = await call({ action: "start", token });
+      const jobId =
+        started && typeof started.jobId === "string" ? started.jobId : "";
+      if (!started || !jobId) throw new Error("build job did not start");
+      if (typeof started.progress === "number") {
+        setBuildJob({
+          progress: started.progress,
+          note:
+            typeof started.note === "string"
+              ? started.note
+              : "Starting your build…",
+        });
+      }
+      // Poll: each call runs one bounded step server-side. Forty rounds at
+      // ~3s cadence plus up to 45s per step comfortably covers copy +
+      // artwork + finalize.
+      for (let i = 0; i < 40; i++) {
+        const r = await call({ action: "step", jobId });
+        if (!r) throw new Error("build job lost");
+        if (r.error) {
+          const reason =
+            typeof r.reason === "string" && r.reason
+              ? r.reason
+              : "The build hit a snag — nothing was charged.";
+          setBuildJob(null);
+          setMsgs((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `⚠️ ${reason} Say "go" again and I'll restart the build.`,
+            },
+          ]);
+          return;
+        }
+        if (r.done && r.draft && isValidPage(r.draft)) {
+          const draft = r.draft as VoicescapePage;
+          setBuildJob(null);
+          // Same states as a synchronous paid draft: paywall and mocks
+          // cleared, tweaks chain onto the newest draft.
+          setPaywall(null);
+          stopCreditPoll();
+          setPreviewDraft(null);
+          setPreviewsLeft(null);
+          setTweakingPreview(false);
+          setTweakDraft((cur) => (cur ? draft : cur));
+          // Deliver as prose + the fenced page draft the renderer already
+          // understands: inline preview, "Open in Builder", Publish, Tweak.
+          setMsgs((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `🎉 Your page is ready — here's your custom build with real AI artwork.\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\``,
+            },
+          ]);
+          return;
+        }
+        if (typeof r.progress === "number") {
+          setBuildJob({
+            progress: Math.min(0.99, r.progress),
+            note: typeof r.note === "string" ? r.note : "Building…",
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+      }
+      throw new Error("build job timed out");
+    } catch {
+      if (abort.signal.aborted) return;
+      setBuildJob(null);
+      setMsgs((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            '⚠️ The build ran long and I lost track of it — nothing was charged. Say "go" again and I\'ll pick it back up.',
+        },
+      ]);
+    } finally {
+      if (buildJobAbort.current === abort) buildJobAbort.current = null;
+      setBusy(false);
+    }
+  }
 
   async function send() {
     const text = input.trim();
@@ -337,6 +469,7 @@ export default function AgentChat() {
               preview?: unknown;
               previewsLeft?: number;
               previewSource?: string | null;
+              buildJob?: { token?: unknown };
             };
           } | null
         )?.build;
@@ -344,6 +477,12 @@ export default function AgentChat() {
         if (pw === "anon" || pw === "unpaid") {
           setPaywall(pw);
           startCreditPoll();
+        }
+        // Async paid build: the "go" turn returns a signed job-start token
+        // instead of a synchronous build. Drive start -> poll -> deliver.
+        const jobToken = b?.buildJob?.token;
+        if (typeof jobToken === "string" && jobToken) {
+          void driveBuildJob(jobToken);
         }
         // A free mock arrived: validate client-side too, then show it in
         // the preview panel — never as a paid draft. Normalize once more
@@ -613,6 +752,58 @@ export default function AgentChat() {
                 aria-label="Buddy is thinking"
               >
                 <span className="agent-chat-dots">● ● ●</span>
+              </div>
+            )}
+            {/* Async paid build in flight: live progress while the widget
+                drives start -> poll -> deliver. The payment is consumed only
+                when the finished draft is delivered below. */}
+            {buildJob && (
+              <div
+                style={{
+                  alignSelf: "flex-start",
+                  maxWidth: "92%",
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "14px 14px 14px 4px",
+                  border: "1px solid rgba(130, 89, 239, 0.45)",
+                  background: "rgba(130, 89, 239, 0.12)",
+                  color: "#fff",
+                  fontSize: 13.5,
+                }}
+                role="status"
+                aria-label="Building your page"
+              >
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                  🔨 Building your page…
+                </div>
+                <div
+                  style={{
+                    height: 8,
+                    borderRadius: 4,
+                    background: "rgba(255, 255, 255, 0.12)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round(buildJob.progress * 100)}%`,
+                      height: "100%",
+                      borderRadius: 4,
+                      background:
+                        "linear-gradient(118deg, #8259ef, #b45cf0)",
+                      transition: "width 0.6s ease",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    marginTop: 7,
+                    fontSize: 12,
+                    color: "rgba(232, 234, 240, 0.75)",
+                  }}
+                >
+                  {buildJob.note}
+                </div>
               </div>
             )}
           </div>

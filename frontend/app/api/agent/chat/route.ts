@@ -105,6 +105,7 @@ import {
   signBuildState,
   verifyBuildState,
 } from "./build-state";
+import { signJobStartToken } from "./build-job/job";
 import {
   BUILD_FINALIZE_ERROR,
   BUILD_PAYWALL_ANON,
@@ -497,9 +498,39 @@ export async function POST(req: NextRequest) {
             build: { paywall: "unpaid", preview: null, previewsLeft: previewsLeftNow, previewSource: null },
           });
         }
-        // Paid (access.allowed): fall through — the model runs WITH the
-        // image tool and the post-model block consumes the payment on a
-        // valid draft.
+        // Paid (access.allowed): the visitor approved the mock ("go").
+        // Hand the widget a signed async job-start token INSTEAD of
+        // generating synchronously — the full paid build (copy + AI
+        // artwork + pin) exceeds the ~60s serverless execution window, so
+        // the widget drives start -> poll -> deliver via
+        // /api/agent/chat/build-job. This turn returns immediately.
+        // Non-approval messages keep the existing model-driven paid path.
+        if (isApproval && buildState.u && buildState.b && buildState.v) {
+          const jobToken = signJobStartToken({
+            wallet: buildWallet.toLowerCase(),
+            u: buildState.u,
+            b: buildState.b,
+            v: buildState.v,
+          });
+          if (jobToken) {
+            return NextResponse.json({
+              reply:
+                "On it — building your real page now. I'll draft the layout, paint custom AI artwork, and finalize. This takes about a minute; hang tight.",
+              build_state: signBuildState(buildState),
+              build: {
+                paywall: null,
+                preview: null,
+                previewsLeft: previewsLeftNow,
+                previewSource: null,
+                buildJob: { token: jobToken },
+              },
+            });
+          }
+          // No signing secret: fall through to the legacy sync path.
+        }
+        // Paid (access.allowed), non-approval: fall through — the model runs
+        // WITH the image tool and the post-model block consumes the payment
+        // on a valid draft.
       }
     }
   }

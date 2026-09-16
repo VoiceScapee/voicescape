@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { AbiCoder } from "ethers";
 
 import { POST } from "./route";
+import { POST as POST_BUILD_JOB } from "./build-job/route";
 import { BUDDY_SYSTEM_PROMPT, sanitizeHistory } from "./guardrails";
 import { resetAgentChatRateLimit } from "@/lib/agent/rate-limit";
 import { issueSessionToken } from "@/lib/server/townhall/auth";
@@ -111,6 +112,54 @@ function post(
     },
     body: JSON.stringify(body),
   });
+}
+
+/** POST helper for the async paid-build job route (start/step). */
+function jobPost(
+  body: unknown,
+  ip = "1.2.3.4",
+  headers: Record<string, string> = {}
+): NextRequest {
+  return new NextRequest("http://localhost/api/agent/chat/build-job", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-forwarded-for": ip,
+      ...headers,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+/** Drive an async paid build to completion through the build-job route:
+ *  the "go" turn returns a job-start token; the widget (here) runs
+ *  start -> step until the draft is delivered. Returns the final draft. */
+async function driveBuildJobToDone(
+  jobToken: string,
+  ip: string,
+  headers: Record<string, string>,
+  groqReply: string
+): Promise<any> {
+  mockFetch([groqFinal(groqReply)]);
+  const rStart = await POST_BUILD_JOB(
+    jobPost({ action: "start", token: jobToken }, ip, headers)
+  );
+  const started = await rStart.json();
+  expect(typeof started.jobId).toBe("string");
+  expect(started.step).toBe("copy");
+  const rStep1 = await POST_BUILD_JOB(
+    jobPost({ action: "step", jobId: started.jobId }, ip, headers)
+  );
+  const step1 = await rStep1.json();
+  expect(step1.done).toBe(false);
+  // The canned test drafts carry no artwork markers: copy -> finalize.
+  expect(step1.step).toBe("finalize");
+  const rStep2 = await POST_BUILD_JOB(
+    jobPost({ action: "step", jobId: started.jobId }, ip, headers)
+  );
+  const step2 = await rStep2.json();
+  expect(step2.done).toBe(true);
+  return step2.draft;
 }
 
 beforeEach(() => {
@@ -907,18 +956,34 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(d5.build.previewsLeft).toBe(0);
     expect(d5.build.paywall).toBeNull(); // credit found — no panel
 
-    // Turn 6: "go" → the paid build. The model gets the image tool back.
-    const { calls: r6calls } = mockFetch([groqFinal(draftReply())]);
+    // Turn 6: "go" → async paid build. The turn returns a signed job-start
+    // token immediately (the full build can't fit in one serverless turn);
+    // the payment is NOT consumed until the draft is delivered.
+    mockFetch([]);
     const r6 = await POST(
       post({ message: "go", build_state: d5.build_state }, ip, walletHeaders(EVM_PAID))
     );
     expect(r6.status).toBe(200);
     const d6 = await r6.json();
-    expect(d6.reply).toContain("```json");
+    expect(d6.reply).not.toContain("```json");
     expect(d6.build.paywall).toBeNull();
-    expect(
-      r6calls.groqBodies[0].tools.map((t: any) => t.function.name)
-    ).toContain("generate_page_image");
+    const jobToken = d6.build.buildJob?.token;
+    expect(typeof jobToken).toBe("string");
+    // Payment still unspent before delivery.
+    {
+      const rawPre = await getKvStore().get(`buddy:chat:${EVM_PAID}`);
+      expect(JSON.parse(rawPre!).payments[0].kind).toBe(null);
+    }
+
+    // The widget drives start -> copy -> finalize; delivery consumes the
+    // single payment exactly once.
+    const draft = await driveBuildJobToDone(
+      jobToken,
+      ip,
+      walletHeaders(EVM_PAID),
+      draftReply()
+    );
+    expect(draft.username).toBe("testpilotbuddy");
 
     // Exactly one payment consumed on the ledger.
     const raw = await getKvStore().get(`buddy:chat:${EVM_PAID}`);
@@ -971,14 +1036,28 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(d5.build.paywall).toBeNull(); // paid — no panel
 
     // "go": the model flubs the draft — payment untouched.
-    mockFetch([
-      groqFinal("I made your images but the page didn't come together — try again"),
-    ]);
+    // "go" → job token; the copy step flubs the draft — payment untouched
+    // and the job stays on copy for a retry.
+    mockFetch([]);
     const r6 = await POST(
       post({ message: "go", build_state: d5.build_state }, ip, walletHeaders(EVM_FAILED))
     );
     const d6 = await r6.json();
     expect(d6.reply).not.toContain("```json");
+    const jobToken = d6.build.buildJob.token;
+    mockFetch([
+      groqFinal("I made your images but the page didn't come together — try again"),
+    ]);
+    const rStart = await POST_BUILD_JOB(
+      jobPost({ action: "start", token: jobToken }, ip, walletHeaders(EVM_FAILED))
+    );
+    const started = await rStart.json();
+    const rStep = await POST_BUILD_JOB(
+      jobPost({ action: "step", jobId: started.jobId }, ip, walletHeaders(EVM_FAILED))
+    );
+    const step = await rStep.json();
+    expect(step.done).toBe(false);
+    expect(step.step).toBe("copy");
     const raw = await getKvStore().get(`buddy:chat:${EVM_FAILED}`);
     const ledger = JSON.parse(raw!);
     expect(ledger.payments).toHaveLength(1);
@@ -997,14 +1076,24 @@ describe("build entitlement (5 HBAR per custom build)", () => {
       headers: walletHeaders(EVM_REPEAT),
       ip: "10.0.0.26",
     });
-    mockFetch([groqFinal(draftReply())], [
+    // "go" → async paid build: the turn discovers the tip and returns a
+    // job-start token; the widget drives the job to delivery.
+    mockFetch([], [
       [tipLog("1789520610.222222222", 9, 500_000_000n, "0x" + "12".repeat(20).padStart(64, "0"))],
     ]);
     const rgo = await POST(
       post({ message: "go", build_state: flow.buildState }, flow.ip, walletHeaders(EVM_REPEAT))
     );
     const dgo = await rgo.json();
-    expect(dgo.reply).toContain("```json"); // paid build delivered
+    expect(dgo.reply).not.toContain("```json");
+    expect(dgo.build.paywall).toBeNull();
+    const draft = await driveBuildJobToDone(
+      dgo.build.buildJob.token,
+      flow.ip,
+      walletHeaders(EVM_REPEAT),
+      draftReply()
+    );
+    expect(draft.username).toBe("testpilotbuddy");
     const raw = await getKvStore().get(`buddy:chat:${EVM_REPEAT}`);
     expect(JSON.parse(raw!).payments[0].kind).toBe("build");
 
@@ -1200,13 +1289,22 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
     expect(d5.build.previewsLeft).toBe(0);
     expect(d5.build.paywall).toBeNull();
 
-    // Turn 6: "go" → the paid build consumes the single payment.
-    mockFetch([groqFinal(draftReply())]);
+    // Turn 6: "go" → async paid build. The turn returns a job-start token;
+    // driving the job delivers the draft and consumes the single payment.
+    mockFetch([]);
     const r6 = await POST(
       post({ message: "go", build_state: d5.build_state }, ip, walletHeaders(EVM_TWEAK))
     );
     const d6 = await r6.json();
-    expect(d6.reply).toContain("```json");
+    expect(d6.reply).not.toContain("```json");
+    expect(d6.build.paywall).toBeNull();
+    const draft6 = await driveBuildJobToDone(
+      d6.build.buildJob.token,
+      ip,
+      walletHeaders(EVM_TWEAK),
+      draftReply()
+    );
+    expect(draft6.username).toBe("testpilotbuddy");
 
     // Turn 7: the visitor taps "Tweak" — the widget echoes the paid draft.
     const { calls: tweakCalls } = mockFetch([
@@ -1425,7 +1523,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
       expect(dd5.reply).toContain("darker theme");
     }
 
-    // Paid build: no paywall on the delivery turn.
+    // Paid build: no paywall on the "go" turn or on job delivery.
     {
       const EVM_META2 = "0x0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a";
       const f3 = await runBuildFlow({
@@ -1438,7 +1536,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
         headers: walletHeaders(EVM_META2),
         ip: "10.1.0.9",
       });
-      mockFetch([groqFinal(draftReply())], [
+      mockFetch([], [
         [tipLog("1789520804.555555555", 25, "0x" + "0a".repeat(20).padStart(64, "0"))],
       ]);
       const rgo = await POST(
@@ -1449,8 +1547,15 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
         )
       );
       const dgo = await rgo.json();
-      expect(dgo.reply).toContain("```json");
+      expect(dgo.reply).not.toContain("```json");
       expect(dgo.build.paywall).toBeNull();
+      const draft = await driveBuildJobToDone(
+        dgo.build.buildJob.token,
+        f3.ip,
+        walletHeaders(EVM_META2),
+        draftReply()
+      );
+      expect(draft.username).toBe("testpilotbuddy");
     }
   });
 });
