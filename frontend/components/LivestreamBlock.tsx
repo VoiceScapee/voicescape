@@ -151,10 +151,12 @@ function useYouTubeLive(channelId: string) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const playerRef = useRef<any>(null);
   const [live, setLive] = useState(false);
+  const [videoId, setVideoId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLive(false);
+    setVideoId(null);
     if (channelId === PLACEHOLDER_CHANNEL) return () => {};
     loadYouTubeApi()
       .then(() => {
@@ -162,7 +164,21 @@ function useYouTubeLive(channelId: string) {
         const p = new window.YT.Player(iframeRef.current, {
           events: {
             onStateChange: (e: any) => {
-              if (!cancelled && e?.data === window.YT.PlayerState.PLAYING) setLive(true);
+              if (cancelled) return;
+              if (e?.data === window.YT.PlayerState.PLAYING) {
+                setLive(true);
+                // The live_chat embed needs the concrete video id — read it
+                // from the player once it's actually playing.
+                try {
+                  const vid = p.getVideoData?.()?.video_id;
+                  if (typeof vid === "string" && vid) setVideoId(vid);
+                } catch {
+                  /* chat stays hidden; video still plays */
+                }
+              } else if (e?.data === window.YT.PlayerState.ENDED) {
+                setLive(false);
+                setVideoId(null);
+              }
             },
             onError: (e: any) => {
               // 100 = video not found/unavailable, 150 = embedding not allowed.
@@ -195,7 +211,18 @@ function useYouTubeLive(channelId: string) {
     }
   };
 
-  return { iframeRef, live, unmute };
+  return { iframeRef, live, unmute, videoId };
+}
+
+/**
+ * Official YouTube live-chat embed for the currently-playing video.
+ * embed_domain must match the embedding host or YouTube refuses to load it.
+ */
+export function youTubeLiveChatSrc(videoId: string, hostname: string): string {
+  return (
+    `https://www.youtube.com/live_chat?v=${encodeURIComponent(videoId)}` +
+    `&embed_domain=${encodeURIComponent(hostname)}`
+  );
 }
 
 export default function LivestreamBlock({
@@ -235,6 +262,10 @@ export default function LivestreamBlock({
   const { live, unmute } = isTwitch ? twitch : youTube;
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
   const chatSrc = `https://www.twitch.tv/embed/${channel}/chat?parent=${encodeURIComponent(hostname)}&darkpopout`;
+  // YouTube chat exists only while a concrete live video is playing.
+  const youTubeChat =
+    !isTwitch && live && youTube.videoId ? youTubeLiveChatSrc(youTube.videoId, hostname) : null;
+  const showChat = isTwitch || youTubeChat;
   const youTubeSrc =
     `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(channel)}` +
     `&autoplay=1&mute=1&playsinline=1&enablejsapi=1` +
@@ -263,7 +294,7 @@ export default function LivestreamBlock({
         )}
       </h2>
 
-      {isTwitch && (
+      {showChat && (
         <div className="vs-livestream-tabs" role="tablist" aria-label={title}>
           <button
             type="button"
@@ -288,7 +319,7 @@ export default function LivestreamBlock({
 
       <div className="vs-livestream-layout">
         <div
-          className={`vs-livestream-player${isTwitch && mobileTab === "chat" ? " vs-mobile-hidden" : ""}`}
+          className={`vs-livestream-player${showChat && mobileTab === "chat" ? " vs-mobile-hidden" : ""}`}
         >
           {isTwitch ? (
             <div className="vs-livestream-embedwrap">
@@ -322,12 +353,12 @@ export default function LivestreamBlock({
           )}
         </div>
 
-        {isTwitch && (
+        {(isTwitch || youTubeChat) && (
           <div
             className={`vs-livestream-chat${mobileTab === "stream" ? " vs-mobile-hidden" : ""}`}
           >
             <iframe
-              src={chatSrc}
+              src={isTwitch ? chatSrc : (youTubeChat as string)}
               title={t("livestream.chat")}
               className="vs-livestream-frame"
               allowFullScreen

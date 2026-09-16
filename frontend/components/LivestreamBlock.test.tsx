@@ -1,15 +1,18 @@
 /**
- * LivestreamBlock regression tests (Phase 1) — source assertions, repo
- * convention (no jsdom here; components render in node-only vitest).
+ * LivestreamBlock regression tests — source assertions, repo convention (no
+ * jsdom here; components render in node-only vitest), plus a direct unit test
+ * of the pure YouTube chat-URL helper.
  *
  * Guards the honesty rules: offline is the default until the player itself
- * says ONLINE/PLAYING; no raw platform error state ever; YouTube gets no
- * fake chat; tips reuse the existing onTip flow (no new money code).
+ * says ONLINE/PLAYING; no raw platform error state ever; YouTube chat is the
+ * real live_chat embed for the currently-playing video (never faked); tips
+ * reuse the existing onTip flow (no new money code).
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { youTubeLiveChatSrc } from "./LivestreamBlock";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "LivestreamBlock.tsx"), "utf8");
@@ -80,9 +83,35 @@ describe("LivestreamBlock — YouTube wiring", () => {
     expect(src).toContain("YT.PlayerState.PLAYING");
   });
 
-  it("renders no chat for YouTube in Phase 1", () => {
-    // Chat panel is gated on Twitch only.
-    expect(src).toMatch(/\{isTwitch && \(\s*<div[^>]*vs-livestream-chat/);
+  it("renders the real YouTube live_chat embed once a live video id is known", () => {
+    // Chat panel is no longer Twitch-only: YouTube gets the official
+    // live_chat embed for the currently-playing video, hidden until live.
+    expect(src).toContain("youTubeLiveChatSrc");
+    expect(src).toMatch(/\{\(isTwitch \|\| youTubeChat\) && \(\s*<div[^>]*vs-livestream-chat/);
+    // Never a faked chat: the iframe src is the official live_chat endpoint.
+    expect(src).toContain("https://www.youtube.com/live_chat?v=");
+    expect(src).toContain("embed_domain=");
+  });
+
+  it("youTubeLiveChatSrc builds the official live_chat URL", () => {
+    expect(youTubeLiveChatSrc("dQw4w9WgXcQ", "voicescape.vercel.app")).toBe(
+      "https://www.youtube.com/live_chat?v=dQw4w9WgXcQ&embed_domain=voicescape.vercel.app",
+    );
+  });
+
+  it("captures the playing video id from the IFrame API (chat needs it)", () => {
+    expect(src).toContain("getVideoData");
+    expect(src).toMatch(/video_id/);
+    expect(src).toMatch(/PLAYING[\s\S]*?setVideoId/);
+  });
+
+  it("ended streams clear live state and drop the chat", () => {
+    expect(src).toMatch(/PlayerState\.ENDED[\s\S]*?setLive\(false\)/);
+    expect(src).toMatch(/PlayerState\.ENDED[\s\S]*?setVideoId\(null\)/);
+  });
+
+  it("Stream/Chat mobile tabs appear for YouTube chat too", () => {
+    expect(src).toMatch(/\{showChat && \(\s*<div className="vs-livestream-tabs"/);
   });
 
   it("YouTube offline card links to the channel page", () => {
