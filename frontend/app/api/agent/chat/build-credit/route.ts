@@ -31,39 +31,6 @@ export async function GET(req: NextRequest) {
   }
   try {
     const access = await checkBuildAccess(verified.session.address);
-    const debug = req.nextUrl.searchParams.get("debug");
-    if (debug === "reset-payment") {
-      // TEMPORARY: Reset the consumed build payment to unspent for E2E retry.
-      // The 5 HBAR was consumed by a timed-out "go" that never returned a build.
-      const { getKvStore } = await import("@/lib/server/store");
-      const store = getKvStore();
-      const identity = { kind: "wallet" as const, evm: verified.session.address };
-      // Load, reset, save — using internal functions via dynamic import
-      const metering = await import("@/app/api/agent/chat/metering");
-      // We need loadLedger and saveLedger — loadLedger is not exported, so we
-      // replicate the key logic here.
-      const ledgerKey = `buddy:chat:${verified.session.address.toLowerCase()}`;
-      const raw = await store.get(ledgerKey);
-      if (!raw) {
-        return NextResponse.json({ reset: false, reason: "no ledger" });
-      }
-      const ledger = JSON.parse(raw);
-      let resetCount = 0;
-      for (const p of ledger.payments ?? []) {
-        if (p.id === "1789596501.153949104-1" && p.kind === "build") {
-          p.kind = null;
-          resetCount++;
-        }
-      }
-      // Remove from consumed so it can be re-credited if needed
-      ledger.consumed = (ledger.consumed ?? []).filter(
-        (id: string) => id !== "1789596501.153949104-1"
-      );
-      await store.set(ledgerKey, JSON.stringify(ledger), 7 * 24 * 60 * 60 * 1000);
-      // Also clear the claim key so it can be re-claimed
-      await store.del(`buddy:payclaim:${encodeURIComponent("1789596501.153949104-1")}`);
-      return NextResponse.json({ reset: true, resetCount });
-    }
     return NextResponse.json({ signedIn: true, hasCredit: access.allowed });
   } catch {
     return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });
