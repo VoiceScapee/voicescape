@@ -440,6 +440,69 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   const EVM_FAILED = "0xdddddddddddddddddddddddddddddddddddddddd";
   const EVM_REPEAT = "0x1212121212121212121212121212121212121212";
 
+  it("a schema-valid mock with missing block arrays is normalized before delivery — never unrendersable", async () => {
+    // The live crash (2026-09-16, 3/3 repros): the model emits a mock that
+    // passes isValidPage (valid envelope, valid block types) but whose
+    // blocks are missing the arrays PageRenderer maps over. Rendering that
+    // threw "Cannot read properties of undefined (reading 'map')" and
+    // unmounted the whole app. The preview path must normalize every block
+    // (fill missing arrays, drop unknown types) before emitting build.preview.
+    const unsafeMock =
+      "Here's your mock!\n```json\n" +
+      JSON.stringify({
+        version: 1,
+        username: "testpilotbuddy",
+        theme: {
+          background: "#0a0a12",
+          foreground: "#ffffff",
+          accent: "#8259ef",
+          fontFamily: "sans",
+        },
+        blocks: [
+          { type: "hero", title: "testpilotbuddy", avatarEmoji: "🎨" },
+          { type: "music", title: "Now vibing to", note: "dark minimal" },
+          { type: "links" },
+          { type: "gallery" },
+          { type: "top8" },
+          { type: "services" },
+          { type: "capabilities" },
+          { type: "guestbook" },
+          { type: "reviews" },
+          { type: "booking" },
+        ],
+      }) +
+      "\n```";
+    const { last } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(unsafeMock),
+      ],
+      ip: "10.0.0.41",
+    });
+    expect(last.reply).not.toContain("```json");
+    const preview = last.build.preview;
+    expect(preview).toBeTruthy();
+    // Every array-bearing block now carries its array...
+    for (const b of preview.blocks) {
+      if (b.type === "links" || b.type === "services" || b.type === "booking")
+        expect(Array.isArray(b.items)).toBe(true);
+      if (b.type === "guestbook" || b.type === "reviews")
+        expect(Array.isArray(b.entries)).toBe(true);
+      if (b.type === "music") expect(Array.isArray(b.tracks)).toBe(true);
+      if (b.type === "gallery") expect(Array.isArray(b.images)).toBe(true);
+      if (b.type === "top8") expect(Array.isArray(b.friends)).toBe(true);
+      if (b.type === "capabilities") expect(Array.isArray(b.items)).toBe(true);
+    }
+    // ...the music block got its tracks array, and the hero block is untouched.
+    const music = preview.blocks.find((b: { type: string; tracks?: unknown }) => b.type === "music");
+    expect(Array.isArray(music.tracks)).toBe(true);
+    expect(preview.blocks[0]).toMatchObject({ type: "hero", title: "testpilotbuddy" });
+    // The allowance was consumed exactly once — the mock was served.
+    expect(last.build.previewsLeft).toBe(1);
+  });
+
   it("anonymous visitor gets free preview 1: model called, no image tool, no paywall", async () => {
     const { last, calls } = await runBuildFlow({
       groqReplies: [

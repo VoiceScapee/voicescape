@@ -120,7 +120,7 @@ import {
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { verifySessionToken } from "@/lib/server/townhall/auth";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
-import { isValidPage, type VoicescapePage } from "@/lib/schema";
+import { isValidPage, normalizeBlockForRender, type VoicescapePage } from "@/lib/schema";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
@@ -670,14 +670,24 @@ export async function POST(req: NextRequest) {
       const mock = extractPageDraft(finalContent);
       previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
       if (mock) {
-        previewPage = mock;
+        // Render-safety: the model can emit a schema-valid mock whose
+        // blocks are missing the arrays PageRenderer maps over (e.g. a
+        // music block without `tracks`) — rendering that crashed the whole
+        // app (3/3 live repros). Normalize every block (fill missing
+        // arrays, drop unknown types) before it ever reaches the client.
+        previewPage = {
+          ...mock,
+          blocks: mock.blocks
+            .map(normalizeBlockForRender)
+            .filter((b): b is NonNullable<ReturnType<typeof normalizeBlockForRender>> => b !== null),
+        };
         const prose = stripPageDraft(finalContent);
         finalContent =
           prose ||
           "Here's a mock of your page — tell me what to tweak, or say “go” and I'll build the real thing.";
         try {
           previewsUsed = await notePreview(previewIdentity, buildState.u ?? "");
-          await saveLastMock(previewIdentity, buildState.u ?? "", mock);
+          await saveLastMock(previewIdentity, buildState.u ?? "", previewPage);
         } catch {
           // Served mocks aren't revoked over an accounting hiccup (same
           // precedent as chat accounting below); the pre-model check above

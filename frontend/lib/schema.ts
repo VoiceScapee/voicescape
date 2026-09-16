@@ -251,3 +251,54 @@ export function isValidPage(input: unknown): input is VoicescapePage {
     return true;
   });
 }
+
+/**
+ * Render-safety normalizer for page blocks. Model-generated or user-supplied
+ * page JSON can pass isValidPage (which only checks block `type`) while
+ * missing the array fields PageRenderer maps over — e.g. a music block
+ * without `tracks`. Rendering such a block throws and unmounts the whole
+ * app. This fills every array field with [] (dropping null/garbage
+ * elements), and returns null for blocks with an unknown type so the
+ * caller can skip them. A normalized page can never crash the renderer.
+ * Pure and dependency-free.
+ */
+export function normalizeBlockForRender(input: unknown): Block | null {
+  if (typeof input !== "object" || input === null) return null;
+  const b = input as Record<string, unknown>;
+  if (typeof b.type !== "string") return null;
+  const isObj = (e: unknown): boolean => typeof e === "object" && e !== null;
+  const objs = (v: unknown): Record<string, unknown>[] =>
+    Array.isArray(v) ? v.filter(isObj) : [];
+  const strs = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((e): e is string => typeof e === "string") : [];
+  switch (b.type) {
+    case "hero":
+    case "bio":
+    case "tipJar":
+    case "operator":
+    case "livestream":
+    case "chat":
+      // No array fields — scalar-only blocks can't crash the renderer.
+      return b as Block;
+    case "links":
+      return { ...b, items: objs(b.items) } as unknown as Block;
+    case "guestbook":
+    case "reviews":
+      return { ...b, entries: objs(b.entries) } as unknown as Block;
+    case "music":
+      return { ...b, tracks: objs(b.tracks) } as unknown as Block;
+    case "gallery":
+      return { ...b, images: strs(b.images) } as unknown as Block;
+    case "top8":
+      return { ...b, friends: objs(b.friends) } as unknown as Block;
+    case "services":
+    case "capabilities":
+    case "booking":
+      // services/booking items are objects; capabilities items are strings.
+      return b.type === "capabilities"
+        ? ({ ...b, items: strs(b.items) } as unknown as Block)
+        : ({ ...b, items: objs(b.items) } as unknown as Block);
+    default:
+      return null;
+  }
+}
