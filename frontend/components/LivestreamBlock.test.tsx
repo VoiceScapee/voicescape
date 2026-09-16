@@ -1,15 +1,18 @@
 /**
- * LivestreamBlock regression tests (Phase 1) — source assertions, repo
- * convention (no jsdom here; components render in node-only vitest).
+ * LivestreamBlock regression tests — source assertions, repo convention (no
+ * jsdom here; components render in node-only vitest), plus a direct unit test
+ * of the pure YouTube chat-URL helper.
  *
  * Guards the honesty rules: offline is the default until the player itself
- * says ONLINE/PLAYING; no raw platform error state ever; YouTube gets no
- * fake chat; tips reuse the existing onTip flow (no new money code).
+ * says ONLINE/PLAYING; no raw platform error state ever; YouTube chat is the
+ * real live_chat embed for the currently-playing video (never faked); tips
+ * reuse the existing onTip flow (no new money code).
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { youTubeLiveChatSrc } from "./LivestreamBlock";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "LivestreamBlock.tsx"), "utf8");
@@ -74,15 +77,48 @@ describe("LivestreamBlock — YouTube wiring", () => {
     expect(src).toContain("autoplay=1&mute=1&playsinline=1&enablejsapi=1");
   });
 
-  it("treats onError 100/150 as offline and PLAYING as live (never the raw iframe)", () => {
-    expect(src).toContain("onError");
-    expect(src).toMatch(/e\?\.data === 100 \|\| e\?\.data === 150/);
-    expect(src).toContain("YT.PlayerState.PLAYING");
+  it("never shows the raw iframe while offline (overlay covers it)", () => {
+    // The offline overlay covers the iframe until the server status check
+    // says live — no raw platform player or error card is ever exposed.
+    expect(src).toMatch(/\{!live && \(\s*<div className="vs-livestream-overlay">/);
   });
 
-  it("renders no chat for YouTube in Phase 1", () => {
-    // Chat panel is gated on Twitch only.
-    expect(src).toMatch(/\{isTwitch && \(\s*<div[^>]*vs-livestream-chat/);
+  it("renders the real YouTube live_chat embed once a live video id is known", () => {
+    // Chat panel is no longer Twitch-only: YouTube gets the official
+    // live_chat embed for the currently-playing video, hidden until live.
+    expect(src).toContain("youTubeLiveChatSrc");
+    expect(src).toMatch(/\{\(isTwitch \|\| youTubeChat\) && \(\s*<div[^>]*vs-livestream-chat/);
+    // Never a faked chat: the iframe src is the official live_chat endpoint.
+    expect(src).toContain("https://www.youtube.com/live_chat?v=");
+    expect(src).toContain("embed_domain=");
+  });
+
+  it("youTubeLiveChatSrc builds the official live_chat URL", () => {
+    expect(youTubeLiveChatSrc("dQw4w9WgXcQ", "voicescape.vercel.app")).toBe(
+      "https://www.youtube.com/live_chat?v=dQw4w9WgXcQ&embed_domain=voicescape.vercel.app",
+    );
+  });
+
+  it("drives YouTube live state from the server status check, not the player", () => {
+    // Regression: watching the live_stream resolver embed for a PLAYING event
+    // through the IFrame API never fired on real phones, so the badge stayed
+    // offline on a live stream. Live state now comes from /api/youtube-live.
+    expect(src).toContain("/api/youtube-live?channel=");
+    expect(src).toMatch(/setInterval\(check, 5 \* 60_000\)/);
+  });
+
+  it("embeds the concrete live video directly when the server says live", () => {
+    expect(src).toContain("https://www.youtube.com/embed/${youTube.videoId}");
+  });
+
+  it("re-checks live status periodically so an ended stream flips offline", () => {
+    expect(src).toMatch(/setInterval\(check, 5 \* 60_000\)/);
+    // Offline is the default and any check failure keeps it.
+    expect(src).toContain("offline-first");
+  });
+
+  it("Stream/Chat mobile tabs appear for YouTube chat too", () => {
+    expect(src).toMatch(/\{showChat && \(\s*<div className="vs-livestream-tabs"/);
   });
 
   it("YouTube offline card links to the channel page", () => {
