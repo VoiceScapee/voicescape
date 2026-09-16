@@ -17,12 +17,14 @@ import {
   checkBuildAccess,
   checkChatAccess,
   consumeBuild,
+  getLastMock,
   getPreviewsUsed,
   hasBuildHistory,
   isOnTopicMessage,
   noteChatMessage,
   notePreview,
   resetBuildPreviews,
+  saveLastMock,
 } from "./metering";
 import { getKvStore } from "@/lib/server/store";
 
@@ -332,5 +334,44 @@ describe("free visual-mock previews (2 per build)", () => {
     expect(await getPreviewsUsed(id, "alice")).toBe(1);
     await resetBuildPreviews(id);
     expect(await getPreviewsUsed(id, "alice")).toBe(0);
+  });
+
+  it("remembers the last delivered mock for plain-text follow-up tweaks", async () => {
+    const id = { kind: "anon", ip: "203.0.113.82" } as const;
+    expect(await getLastMock(id, "alice")).toBeNull();
+    const page = {
+      version: 1,
+      username: "alice",
+      theme: {
+        background: "#000",
+        foreground: "#fff",
+        accent: "#f0f",
+        fontFamily: "sans",
+      },
+      blocks: [{ type: "hero", title: "alice" }],
+    } as const;
+    await saveLastMock(id, "alice", page as any);
+    expect(await getLastMock(id, "alice")).toEqual(page);
+    // Scoped per build username, like the counters.
+    expect(await getLastMock(id, "bob")).toBeNull();
+  });
+
+  it("resetBuildPreviews clears the remembered mock too", async () => {
+    const id = { kind: "anon", ip: "203.0.113.83" } as const;
+    const page = {
+      version: 1,
+      username: "alice",
+      theme: {
+        background: "#000",
+        foreground: "#fff",
+        accent: "#f0f",
+        fontFamily: "sans",
+      },
+      blocks: [{ type: "hero", title: "alice" }],
+    } as const;
+    await saveLastMock(id, "alice", page as any);
+    expect(await getLastMock(id, "alice")).toBeTruthy();
+    await resetBuildPreviews(id);
+    expect(await getLastMock(id, "alice")).toBeNull();
   });
 });

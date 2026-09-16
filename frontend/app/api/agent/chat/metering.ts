@@ -42,6 +42,7 @@ import { keccak256, toUtf8Bytes } from "ethers";
 import { randomUUID } from "crypto";
 
 import { getKvStore, type KvStore } from "@/lib/server/store";
+import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
 export const CHAT_PRICE_TINYBAR = 500_000_000; // 5 HBAR
 export const BUILD_PRICE_TINYBAR = 500_000_000; // 5 HBAR
@@ -637,6 +638,50 @@ export async function resetBuildPreviews(
       ? `wallet:${identity.evm.toLowerCase()}`
       : `anon:${identity.ip}`;
   await store.clearPrefix(`${PREVIEW_PREFIX}${who}:`);
+}
+
+/**
+ * Remember the last delivered free mock for this identity + build username,
+ * so a plain-text follow-up ("make the hero bigger") can revise the actual
+ * mock even when the widget didn't echo preview_draft. Mocks are free, so
+ * this never touches payments. Lives under the preview prefix, so a paid
+ * build resets it along with the counters. Validated on read; throws when
+ * the store is unreachable (fail closed, like the counters).
+ */
+const MOCK_KEY_SUFFIX = ":mock";
+
+function mockKeyFor(identity: ChatIdentity, username: string): string {
+  return `${previewKeyFor(identity, username)}${MOCK_KEY_SUFFIX}`;
+}
+
+export async function saveLastMock(
+  identity: ChatIdentity,
+  username: string,
+  page: VoicescapePage,
+  store: KvStore = getKvStore()
+): Promise<void> {
+  if (meteringBypass()) return;
+  await store.set(
+    mockKeyFor(identity, username),
+    JSON.stringify(page),
+    PREVIEW_TTL_MS
+  );
+}
+
+export async function getLastMock(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<VoicescapePage | null> {
+  if (meteringBypass()) return null;
+  const raw = await store.get(mockKeyFor(identity, username));
+  if (!raw) return null;
+  try {
+    const data: unknown = JSON.parse(raw);
+    return isValidPage(data) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -472,6 +472,117 @@ describe("build entitlement (5 HBAR per custom build)", () => {
         String(m.content).includes("[MOCK PREVIEW")
       )
     ).toBe(true);
+    // The prompt spells out the validator's envelope and bans junk
+    // placeholders, so the model can't emit a mock that fails validation
+    // (the live bug: raw JSON shown, no mock rendered).
+    const note = systems
+      .map((m: any) => String(m.content))
+      .find((c: string) => c.includes("[MOCK PREVIEW"));
+    expect(note).toContain('"version": 1');
+    expect(note).toContain('"username"');
+    expect(note).toContain("Never 'Item 1'");
+  });
+
+  it("an invalid mock is stripped from visible text, consumes nothing, and a plain-text retry yields mock 1", async () => {
+    // The model emits a fence that fails validation (no version/username
+    // envelope, junk placeholders) — the live failure mode.
+    const badMock =
+      "Here's a mock of your page!\n```json\n" +
+      JSON.stringify({
+        theme: {
+          background: "#000",
+          foreground: "#fff",
+          accent: "#f0f",
+          fontFamily: "sans",
+        },
+        blocks: [
+          { type: "tipJar" },
+          { type: "top8", friends: [{ name: "Item 1" }, { name: "Item 2" }] },
+        ],
+      }) +
+      "\n```";
+    const { last, buildState, ip } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(badMock),
+      ],
+      ip: "10.0.0.31",
+    });
+    // Raw JSON/fences never reach the visitor...
+    expect(last.reply).not.toContain("```json");
+    expect(last.reply).not.toContain("tipJar");
+    // ...no mock is delivered, and the free allowance is NOT consumed...
+    expect(last.build.preview).toBeNull();
+    expect(last.build.previewsLeft).toBe(2);
+    expect(last.build.paywall).toBeNull();
+
+    // A plain-text follow-up becomes a fresh mock-1 turn via the fallback
+    // (not a paywall), and this time the mock validates.
+    const { calls: r5calls } = mockFetch([groqFinal(mockReply("Fresh mock!"))]);
+    const r5 = await POST(
+      post({ message: "try again", build_state: buildState }, ip)
+    );
+    expect(r5.status).toBe(200);
+    const d5 = await r5.json();
+    expect(d5.build.preview).toBeTruthy();
+    expect(d5.build.preview.username).toBe("testpilotbuddy");
+    expect(d5.build.previewsLeft).toBe(1);
+    expect(d5.build.paywall).toBeNull();
+    expect(d5.reply).not.toContain("```json");
+    const r5body = r5calls.groqBodies[0];
+    const systems = r5body.messages.filter((m: any) => m.role === "system");
+    expect(
+      systems.some((m: any) =>
+        String(m.content).includes("[MOCK PREVIEW")
+      )
+    ).toBe(true);
+    expect(
+      r5body.tools.map((t: any) => t.function.name)
+    ).not.toContain("generate_page_image");
+  });
+
+  it("a plain-text tweak without preview_draft echo revises the served mock (mock 2), not a paywall", async () => {
+    const { last, buildState, ip } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(mockReply()),
+      ],
+      ip: "10.0.0.32",
+    });
+    expect(last.build.preview).toBeTruthy();
+    expect(last.build.previewsLeft).toBe(1);
+
+    // Turn 5: the visitor just types the tweak — no preview_draft echo.
+    // The live bug fell through to the paywall with no mock 2.
+    const { calls: r5calls } = mockFetch([groqFinal(mockReply("Revised mock!"))]);
+    const r5 = await POST(
+      post({ message: "make the hero bigger", build_state: buildState }, ip)
+    );
+    expect(r5.status).toBe(200);
+    const d5 = await r5.json();
+    expect(d5.build.preview).toBeTruthy();
+    expect(d5.build.preview.username).toBe("testpilotbuddy");
+    expect(d5.build.previewsLeft).toBe(0);
+    // The 2nd mock ships WITH the paywall panel (anon) — pay without
+    // another round trip.
+    expect(d5.build.paywall).toBe("anon");
+    expect(d5.reply).not.toContain("```json");
+    // The model revised the served mock: the revision note was built from
+    // the server-side last-mock store, and no image tool was offered.
+    const r5body = r5calls.groqBodies[0];
+    const systems = r5body.messages.filter((m: any) => m.role === "system");
+    expect(
+      systems.some((m: any) =>
+        String(m.content).includes("[MOCK PREVIEW REVISION")
+      )
+    ).toBe(true);
+    expect(
+      r5body.tools.map((t: any) => t.function.name)
+    ).not.toContain("generate_page_image");
   });
 
   it("second preview ships with the connect-wallet paywall (anon); a third is refused without calling the model", async () => {
