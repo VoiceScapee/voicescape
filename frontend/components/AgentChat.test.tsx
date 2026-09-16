@@ -78,6 +78,11 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain('"/builder"');
   });
 
+  it("previews the draft inline in the chat before the builder button", () => {
+    expect(widgetSrc).toContain('import BuddyDraftPreview from "./BuddyDraftPreview"');
+    expect(widgetSrc).toContain("<BuddyDraftPreview page={draft}");
+  });
+
   it("Onboarding stores Buddy drafts under a dedicated key", () => {
     const onboardingSrc = readFileSync(join(here, "Onboarding.tsx"), "utf8");
     expect(onboardingSrc).toContain('BUDDY_DRAFT_KEY = "vs_buddy_draft"');

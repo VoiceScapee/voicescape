@@ -130,11 +130,11 @@ export function isOnTopicMessage(message: string): boolean {
 export const BUILD_PAYWALL_ANON =
   "A custom blockpage build is 5 HBAR, and builds need a connected wallet. " +
   "Connect your wallet (top-right), then tip 5 HBAR to my 'forge' page — " +
-  "I'll start building the moment it settles on-chain.";
+  'then say "go" here and I\'ll start building.';
 
 export const BUILD_PAYWALL_UNPAID =
   "A custom blockpage build is 5 HBAR. Tip 5 HBAR to my 'forge' page in " +
-  "the app and I'll start building the moment it settles on-chain.";
+  'the app, then say "go" here and I\'ll start building.';
 
 export const BUILD_RACE_MESSAGE =
   "Your 5 HBAR build payment was just used by another request — nothing " +

@@ -173,4 +173,26 @@ describe("buildStateNote", () => {
     expect(note).toContain("output the complete JSON page");
     expect(note).toContain("Do not ask any more questions");
   });
+
+  it("states the 5 HBAR price FIRST when no slots are collected yet", () => {
+    const note = buildStateNote({ active: true })!;
+    expect(note).toContain("State the price FIRST");
+    expect(note).toContain("5 HBAR");
+    expect(note).toContain("one-time");
+    expect(note).toContain("username");
+    expect(note).toContain("one-line bio");
+    expect(note).toContain("vibe");
+  });
+
+  it("offers the free DIY builder alongside the upfront price", () => {
+    const note = buildStateNote({ active: true })!;
+    expect(note).toContain("/builder");
+    expect(note).toContain("free");
+  });
+
+  it("does not repeat the price-first opener once slots are being collected", () => {
+    const note = buildStateNote({ active: true, u: "coolpage" })!;
+    expect(note).not.toContain("State the price FIRST");
+    expect(note).toContain("Ask ONLY for the bio next");
+  });
 });

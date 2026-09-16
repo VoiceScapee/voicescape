@@ -187,6 +187,15 @@ export function buildStateNote(state: BuildState): string | null {
     lines.push(
       "All three are collected. Generate the artwork now (up to 3 images: avatar, banner, background) and output the complete JSON page. Do not ask any more questions."
     );
+  } else if (!state.u && !state.b && !state.v) {
+    // Price-first: the visitor hasn't invested anything yet, so the price
+    // comes before any question — never after three answers. One short
+    // message, then the username question.
+    lines.push(
+      "No slots are collected yet — this is the first build turn. State the price FIRST in one short message: a custom blockpage build is 5 HBAR (one-time). " +
+        "Say you'll need a username, a one-line bio, and the vibe they're going for, and add one line: they can also build it themselves free in the /builder. " +
+        "Then ask ONLY for the username — one short question."
+    );
   } else {
     const missing = !state.u ? "username" : !state.b ? "bio" : "vibe/layout";
     lines.push(

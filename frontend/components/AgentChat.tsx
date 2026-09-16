@@ -14,6 +14,7 @@ import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
 import { type VoicescapePage } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
+import BuddyDraftPreview from "./BuddyDraftPreview";
 import { saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
@@ -338,7 +339,8 @@ export default function AgentChat() {
             {msgs.map((m, i) => {
               const draft = m.role === "assistant" ? extractPageDraft(m.content) : null;
               // The raw page JSON is machine handoff, not reading material —
-              // hide it and show the one-tap builder button instead.
+              // hide it and show the inline preview plus the one-tap builder
+              // button ("tweak it" path) instead.
               const visible = draft != null ? stripPageDraft(m.content) : m.content;
               return (
                 <div
@@ -367,24 +369,27 @@ export default function AgentChat() {
                     <>
                       <BuddyMarkdown content={visible} />
                       {draft != null && (
-                        <button
-                          type="button"
-                          onClick={() => openInBuilder(draft)}
-                          style={{
-                            marginTop: 8,
-                            width: "100%",
-                            padding: "10px 12px",
-                            borderRadius: 10,
-                            border: "none",
-                            cursor: "pointer",
-                            fontWeight: 700,
-                            fontSize: 14,
-                            color: "#fff",
-                            background: "linear-gradient(135deg, #8259ef, #b45cf0)",
-                          }}
-                        >
-                          Open in Builder →
-                        </button>
+                        <>
+                          <BuddyDraftPreview page={draft} />
+                          <button
+                            type="button"
+                            onClick={() => openInBuilder(draft)}
+                            style={{
+                              marginTop: 8,
+                              width: "100%",
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "none",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontSize: 14,
+                              color: "#fff",
+                              background: "linear-gradient(135deg, #8259ef, #b45cf0)",
+                            }}
+                          >
+                            Open in Builder →
+                          </button>
+                        </>
                       )}
                     </>
                   ) : (
