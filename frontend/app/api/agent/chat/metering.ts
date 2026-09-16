@@ -248,7 +248,7 @@ function normalizeLedger(raw: unknown): Ledger {
   return out;
 }
 
-export async function loadLedger(
+async function loadLedger(
   store: KvStore,
   identity: ChatIdentity
 ): Promise<Ledger> {
@@ -809,13 +809,31 @@ export async function consumeBuild(
       // Atomic spend claim (global per payment id): the first caller to win
       // assigns this payment to its build. A lost race retries against the
       // next unused payment instead of spending twice.
-      if (
-        await store.setNx(
-          `${PAY_SPEND_PREFIX}${encodeURIComponent(p.id)}`,
-          evmAddress.toLowerCase(),
-          CLAIM_TTL_MS
-        )
-      ) {
+      const spendKey = `${PAY_SPEND_PREFIX}${encodeURIComponent(p.id)}`;
+      let spendWon = await store.setNx(
+        spendKey,
+        evmAddress.toLowerCase(),
+        CLAIM_TTL_MS
+      );
+      if (!spendWon) {
+        // Orphaned spend-key recovery (2026-09-16): if a previous attempt
+        // won the spend claim but the build never completed (e.g. timeout),
+        // the key blocks retry. If the key belongs to us, reclaim it.
+        try {
+          const existing = await store.get(spendKey);
+          if (existing === evmAddress.toLowerCase()) {
+            await store.del(spendKey);
+            spendWon = await store.setNx(
+              spendKey,
+              evmAddress.toLowerCase(),
+              CLAIM_TTL_MS
+            );
+          }
+        } catch {
+          // If reclaim fails, treat as lost race — retry loop continues.
+        }
+      }
+      if (spendWon) {
         p.kind = "build";
         await saveLedger(store, identity, ledger);
         // A paid build resets the free-preview counters: the visitor's

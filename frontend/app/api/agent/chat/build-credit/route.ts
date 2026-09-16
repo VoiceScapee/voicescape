@@ -31,15 +31,6 @@ export async function GET(req: NextRequest) {
   }
   try {
     const access = await checkBuildAccess(verified.session.address);
-    const debug = req.nextUrl.searchParams.get("debug");
-    if (debug === "clear-spend") {
-      // TEMPORARY: Clear the orphaned spend key for E2E retry.
-      const { getKvStore } = await import("@/lib/server/store");
-      const store = getKvStore();
-      const spendKey = `buddy:payspend:${encodeURIComponent("1789596501.153949104-1")}`;
-      await store.del(spendKey);
-      return NextResponse.json({ cleared: true });
-    }
     return NextResponse.json({ signedIn: true, hasCredit: access.allowed });
   } catch {
     return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });
