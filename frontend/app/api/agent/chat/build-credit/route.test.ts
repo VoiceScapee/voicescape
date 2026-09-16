@@ -116,6 +116,28 @@ describe("GET /api/agent/chat/build-credit", () => {
     expect(body).toEqual({ signedIn: true, hasCredit: true });
   });
 
+  it("queries the mirror node with a bounded timestamp range (topic search requirement)", async () => {
+    // Verified 2026-09-16 against mainnet: /contracts/{id}/results/logs
+    // silently returns zero logs for topic searches without a bounded
+    // timestamp range (strictly under 7d). Without the range a paid build
+    // would never be credited.
+    const fetchImpl = mockMirror([[/* no tips */]]);
+    const res = await GET(get(sessionHeaders(EVM_UNPAID), "9.9.9.6"));
+    expect(res.status).toBe(200);
+    const logUrls = fetchImpl.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes("/results/logs"));
+    expect(logUrls.length).toBeGreaterThan(0);
+    for (const u of logUrls) {
+      expect(u).toMatch(/timestamp=gte:\d+\.\d+/);
+      expect(u).toMatch(/timestamp=lte:\d+\.\d+/);
+      const gte = Number(u.match(/timestamp=gte:(\d+)\./)?.[1] ?? "0");
+      const lte = Number(u.match(/timestamp=lte:(\d+)\./)?.[1] ?? "0");
+      expect(lte - gte).toBeGreaterThan(0);
+      expect(lte - gte).toBeLessThan(7 * 24 * 3600);
+    }
+  });
+
   it("never exposes another wallet's credit (no address parameter is honored)", async () => {
     // Even if a caller appends ?wallet=<paid> to the URL, the endpoint only
     // reads the session token — an anonymous caller still learns nothing.

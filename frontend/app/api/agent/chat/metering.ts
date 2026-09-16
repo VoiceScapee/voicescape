@@ -321,10 +321,18 @@ async function discoverFreshPayments(
   try {
     const topic2 =
       "0x" + evmAddress.slice(2).toLowerCase().padStart(64, "0");
+    // Mirror node REQUIRES a bounded timestamp range (strictly under 7d)
+    // for topic searches — verified 2026-09-16 against mainnet: without it
+    // the query silently returns zero logs and a paid build would NEVER be
+    // credited. The credit poll runs right after payment, so a 6-day window
+    // covers the flow with margin under the mirror's hard cap.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const fromSec = nowSec - 6 * 24 * 3600;
     const url =
       `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results/logs` +
       `?topic0=${topic0TipSent()}&topic1=${topic1Forge()}&topic2=${topic2}` +
-      `&order=desc&limit=50`;
+      `&order=desc&limit=50` +
+      `&timestamp=gte:${fromSec}.000000000&timestamp=lte:${nowSec}.999999999`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const body = (await res.json()) as {
