@@ -77,10 +77,10 @@ describe("LivestreamBlock — YouTube wiring", () => {
     expect(src).toContain("autoplay=1&mute=1&playsinline=1&enablejsapi=1");
   });
 
-  it("treats onError 100/150 as offline and PLAYING as live (never the raw iframe)", () => {
-    expect(src).toContain("onError");
-    expect(src).toMatch(/e\?\.data === 100 \|\| e\?\.data === 150/);
-    expect(src).toContain("YT.PlayerState.PLAYING");
+  it("never shows the raw iframe while offline (overlay covers it)", () => {
+    // The offline overlay covers the iframe until the server status check
+    // says live — no raw platform player or error card is ever exposed.
+    expect(src).toMatch(/\{!live && \(\s*<div className="vs-livestream-overlay">/);
   });
 
   it("renders the real YouTube live_chat embed once a live video id is known", () => {
@@ -99,15 +99,22 @@ describe("LivestreamBlock — YouTube wiring", () => {
     );
   });
 
-  it("captures the playing video id from the IFrame API (chat needs it)", () => {
-    expect(src).toContain("getVideoData");
-    expect(src).toMatch(/video_id/);
-    expect(src).toMatch(/PLAYING[\s\S]*?setVideoId/);
+  it("drives YouTube live state from the server status check, not the player", () => {
+    // Regression: watching the live_stream resolver embed for a PLAYING event
+    // through the IFrame API never fired on real phones, so the badge stayed
+    // offline on a live stream. Live state now comes from /api/youtube-live.
+    expect(src).toContain("/api/youtube-live?channel=");
+    expect(src).toMatch(/setInterval\(check, 5 \* 60_000\)/);
   });
 
-  it("ended streams clear live state and drop the chat", () => {
-    expect(src).toMatch(/PlayerState\.ENDED[\s\S]*?setLive\(false\)/);
-    expect(src).toMatch(/PlayerState\.ENDED[\s\S]*?setVideoId\(null\)/);
+  it("embeds the concrete live video directly when the server says live", () => {
+    expect(src).toContain("https://www.youtube.com/embed/${youTube.videoId}");
+  });
+
+  it("re-checks live status periodically so an ended stream flips offline", () => {
+    expect(src).toMatch(/setInterval\(check, 5 \* 60_000\)/);
+    // Offline is the default and any check failure keeps it.
+    expect(src).toContain("offline-first");
   });
 
   it("Stream/Chat mobile tabs appear for YouTube chat too", () => {

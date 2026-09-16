@@ -147,49 +147,60 @@ function useTwitchPlayer(channel: string) {
  * when the player reports PLAYING; onError 100/150 (unavailable / embedding
  * not allowed) confirms offline. Never trust the iframe's own error card.
  */
+/**
+ * YouTube live status via our own /api/youtube-live — the server checks the
+ * channel's public /live page (canonical link -> watch?v=... when live).
+ * Re-checked every 5 minutes so a stream ending flips the block back to
+ * offline honestly. The IFrame API is only attached to the direct video
+ * embed for tap-to-unmute — never for live detection, because watching the
+ * live_stream?channel= resolver embed for a PLAYING event proved unreliable
+ * (the badge stayed offline on real phones even with a live stream).
+ * Offline-first: any check failure keeps the current state, default offline.
+ */
 function useYouTubeLive(channelId: string) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const playerRef = useRef<any>(null);
-  const [live, setLive] = useState(false);
-  const [videoId, setVideoId] = useState<string | null>(null);
+  const [status, setStatus] = useState<{ live: boolean; videoId: string | null }>({
+    live: false,
+    videoId: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
-    setLive(false);
-    setVideoId(null);
+    setStatus({ live: false, videoId: null });
     if (channelId === PLACEHOLDER_CHANNEL) return () => {};
+    const check = async () => {
+      try {
+        const r = await fetch(`/api/youtube-live?channel=${encodeURIComponent(channelId)}`, {
+          cache: "no-store",
+        });
+        const j = await r.json();
+        const videoId = typeof j?.videoId === "string" && j.videoId.length === 11 ? j.videoId : null;
+        if (!cancelled && j?.ok) setStatus({ live: j.live === true && !!videoId, videoId });
+      } catch {
+        /* offline-first: keep current status */
+      }
+    };
+    check();
+    const timer = setInterval(check, 5 * 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [channelId]);
+
+  // Tap-to-unmute bridge on the direct video embed (best effort only).
+  useEffect(() => {
+    let cancelled = false;
+    playerRef.current = null;
+    if (!status.live || !status.videoId) return () => {};
     loadYouTubeApi()
       .then(() => {
         if (cancelled || !iframeRef.current || !window.YT?.Player) return;
-        const p = new window.YT.Player(iframeRef.current, {
-          events: {
-            onStateChange: (e: any) => {
-              if (cancelled) return;
-              if (e?.data === window.YT.PlayerState.PLAYING) {
-                setLive(true);
-                // The live_chat embed needs the concrete video id — read it
-                // from the player once it's actually playing.
-                try {
-                  const vid = p.getVideoData?.()?.video_id;
-                  if (typeof vid === "string" && vid) setVideoId(vid);
-                } catch {
-                  /* chat stays hidden; video still plays */
-                }
-              } else if (e?.data === window.YT.PlayerState.ENDED) {
-                setLive(false);
-                setVideoId(null);
-              }
-            },
-            onError: (e: any) => {
-              // 100 = video not found/unavailable, 150 = embedding not allowed.
-              if (!cancelled && (e?.data === 100 || e?.data === 150)) setLive(false);
-            },
-          },
-        });
-        playerRef.current = p;
+        playerRef.current = new window.YT.Player(iframeRef.current, {});
       })
       .catch(() => {
-        if (!cancelled) setLive(false);
+        /* unmute stays unavailable; video still plays muted */
       });
     return () => {
       cancelled = true;
@@ -200,7 +211,7 @@ function useYouTubeLive(channelId: string) {
       }
       playerRef.current = null;
     };
-  }, [channelId]);
+  }, [status.live, status.videoId]);
 
   const unmute = () => {
     try {
@@ -211,7 +222,7 @@ function useYouTubeLive(channelId: string) {
     }
   };
 
-  return { iframeRef, live, unmute, videoId };
+  return { iframeRef, live: status.live, unmute, videoId: status.videoId };
 }
 
 /**
@@ -267,9 +278,16 @@ export default function LivestreamBlock({
     !isTwitch && live && youTube.videoId ? youTubeLiveChatSrc(youTube.videoId, hostname) : null;
   const showChat = isTwitch || youTubeChat;
   const youTubeSrc =
-    `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(channel)}` +
-    `&autoplay=1&mute=1&playsinline=1&enablejsapi=1` +
-    (typeof window !== "undefined" ? `&origin=${encodeURIComponent(window.location.origin)}` : "");
+    live && youTube.videoId
+      ? // Live: embed the concrete video directly — the well-trodden path.
+        // (The live_stream?channel= resolver embed is only a placeholder
+        // while offline; its PLAYING event proved unreliable for detection.)
+        `https://www.youtube.com/embed/${youTube.videoId}` +
+        `?autoplay=1&mute=1&playsinline=1&enablejsapi=1&rel=0` +
+        (typeof window !== "undefined" ? `&origin=${encodeURIComponent(window.location.origin)}` : "")
+      : `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(channel)}` +
+        `&autoplay=1&mute=1&playsinline=1&enablejsapi=1` +
+        (typeof window !== "undefined" ? `&origin=${encodeURIComponent(window.location.origin)}` : "");
   const followUrl = isTwitch
     ? `https://www.twitch.tv/${channel}`
     : `https://www.youtube.com/channel/${channel}`;
@@ -333,9 +351,11 @@ export default function LivestreamBlock({
             </div>
           ) : (
             <div className="vs-livestream-embedwrap">
-              {/* The IFrame API watches this iframe for PLAYING / onError
-                  100/150 to decide live vs offline. The offline overlay covers
-                  it until PLAYING fires — the raw iframe is never shown. */}
+              {/* Live state comes from /api/youtube-live (server checks the
+                  channel's /live page). The iframe embeds the concrete live
+                  video directly; the IFrame API is attached for tap-to-unmute
+                  only. The offline overlay covers the iframe until the server
+                  says live — the raw iframe is never shown while offline. */}
               <iframe
                 ref={youTube.iframeRef}
                 className="vs-livestream-frame"
