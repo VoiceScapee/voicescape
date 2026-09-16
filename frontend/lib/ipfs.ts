@@ -48,7 +48,16 @@ export async function pinPageJson(pageJson: string): Promise<string> {
 
 /**
  * Fetch page JSON from IPFS by hash/CID.
- */export async function fetchPageJson(ipfsHash: string): Promise<string> {
+ *
+ * Per-gateway timeout: a stalled gateway must never hang the page forever.
+ * Without this, a gateway that accepts the connection and then stalls leaves
+ * /<username> stuck on "Resolving … on-chain" with no error (seen on /forge
+ * in production 2026-09-16). A timed-out gateway is skipped like any other
+ * failure; if all gateways fail, the caller gets a real error to show.
+ */
+const IPFS_GATEWAY_TIMEOUT_MS = 15_000;
+
+export async function fetchPageJson(ipfsHash: string): Promise<string> {
   // KISS: try multiple gateways — ipfs.io rate-limits aggressively.
   const gateways = [
     getGateway(),
@@ -57,9 +66,11 @@ export async function pinPageJson(pageJson: string): Promise<string> {
   ];
   let lastError: Error | null = null;
   for (const gw of gateways) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), IPFS_GATEWAY_TIMEOUT_MS);
     try {
       const url = `${gw}${ipfsHash}`;
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: ctrl.signal });
       if (!res.ok) {
         lastError = new Error(`IPFS fetch failed (${res.status}) for ${ipfsHash}`);
         continue;
@@ -72,7 +83,14 @@ export async function pinPageJson(pageJson: string): Promise<string> {
       }
       return text;
     } catch (e) {
-      lastError = e instanceof Error ? e : new Error(String(e));
+      lastError =
+        e instanceof DOMException && e.name === "AbortError"
+          ? new Error(`IPFS gateway timed out after ${IPFS_GATEWAY_TIMEOUT_MS / 1000}s for ${ipfsHash}`)
+          : e instanceof Error
+            ? e
+            : new Error(String(e));
+    } finally {
+      clearTimeout(timer);
     }
   }
   throw lastError ?? new Error(`IPFS fetch failed for ${ipfsHash}`);
