@@ -184,10 +184,10 @@ describe("buildStateNote", () => {
     expect(note).toContain("vibe");
   });
 
-  it("offers the free DIY builder alongside the upfront price", () => {
+  it("offers the DIY builder alongside the upfront price", () => {
     const note = buildStateNote({ active: true })!;
     expect(note).toContain("/builder");
-    expect(note).toContain("free");
+    expect(note).toContain("just gas fees");
   });
 
   it("does not repeat the price-first opener once slots are being collected", () => {
