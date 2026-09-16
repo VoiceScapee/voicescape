@@ -62,10 +62,19 @@ function sessionHeaders(evm: string): Record<string, string> {
 }
 
 /** One qualifying 5-HBAR TipSent log for the forge page. */
-function tipLog(timestamp: string, index: number) {
+function tipLog(timestamp: string, index: number, senderEvm = EVM_PAID) {
   const amount = (500_000_000n).toString(16).padStart(64, "0");
   const fee = (10_000_000n).toString(16).padStart(64, "0");
-  return { data: "0x" + amount + fee, timestamp, transaction_index: index };
+  return {
+    data: "0x" + amount + fee,
+    topics: [
+      "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e",
+      "0xb4f7998b245301fa1dfc784b03961989df486af3dd1e44f88da79ca40cf5125f",
+      "0x" + senderEvm.slice(2).padStart(64, "0"),
+    ],
+    timestamp,
+    transaction_index: index,
+  };
 }
 
 const EVM_PAID = "0x1111111111111111111111111111111111111111";

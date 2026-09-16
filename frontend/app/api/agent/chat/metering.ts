@@ -363,28 +363,39 @@ async function discoverFreshPayments(
     const sender = await resolveSenderEvmAddress(evmAddress);
     const topic2 = "0x" + sender.slice(2).toLowerCase().padStart(64, "0");
     // Mirror node REQUIRES a bounded timestamp range (strictly under 7d)
-    // for topic searches — verified 2026-09-16 against mainnet: without it
+    // for log searches — verified 2026-09-16 against mainnet: without it
     // the query silently returns zero logs and a paid build would NEVER be
     // credited. The credit poll runs right after payment, so a 6-day window
     // covers the flow with margin under the mirror's hard cap.
+    //
+    // Topic filters are NOT used: the mirror's topic index is flaky
+    // (verified 2026-09-17: topic0+topic1+topic2 filters returned zero logs
+    // for a payment the timestamp query finds). Filter topics client-side
+    // instead — the Tips contract's 6-day log volume is tiny.
     const nowSec = Math.floor(Date.now() / 1000);
     const fromSec = nowSec - 6 * 24 * 3600;
     const url =
       `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results/logs` +
-      `?topic0=${topic0TipSent()}&topic1=${topic1Forge()}&topic2=${topic2}` +
-      `&order=desc&limit=50` +
+      `?order=desc&limit=100` +
       `&timestamp=gte:${fromSec}.000000000&timestamp=lte:${nowSec}.999999999`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const body = (await res.json()) as {
       logs?: Array<{
         data?: string;
+        topics?: string[];
         timestamp?: string;
         transaction_index?: number;
       }>;
     };
+    const want0 = topic0TipSent().toLowerCase();
+    const want1 = topic1Forge().toLowerCase();
+    const want2 = topic2.toLowerCase();
     const fresh: string[] = [];
     for (const log of body.logs ?? []) {
+      const topics = (log.topics ?? []).map((t) => t.toLowerCase());
+      if (topics[0] !== want0 || topics[1] !== want1 || topics[2] !== want2)
+        continue;
       const id = `${log.timestamp ?? "?"}-${log.transaction_index ?? "?"}`;
       if (knownIds.includes(id)) continue;
       // data = abi(amount uint256, fee uint256); amount is total tipped

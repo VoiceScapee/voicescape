@@ -394,11 +394,21 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   function tipLog(
     timestamp: string,
     index: number,
-    amountTinybar: bigint = 500_000_000n
+    amountTinybar: bigint = 500_000_000n,
+    senderTopic2?: string
   ) {
     const amount = amountTinybar.toString(16).padStart(64, "0");
     const fee = (10_000_000n).toString(16).padStart(64, "0");
-    return { data: "0x" + amount + fee, timestamp, transaction_index: index };
+    return {
+      data: "0x" + amount + fee,
+      topics: [
+        "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e",
+        "0xb4f7998b245301fa1dfc784b03961989df486af3dd1e44f88da79ca40cf5125f",
+        senderTopic2 ?? "0x" + "11".repeat(20).padStart(64, "0"),
+      ],
+      timestamp,
+      transaction_index: index,
+    };
   }
 
   const DRAFT = {
@@ -880,7 +890,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // Turn 5: second (last) free preview. The tip is discovered here, so
     // the paywall panel stays down — the visitor just says "go".
     mockFetch([groqFinal(mockReply("Darker mock!"))], [
-      [tipLog("1789520539.844492534", 3)],
+      [tipLog("1789520539.844492534", 3, 500_000_000n, "0x" + "cc".repeat(20).padStart(64, "0"))],
     ]);
     const r5 = await POST(
       post(
@@ -944,7 +954,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
       ip: "10.0.0.25",
     });
     mockFetch([groqFinal(mockReply("Darker!"))], [
-      [tipLog("1789520600.111111111", 7)],
+      [tipLog("1789520600.111111111", 7, 500_000_000n, "0x" + "dd".repeat(20).padStart(64, "0"))],
     ]);
     const r5 = await POST(
       post(
@@ -988,7 +998,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
       ip: "10.0.0.26",
     });
     mockFetch([groqFinal(draftReply())], [
-      [tipLog("1789520610.222222222", 9)],
+      [tipLog("1789520610.222222222", 9, 500_000_000n, "0x" + "12".repeat(20).padStart(64, "0"))],
     ]);
     const rgo = await POST(
       post({ message: "go", build_state: flow.buildState }, flow.ip, walletHeaders(EVM_REPEAT))
@@ -1105,10 +1115,19 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
     return { "x-vs-session": token };
   }
 
-  function tipLog(timestamp: string, index: number) {
+  function tipLog(timestamp: string, index: number, senderTopic2?: string) {
     const amount = (500_000_000n).toString(16).padStart(64, "0");
     const fee = (10_000_000n).toString(16).padStart(64, "0");
-    return { data: "0x" + amount + fee, timestamp, transaction_index: index };
+    return {
+      data: "0x" + amount + fee,
+      topics: [
+        "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e",
+        "0xb4f7998b245301fa1dfc784b03961989df486af3dd1e44f88da79ca40cf5125f",
+        senderTopic2 ?? "0x" + "11".repeat(20).padStart(64, "0"),
+      ],
+      timestamp,
+      transaction_index: index,
+    };
   }
 
   const DRAFT = {
@@ -1164,7 +1183,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
 
     // Turn 5: free preview 2 — the tip is discovered here.
     mockFetch([groqFinal(mockReply("Darker mock!"))], [
-      [tipLog("1789520800.111111111", 21)],
+      [tipLog("1789520800.111111111", 21, "0x" + "11".repeat(20).padStart(64, "0"))],
     ]);
     const r5 = await POST(
       post(
@@ -1280,7 +1299,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
     // is discovered and the build proceeds (and consumes it) like "go".
     const evilDraft = { ...DRAFT, username: "someoneelse" };
     mockFetch([groqFinal(draftReply("Hijacked!"))], [
-      [tipLog("1789520801.222222222", 22)],
+      [tipLog("1789520801.222222222", 22, "0x" + "33".repeat(20).padStart(64, "0"))],
     ]);
     const res = await POST(
       post(
@@ -1318,7 +1337,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
     // Garbage refine_draft fails validation → ordinary turn → the wallet's
     // payment is discovered and the build is delivered (and consumed).
     mockFetch([groqFinal(draftReply("Another one!"))], [
-      [tipLog("1789520803.444444444", 24)],
+      [tipLog("1789520803.444444444", 24, "0x" + "44".repeat(20).padStart(64, "0"))],
     ]);
     const res = await POST(
       post(
@@ -1420,7 +1439,7 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
         ip: "10.1.0.9",
       });
       mockFetch([groqFinal(draftReply())], [
-        [tipLog("1789520804.555555555", 25)],
+        [tipLog("1789520804.555555555", 25, "0x" + "0a".repeat(20).padStart(64, "0"))],
       ]);
       const rgo = await POST(
         post(
@@ -1522,6 +1541,11 @@ describe("chat metering (5 free off-topic, 5 HBAR per 50)", () => {
               "0x" +
               (500_000_000n).toString(16).padStart(64, "0") +
               (10_000_000n).toString(16).padStart(64, "0"),
+            topics: [
+              "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e",
+              "0xb4f7998b245301fa1dfc784b03961989df486af3dd1e44f88da79ca40cf5125f",
+              "0x" + "ee".repeat(20).padStart(64, "0"),
+            ],
             timestamp: "1789521300.000000007",
             transaction_index: 7,
           },

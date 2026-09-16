@@ -33,11 +33,20 @@ const EVM = (n: string) => `0x${n.repeat(40)}`;
 /** One mirror-node TipSent log for a 5-HBAR tipPage("forge") tip.
  *  TipSent `amount` is denominated in tinybars on Hedera (verified
  *  2026-09-16 against mainnet: a 5-HBAR tip logs amount=500_000_000). */
-function tipLog(timestamp: string, index: number) {
+function tipLog(timestamp: string, index: number, evmLetter = "d") {
   const amount = (500_000_000n).toString(16).padStart(64, "0");
   const fee = (10_000_000n).toString(16).padStart(64, "0");
+  // topic2 = sender's EVM address, 32-byte padded (client-side filtered).
+  const senderTopic2 = evmLetter.startsWith("0x")
+    ? "0x" + evmLetter.slice(2).padStart(64, "0")
+    : "0x" + evmLetter.repeat(40).padStart(64, "0");
   return {
     data: "0x" + amount + fee,
+    topics: [
+      "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e", // TipSent(string,address,address,uint256,uint256)
+      "0xb4f7998b245301fa1dfc784b03961989df486af3dd1e44f88da79ca40cf5125f", // keccak("forge")
+      senderTopic2,
+    ],
     timestamp,
     transaction_index: index,
   };
@@ -150,7 +159,7 @@ describe("checkChatAccess — 5 free off-topic messages, then paywall", () => {
   });
 
   it("a 5-HBAR tip unlocks 50 paid messages; the 51st is denied", async () => {
-    mockMirror([[tipLog("1789520700.000000001", 1)]]);
+    mockMirror([[tipLog("1789520700.000000001", 1, "b")]]);
     const id = { kind: "wallet", evm: EVM("b") } as const;
     for (let i = 0; i < FREE_MESSAGES; i++) {
       const access = await checkChatAccess(id);
@@ -173,7 +182,7 @@ describe("checkChatAccess — 5 free off-topic messages, then paywall", () => {
   });
 
   it("one payment cannot buy both chat and a build", async () => {
-    mockMirror([[tipLog("1789520800.000000002", 2)]]);
+    mockMirror([[tipLog("1789520800.000000002", 2, "c")]]);
     const id = { kind: "wallet", evm: EVM("c") } as const;
     for (let i = 0; i < FREE_MESSAGES; i++) {
       const access = await checkChatAccess(id);
@@ -215,8 +224,11 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // msg.sender as the wallet's key-derived address. The discovery must
     // query the mirror for the real sender address (verified 2026-09-16:
     // 0.0.10860063 -> 0x0c243aae85131bf396d3fc4c6005a0f885bd7734).
+    // Topic filters are applied client-side (the mirror's topic index is
+    // flaky) — the mock log must carry the key-derived topic2 to be found.
     const longZero = "0x" + BigInt(10860063).toString(16).padStart(40, "0");
     const keyDerived = "0x0c243aae85131bf396d3fc4c6005a0f885bd7734";
+    const keyTopic2 = "0x" + keyDerived.slice(2).padStart(64, "0");
     const seen: string[] = [];
     vi.stubGlobal(
       "fetch",
@@ -227,15 +239,19 @@ describe("build entitlement (5 HBAR per custom build)", () => {
           return { ok: true, json: async () => ({ evm_address: keyDerived }) };
         }
         if (u.includes("/results/logs")) {
-          return { ok: true, json: async () => ({ logs: [tipLog("1789520950.000000009", 9)] }) };
+          const log = tipLog("1789520950.000000009", 9, keyTopic2);
+          // A decoy log from a different sender must be ignored.
+          const decoy = tipLog("1789520951.000000001", 1, "0x" + "ff".repeat(32));
+          return { ok: true, json: async () => ({ logs: [log, decoy] }) };
         }
         throw new Error(`unexpected fetch: ${u}`);
       })
     );
     expect((await checkBuildAccess(longZero)).allowed).toBe(true);
+    // No topic filters in the URL — filtering happens client-side.
     const logUrl = seen.find((u) => u.includes("/results/logs"))!;
-    // topic2 must carry the key-derived address, not the long-zero form.
-    expect(logUrl).toContain(`topic2=0x${keyDerived.slice(2).padStart(64, "0")}`);
+    expect(logUrl).not.toContain("topic0=");
+    expect(logUrl).not.toContain("topic2=");
   });
 
   it("tips under 5 HBAR do not count", async () => {
@@ -248,7 +264,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   });
 
   it("the same on-chain payment is credited exactly once", async () => {
-    const batch = [tipLog("1789521100.000000004", 5)];
+    const batch = [tipLog("1789521100.000000004", 5, "f")];
     mockMirror([batch, batch]);
     const evm = EVM("f");
     expect((await checkBuildAccess(evm)).allowed).toBe(true);
@@ -259,7 +275,7 @@ describe("build entitlement (5 HBAR per custom build)", () => {
   });
 
   it("failed drafts never consume: no consume call, credit stays", async () => {
-    mockMirror([[tipLog("1789521200.000000005", 6)]]);
+    mockMirror([[tipLog("1789521200.000000005", 6, "1")]]);
     const evm = EVM("1");
     expect((await checkBuildAccess(evm)).allowed).toBe(true);
     // The route only calls consumeBuild after a valid draft — nothing
@@ -278,14 +294,14 @@ describe("hasBuildHistory — tweak eligibility without a second charge", () => 
   });
 
   it("true when an unused build payment sits on the ledger", async () => {
-    mockMirror([[tipLog("1789521300.000000006", 7)]]);
+    mockMirror([[tipLog("1789521300.000000006", 7, "3")]]);
     const evm = EVM("3");
     expect((await checkBuildAccess(evm)).allowed).toBe(true);
     expect(await hasBuildHistory(evm)).toBe(true);
   });
 
   it("true after the payment was spent on a build (tweaks ride the original)", async () => {
-    mockMirror([[tipLog("1789521400.000000007", 8)]]);
+    mockMirror([[tipLog("1789521400.000000007", 8, "4")]]);
     const evm = EVM("4");
     expect((await checkBuildAccess(evm)).allowed).toBe(true);
     expect(await consumeBuild(evm)).toBe(true);
@@ -352,7 +368,7 @@ describe("free visual-mock previews (2 per build)", () => {
   });
 
   it("consumeBuild resets the preview counters so a new build repeats the process", async () => {
-    mockMirror([[tipLog("1789520900.000000001", 31)]]);
+    mockMirror([[tipLog("1789520900.000000001", 31, "6")]]);
     const evm = EVM("6");
     const id = { kind: "wallet", evm } as const;
     await checkBuildAccess(evm); // credits the payment
