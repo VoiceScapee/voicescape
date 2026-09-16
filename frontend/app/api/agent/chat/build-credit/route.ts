@@ -31,25 +31,6 @@ export async function GET(req: NextRequest) {
   }
   try {
     const access = await checkBuildAccess(verified.session.address);
-    const debug = req.nextUrl.searchParams.get("debug") === "1";
-    if (debug) {
-      // Temporary deep debug: call the REAL discoverFreshPayments
-      const { discoverFreshPayments } = await import("@/app/api/agent/chat/metering");
-      let deep: any = {};
-      try {
-        const realFresh = await discoverFreshPayments(verified.session.address.toLowerCase(), []);
-        deep.realFresh = realFresh;
-        deep.realFreshCount = realFresh.length;
-      } catch (e) {
-        deep.realError = e instanceof Error ? e.message : String(e);
-      }
-      return NextResponse.json({
-        signedIn: true,
-        hasCredit: access.allowed,
-        debugAddr: verified.session.address,
-        deep,
-      });
-    }
     return NextResponse.json({ signedIn: true, hasCredit: access.allowed });
   } catch {
     return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });

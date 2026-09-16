@@ -355,7 +355,7 @@ async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
  * payment) not already credited. Read-only; a mirror-node hiccup resolves
  * to "no new payments" — never to paid.
  */
-export async function discoverFreshPayments(
+async function discoverFreshPayments(
   evmAddress: string,
   knownIds: string[]
 ): Promise<string[]> {
@@ -440,13 +440,24 @@ async function creditPayments(
       // Atomic exactly-once: only the claim winner credits this payment.
       // Losers skip — the winner's save lands the single credit. A payment
       // whose claim failed stays undiscovered and is retried later.
-      if (
-        await store.setNx(
-          `${PAY_CLAIM_PREFIX}${encodeURIComponent(id)}`,
-          evm,
-          CLAIM_TTL_MS
-        )
-      ) {
+      const claimKey = `${PAY_CLAIM_PREFIX}${encodeURIComponent(id)}`;
+      let claimed = await store.setNx(claimKey, evm, CLAIM_TTL_MS);
+      if (!claimed) {
+        // Orphaned claim recovery (2026-09-16): if the claim exists but the
+        // payment is not in our ledger, a previous attempt claimed it without
+        // saving (e.g. instance recycled before save). If the claim is ours,
+        // reclaim it so the payment is not stuck forever.
+        try {
+          const existing = await store.get(claimKey);
+          if (existing === evm) {
+            await store.del(claimKey);
+            claimed = await store.setNx(claimKey, evm, CLAIM_TTL_MS);
+          }
+        } catch {
+          // If we can't verify/reclaim, skip — stays undiscovered for retry.
+        }
+      }
+      if (claimed) {
         ledger.consumed.push(id);
         ledger.payments.push({ id, kind: null, messagesLeft: 0 });
         credited = true;
@@ -822,4 +833,3 @@ export async function consumeBuild(
     return false;
   });
 }
-// force rebuild Wed Sep 16 18:51:40 EDT 2026
