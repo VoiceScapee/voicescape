@@ -636,3 +636,18 @@ describe("chat metering (5 free off-topic, 5 HBAR per 50)", () => {
     expect(json.reply).toBe(CHAT_PAYWALL_WALLET);
   });
 });
+
+describe("Buddy system prompt — pricing knowledge", () => {
+  it("states the exact pricing Buddy enforces", () => {
+    expect(BUDDY_SYSTEM_PROMPT).toContain("5 free chat messages");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("5 HBAR per 50 messages");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("5 HBAR flat");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("'forge' page");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("98%");
+  });
+
+  it("names making it right as Buddy's superpower", () => {
+    expect(BUDDY_SYSTEM_PROMPT).toContain("making it right is your");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("#customer-support");
+  });
+});

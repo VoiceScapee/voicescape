@@ -27,11 +27,15 @@ interface NavbarProps {
 const LEARN_ITEMS: NavDropdownItem[] = [
   { href: "/new-to-web3", label: <T k="nav.newToWeb3" /> },
   { href: "/mining-depin", label: <T k="nav.miningDePIN" /> },
+  // Legal doc titles stay untranslated: the English versions govern.
+  { href: "/terms", label: <>Terms</> },
+  { href: "/privacy", label: <>Privacy</> },
 ];
 
 const COMMUNITY_ITEMS: NavDropdownItem[] = [
   { href: "/forum", label: <T k="nav.townHall" /> },
   { href: "/explore", label: <>Explore</> },
+  { href: "/marketplace", label: <>Marketplace</> },
   { href: "/fundraiser", label: <T k="nav.fundraiser" /> },
   { href: "/leaderboard", label: <T k="nav.leaderboard" /> },
   { href: "/following", label: <T k="nav.following" /> },
