@@ -27,6 +27,9 @@ interface NavbarProps {
 const LEARN_ITEMS: NavDropdownItem[] = [
   { href: "/new-to-web3", label: <T k="nav.newToWeb3" /> },
   { href: "/mining-depin", label: <T k="nav.miningDePIN" /> },
+  // Legal doc titles stay untranslated: the English versions govern.
+  { href: "/terms", label: <>Terms</> },
+  { href: "/privacy", label: <>Privacy</> },
 ];
 
 const COMMUNITY_ITEMS: NavDropdownItem[] = [

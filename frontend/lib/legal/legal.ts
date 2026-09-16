@@ -26,7 +26,7 @@ export interface LegalDoc {
 
 export const TERMS_OF_SERVICE: LegalDoc = {
   title: "Terms of Service",
-  effectiveDate: "September 14, 2026",
+  effectiveDate: "September 16, 2026",
   intro:
     'These Terms of Service ("Terms") govern your use of Voicescape. Please read them carefully — using the platform means you accept them.',
   sections: [
@@ -61,6 +61,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
       paragraphs: [
         "Voicescape charges a 2% treasury fee on tips and marketplace sales. The fee is taken automatically by the smart contract at the moment of the transaction: the recipient receives 98% and the Voicescape treasury receives 2%.",
         "The fee is disclosed on the platform and is non-refundable once the transaction is confirmed on-chain.",
+        "Some actions carry tiny anti-spam fees — for example, posting in the town hall. These are shown before you confirm, go to the treasury, and are non-refundable.",
       ],
     },
     {
@@ -114,10 +115,25 @@ export const TERMS_OF_SERVICE: LegalDoc = {
       ],
     },
     {
+      heading: "9a. Paid features",
+      paragraphs: [
+        "Some features cost HBAR: Buddy chat beyond the free messages, custom blockpage builds, and human help through the liaison. Prices are shown before you pay — the price you see is the price you pay. Like a tip, payment is a wallet-to-wallet transaction: 98% goes to the helper and 2% to the treasury.",
+        "Paid messages and builds are non-refundable once delivered. But if a paid feature fails because of an error on our side, tell Blockpage Buddy or ask in #customer-support on the Voicescape Discord — making it right is what Buddy is for, and we promise to make it right when we can.",
+        "We may change prices from time to time. A price change never affects a payment you already made — the price shown when you confirmed is the price that counts.",
+      ],
+    },
+    {
       heading: "10. Your content",
       paragraphs: [
         "You retain ownership of the content you publish. By publishing on Voicescape, you grant us a worldwide, non-exclusive license to display and distribute that content as part of operating the platform.",
         "Content you publish may be stored on decentralized storage (IPFS), where removal is not technically guaranteed — think before you publish.",
+      ],
+    },
+    {
+      heading: "10a. Third-party content and embeds",
+      paragraphs: [
+        "Blockpages can embed content from third-party platforms such as Twitch, YouTube, Spotify, and SoundCloud. That content follows those platforms' own terms, not ours — using an embed means you accept their terms too.",
+        "We don't control third-party content and can't promise it stays available. If a stream, video, or track breaks or disappears because the third party removed or restricted it, that's outside what we can fix. We are not affiliated with or endorsed by these platforms.",
       ],
     },
     {
@@ -135,7 +151,8 @@ export const TERMS_OF_SERVICE: LegalDoc = {
     {
       heading: "12. Copyright",
       paragraphs: [
-        "If you believe content on Voicescape infringes your copyright, contact us with a description of the work, the infringing material, and your contact information, and we will respond. Repeat infringers will have their access terminated.",
+        "If you believe content on Voicescape infringes your copyright, send a notice in the #customer-support channel of the Voicescape Discord. A valid notice includes: a description of the copyrighted work, where the infringing material is (a link is enough), your contact information, a good-faith statement that the use is unauthorized, and your signature. If your content was removed by mistake, you may send a counter-notice with the same details and we will review it.",
+        "Repeat infringers will have their access terminated.",
       ],
     },
     {
@@ -176,6 +193,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
       heading: "18. Changes to these Terms",
       paragraphs: [
         "We may update these Terms from time to time. When we do, we will update the effective date above. Your continued use of the platform after changes take effect constitutes acceptance of the updated Terms.",
+        "If we change the treasury fee or paid-feature prices, the new rate applies only to transactions made after the change takes effect. We will update these Terms and the displayed prices first.",
       ],
     },
     {

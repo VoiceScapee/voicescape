@@ -24,3 +24,16 @@ describe("Navbar — marketplace link", () => {
     expect(community).toContain("/explore");
   });
 });
+
+describe("Navbar — legal links", () => {
+  const src = readFileSync(new URL("./Navbar.tsx", import.meta.url), "utf8");
+
+  it("exposes /terms and /privacy in the Learn nav group", () => {
+    const learn = src.slice(
+      src.indexOf("LEARN_ITEMS"),
+      src.indexOf("COMMUNITY_ITEMS"),
+    );
+    expect(learn).toContain('href: "/terms"');
+    expect(learn).toContain('href: "/privacy"');
+  });
+});
