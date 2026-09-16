@@ -150,6 +150,9 @@ export default function AgentChat() {
   // Server-signed build-progress token (opaque): echoed back each turn so
   // Buddy can track the multi-turn blockpage flow. Never displayed.
   const buildStateRef = useRef<string>("");
+  // Free off-topic messages remaining (null = unknown / not metered).
+  // Voicescape & blockchain questions are always free and never count.
+  const [freeLeft, setFreeLeft] = useState<number | null>(null);
 
   useEffect(() => {
     const el = listRef.current;
@@ -212,6 +215,16 @@ export default function AgentChat() {
         // Keep the signed build token for the next turn (opaque string).
         if (data && typeof data.build_state === "string") {
           buildStateRef.current = data.build_state;
+        }
+        // Free-message countdown for off-topic chat (on-topic Q&A is free
+        // and never counts). The paywall reply clears it to zero.
+        const chat = data?.chat as
+          | { metered?: boolean; kind?: string; left?: number }
+          | undefined;
+        if (chat?.metered && typeof chat.left === "number") {
+          setFreeLeft(chat.kind === "free" ? Math.max(0, chat.left) : null);
+        } else if (chat?.metered) {
+          setFreeLeft(0);
         }
       }
       setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
@@ -399,6 +412,18 @@ export default function AgentChat() {
           </div>
 
           {/* Input */}
+          {freeLeft !== null && freeLeft > 0 && (
+            <div
+              style={{
+                padding: "6px 12px 0",
+                fontSize: 11,
+                color: "rgba(232, 234, 240, 0.55)",
+              }}
+            >
+              {freeLeft} free {freeLeft === 1 ? "message" : "messages"} left —{" "}
+              Voicescape &amp; blockchain questions are always free
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();

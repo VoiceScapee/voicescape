@@ -15,7 +15,9 @@ import {
   BUILD_PAYWALL_ANON,
   BUILD_PAYWALL_UNPAID,
   BUILD_RACE_MESSAGE,
-} from "./build-metering";
+  CHAT_PAYWALL_ANON,
+  CHAT_PAYWALL_WALLET,
+} from "./metering";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -137,10 +139,12 @@ describe("POST /api/agent/chat", () => {
   });
 
   it("rate-limits an IP after 20 messages per hour", async () => {
-    // Every request gets a plain final answer from the mocked Groq.
+    // Every request gets a plain final answer from the mocked Groq. The
+    // messages are on-topic (Voicescape questions are always free) so all
+    // 20 reach the model and exercise the rate limiter, not the paywall.
     mockFetch(Array.from({ length: 20 }, () => groqFinal("ok")));
     for (let i = 0; i < 20; i++) {
-      const res = await POST(post({ message: `q${i}` }));
+      const res = await POST(post({ message: `What is Voicescape? (q${i})` }));
       expect(res.status).toBe(200);
     }
     // 21st needs no Groq reply — it must be rejected before any fetch.
@@ -209,7 +213,9 @@ describe("POST /api/agent/chat", () => {
       role: "user",
       content: `h${i}`,
     }));
-    await POST(post({ message: "latest", history }));
+    // Fresh IP: the free chat allowance is per-IP, and "latest" is
+    // off-topic, so this turn must reach the model to test history capping.
+    await POST(post({ message: "latest", history }, "9.9.9.10"));
     const sent = calls.groqBodies[0].messages;
     // system + 6 history + current message
     expect(sent).toHaveLength(8);
@@ -225,7 +231,9 @@ describe("POST /api/agent/chat", () => {
       { role: "assistant", content: "Done — I updated your blockpage." },
       { role: "user", content: "thanks" },
     ];
-    await POST(post({ message: "latest", history }));
+    // Fresh IP (see "caps history at 6 items"): off-topic "latest" must
+    // reach the model for the history assertion to run.
+    await POST(post({ message: "latest", history }, "9.9.9.11"));
     const sent = calls.groqBodies[0].messages;
     const roles = sent.map((m: any) => m.role);
     expect(roles).not.toContain("assistant");
@@ -502,5 +510,129 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     });
     expect(last.reply).toContain("```json");
     expect(calls.groqBodies).toHaveLength(4);
+  });
+});
+
+describe("chat metering (5 free off-topic, 5 HBAR per 50)", () => {
+  beforeEach(() => {
+    vi.stubEnv("SESSION_SECRET", "route-test-secret");
+  });
+
+  const OFF_TOPIC = "write me a poem about the ocean";
+
+  function paidWalletHeaders(evm: string): Record<string, string> {
+    const token = issueSessionToken(
+      {
+        address: evm,
+        chainId: 295,
+        nonce: "cd".repeat(16),
+        expiresAtMs: Date.now() + 86_400_000,
+      },
+      Date.now()
+    );
+    return { "x-vs-session": token };
+  }
+
+  it("anonymous visitor gets 5 free off-topic messages, the 6th hits the paywall without calling the model", async () => {
+    const ip = "10.1.0.1";
+    const { calls } = mockFetch([
+      groqFinal("r1"),
+      groqFinal("r2"),
+      groqFinal("r3"),
+      groqFinal("r4"),
+      groqFinal("r5"),
+    ]);
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(post({ message: OFF_TOPIC }, ip));
+      expect(res.status).toBe(200);
+      const json = await res.json();
+      expect(json.chat.metered).toBe(true);
+      expect(json.chat.kind).toBe("free");
+      expect(json.chat.left).toBe(4 - i);
+    }
+    const res = await POST(post({ message: OFF_TOPIC }, ip));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reply).toBe(CHAT_PAYWALL_ANON);
+    // Exactly 5 model calls — the paywalled turn never reached Groq.
+    expect(calls.groqBodies).toHaveLength(5);
+  });
+
+  it("on-topic questions bypass the chat paywall even after free messages are exhausted", async () => {
+    const ip = "10.1.0.2";
+    const { calls } = mockFetch([
+      groqFinal("r1"),
+      groqFinal("r2"),
+      groqFinal("r3"),
+      groqFinal("r4"),
+      groqFinal("r5"),
+      groqFinal("Voicescape is a blockpage platform."),
+    ]);
+    for (let i = 0; i < 5; i++) {
+      await POST(post({ message: OFF_TOPIC }, ip));
+    }
+    const res = await POST(post({ message: "What is Voicescape?" }, ip));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reply).toMatch(/blockpage platform/);
+    expect(json.chat.metered).toBe(false);
+    expect(calls.groqBodies).toHaveLength(6);
+  });
+
+  it("a 5-HBAR tip unlocks 50 paid messages for a signed-in wallet", async () => {
+    const ip = "10.1.0.3";
+    const EVM = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+    const { calls } = mockFetch(
+      [
+        groqFinal("r1"),
+        groqFinal("r2"),
+        groqFinal("r3"),
+        groqFinal("r4"),
+        groqFinal("r5"),
+        groqFinal("paid reply"),
+      ],
+      [
+        [
+          {
+            data:
+              "0x" +
+              (5_000_000_000_000_000_000n).toString(16).padStart(64, "0") +
+              (100_000_000_000_000_000n).toString(16).padStart(64, "0"),
+            timestamp: "1789521300.000000007",
+            transaction_index: 7,
+          },
+        ],
+      ]
+    );
+    const headers = paidWalletHeaders(EVM);
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(post({ message: OFF_TOPIC }, ip, headers));
+      expect(res.status).toBe(200);
+    }
+    const res = await POST(post({ message: OFF_TOPIC }, ip, headers));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reply).toBe("paid reply");
+    expect(json.chat.metered).toBe(true);
+    expect(json.chat.kind).toBe("paid");
+    expect(json.chat.left).toBe(49);
+    expect(calls.groqBodies).toHaveLength(6);
+  });
+
+  it("signed-in wallet with no tip gets the wallet paywall on the 6th off-topic message", async () => {
+    const ip = "10.1.0.4";
+    const EVM = "0xffffffffffffffffffffffffffffffffffffffff";
+    mockFetch(
+      [groqFinal("r1"), groqFinal("r2"), groqFinal("r3"), groqFinal("r4"), groqFinal("r5")],
+      [[]]
+    );
+    const headers = paidWalletHeaders(EVM);
+    for (let i = 0; i < 5; i++) {
+      await POST(post({ message: OFF_TOPIC }, ip, headers));
+    }
+    const res = await POST(post({ message: OFF_TOPIC }, ip, headers));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reply).toBe(CHAT_PAYWALL_WALLET);
   });
 });

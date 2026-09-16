@@ -79,10 +79,15 @@ import {
   BUILD_PAYWALL_ANON,
   BUILD_RACE_MESSAGE,
   BUILD_STORE_ERROR,
+  CHAT_METER_ERROR,
   checkBuildAccess,
+  checkChatAccess,
   consumeBuild,
+  isOnTopicMessage,
   meteringBypass,
-} from "./build-metering";
+  noteChatMessage,
+  type ChatIdentity,
+} from "./metering";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { verifySessionToken } from "@/lib/server/townhall/auth";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
@@ -217,13 +222,16 @@ export async function POST(req: NextRequest) {
 
   // The signed-in wallet (EVM address), or null for anonymous visitors.
   // Builds need a wallet — anonymous users are stopped at the paywall.
-  let buildWallet: string | null = null;
-  if (buildComplete && !meteringBypass()) {
+  // The wallet also identifies chat metering (anonymous chat is keyed by
+  // IP and can never pay on-chain).
+  let walletEvm: string | null = null;
+  if (!meteringBypass()) {
     const cred = sessionCredentialFrom(req);
     const verified =
       typeof cred === "string" ? verifySessionToken(cred) : null;
-    if (verified && verified.ok) buildWallet = verified.session.address;
+    if (verified && verified.ok) walletEvm = verified.session.address;
   }
+  const buildWallet = buildComplete ? walletEvm : null;
 
   if (justCompleted && !meteringBypass()) {
     // Fail fast BEFORE the model burns image generations on an unpaid
@@ -250,6 +258,43 @@ export async function POST(req: NextRequest) {
         build_state: signBuildState(buildState),
       });
     }
+  }
+
+  // Chat metering (Brandon's pricing, refined 2026-09-16): answering
+  // Voicescape / blockchain questions is always free. Anything else costs
+  // one message unit — 5 free per identity, then 5 HBAR per 50 messages.
+  // The check runs BEFORE the model call so an unpaid turn burns nothing.
+  // The turn that generates a build is covered by the build payment, so it
+  // skips the chat check entirely. In-progress build answers are on-topic
+  // by construction (they fill the username / bio / vibe slots).
+  const inBuildFlow = buildState.active && !buildComplete;
+  const onTopic = inBuildFlow || isOnTopicMessage(message);
+  const chatIdentity: ChatIdentity =
+    walletEvm != null
+      ? { kind: "wallet", evm: walletEvm }
+      : { kind: "anon", ip: agentChatClientIp(req) };
+  let chatKind: "free" | "paid" | null = null;
+  let chatLeft = 0;
+  const chatMetered = !justCompleted && !onTopic && !meteringBypass();
+  if (chatMetered) {
+    let access;
+    try {
+      access = await checkChatAccess(chatIdentity);
+    } catch {
+      return NextResponse.json(
+        { error: "chat_meter_unavailable", reply: CHAT_METER_ERROR },
+        { status: 503 }
+      );
+    }
+    if (!access.allowed) {
+      return NextResponse.json({
+        reply: access.reason,
+        build_state: signBuildState(buildState),
+        chat: { metered: true, kind: "none", left: 0 },
+      });
+    }
+    chatKind = access.kind;
+    chatLeft = access.left;
   }
 
   const controller = new AbortController();
@@ -320,11 +365,30 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Chat accounting: an off-topic turn that reached the model consumes
+    // one message unit. The build-generation turn is covered by the build
+    // payment. This runs after the reply exists — a store hiccup here must
+    // not eat the reply the user is already owed (the pre-check above is
+    // what fails closed).
+    if (chatMetered && chatKind) {
+      try {
+        await noteChatMessage(chatIdentity, chatKind);
+      } catch {
+        // Served replies aren't revoked over an accounting hiccup.
+      }
+    }
+
     return NextResponse.json({
       reply: finalContent,
       // Opaque to the widget: the signed build state to echo back next turn.
       // "" when no secret is configured (state feature off).
       build_state: signBuildState(buildState),
+      // Metering metadata for the widget (free-messages-left caption).
+      chat: {
+        metered: chatMetered,
+        kind: chatMetered && chatKind ? chatKind : "none",
+        left: Math.max(0, chatLeft - (chatMetered && chatKind ? 1 : 0)),
+      },
     });
   } catch (e: any) {
     const aborted = signal.aborted;
