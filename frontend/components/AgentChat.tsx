@@ -20,7 +20,7 @@ import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
 import { recordConversionEvent } from "@/lib/metrics";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; failed?: boolean };
 
 const GREETING: Msg = {
   role: "assistant",
@@ -121,7 +121,10 @@ const INPUT_PLACEHOLDER = "Ask Buddy…";
 
 const UNAVAILABLE = "Chat is unavailable right now — try again later.";
 const RATE_LIMITED = "Slow down a little — try again in a bit.";
-const FAILED = "Something went wrong — mind trying again?";
+const FAILED = "Something went wrong — tap to retry.";
+const TIMED_OUT = "That took too long — tap to retry.";
+/** Client-side cap: never leave "Buddy is thinking" hanging forever. */
+const CLIENT_TIMEOUT_MS = 60_000;
 
 /**
  * The wallet session header, when the visitor is signed in. This widget
@@ -199,9 +202,32 @@ export default function AgentChat() {
     const text = input.trim();
     if (!text || busy) return;
     setInput("");
-    const next = [...msgs, { role: "user", content: text } as Msg];
+    await sendMessage(text);
+  }
+
+  /** Re-sends the most recent user message (tap-to-retry on a failed bubble). */
+  function retryLast() {
+    if (busy) return;
+    const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+    if (!lastUser) return;
+    // Drop trailing failed bubble(s), then re-send against the trimmed list.
+    const trimmed = [...msgs];
+    while (trimmed.length > 0) {
+      const tail = trimmed[trimmed.length - 1];
+      if (tail.role === "assistant" && tail.failed) trimmed.pop();
+      else break;
+    }
+    setMsgs(trimmed);
+    void sendMessage(lastUser.content, trimmed);
+  }
+
+  async function sendMessage(text: string, base?: Msg[]) {
+    if (!text || busy) return;
+    const next = [...(base ?? msgs), { role: "user", content: text } as Msg];
     setMsgs(next);
     setBusy(true);
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), CLIENT_TIMEOUT_MS);
     try {
       const history = next
         .filter((m) => m !== GREETING)
@@ -218,17 +244,22 @@ export default function AgentChat() {
           history,
           build_state: buildStateRef.current || undefined,
         }),
+        signal: ctrl.signal,
       });
       let reply: string;
+      let failed = false;
       if (res.status === 503) reply = UNAVAILABLE;
       else if (res.status === 429) reply = RATE_LIMITED;
-      else if (!res.ok) reply = FAILED;
-      else {
+      else if (!res.ok) {
+        reply = FAILED;
+        failed = true;
+      } else {
         const data = await res.json().catch(() => null);
         reply =
           data && typeof data.reply === "string" && data.reply
             ? data.reply
             : FAILED;
+        failed = reply === FAILED;
         // Keep the signed build token for the next turn (opaque string).
         if (data && typeof data.build_state === "string") {
           buildStateRef.current = data.build_state;
@@ -244,10 +275,22 @@ export default function AgentChat() {
           setFreeLeft(0);
         }
       }
-      setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
+      setMsgs((prev) => [
+        ...prev,
+        { role: "assistant", content: reply, failed: failed || undefined },
+      ]);
     } catch {
-      setMsgs((prev) => [...prev, { role: "assistant", content: FAILED }]);
+      const timedOut = ctrl.signal.aborted;
+      setMsgs((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: timedOut ? TIMED_OUT : FAILED,
+          failed: true,
+        },
+      ]);
     } finally {
+      clearTimeout(timeout);
       setBusy(false);
     }
   }
@@ -358,9 +401,13 @@ export default function AgentChat() {
               // hide it and show the inline preview plus the one-tap builder
               // button ("tweak it" path) instead.
               const visible = draft != null ? stripPageDraft(m.content) : m.content;
+              const failedBubble = m.role === "assistant" && m.failed === true;
               return (
                 <div
                   key={i}
+                  onClick={failedBubble ? retryLast : undefined}
+                  title={failedBubble ? "Tap to retry" : undefined}
+                  role={failedBubble ? "button" : undefined}
                   style={{
                     alignSelf: m.role === "user" ? "flex-end" : "flex-start",
                     maxWidth: "85%",
@@ -379,6 +426,7 @@ export default function AgentChat() {
                         ? "rgba(130, 89, 239, 0.22)"
                         : "rgba(255, 255, 255, 0.055)",
                     color: "#fff",
+                    cursor: failedBubble ? "pointer" : undefined,
                   }}
                 >
                   {m.role === "assistant" ? (
