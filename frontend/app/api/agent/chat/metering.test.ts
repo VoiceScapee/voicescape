@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  BUILD_PAYWALL_ANON,
   BUILD_PAYWALL_UNPAID,
   CHAT_MESSAGES_PER_PAYMENT,
   CHAT_PAYWALL_ANON,
@@ -225,5 +226,25 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     const ledger = JSON.parse(raw!);
     expect(ledger.payments).toHaveLength(1);
     expect(ledger.payments[0].kind).toBe(null);
+  });
+});
+
+describe("build paywall copy", () => {
+  it("tells the visitor to say 'go' after tipping (nothing auto-starts)", () => {
+    expect(BUILD_PAYWALL_ANON).toContain('say "go" here');
+    expect(BUILD_PAYWALL_UNPAID).toContain('say "go" here');
+  });
+
+  it("no longer promises building 'the moment it settles on-chain'", () => {
+    expect(BUILD_PAYWALL_ANON).not.toContain("the moment it settles");
+    expect(BUILD_PAYWALL_UNPAID).not.toContain("the moment it settles");
+  });
+
+  it("still states the 5 HBAR price and the forge tip step", () => {
+    for (const copy of [BUILD_PAYWALL_ANON, BUILD_PAYWALL_UNPAID]) {
+      expect(copy).toContain("5 HBAR");
+      expect(copy).toContain("forge");
+    }
+    expect(BUILD_PAYWALL_ANON).toContain("connected wallet");
   });
 });

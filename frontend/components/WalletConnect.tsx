@@ -231,14 +231,25 @@ export function WalletConnect() {
           {shortAccount(account)}
         </span>
         {session ? (
-          <button
-            onClick={handleSignIn}
-            disabled={signing}
-            className="vs-btn vs-btn-primary"
-            style={{ padding: "6px 14px", fontSize: 13 }}
-          >
-            {signing ? t("wallet.checkWallet") : t("wallet.signIn")}
-          </button>
+          <>
+            <button
+              onClick={handleSignIn}
+              disabled={signing}
+              className="vs-btn vs-btn-primary"
+              style={{ padding: "6px 14px", fontSize: 13 }}
+            >
+              {signing ? t("wallet.checkWallet") : t("wallet.signIn")}
+            </button>
+            <div
+              style={{
+                fontSize: 11.5,
+                color: "var(--vs-muted)",
+                width: "100%",
+              }}
+            >
+              This proves you own the wallet — 1 tinybar to yourself, not a payment.
+            </div>
+          </>
         ) : null}
         <button
           onClick={() => void disconnect()}
