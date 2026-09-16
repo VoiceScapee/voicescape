@@ -355,7 +355,7 @@ async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
  * payment) not already credited. Read-only; a mirror-node hiccup resolves
  * to "no new payments" — never to paid.
  */
-async function discoverFreshPayments(
+export async function discoverFreshPayments(
   evmAddress: string,
   knownIds: string[]
 ): Promise<string[]> {
