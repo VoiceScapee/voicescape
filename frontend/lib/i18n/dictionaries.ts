@@ -378,7 +378,7 @@ const en = {
   "landing.liveBadge": "LIVE",
   "landing.headlinesLabel": "Hedera headlines",
   "landing.lobbyLabel": "Happening in the lobby",
-  "landing.founderQuote": "“I started building this with just a phone, one corner at a time. If it changes one person's life, we succeeded.”",
+  "landing.founderQuote": "“I started building this with just a phone, one block at a time. If it changes one person's life, we succeeded.”",
   "landing.founderQuoteBy": "— BRANDON, FOUNDER",
   "landing.grassroots": "built in the open · grassroots, not corporate",
   "landing.mainnetTag": "Hedera mainnet",
