@@ -89,7 +89,7 @@ describe("townhall PostCard waiting phases", () => {
     expect(celebration).toBeGreaterThan(-1);
     expect(celebration).toBeLessThan(confirmed);
     expect(postCardSrc).toMatch(
-      /<TipCelebration[\s\S]*usd=\{usd\.toFixed\(2\)\}[\s\S]*username=\{author\}/,
+      /<TipCelebration[\s\S]*usd=\{isHbar \?[\s\S]*username=\{author\}/,
     );
   });
 });

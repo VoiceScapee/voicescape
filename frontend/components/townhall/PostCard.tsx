@@ -11,7 +11,13 @@ import { tipPage, resolvePage } from "@/lib/contracts";
 import { friendlyWalletError, useWallet } from "@/lib/wallet";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
-import { usdToWei } from "@/lib/tokens";
+import { usdToWei, hbarToWei } from "@/lib/tokens";
+import {
+  TIP_CURRENCY_KEY,
+  TIP_PANEL_EVENT,
+  readTipCurrency,
+  type TipCurrency,
+} from "@/lib/tip-currency";
 import { timeAgo, type TownhallPost } from "@/lib/townhall";
 import { IconTip, IconClose, IconCheck } from "@/components/icons";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
@@ -24,10 +30,29 @@ import ModHideButton from "./ModHideButton";
 import ReportButton from "./ReportButton";
 
 const TIP_PRESETS = [1, 5, 10];
+const TIP_PRESETS_HBAR = [1, 5, 10, 25, 50];
 
 function TipModal({ author, onClose }: { author: string; onClose: () => void }) {
   const { account, getTxSender } = useWallet();
   const [usd, setUsd] = useState(5);
+  // Visitor-chosen tip currency, shared with the blockpage tip panel.
+  const [currency, setCurrency] = useState<TipCurrency>(() => readTipCurrency());
+  const [hbarAmount, setHbarAmount] = useState(5);
+  const isHbar = currency === "hbar";
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TIP_CURRENCY_KEY, currency);
+    } catch {
+      // Private mode etc. — the toggle still works for this visit.
+    }
+  }, [currency]);
+  // Let the floating Buddy button hide while a tip panel is open.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(TIP_PANEL_EVENT, { detail: true }));
+    return () => {
+      window.dispatchEvent(new CustomEvent(TIP_PANEL_EVENT, { detail: false }));
+    };
+  }, []);
   const [price, setPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [txId, setTxId] = useState<string | null>(null);
@@ -70,7 +95,9 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
       setError("Connect a wallet to tip.");
       return;
     }
-    if (!price) {
+    // USD mode needs the price feed to convert; HBAR mode is exact.
+    const p = price;
+    if (!isHbar && p == null) {
       setError("HBAR price is still loading — try again in a moment.");
       return;
     }
@@ -88,13 +115,21 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
       const sender = await getTxSender();
       // Snapshot the breakdown for the success receipt — these amounts are
       // baked into the transaction, so they hold for every outcome path.
-      const hbarAmt = usd / price;
-      setReceiptLines([
-        { label: "You sent", value: `$${usd} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
-        { label: `@${author} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
-        { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
-      ]);
-      const id = await tipPage(author, usdToWei(usd, price), sender);
+      const hbarAmt = isHbar ? hbarAmount : usd / (p as number);
+      setReceiptLines(
+        isHbar
+          ? [
+              { label: "You sent", value: `${hbarAmount} HBAR` },
+              { label: `@${author} gets (98%)`, value: `${(hbarAmt * 0.98).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+            ]
+          : [
+              { label: "You sent", value: `$${usd} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
+              { label: `@${author} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+            ],
+      );
+      const id = await tipPage(author, isHbar ? hbarToWei(hbarAmount) : usdToWei(usd, p as number), sender);
       // Approved — start the finality clock and confirm the real on-chain
       // outcome reactively.
       setApprovedAt(Date.now());
@@ -148,8 +183,8 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         {txId ? (
           <>
             <TipCelebration
-              usd={usd.toFixed(2)}
-              hbar={price ? (usd / price).toFixed(4) : null}
+              usd={isHbar ? `${hbarAmount} HBAR` : `$${usd.toFixed(2)}`}
+              hbar={isHbar ? null : price ? (usd / price).toFixed(4) : null}
               username={author}
             />
             <TxReceipt
@@ -168,7 +203,7 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
           <div className="th-tip-done">
             <IconCheck size={28} />
             <p>
-              Tip of ${usd} submitted to @{author}. It&apos;s still being confirmed on-chain —
+              Tip of {isHbar ? `${hbarAmount} HBAR` : `$${usd}`} submitted to @{author}. It&apos;s still being confirmed on-chain —
               check HashScan in a minute to see it land.
             </p>
             <p className="vs-mono th-tx">{submittedTxId}</p>
@@ -191,20 +226,37 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
           </div>
         ) : (
           <>
+            <div className="th-cur-toggle" role="group" aria-label="Tip currency">
+              {(["usd", "hbar"] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`th-cur${currency === c ? " is-active" : ""}`}
+                  aria-pressed={currency === c}
+                  onClick={() => setCurrency(c)}
+                >
+                  {c === "usd" ? "USD" : "HBAR"}
+                </button>
+              ))}
+            </div>
             <div className="th-chip-row" role="group" aria-label="Tip amount">
-              {TIP_PRESETS.map((p) => (
+              {(isHbar ? TIP_PRESETS_HBAR : TIP_PRESETS).map((p) => (
                 <button
                   key={p}
                   type="button"
-                  className={`th-chip${usd === p ? " is-active" : ""}`}
-                  onClick={() => setUsd(p)}
+                  className={`th-chip${(isHbar ? hbarAmount : usd) === p ? " is-active" : ""}`}
+                  onClick={() => (isHbar ? setHbarAmount(p) : setUsd(p))}
                 >
-                  ${p}
+                  {isHbar ? `${p} ℏ` : `$${p}`}
                 </button>
               ))}
             </div>
             <p className="th-muted">
-              {price ? `≈ ${(usd / price).toFixed(4)} HBAR` : "Loading HBAR price…"}
+              {isHbar
+                ? `${hbarAmount} HBAR`
+                : price
+                  ? `≈ ${(usd / price).toFixed(4)} HBAR`
+                  : "Loading HBAR price…"}
             </p>
             <button
               type="button"
@@ -217,7 +269,9 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
                 ? "Confirming on Hedera…"
                 : busy
                   ? "Tipping…"
-                  : `Tip $${usd}`}
+                  : isHbar
+                    ? `Tip ${hbarAmount} HBAR`
+                    : `Tip $${usd}`}
             </button>
             {busy && !confirmTxId && (
               <TxConfirming

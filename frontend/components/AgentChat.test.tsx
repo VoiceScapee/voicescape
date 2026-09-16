@@ -97,4 +97,21 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain('typeof data.build_state === "string"');
     expect(widgetSrc).toContain("buildStateRef.current = data.build_state");
   });
+
+  it("lets the visitor drag the floating button anywhere (persisted)", () => {
+    expect(widgetSrc).toContain("onPointerDown");
+    expect(widgetSrc).toContain("onPointerMove");
+    expect(widgetSrc).toContain("onPointerUp");
+    expect(widgetSrc).toContain('vs-buddy-fab-pos');
+    expect(widgetSrc).toContain("clampFabPos");
+    expect(widgetSrc).toContain('touchAction: "none"');
+  });
+
+  it("hides the floating button while the chat or a tip panel is open", () => {
+    expect(widgetSrc).toContain("!open && !tipOpen");
+    expect(widgetSrc).toContain("TIP_PANEL_EVENT");
+    // The chat panel gets its own close button since the toggle is hidden.
+    expect(widgetSrc).toContain('aria-label="Close Blockpage Buddy chat"');
+    expect(widgetSrc).toContain("setOpen(false)");
+  });
 });

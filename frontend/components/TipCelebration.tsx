@@ -31,7 +31,7 @@ export default function TipCelebration({
         </span>
       </div>
       <div className="pv-tip-celebration-amount">
-        ${usd}
+        {usd}
         {hbar && <span className="pv-tip-celebration-hbar">≈ {hbar} HBAR</span>}
       </div>
       <p className="pv-tip-celebration-sub">

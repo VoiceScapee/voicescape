@@ -19,3 +19,9 @@ export function usdToWei(usd: number, hbarUsdPrice: number): bigint {
   if (!(hbarUsdPrice > 0)) throw new Error("Invalid HBAR price.");
   return BigInt(Math.floor((usd / hbarUsdPrice) * 1e18));
 }
+
+/** Convert an HBAR amount to wei (18 decimals) for the HBAR contract tip flow. */
+export function hbarToWei(hbar: number): bigint {
+  if (!(hbar > 0)) throw new Error("Invalid HBAR amount.");
+  return BigInt(Math.floor(hbar * 1e18));
+}
