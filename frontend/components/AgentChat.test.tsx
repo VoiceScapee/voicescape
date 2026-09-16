@@ -133,7 +133,13 @@ describe("AgentChat", () => {
   it("renders the free visual-mock preview in-chat via BuddyDraftPreview", () => {
     expect(widgetSrc).toContain("build.preview");
     expect(widgetSrc).toContain("isValidPage(b.preview)");
-    expect(widgetSrc).toContain("setPreviewDraft(b.preview as VoicescapePage)");
+    // Client-side render-safety: the mock is normalized before it reaches
+    // the renderer (belt and suspenders — the server already normalized),
+    // and the preview sits inside an error boundary so a render throw can
+    // never unmount the app (live crash 2026-09-16).
+    expect(widgetSrc).toContain("normalizeBlockForRender");
+    expect(widgetSrc).toContain("setPreviewDraft(safe)");
+    expect(widgetSrc).toContain("PreviewErrorBoundary");
     expect(widgetSrc).toContain("setPreviewsLeft(");
     expect(widgetSrc).toContain("<BuddyDraftPreview page={previewDraft} />");
   });

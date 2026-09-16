@@ -503,6 +503,88 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(last.build.previewsLeft).toBe(1);
   });
 
+  it("truncated mock (unclosed fence) triggers one retry — valid retry mock is delivered, raw JSON never leaks", async () => {
+    // Live failure 2026-09-16 attempt 2: the model hit max tokens mid-JSON,
+    // the fence never closed, and raw JSON leaked into the visible reply.
+    // The route must retry once with a JSON-only instruction; a valid
+    // retry mock is delivered as the visual preview.
+    const truncated =
+      "Here's your mock!\n```json\n" +
+      '{"version": 1, "username": "testpilotbuddy", "theme": {"background": "#0a0a12", "foreground": "#ffffff", "accent": "#8259ef", "fontFamily": "sans"}, "blocks": [{"type": "hero", "title": "testpilotbuddy"}, {"type": "top8", "friends": [{"name": "H';
+    const { last, calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(truncated),
+        groqFinal(mockReply("Retry mock here!")),
+      ],
+      ip: "10.0.0.42",
+    });
+    // One extra Groq call: the retry.
+    expect(calls.groqBodies).toHaveLength(5);
+    const retryBody = calls.groqBodies[4];
+    const retrySystems = retryBody.messages
+      .filter((m: { role: string }) => m.role === "system")
+      .map((m: { content: string }) => m.content)
+      .join("\n");
+    expect(retrySystems).toContain("MOCK PREVIEW RETRY");
+    // The retry carried no tools (image tool stays withheld on preview turns).
+    expect(retryBody.tools).toHaveLength(0);
+    // No raw JSON in the visible reply; the retry mock was delivered.
+    expect(last.reply).not.toContain("```json");
+    expect(last.reply).not.toContain('"version": 1');
+    const preview = last.build.preview;
+    expect(preview).toBeTruthy();
+    expect(preview.username).toBe("testpilotbuddy");
+    expect(preview.blocks[0]).toMatchObject({ type: "hero", title: "testpilotbuddy" });
+    expect(last.build.previewsLeft).toBe(1);
+  });
+
+  it("truncated mock + failed retry falls back to the deterministic template — still a visual mock, never raw JSON", async () => {
+    const truncated =
+      "Here's your mock!\n```json\n" + '{"version": 1, "username": "testpilotbuddy", "blocks": [{"type": "hero"';
+    const { last } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(truncated),
+        // Retry also fails: prose with no valid mock.
+        groqFinal("Sorry, I can't quite get the JSON right today."),
+      ],
+      ip: "10.0.0.43",
+    });
+    // No raw JSON leaked anywhere in the visible reply.
+    expect(last.reply).not.toContain("```json");
+    expect(last.reply).not.toContain('"version": 1');
+    // The template fallback was delivered: valid, grounded in the build
+    // slots, placeholder art only.
+    const preview = last.build.preview;
+    expect(preview).toBeTruthy();
+    expect(preview.username).toBe("testpilotbuddy");
+    expect(JSON.stringify(preview.blocks)).toContain("chiptune");
+    expect(preview.blocks[0].type).toBe("hero");
+    // The allowance was still consumed exactly once.
+    expect(last.build.previewsLeft).toBe(1);
+  });
+
+  it("preview turns use the bigger token budget so mocks are not cut off", async () => {
+    const { calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(mockReply()),
+      ],
+      ip: "10.0.0.44",
+    });
+    // 4th turn is the preview turn: max_tokens must be the preview budget.
+    expect(calls.groqBodies[3].max_tokens).toBe(4096);
+    // Non-preview turns keep the standard budget.
+    expect(calls.groqBodies[0].max_tokens).toBe(2048);
+  });
+
   it("anonymous visitor gets free preview 1: model called, no image tool, no paywall", async () => {
     const { last, calls } = await runBuildFlow({
       groqReplies: [
@@ -546,9 +628,12 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(note).toContain("Never 'Item 1'");
   });
 
-  it("an invalid mock is stripped from visible text, consumes nothing, and a plain-text retry yields mock 1", async () => {
+  it("an invalid mock is stripped, retried, then template-fallback delivers a visual mock consuming one preview", async () => {
     // The model emits a fence that fails validation (no version/username
-    // envelope, junk placeholders) — the live failure mode.
+    // envelope, junk placeholders) — the live failure mode. The route
+    // retries once (no more mocked replies -> retry throws -> caught), then
+    // falls back to the deterministic server-built template so the visitor
+    // ALWAYS gets a visual mock: never raw JSON, never nothing.
     const badMock =
       "Here's a mock of your page!\n```json\n" +
       JSON.stringify({
@@ -576,29 +661,35 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     // Raw JSON/fences never reach the visitor...
     expect(last.reply).not.toContain("```json");
     expect(last.reply).not.toContain("tipJar");
-    // ...no mock is delivered, and the free allowance is NOT consumed...
-    expect(last.build.preview).toBeNull();
-    expect(last.build.previewsLeft).toBe(2);
+    // ...the template fallback was delivered as the visual mock, grounded
+    // in the collected slots, placeholder art only...
+    const preview = last.build.preview;
+    expect(preview).toBeTruthy();
+    expect(preview.username).toBe("testpilotbuddy");
+    expect(JSON.stringify(preview.blocks)).toContain("chiptune");
+    // ...and the free allowance WAS consumed (a mock was served).
+    expect(last.build.previewsLeft).toBe(1);
     expect(last.build.paywall).toBeNull();
 
-    // A plain-text follow-up becomes a fresh mock-1 turn via the fallback
-    // (not a paywall), and this time the mock validates.
+    // A plain-text follow-up revises the served template (mock 2 of 2) via
+    // the server-side last-mock store — not a paywall — and the 2nd mock
+    // ships with the paywall panel.
     const { calls: r5calls } = mockFetch([groqFinal(mockReply("Fresh mock!"))]);
     const r5 = await POST(
-      post({ message: "try again", build_state: buildState }, ip)
+      post({ message: "make it darker", build_state: buildState }, ip)
     );
     expect(r5.status).toBe(200);
     const d5 = await r5.json();
     expect(d5.build.preview).toBeTruthy();
     expect(d5.build.preview.username).toBe("testpilotbuddy");
-    expect(d5.build.previewsLeft).toBe(1);
-    expect(d5.build.paywall).toBeNull();
+    expect(d5.build.previewsLeft).toBe(0);
+    expect(d5.build.paywall).toBe("anon");
     expect(d5.reply).not.toContain("```json");
     const r5body = r5calls.groqBodies[0];
     const systems = r5body.messages.filter((m: any) => m.role === "system");
     expect(
       systems.some((m: any) =>
-        String(m.content).includes("[MOCK PREVIEW")
+        String(m.content).includes("[MOCK PREVIEW REVISION")
       )
     ).toBe(true);
     expect(

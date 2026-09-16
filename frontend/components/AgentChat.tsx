@@ -12,9 +12,10 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
-import { type VoicescapePage, isValidPage } from "@/lib/schema";
+import { type VoicescapePage, isValidPage, normalizeBlockForRender } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import BuddyDraftPreview from "./BuddyDraftPreview";
+import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import BuddyPayButton from "./BuddyPayButton";
 import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
@@ -344,9 +345,22 @@ export default function AgentChat() {
           startCreditPoll();
         }
         // A free mock arrived: validate client-side too, then show it in
-        // the preview panel — never as a paid draft.
+        // the preview panel — never as a paid draft. Normalize once more
+        // client-side (belt and suspenders: the server already normalized,
+        // but a malformed mock must never reach the renderer), and the
+        // error boundary below contains any residual render throw.
         if (b && isValidPage(b.preview)) {
-          setPreviewDraft(b.preview as VoicescapePage);
+          const incoming = b.preview as VoicescapePage;
+          const safe: VoicescapePage = {
+            ...incoming,
+            blocks: incoming.blocks
+              .map(normalizeBlockForRender)
+              .filter(
+                (blk): blk is NonNullable<ReturnType<typeof normalizeBlockForRender>> =>
+                  blk !== null
+              ),
+          };
+          setPreviewDraft(safe);
           setPreviewsLeft(
             typeof b.previewsLeft === "number" ? b.previewsLeft : null
           );
@@ -654,7 +668,9 @@ export default function AgentChat() {
                   ✕
                 </button>
               </div>
-              <BuddyDraftPreview page={previewDraft} />
+              <PreviewErrorBoundary>
+                <BuddyDraftPreview page={previewDraft} />
+              </PreviewErrorBoundary>
               {previewsLeft != null && previewsLeft > 0 ? (
                 <button
                   type="button"

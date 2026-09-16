@@ -255,50 +255,255 @@ export function isValidPage(input: unknown): input is VoicescapePage {
 /**
  * Render-safety normalizer for page blocks. Model-generated or user-supplied
  * page JSON can pass isValidPage (which only checks block `type`) while
- * missing the array fields PageRenderer maps over — e.g. a music block
- * without `tracks`. Rendering such a block throws and unmounts the whole
- * app. This fills every array field with [] (dropping null/garbage
- * elements), and returns null for blocks with an unknown type so the
- * caller can skip them. A normalized page can never crash the renderer.
- * Pure and dependency-free.
+ * missing the array fields PageRenderer maps over (e.g. a music block
+ * without `tracks`) — or carrying WRONG-TYPED scalars where the renderer
+ * expects strings (e.g. a hero `title` that is an object: `(block.title ||
+ * "?").trim()` throws, and `{block.title}` as a React child throws
+ * "Objects are not valid as a React child"). Either one unmounted the whole
+ * app live (2026-09-16).
+ *
+ * This rebuilds every block from scratch: arrays are filled with [] and
+ * their elements filtered/rebuilt, every renderer-touched scalar is
+ * coerced to a string (or dropped when optional), and unknown block types
+ * return null so the caller can skip them. A normalized page can never
+ * crash the renderer. Pure and dependency-free.
  */
 export function normalizeBlockForRender(input: unknown): Block | null {
   if (typeof input !== "object" || input === null) return null;
   const b = input as Record<string, unknown>;
   if (typeof b.type !== "string") return null;
-  const isObj = (e: unknown): boolean => typeof e === "object" && e !== null;
-  const objs = (v: unknown): Record<string, unknown>[] =>
-    Array.isArray(v) ? v.filter(isObj) : [];
-  const strs = (v: unknown): string[] =>
-    Array.isArray(v) ? v.filter((e): e is string => typeof e === "string") : [];
+  // String-or-undefined: the only safe shape for renderer-touched scalars.
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  const isObj = (e: unknown): e is Record<string, unknown> =>
+    typeof e === "object" && e !== null;
+  const num = (v: unknown, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : fallback;
   switch (b.type) {
-    case "hero":
+    case "hero": {
+      const hero: Record<string, unknown> = {
+        type: "hero",
+        title: str(b.title) ?? "?",
+      };
+      const subtitle = str(b.subtitle);
+      if (subtitle !== undefined) hero.subtitle = subtitle;
+      const avatarEmoji = str(b.avatarEmoji);
+      if (avatarEmoji !== undefined) hero.avatarEmoji = avatarEmoji;
+      const avatarImage = str(b.avatarImage);
+      if (avatarImage !== undefined) hero.avatarImage = avatarImage;
+      return hero as unknown as Block;
+    }
     case "bio":
-    case "tipJar":
-    case "operator":
-    case "livestream":
-    case "chat":
-      // No array fields — scalar-only blocks can't crash the renderer.
-      return b as Block;
+      return { type: "bio", text: str(b.text) ?? "" } as Block;
+    case "tipJar": {
+      const tip: Record<string, unknown> = { type: "tipJar" };
+      const message = str(b.message);
+      if (message !== undefined) tip.message = message;
+      return tip as unknown as Block;
+    }
+    case "operator": {
+      const op: Record<string, unknown> = {
+        type: "operator",
+        wallet: str(b.wallet) ?? "",
+      };
+      const name = str(b.name);
+      if (name !== undefined) op.name = name;
+      const url = str(b.url);
+      if (url !== undefined) op.url = url;
+      return op as unknown as Block;
+    }
+    case "livestream": {
+      const platform = b.platform === "twitch" || b.platform === "youtube" ? b.platform : "youtube";
+      const ls: Record<string, unknown> = {
+        type: "livestream",
+        platform,
+        channel: str(b.channel) ?? "",
+      };
+      const title = str(b.title);
+      if (title !== undefined) ls.title = title;
+      return ls as unknown as Block;
+    }
+    case "chat": {
+      const ch: Record<string, unknown> = { type: "chat" };
+      const title = str(b.title);
+      if (title !== undefined) ch.title = title;
+      return ch as unknown as Block;
+    }
     case "links":
-      return { ...b, items: objs(b.items) } as unknown as Block;
+      return {
+        type: "links",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => ({
+              label: str(e.label) ?? "Link",
+              url: str(e.url) ?? "",
+            }))
+          : [],
+      } as unknown as Block;
     case "guestbook":
-    case "reviews":
-      return { ...b, entries: objs(b.entries) } as unknown as Block;
-    case "music":
-      return { ...b, tracks: objs(b.tracks) } as unknown as Block;
-    case "gallery":
-      return { ...b, images: strs(b.images) } as unknown as Block;
-    case "top8":
-      return { ...b, friends: objs(b.friends) } as unknown as Block;
+    case "reviews": {
+      const entries = Array.isArray(b.entries)
+        ? b.entries.filter(isObj).map((e) => {
+            const entry: Record<string, unknown> = {
+              name: str(e.name) ?? "Anonymous",
+              message: str(e.message) ?? "",
+              date: str(e.date) ?? "",
+            };
+            const txHash = str(e.txHash);
+            if (txHash !== undefined) entry.txHash = txHash;
+            return entry;
+          })
+        : [];
+      return (b.type === "guestbook"
+        ? { type: "guestbook", entries }
+        : {
+            type: "reviews",
+            entries,
+            ...(str(b.title) !== undefined ? { title: str(b.title) } : {}),
+          }) as unknown as Block;
+    }
+    case "music": {
+      const tracks = Array.isArray(b.tracks)
+        ? b.tracks.filter(isObj).flatMap((t) => {
+            const source = str(t.source);
+            const id = str(t.id);
+            if (!source || !id) return [];
+            const track: Record<string, unknown> = { source, id };
+            for (const k of ["kind", "url", "title", "artist"] as const) {
+              const v = str(t[k]);
+              if (v !== undefined) track[k] = v;
+            }
+            return [track];
+          })
+        : [];
+      const music: Record<string, unknown> = { type: "music", tracks };
+      const title = str(b.title);
+      if (title !== undefined) music.title = title;
+      const note = str(b.note);
+      if (note !== undefined) music.note = note;
+      return music as unknown as Block;
+    }
+    case "gallery": {
+      const gallery: Record<string, unknown> = {
+        type: "gallery",
+        images: Array.isArray(b.images)
+          ? b.images.filter((e): e is string => typeof e === "string")
+          : [],
+      };
+      const effect = str(b.effect);
+      if (effect === "dance" || effect === "marquee" || effect === "float")
+        gallery.effect = effect;
+      return gallery as unknown as Block;
+    }
+    case "top8": {
+      const top8: Record<string, unknown> = {
+        type: "top8",
+        friends: Array.isArray(b.friends)
+          ? b.friends.filter(isObj).map((f) => {
+              const friend: Record<string, unknown> = {
+                name: str(f.name) ?? "?",
+              };
+              const avatarEmoji = str(f.avatarEmoji);
+              if (avatarEmoji !== undefined) friend.avatarEmoji = avatarEmoji;
+              const url = str(f.url);
+              if (url !== undefined) friend.url = url;
+              return friend;
+            })
+          : [],
+      };
+      const title = str(b.title);
+      if (title !== undefined) top8.title = title;
+      return top8 as unknown as Block;
+    }
     case "services":
+      return {
+        type: "services",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => ({
+              name: str(e.name) ?? "Service",
+              description: str(e.description) ?? "",
+              priceUsdCents: num(e.priceUsdCents, 0),
+              endpoint: str(e.endpoint) ?? "",
+            }))
+          : [],
+      } as unknown as Block;
     case "capabilities":
-    case "booking":
-      // services/booking items are objects; capabilities items are strings.
-      return b.type === "capabilities"
-        ? ({ ...b, items: strs(b.items) } as unknown as Block)
-        : ({ ...b, items: objs(b.items) } as unknown as Block);
+      return {
+        type: "capabilities",
+        items: Array.isArray(b.items)
+          ? b.items.filter((e): e is string => typeof e === "string")
+          : [],
+      } as unknown as Block;
+    case "booking": {
+      const booking: Record<string, unknown> = {
+        type: "booking",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => {
+              const item: Record<string, unknown> = {
+                label: str(e.label) ?? "Book",
+                url: str(e.url) ?? "",
+              };
+              const note = str(e.note);
+              if (note !== undefined) item.note = note;
+              return item;
+            })
+          : [],
+      };
+      const title = str(b.title);
+      if (title !== undefined) booking.title = title;
+      return booking as unknown as Block;
+    }
     default:
       return null;
   }
+}
+
+/**
+ * Deterministic server-built preview mock (template fallback). When the
+ * model fails to produce a valid mock (truncated/invalid JSON even after a
+ * retry), the preview turn still delivers a REAL visual mock built from
+ * the collected username/bio/vibe — placeholder art only, never AI image
+ * generation. Always passes isValidPage and always renders. The visitor
+ * never sees raw JSON, never sees a crash, never sees nothing.
+ */
+export function templatePreviewPage(
+  username: string,
+  bio: string,
+  vibe: string
+): VoicescapePage {
+  const u = (username || "you").toLowerCase().trim() || "you";
+  const display = u.charAt(0).toUpperCase() + u.slice(1);
+  const vibeLower = (vibe || "").toLowerCase();
+  const dark = /dark|midnight|noir|grunge|metal|night|emo|goth/.test(vibeLower);
+  const light = /light|clean|minimal|bright|pastel|soft/.test(vibeLower) && !dark;
+  const theme = dark || !light
+    ? { background: "#1e1e1e", foreground: "#f5f5f5", accent: "#ffcc00", fontFamily: "system-ui, sans-serif" }
+    : { background: "#fafafa", foreground: "#1a1a1a", accent: "#7c3aed", fontFamily: "system-ui, sans-serif" };
+  const avatarEmoji = /music|dj|band|rock/.test(vibeLower)
+    ? "🎸"
+    : /art|design|paint/.test(vibeLower)
+      ? "🎨"
+      : /game|gaming/.test(vibeLower)
+        ? "🎮"
+        : /dark|night/.test(vibeLower)
+          ? "🌙"
+          : "✨";
+  const bioText = (bio || "").trim() || `Welcome to ${display}'s corner of the internet.`;
+  return {
+    version: 1,
+    username: u,
+    theme,
+    blocks: [
+      { type: "hero", title: display, subtitle: `${display} — ${vibeLower || "my vibe"}`, avatarEmoji },
+      { type: "bio", text: bioText },
+      {
+        type: "links",
+        items: [
+          { label: "𝕏 / Twitter", url: `https://x.com/${u}` },
+          { label: "Website", url: `https://voicescape.vercel.app/${u}` },
+          { label: "Say hi", url: `https://t.me/${u}` },
+        ],
+      },
+      { type: "tipJar", message: "Thanks for stopping by — tips keep the lights on! 💜" },
+    ],
+  };
 }

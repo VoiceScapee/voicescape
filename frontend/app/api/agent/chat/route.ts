@@ -80,6 +80,9 @@ export const runtime = "nodejs";
 
 const MODEL = "openai/gpt-oss-20b";
 const MAX_TOKENS = 2048;
+// Preview turns emit a full 6-9 block page JSON plus prose — 2048 tokens
+// truncated the mock mid-string live (2026-09-16), leaking raw JSON.
+const PREVIEW_MAX_TOKENS = 4096;
 const MAX_ITERATIONS = 8;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 // Image generation can take up to a minute; the chat loop stays well under this.
@@ -120,7 +123,12 @@ import {
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { verifySessionToken } from "@/lib/server/townhall/auth";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
-import { isValidPage, normalizeBlockForRender, type VoicescapePage } from "@/lib/schema";
+import {
+  isValidPage,
+  normalizeBlockForRender,
+  templatePreviewPage,
+  type VoicescapePage,
+} from "@/lib/schema";
 
 // ---------------------------------------------------------------------------
 // Tool definitions (OpenAI function-calling shape)
@@ -176,7 +184,11 @@ async function callGroq(
   // "assistant" history is stripped for prompt-injection safety.
   buildNote: string | null,
   // Extra server-authored system notes (e.g. draft-revision context).
-  extraNotes: string[] = []
+  extraNotes: string[] = [],
+  // Preview turns emit a full page JSON — give them a bigger token budget
+  // so the mock isn't cut off mid-string (truncated JSON can never parse
+  // and used to leak raw into the visible reply).
+  maxTokens: number = MAX_TOKENS
 ): Promise<any> {
   const res = await fetch(GROQ_URL, {
     method: "POST",
@@ -190,7 +202,7 @@ async function callGroq(
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokens,
       messages: [
         { role: "system", content: BUDDY_SYSTEM_PROMPT },
         ...(buildNote ? [{ role: "system", content: buildNote }] : []),
@@ -279,6 +291,12 @@ const PREVIEW_NOTE = [
   "- 6-9 blocks total. Theme colors and font must match the vibe exactly.",
   "PLACEHOLDER ART ONLY: never URLs, never IPFS, never call generate_page_image — the tool is unavailable this turn.",
   "Keep your visible reply to one or two short sentences: present the mock, invite one tweak, and say that saying \"go\" builds the real page with custom AI artwork for 5 HBAR.",
+].join("\n");
+
+/** System note for the one-shot preview retry after a truncated/invalid mock. */
+const PREVIEW_RETRY_NOTE = [
+  "[MOCK PREVIEW RETRY — your previous reply was cut off or the mock JSON was invalid, so no preview was delivered.]",
+  "Output ONLY the complete page as a single ```json fenced block matching the envelope from the preview instructions — no prose before or after, no apologies. Keep it to 4-6 blocks so it fits. Placeholder art only (emoji, never URLs/IPFS); the image tool is unavailable.",
 ].join("\n");
 
 /** System note for revising the free mock (preview 2 of 2). */
@@ -615,7 +633,8 @@ export async function POST(req: NextRequest) {
         messages,
         signal,
         buildNote,
-        [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : [])]
+        [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : [])],
+        previewMode ? PREVIEW_MAX_TOKENS : MAX_TOKENS
       );
       const choice = data?.choices?.[0];
       const msg = choice?.message;
@@ -667,8 +686,47 @@ export async function POST(req: NextRequest) {
     let previewPage: VoicescapePage | null = null;
     let previewsLeftOut: number | null = null;
     if (previewMode && !meteringBypass()) {
-      const mock = extractPageDraft(finalContent);
+      let mock = extractPageDraft(finalContent);
+      // One retry when the mock was truncated or invalid: a single
+      // JSON-only shot (no tools — the image tool is withheld on preview
+      // turns anyway). Truncation was the live failure: the fence never
+      // closed, extraction returned null, and raw JSON leaked into chat.
+      if (!mock) {
+        try {
+          const retryData = await callGroq(
+            apiKey,
+            [],
+            messages,
+            signal,
+            buildNote,
+            [PREVIEW_RETRY_NOTE],
+            PREVIEW_MAX_TOKENS
+          );
+          const retryContent: unknown =
+            retryData?.choices?.[0]?.message?.content;
+          if (typeof retryContent === "string" && retryContent) {
+            finalContent = retryContent;
+            mock = extractPageDraft(retryContent);
+          }
+        } catch {
+          // Retry is best-effort — the template fallback below still
+          // guarantees a visual mock.
+        }
+      }
       previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
+      if (!mock) {
+        // Deterministic fallback: the model failed twice. Build a valid
+        // mock server-side from the collected slots so the visitor ALWAYS
+        // gets a visual mock — never raw JSON, never a crash, never
+        // nothing. Placeholder art only; never burns image generation.
+        mock = templatePreviewPage(
+          buildState.u ?? "you",
+          buildState.b ?? "",
+          buildState.v ?? ""
+        );
+        finalContent =
+          "Here's a quick mock I put together for you — tell me what to tweak, or say “go” and I'll build the real page with custom AI artwork for 5 HBAR.";
+      }
       if (mock) {
         // Render-safety: the model can emit a schema-valid mock whose
         // blocks are missing the arrays PageRenderer maps over (e.g. a
@@ -694,12 +752,6 @@ export async function POST(req: NextRequest) {
           // is what fails closed.
         }
         previewsLeftOut = Math.max(0, MAX_FREE_PREVIEWS - previewsUsed);
-      } else {
-        finalContent = stripPageDraft(finalContent);
-        if (!finalContent) {
-          finalContent =
-            "I couldn't sketch that mock — tell me to try again and I'll have another go.";
-        }
       }
       if (previewsLeftOut === 0) {
         if (!buildWallet) {
