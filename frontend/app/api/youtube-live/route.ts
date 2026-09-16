@@ -11,7 +11,10 @@ import { isYouTubeChannelId, parseYouTubeLiveStatus } from "@/lib/youtube-live";
  * href) for diagnosing server-side fetches.
  */
 const UA =
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
+// Desktop UA: the mobile UA gets 302'd to m.youtube.com, whose lighter page
+// omits the live signals. The desktop page carries canonical -> watch?v=
+// plus embedded "isLive":true watch data.
 // Pre-consented cookie so YouTube serves the real page instead of a consent
 // interstitial to server-side fetches. Public, non-secret value.
 const CONSENT_COOKIE = "CONSENT=YES+cb.20210328-17-p0.en+FX+119";
