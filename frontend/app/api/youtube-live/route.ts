@@ -33,7 +33,16 @@ export async function GET(req: Request) {
   }
 
   let body: unknown = { ok: true, live: false, videoId: null };
-  const dbg = { status: 0, finalUrl: "", bytes: 0, canonical: "", error: null as string | null };
+  const dbg = {
+    status: 0,
+    finalUrl: "",
+    bytes: 0,
+    canonical: "",
+    isLiveFound: false,
+    topVideoId: null as string | null,
+    topVideoRefs: 0,
+    error: null as string | null,
+  };
   try {
     const res = await fetch(`https://www.youtube.com/channel/${channel}/live`, {
       headers: {
@@ -50,6 +59,17 @@ export async function GET(req: Request) {
     const html = await res.text();
     dbg.bytes = html.length;
     dbg.canonical = html.match(/<link rel="canonical" href="([^"]*)"/)?.[1] ?? "";
+    dbg.isLiveFound = /"isLive":true/.test(html);
+    const counts = new Map<string, number>();
+    for (const m of html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)) {
+      counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+    }
+    for (const [id, n] of counts) {
+      if (n > dbg.topVideoRefs) {
+        dbg.topVideoId = id;
+        dbg.topVideoRefs = n;
+      }
+    }
     const { live, videoId } = parseYouTubeLiveStatus(html);
     body = { ok: true, live, videoId };
   } catch (e) {
