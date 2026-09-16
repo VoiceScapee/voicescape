@@ -89,6 +89,14 @@ describe("advanceBuildState", () => {
     expect(s.u).toBeUndefined();
   });
 
+  it("activates on the short replies visitors actually type", () => {
+    // Seen live 2026-09-16: "What you built" never matched, so the server
+    // state stayed idle while the model looped from stripped history.
+    expect(advanceBuildState(null, "What you built").active).toBe(true);
+    expect(advanceBuildState(null, "let's build").active).toBe(true);
+    expect(advanceBuildState(null, "set up my page").active).toBe(true);
+  });
+
   it("fills username -> bio -> vibe, one slot per turn", () => {
     let s = advanceBuildState(null, "i want to build a page");
     s = advanceBuildState(s, "testpilotbuddy");
@@ -105,10 +113,46 @@ describe("advanceBuildState", () => {
     expect(s.u).toBe("coolpage");
   });
 
-  it("does not take 'call me X' as a username", () => {
-    const s = advanceBuildState({ active: true }, "call me coolpage");
+  it("takes 'Name X' / 'call me X' as the username once asked for", () => {
+    // The server just asked for a username (active, slot empty), so an
+    // explicit naming phrase IS the answer. Seen live 2026-09-16.
+    expect(advanceBuildState({ active: true }, "Name KimmyPossible")).toEqual({
+      active: true,
+      u: "kimmypossible",
+    });
+    expect(advanceBuildState({ active: true }, "call me coolpage")).toEqual({
+      active: true,
+      u: "coolpage",
+    });
+  });
+
+  it("does not take naming phrases as a username in ordinary chat", () => {
+    // No active build: "call me X" stays conversational, never a slot fill.
+    const s = advanceBuildState(null, "call me coolpage");
     expect(s.u).toBeUndefined();
+    expect(s.active).toBe(false);
+  });
+
+  it("does not take 'what should I pick?' as a username", () => {
+    const s = advanceBuildState({ active: true }, "what should I pick?");
+    expect(s.u).toBeUndefined();
+  });
+
+  it("tracks the full live 2026-09-16 onboarding without derailing", () => {
+    let s = advanceBuildState(null, "What you built");
     expect(s.active).toBe(true);
+    s = advanceBuildState(s, "Name KimmyPossible");
+    expect(s.u).toBe("kimmypossible");
+    s = advanceBuildState(s, "The human behind Bacon the Dino");
+    expect(s.b).toBe("The human behind Bacon the Dino");
+    // Repeating the bio must not reset or derail the flow.
+    const s2 = advanceBuildState(s, "The human behind bacon the dino");
+    expect(s2.u).toBe("kimmypossible");
+    expect(s2.b).toBe("The human behind Bacon the Dino");
+    const note = buildStateNote(s2)!;
+    expect(note).toContain("Ask ONLY for the vibe/layout next");
+    expect(note).not.toContain("username: MISSING");
+    expect(note).not.toContain("bio: MISSING");
   });
 
   it("does not mistake a mid-flow question for a bio", () => {
