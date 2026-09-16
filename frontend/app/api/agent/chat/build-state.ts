@@ -41,15 +41,29 @@ const BIO_MAX = 280;
 const VIBE_MIN = 3;
 const VIBE_MAX = 200;
 
-/** Phrases that start a build ("i want to build my own blockpage", …). */
+/** Phrases that start a build ("i want to build my own blockpage", …).
+ * Includes the short replies visitors actually type after Buddy's greeting
+ * offers the build ("what you built", "let's build") — seen live 2026-09-16:
+ * "What you built" never matched, so the server state stayed idle while the
+ * model ran the 3-question flow from stripped history and looped. */
 const BUILD_INTENT_RE =
-  /\b(build|blockpage|my page|create a page|make me a page|new page|start building)\b/i;
+  /\b(build|built|building|blockpage|my page|create a page|make me a page|make my page|new page|start building|set up my page|what you built|let'?s build|build with you)\b/i;
 /** Phrases that restart a finished build ("build another one", …). */
 const RESTART_RE =
   /\b(start over|another page|new page|second page|different page|build another)\b/i;
 /** Don't mistake a mid-flow question for an answer ("what does it cost?"). */
 const QUESTION_RE =
   /\?\s*$|^(what|how|why|when|where|who|which|is|are|can|could|do|does|should|will|would|tell me)\b/i;
+/**
+ * Explicit "my username is X" phrasing ("Name KimmyPossible", "call me X").
+ * Only consulted while the build is active and the username slot is still
+ * empty — i.e. the server just asked for a username — so "call me X" can
+ * never misfire in ordinary chat. Seen live 2026-09-16: the visitor typed
+ * "Name KimmyPossible", the model took it conversationally, but the server
+ * slot stayed empty and the flow derailed on the next turn.
+ */
+const USERNAME_PHRASE_RE =
+  /^(?:name(?: is)?|call me|my name is|username:?)\s+([a-z0-9-]{3,24})$/i;
 
 function getSecret(): string {
   return (process.env.SESSION_SECRET ?? "").trim();
@@ -149,19 +163,32 @@ export function advanceBuildState(
     s = { ...s, active: true };
   }
 
-  // Slot 1: username — the whole message must be a valid username, so
-  // "call me X" or "what should I pick?" never misfires.
-  if (!s.u && USERNAME_RE.test(msg.toLowerCase())) {
-    return { ...s, u: msg.toLowerCase() };
+  // Slot 1: username — the whole message must be a valid username, or an
+  // explicit "my username is X" phrase. The phrase form only counts while a
+  // build is active and the slot is empty (the server just asked for it),
+  // so "call me X" in ordinary chat never misfires.
+  if (!s.u) {
+    if (USERNAME_RE.test(msg.toLowerCase())) {
+      return { ...s, u: msg.toLowerCase() };
+    }
+    const named = USERNAME_PHRASE_RE.exec(msg);
+    if (named) {
+      return { ...s, u: named[1].toLowerCase() };
+    }
   }
+  // A repeated answer ("The human behind Bacon the Dino" typed twice) is the
+  // visitor confirming, not a new slot — never let it fill the next slot.
+  // Seen live 2026-09-16: the repeat derailed the model into the lookup flow.
+  const dup = (v?: string) => !!v && msg.toLowerCase() === v.toLowerCase();
+
   // Slots 2-3: bio, then vibe — skip questions ("what does it cost?").
-  if (s.u && !s.b && !QUESTION_RE.test(msg)) {
+  if (s.u && !s.b && !QUESTION_RE.test(msg) && !dup(s.u)) {
     if (msg.length >= BIO_MIN && msg.length <= BIO_MAX) {
       return { ...s, b: msg };
     }
     return s;
   }
-  if (s.u && s.b && !s.v && !QUESTION_RE.test(msg)) {
+  if (s.u && s.b && !s.v && !QUESTION_RE.test(msg) && !dup(s.u) && !dup(s.b)) {
     if (msg.length >= VIBE_MIN && msg.length <= VIBE_MAX) {
       return { ...s, v: msg };
     }
