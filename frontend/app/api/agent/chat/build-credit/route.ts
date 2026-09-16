@@ -61,6 +61,27 @@ export async function GET(req: NextRequest) {
         if (lr.ok) {
           const lb = await lr.json();
           deep.logCount = lb.logs?.length;
+          // Replicate the exact filtering from discoverFreshPayments
+          const { keccak256, toUtf8Bytes } = await import("ethers");
+          const want0 = keccak256(toUtf8Bytes("TipSent(string,address,address,uint256,uint256)")).toLowerCase();
+          const want1 = keccak256(toUtf8Bytes("forge")).toLowerCase();
+          const senderAddr = (deep.evm as string).toLowerCase();
+          const want2 = ("0x" + senderAddr.slice(2).padStart(64, "0")).toLowerCase();
+          deep.want0 = want0;
+          deep.want1 = want1;
+          deep.want2 = want2;
+          deep.matches = [];
+          for (const log of lb.logs ?? []) {
+            const topics = (log.topics ?? []).map((t: string) => t.toLowerCase());
+            if (topics[0] === want0 && topics[1] === want1 && topics[2] === want2) {
+              deep.matches.push({ ts: log.timestamp, data: log.data?.slice(0, 66) });
+            }
+          }
+          deep.matchCount = deep.matches.length;
+          // Show first log's topics for comparison
+          if (lb.logs?.[0]) {
+            deep.firstLogTopics = lb.logs[0].topics;
+          }
         }
       } catch (e) {
         deep.error = e instanceof Error ? e.message : String(e);
