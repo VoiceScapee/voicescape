@@ -90,9 +90,12 @@ function isImageBytes(bytes: Uint8Array): boolean {
 }
 
 function gatewayUrl(cid: string): string {
-  const host = (process.env.IPFS_GATEWAY ?? "ipfs.io")
+  const raw = (process.env.IPFS_GATEWAY ?? "ipfs.io")
     .replace(/^https?:\/\//, "")
     .replace(/\/+$/, "");
+  // An env var that is set-but-empty would otherwise produce the broken
+  // "https:///ipfs/<cid>" — fall back to the public gateway instead.
+  const host = raw || "ipfs.io";
   return `https://${host}/ipfs/${cid}`;
 }
 

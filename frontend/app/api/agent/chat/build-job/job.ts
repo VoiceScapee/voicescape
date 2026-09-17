@@ -59,6 +59,8 @@ const STEP_BUDGET_MS = 45_000;
 const JOB_TTL_MS = 30 * 60 * 1000;
 const TOKEN_TTL_MS = 10 * 60 * 1000;
 const MAX_ARTWORK = 3;
+/** Image attempts per artwork slot before the job fails (credit preserved). */
+const MAX_IMAGE_ATTEMPTS = 3;
 
 const JOB_PREFIX = "buddy:buildjob:";
 const JOB_ACTIVE_PREFIX = "buddy:buildjob:active:";
@@ -109,6 +111,8 @@ export type BuildJob = {
   /** Artwork still to generate (front = next). */
   artwork: ArtworkSpec[];
   artworkTotal: number;
+  /** Attempts used on the current front artwork slot (retries, not slots). */
+  imgAttempts?: number;
   failReason?: string;
   createdAt: number;
 };
@@ -669,12 +673,37 @@ async function runImagesStep(
     ((kind: ImageKind, prompt: string, s: AbortSignal) =>
       defaultRunImage(kind, prompt, s, deps.clientIp ?? "unknown"));
   const result = await runImage(next.kind, next.prompt, signal);
+  if (!("url" in result)) {
+    // Artwork failed: keep the slot at the front, count the attempt, and
+    // let the widget retry it on the next poll. A failed artwork must never
+    // silently become an empty image on a paid page — after MAX attempts
+    // the job fails WITHOUT consuming the payment, so the credit stays
+    // available for a fresh "go".
+    const attempts = (job.imgAttempts ?? 0) + 1;
+    job.imgAttempts = attempts;
+    await saveJob(store, job);
+    if (attempts >= MAX_IMAGE_ATTEMPTS) {
+      return await failJob(
+        job,
+        store,
+        "The artwork service kept failing — nothing was charged. " +
+          "Your 5 HBAR credit is still available; say \u201cgo\u201d again to retry."
+      );
+    }
+    return {
+      ok: true,
+      done: false,
+      step: "images",
+      progress: stepProgress(job),
+      note: `Artwork hiccup — retrying (${attempts}/${MAX_IMAGE_ATTEMPTS})…`,
+    };
+  }
   // Fill the marker deterministically from the draft: a retried step finds
   // the slot already filled and moves on, so artwork is never generated
   // twice for the same slot.
+  job.imgAttempts = 0;
   const serialized = JSON.stringify(job.draft);
-  const replacement = "url" in result ? result.url : "";
-  const updated = serialized.split(next.slot).join(replacement);
+  const updated = serialized.split(next.slot).join(result.url);
   try {
     const parsed: unknown = JSON.parse(updated);
     if (isValidPage(parsed)) job.draft = parsed;

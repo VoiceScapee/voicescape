@@ -396,7 +396,51 @@ describe("stepBuildJob", () => {
     expect(spendCalls).toBe(0);
   });
 
-  it("degrades gracefully when artwork generation fails", async () => {
+  it("retries a failed artwork slot and keeps the credit untouched", async () => {
+    const store = createMemoryKvStore();
+    const started = await startBuildJob(signFor(WALLET_A), WALLET_A, store);
+    const jobId = started.ok ? started.jobId : "";
+    const page = validPage();
+    (page.blocks[0] as { avatarImage?: string }).avatarImage =
+      IMAGE_MARKERS.avatar;
+    let spendCalls = 0;
+    let imageCalls = 0;
+    const deps = {
+      store,
+      runCopy: async () =>
+        copyText(page, [
+          {
+            slot: IMAGE_MARKERS.avatar,
+            kind: "avatar",
+            prompt: "a vivid square avatar, wholesome",
+          },
+        ]),
+      runImage: async () => {
+        imageCalls += 1;
+        if (imageCalls === 1) return { error: "image service hiccup" };
+        return { url: "https://ipfs.io/ipfs/QmAvatarReal" };
+      },
+      spend: async () => {
+        spendCalls += 1;
+        return true;
+      },
+    };
+    await stepBuildJob(jobId, WALLET_A, deps); // copy -> images
+    const retry = await stepBuildJob(jobId, WALLET_A, deps); // image fails -> retry
+    expect(retry.ok && !retry.done && retry.step).toBe("images");
+    expect(retry.ok && (retry as { note?: string }).note).toMatch(/retrying/);
+    expect(spendCalls).toBe(0);
+    const s3 = await stepBuildJob(jobId, WALLET_A, deps); // image succeeds
+    expect(s3.ok && !s3.done && s3.step).toBe("finalize");
+    const s4 = await stepBuildJob(jobId, WALLET_A, deps);
+    expect(s4.ok && s4.done).toBe(true);
+    expect(spendCalls).toBe(1);
+    const draft = s4.ok && s4.done ? (s4 as { draft: unknown }).draft : null;
+    expect(JSON.stringify(draft)).toContain("https://ipfs.io/ipfs/QmAvatarReal");
+    expect(JSON.stringify(draft)).not.toContain(IMAGE_MARKERS.avatar);
+  });
+
+  it("fails the job without consuming after repeated artwork failures", async () => {
     const store = createMemoryKvStore();
     const started = await startBuildJob(signFor(WALLET_A), WALLET_A, store);
     const jobId = started.ok ? started.jobId : "";
@@ -414,17 +458,27 @@ describe("stepBuildJob", () => {
             prompt: "a vivid square avatar, wholesome",
           },
         ]),
-      runImage: async () => ({ error: "daily quota reached" }),
+      runImage: async () => ({ error: "image service down" }),
       spend: async () => {
         spendCalls += 1;
         return true;
       },
     };
     await stepBuildJob(jobId, WALLET_A, deps); // copy -> images
-    const s2 = await stepBuildJob(jobId, WALLET_A, deps); // images -> finalize
-    expect(s2.ok && !s2.done && s2.step).toBe("finalize");
-    const s3 = await stepBuildJob(jobId, WALLET_A, deps);
-    expect(s3.ok && s3.done).toBe(true);
-    expect(spendCalls).toBe(1);
+    const r1 = await stepBuildJob(jobId, WALLET_A, deps); // attempt 1
+    expect(r1.ok && !r1.done && r1.step).toBe("images");
+    const r2 = await stepBuildJob(jobId, WALLET_A, deps); // attempt 2
+    expect(r2.ok && !r2.done && r2.step).toBe("images");
+    const r3 = await stepBuildJob(jobId, WALLET_A, deps); // attempt 3 -> failed
+    expect(r3.ok).toBe(false);
+    expect(r3.ok ? "" : r3.error).toBe("failed");
+    expect(r3.ok ? "" : (r3 as { reason?: string }).reason).toMatch(
+      /nothing was charged/i
+    );
+    expect(spendCalls).toBe(0);
+    // The failed job stays failed: no draft is delivered, nothing consumed.
+    const r4 = await stepBuildJob(jobId, WALLET_A, deps);
+    expect(r4.ok).toBe(false);
+    expect(spendCalls).toBe(0);
   });
 });
