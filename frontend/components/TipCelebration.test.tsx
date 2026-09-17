@@ -32,7 +32,10 @@ describe("TipCelebration", () => {
 
   it("shows the tip amount big with the recipient", () => {
     expect(compSrc).toContain("pv-tip-celebration-amount");
-    expect(compSrc).toMatch(/\$\{usd\}/);
+    // The usd prop is a currency-aware display string ("$5.00" or "5 HBAR")
+    // — the component must not hardcode a $ prefix.
+    expect(compSrc).toContain("{usd}");
+    expect(compSrc).not.toMatch(/\$\{usd\}/);
     expect(compSrc).toContain("HBAR");
     expect(compSrc).toMatch(/@\{username\}/);
   });
@@ -64,7 +67,7 @@ describe("TipBox wires the celebration into the confirmed state", () => {
     expect(celebration).toBeGreaterThan(-1);
     expect(celebration).toBeLessThan(confirmed);
     expect(pageSrc).toMatch(
-      /<TipCelebration[\s\S]*usd=\{usdNum\.toFixed\(2\)\}[\s\S]*hbar=\{shareHbar\}[\s\S]*username=\{username\}/,
+      /<TipCelebration[\s\S]*usd=\{isHbar \?[\s\S]*username=\{username\}/,
     );
   });
 

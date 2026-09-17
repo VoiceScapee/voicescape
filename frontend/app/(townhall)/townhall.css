@@ -478,6 +478,35 @@
   box-shadow: 0 0 14px rgba(130, 89, 239, 0.3);
 }
 
+/* USD | HBAR currency toggle above the post tip presets. */
+.th-cur-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-glass);
+}
+
+.th-cur {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: var(--vs-muted);
+  font-family: var(--vs-font);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.th-cur.is-active {
+  background: linear-gradient(118deg, #8259ef, #4f46e5 44%, #0031ff);
+  color: #fff;
+}
+
 .th-tip-done {
   text-align: center;
   color: var(--vs-muted);

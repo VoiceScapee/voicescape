@@ -21,6 +21,36 @@ import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
 import { recordConversionEvent } from "@/lib/metrics";
+import { TIP_PANEL_EVENT } from "@/lib/tip-currency";
+
+/** Floating Buddy button: draggable so it never has to sit on top of
+ *  content. Position (viewport left/top px) persists across visits. */
+const FAB_SIZE = 56;
+const FAB_DEFAULT_GAP = 18;
+const FAB_POS_KEY = "vs-buddy-fab-pos";
+
+type FabPos = { x: number; y: number };
+
+function readFabPos(): FabPos | null {
+  try {
+    const raw = window.localStorage.getItem(FAB_POS_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<FabPos>;
+    if (typeof p.x === "number" && typeof p.y === "number") return { x: p.x, y: p.y };
+  } catch {
+    /* storage unavailable — fall back to the default corner */
+  }
+  return null;
+}
+
+function clampFabPos(x: number, y: number): FabPos {
+  const maxX = Math.max(8, window.innerWidth - FAB_SIZE - 8);
+  const maxY = Math.max(8, window.innerHeight - FAB_SIZE - 8);
+  return {
+    x: Math.min(Math.max(x, 8), maxX),
+    y: Math.min(Math.max(y, 8), maxY),
+  };
+}
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -222,6 +252,90 @@ export default function AgentChat() {
       }
     });
   }, [msgs]);
+  // Draggable floating-button position (null = default bottom-right corner).
+  const [fabPos, setFabPos] = useState<FabPos | null>(() =>
+    typeof window !== "undefined" ? readFabPos() : null,
+  );
+  // A tip panel is open somewhere — hide the button so it can't cover it.
+  const [tipOpen, setTipOpen] = useState(false);
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    origX: number;
+    origY: number;
+    moved: boolean;
+    pos: FabPos | null;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+
+  useEffect(() => {
+    const onTip = (e: Event) => setTipOpen((e as CustomEvent<boolean>).detail === true);
+    window.addEventListener(TIP_PANEL_EVENT, onTip);
+    return () => window.removeEventListener(TIP_PANEL_EVENT, onTip);
+  }, []);
+
+  // Keep a saved position on-screen across rotation/resize.
+  useEffect(() => {
+    const onResize = () => setFabPos((p) => (p ? clampFabPos(p.x, p.y) : p));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onFabPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      origX: rect.left,
+      origY: rect.top,
+      moved: false,
+      pos: null,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* older browsers — dragging still works without capture */
+    }
+  };
+
+  const onFabPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.hypot(dx, dy) > 8) d.moved = true;
+    if (d.moved) {
+      const pos = clampFabPos(d.origX + dx, d.origY + dy);
+      d.pos = pos;
+      setFabPos(pos);
+    }
+  };
+
+  const onFabPointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (!d) return;
+    if (d.moved) {
+      // It was a drag, not a tap: don't toggle the chat, and remember
+      // where the visitor dropped the button.
+      suppressClickRef.current = true;
+      if (d.pos) {
+        try {
+          window.localStorage.setItem(FAB_POS_KEY, JSON.stringify(d.pos));
+        } catch {
+          /* storage unavailable — position still holds for this visit */
+        }
+      }
+    }
+  };
+
+  const onFabClick = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setOpen((v) => !v);
+  };
 
   useEffect(() => {
     const el = listRef.current;
@@ -549,29 +663,38 @@ export default function AgentChat() {
 
   return (
     <>
-      {/* Floating button */}
-      <button
-        type="button"
-        aria-label={open ? "Close Blockpage Buddy chat" : "Open Blockpage Buddy chat"}
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          position: "fixed",
-          right: 18,
-          bottom: 18,
-          zIndex: 60,
-          width: 56,
-          height: 56,
-          borderRadius: "50%",
-          border: "none",
-          cursor: "pointer",
-          fontSize: 24,
-          color: "#fff",
-          background: "linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%)",
-          boxShadow: "0 8px 28px rgba(80, 60, 220, 0.45)",
-        }}
-      >
-        🔨
-      </button>
+      {/* Floating button: draggable, and hidden while the chat or a tip
+          panel is open (both have their own close affordance). */}
+      {!open && !tipOpen && (
+        <button
+          type="button"
+          aria-label="Open Blockpage Buddy chat"
+          onClick={onFabClick}
+          onPointerDown={onFabPointerDown}
+          onPointerMove={onFabPointerMove}
+          onPointerUp={onFabPointerUp}
+          onPointerCancel={onFabPointerUp}
+          style={{
+            position: "fixed",
+            ...(fabPos
+              ? { left: fabPos.x, top: fabPos.y }
+              : { right: FAB_DEFAULT_GAP, bottom: FAB_DEFAULT_GAP }),
+            zIndex: 60,
+            width: FAB_SIZE,
+            height: FAB_SIZE,
+            borderRadius: "50%",
+            border: "none",
+            cursor: "grab",
+            fontSize: 24,
+            color: "#fff",
+            background: "linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%)",
+            boxShadow: "0 8px 28px rgba(80, 60, 220, 0.45)",
+            touchAction: "none",
+          }}
+        >
+          🔨
+        </button>
+      )}
 
       {open && (
         <div
@@ -633,6 +756,26 @@ export default function AgentChat() {
               </a>
               <div style={{ fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)" }}>{HEADER_TAGLINE}</div>
             </div>
+            <button
+              type="button"
+              aria-label="Close Blockpage Buddy chat"
+              onClick={() => setOpen(false)}
+              style={{
+                marginLeft: "auto",
+                flex: "none",
+                width: 30,
+                height: 30,
+                borderRadius: "50%",
+                border: "1px solid rgba(255, 255, 255, 0.14)",
+                background: "transparent",
+                color: "rgba(232, 234, 240, 0.75)",
+                fontSize: 14,
+                cursor: "pointer",
+                lineHeight: 1,
+              }}
+            >
+              ✕
+            </button>
           </div>
 
           {/* Messages */}

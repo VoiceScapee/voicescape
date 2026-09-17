@@ -41,7 +41,14 @@ import {
   probeX402,
   type X402Rail,
 } from "@/lib/x402";
-import { usdToWei } from "@/lib/tokens";
+import { usdToWei, hbarToWei } from "@/lib/tokens";
+import {
+  TIP_CURRENCY_KEY,
+  TIP_PANEL_EVENT,
+  normalizeTipInput,
+  readTipCurrency,
+  type TipCurrency,
+} from "@/lib/tip-currency";
 import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
 import { canonicalAddress } from "@/lib/session-message";
@@ -58,6 +65,7 @@ type LoadState =
   | { status: "ready"; page: VoicescapePage; meta: RegistryMeta };
 
 const TIP_PRESETS_USD = ["0.10", "1", "5", "10", "25"];
+const TIP_PRESETS_HBAR = ["1", "5", "10", "25", "50"];
 
 function TipBox({
   username,
@@ -76,6 +84,27 @@ function TipBox({
   const { session } = useSession();
   const { t } = useLanguage();
   const [usd, setUsd] = useState("5");
+  // Visitor-chosen tip currency: USD (converted to HBAR at send time) or
+  // HBAR directly (exact amounts, no price feed needed).
+  const [currency, setCurrency] = useState<TipCurrency>(() =>
+    typeof window !== "undefined" ? readTipCurrency() : "usd",
+  );
+  const [hbarInput, setHbarInput] = useState("5");
+  const isHbar = currency === "hbar";
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TIP_CURRENCY_KEY, currency);
+    } catch {
+      // Private mode etc. — the toggle still works for this visit.
+    }
+  }, [currency]);
+  // Let the floating Buddy button hide while the tip panel is open.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(TIP_PANEL_EVENT, { detail: true }));
+    return () => {
+      window.dispatchEvent(new CustomEvent(TIP_PANEL_EVENT, { detail: false }));
+    };
+  }, []);
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
@@ -132,6 +161,8 @@ function TipBox({
 
   const usdNum = Number(usd);
   const usdValid = Number.isFinite(usdNum) && usdNum > 0;
+  const hbarNum = Number(hbarInput);
+  const hbarValid = Number.isFinite(hbarNum) && hbarNum > 0;
   // Display conversion (USD terms are primary). Tips are HBAR-only, routed
   // through the on-chain tips contract (98/2 split).
   const railDisplay =
@@ -139,9 +170,22 @@ function TipBox({
       ? `≈ ${(usdNum / hbarPrice).toFixed(4)} ${chain.nativeCurrency.symbol}`
       : `${chain.nativeCurrency.symbol} amount loading…`;
 
-  // Breakdown math for the plain-words 98/2 panel — valid only when the
-  // HBAR price has loaded and the USD amount parses.
-  const hbarAmt = hbarPrice && usdValid ? usdNum / hbarPrice : null;
+  // Breakdown math for the plain-words 98/2 panel. In HBAR mode the amount
+  // is exact; in USD mode it's valid only when the HBAR price has loaded
+  // and the USD amount parses.
+  const hbarAmt = isHbar
+    ? hbarValid
+      ? hbarNum
+      : null
+    : hbarPrice && usdValid
+      ? usdNum / hbarPrice
+      : null;
+  // Label for the "submitted" state, in the visitor's chosen currency.
+  const tipSentLabel = isHbar
+    ? hbarValid
+      ? `${hbarInput} HBAR`
+      : "?"
+    : `$${usdValid ? usdNum.toFixed(2) : "?"}`;
   const toCreatorAmt = hbarAmt != null ? hbarAmt * 0.98 : null;
   const treasuryAmt = hbarAmt != null ? hbarAmt * 0.02 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
@@ -170,30 +214,47 @@ function TipBox({
       setError("Connect a wallet to tip.");
       return;
     }
-    if (!usdValid) {
-      setError("Enter a valid USD amount.");
-      return;
+    if (isHbar) {
+      if (!hbarValid) {
+        setError("Enter a valid HBAR amount.");
+        return;
+      }
+    } else {
+      if (!usdValid) {
+        setError("Enter a valid USD amount.");
+        return;
+      }
     }
     setBusy(true);
     recordConversionEvent("tip_attempt", "blockpage");
     try {
-      if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
+      // USD mode needs the price feed to convert; HBAR mode is exact.
+      const price = isHbar ? null : hbarPrice;
+      if (!isHbar && !price) throw new Error("HBAR price is still loading — try again in a moment.");
       // Guardrail: never prompt a wallet signature for a doomed tip. The
       // contract reverts for unregistered pages — pre-check the registry
       // first so the user never signs a transaction that cannot succeed.
       const registered = await resolvePage(username, getActiveChain());
       if (!registered) throw new Error(`@${username} isn't registered on-chain — the tip would fail.`);
-      const wei = usdToWei(usdNum, hbarPrice);
+      const sendHbar = isHbar ? hbarNum : usdNum / (price as number);
+      const wei = isHbar ? hbarToWei(hbarNum) : usdToWei(usdNum, price as number);
       const sender = await getTxSender();
       // Snapshot the breakdown for the success receipt — these amounts are
       // baked into the transaction, so they hold for every outcome path.
-      const hbarAmt = usdNum / hbarPrice;
-      setReceiptLines([
-        { label: "You sent", value: `$${usdNum.toFixed(2)} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
-        { label: `${username} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
-        { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
-      ]);
-      setShareHbar(hbarAmt.toFixed(4));
+      setReceiptLines(
+        isHbar
+          ? [
+              { label: "You sent", value: `${hbarNum} HBAR` },
+              { label: `${username} gets (98%)`, value: `${(sendHbar * 0.98).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `${(sendHbar * 0.02).toFixed(4)} HBAR` },
+            ]
+          : [
+              { label: "You sent", value: `$${usdNum.toFixed(2)} (≈ ${sendHbar.toFixed(4)} HBAR)` },
+              { label: `${username} gets (98%)`, value: `≈ ${(sendHbar * 0.98).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${(sendHbar * 0.02).toFixed(4)} HBAR` },
+            ],
+      );
+      setShareHbar(sendHbar.toFixed(4));
       const hash = await tipPage(username, wei, sender);
       // Approved — start the finality clock. The hook now confirms the real
       // on-chain outcome; the UI reacts (success / failed / submitted)
@@ -248,8 +309,8 @@ function TipBox({
         ) : txHash ? (
           <>
             <TipCelebration
-              usd={usdNum.toFixed(2)}
-              hbar={shareHbar}
+              usd={isHbar ? `${hbarInput} HBAR` : `$${usdNum.toFixed(2)}`}
+              hbar={isHbar ? null : shareHbar}
               username={username}
             />
             <TxReceipt
@@ -284,7 +345,8 @@ function TipBox({
             </span>
             <h3>Tip submitted</h3>
             <p>
-              Your tip of ${usdValid ? usdNum.toFixed(2) : "?"} ({railDisplay}) was sent to {username}.
+              Your tip of {tipSentLabel}
+              {!isHbar && <> ({railDisplay})</>} was sent to {username}.
               It&apos;s still being confirmed on-chain — check the explorer in a minute to see it land.
             </p>
             <span className="pv-tx-hash vs-mono">{submittedHash}</span>
@@ -326,26 +388,46 @@ function TipBox({
 
             <WalletConnect />
 
-            <div className="pv-chip-row" role="group" aria-label="Tip amount presets (USD)">
-              {TIP_PRESETS_USD.map((p) => (
+            <div className="pv-tip-cur-toggle" role="group" aria-label="Tip currency">
+              {(["usd", "hbar"] as const).map((c) => (
                 <button
-                  key={p}
+                  key={c}
                   type="button"
-                  className={`pv-chip${usd === p ? " is-active" : ""}`}
-                  aria-pressed={usd === p}
-                  onClick={() => setUsd(p)}
+                  className={`pv-tip-cur${currency === c ? " is-active" : ""}`}
+                  aria-pressed={currency === c}
+                  onClick={() => setCurrency(c)}
                 >
-                  ${p}
+                  {c === "usd" ? "USD" : "HBAR"}
                 </button>
               ))}
             </div>
+            <div className="pv-chip-row" role="group" aria-label={isHbar ? "Tip amount presets (HBAR)" : "Tip amount presets (USD)"}>
+              {(isHbar ? TIP_PRESETS_HBAR : TIP_PRESETS_USD).map((p) => {
+                const active = isHbar ? hbarInput === p : usd === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    className={`pv-chip${active ? " is-active" : ""}`}
+                    aria-pressed={active}
+                    onClick={() => (isHbar ? setHbarInput(p) : setUsd(p))}
+                  >
+                    {isHbar ? `${p} ℏ` : `$${p}`}
+                  </button>
+                );
+              })}
+            </div>
             <input
               className="pv-tip-input"
-              value={usd}
-              onChange={(e) => setUsd(e.target.value.replace(/[^0-9.]/g, ""))}
+              value={isHbar ? hbarInput : usd}
+              onChange={(e) =>
+                isHbar
+                  ? setHbarInput(normalizeTipInput(e.target.value))
+                  : setUsd(normalizeTipInput(e.target.value))
+              }
               inputMode="decimal"
-              placeholder="Custom USD amount"
-              aria-label="Custom tip amount in USD"
+              placeholder={isHbar ? "Custom HBAR amount" : "Custom USD amount"}
+              aria-label={isHbar ? "Custom tip amount in HBAR" : "Custom tip amount in USD"}
             />
 
             {hbarAmt != null && (
@@ -353,15 +435,15 @@ function TipBox({
                 <div className="pv-tip-break">
                   <div className="pv-tip-break-row">
                     <span>{t("tip.youSend")}</span>
-                    <span>≈ {hbarAmt.toFixed(4)} HBAR</span>
+                    <span>{isHbar ? "" : "≈ "}{hbarAmt.toFixed(4)} HBAR</span>
                   </div>
                   <div className="pv-tip-break-row">
                     <span>{t("tip.creatorGets").replace("{name}", username)}</span>
-                    <span>≈ {(toCreatorAmt ?? 0).toFixed(4)} HBAR</span>
+                    <span>{isHbar ? "" : "≈ "}{(toCreatorAmt ?? 0).toFixed(4)} HBAR</span>
                   </div>
                   <div className="pv-tip-break-row">
                     <span>{t("tip.treasuryGets")}</span>
-                    <span>≈ {(treasuryAmt ?? 0).toFixed(4)} HBAR</span>
+                    <span>{isHbar ? "" : "≈ "}{(treasuryAmt ?? 0).toFixed(4)} HBAR</span>
                   </div>
                   <div className="pv-tip-break-row pv-tip-break-fee">
                     <span>{t("tip.networkFee").replace("{fee}", NETWORK_FEE_HBAR)}</span>
@@ -399,9 +481,17 @@ function TipBox({
               </>
             )}
 
-            <button type="button" className="pv-tip-btn pv-tip-confirm-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || !hbarPrice}>
+            <button type="button" className="pv-tip-btn pv-tip-confirm-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || (!isHbar && !hbarPrice)}>
               <IconTip size={20} />
-              {confirmStatus === "confirming" ? "Confirming on Hedera…" : busy ? "Tipping…" : !hbarPrice ? "Loading price…" : t("tip.confirmCta").replace("{amount}", usdValid ? usdNum.toFixed(2) : "0.00")}
+              {confirmStatus === "confirming"
+                ? "Confirming on Hedera…"
+                : busy
+                  ? "Tipping…"
+                  : !isHbar && !hbarPrice
+                    ? "Loading price…"
+                    : isHbar
+                      ? t("tip.confirmCtaHbar").replace("{amount}", hbarValid ? String(hbarNum) : "0")
+                      : t("tip.confirmCta").replace("{amount}", usdValid ? usdNum.toFixed(2) : "0.00")}
             </button>
             {/* Phase A: wallet hasn't returned a hash yet — nothing has left
                 the wallet. Alive animation + the honest reassurance, never

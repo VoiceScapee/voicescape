@@ -945,6 +945,35 @@ a.pv-friend:hover {
   margin-bottom: 12px;
 }
 
+/* USD | HBAR currency toggle above the tip presets. */
+.pv-tip-cur-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(130, 89, 239, 0.4);
+  background: rgba(130, 89, 239, 0.08);
+}
+
+.pv-tip-cur {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  color: #aab3d6;
+  font-family: var(--vs-mono);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.pv-tip-cur.is-active {
+  background: var(--vs-gradient, linear-gradient(118deg, #8259ef, #4f46e5 44%, #0031ff));
+  color: #fff;
+}
+
 .pv-chip {
   padding: 14px 6px;
   border-radius: 14px;
