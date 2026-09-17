@@ -29,5 +29,15 @@ export function extractPageDraft(content: string): VoicescapePage | null {
 
 /** Remove the machine-readable draft block so the visitor only sees prose. */
 export function stripPageDraft(content: string): string {
-  return content.replace(PAGE_DRAFT_FENCE, "").trim();
+  return (
+    content
+      // Closed fenced blocks (all of them — the model sometimes dumps the
+      // JSON twice, e.g. after a mid-string truncation note).
+      .replace(/```json\s*[\s\S]*?```/g, "")
+      // Truncated/unclosed fence: the model hit max tokens mid-JSON and the
+      // fence never closed. Strip from the opener to the end so no raw JSON
+      // ever leaks into the visible reply.
+      .replace(/```json\s*[\s\S]*$/g, "")
+      .trim()
+  );
 }

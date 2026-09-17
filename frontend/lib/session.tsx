@@ -557,6 +557,17 @@ export function useSession(): SessionContextValue {
   return ctx;
 }
 
+/**
+ * Non-throwing session read for components that can render outside the
+ * provider tree (e.g. the Buddy chat widget, which mounts outside
+ * RootProviders, and anything it renders like the in-chat page preview).
+ * Returns null when no SessionProvider is above — callers degrade to
+ * logged-out behavior instead of crashing the render.
+ */
+export function useSessionOptional(): SessionContextValue | null {
+  return useContext(SessionContext);
+}
+
 /* ------------------------------------------------------------------ */
 /* Route/UI gating                                                     */
 /* ------------------------------------------------------------------ */

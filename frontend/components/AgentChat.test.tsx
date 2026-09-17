@@ -97,4 +97,94 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain('typeof data.build_state === "string"');
     expect(widgetSrc).toContain("buildStateRef.current = data.build_state");
   });
+
+  it("shows the in-chat Pay 5 HBAR control on the build paywall", () => {
+    expect(widgetSrc).toContain("BuddyPayButton");
+    expect(widgetSrc).toContain("build.paywall");
+    expect(widgetSrc).toContain('"anon"');
+    expect(widgetSrc).toContain('"unpaid"');
+    expect(widgetSrc).toContain("/api/agent/chat/build-credit");
+    expect(widgetSrc).toContain("Payment detected");
+    expect(widgetSrc).toContain("No build credit detected yet");
+  });
+
+  it("the pay button reuses the existing forge tip path (no new money code)", () => {
+    const paySrc = readFileSync(join(here, "BuddyPayButton.tsx"), "utf8");
+    expect(paySrc).toContain("Pay 5 HBAR");
+    expect(paySrc).toContain("BUILD_PAYMENT_WEI = 5_000_000_000_000_000_000n");
+    expect(paySrc).toContain('tipPage(BUDDY_PAGE_USERNAME, BUILD_PAYMENT_WEI, sender)');
+    expect(paySrc).toContain('BUDDY_PAGE_USERNAME = "forge"');
+    expect(paySrc).toContain("resolvePage(");
+    expect(paySrc).toContain("friendlyWalletError");
+    // No custom payment rail: no raw contract addresses, no ethers-as-signer.
+    expect(paySrc).not.toMatch(/0x[a-fA-F0-9]{40}/);
+    expect(paySrc).not.toContain("ethers");
+  });
+
+  it("offers Publish page and Tweak next to Open in Builder", () => {
+    expect(widgetSrc).toContain("Publish page");
+    expect(widgetSrc).toContain("publishDraft(draft)");
+    expect(widgetSrc).toContain("BUDDY_PUBLISH_INTENT_KEY");
+    expect(widgetSrc).toContain("✏️ Tweak");
+    expect(widgetSrc).toContain("refine_draft");
+    expect(widgetSrc).toContain("Tell Buddy what to change");
+  });
+
+  it("renders the free visual-mock preview in-chat via BuddyDraftPreview", () => {
+    expect(widgetSrc).toContain("build.preview");
+    expect(widgetSrc).toContain("isValidPage(b.preview)");
+    // Client-side render-safety: the mock is normalized before it reaches
+    // the renderer (belt and suspenders — the server already normalized),
+    // and the preview sits inside an error boundary so a render throw can
+    // never unmount the app (live crash 2026-09-16).
+    expect(widgetSrc).toContain("normalizeBlockForRender");
+    expect(widgetSrc).toContain("setPreviewDraft(safe)");
+    expect(widgetSrc).toContain("PreviewErrorBoundary");
+    expect(widgetSrc).toContain("setPreviewsLeft(");
+    expect(widgetSrc).toContain("<BuddyDraftPreview page={previewDraft} />");
+  });
+
+  it("the free-mock panel labels remaining tweaks and placeholder-art status", () => {
+    expect(widgetSrc).toContain("🎨 Preview");
+    expect(widgetSrc).toContain("free previews used");
+    // Rendered as "· 1 free tweak left" / "· 2 free tweaks left" via a
+    // template literal — assert the tokens.
+    expect(widgetSrc).toContain("free ${");
+    expect(widgetSrc).toContain('"tweak"');
+    expect(widgetSrc).toContain('"tweaks"');
+    expect(widgetSrc).toContain("This mock uses placeholder art.");
+    expect(widgetSrc).toContain("Pay 5 HBAR below and");
+  });
+
+  it("the free-mock panel has no Open in Builder / Publish page buttons", () => {
+    // The preview panel renders BuddyDraftPreview and the tweak control;
+    // "Open in Builder" and "Publish page" only appear on the paid-draft
+    // card. (Slice from the panel's JSX, past its own comment.)
+    const panelStart = widgetSrc.indexOf("{previewDraft && (");
+    const previewBlock = widgetSrc.slice(
+      panelStart,
+      widgetSrc.indexOf("{/* Input */}")
+    );
+    expect(panelStart).toBeGreaterThan(-1);
+    expect(previewBlock).toContain("<BuddyDraftPreview page={previewDraft} />");
+    expect(previewBlock).toContain("Tweak this preview");
+    expect(previewBlock).not.toContain("Open in Builder");
+    expect(previewBlock).not.toContain("Publish page");
+  });
+
+  it("'Tweak this preview' arms tweak mode and the message sends preview_draft", () => {
+    expect(widgetSrc).toContain("✏️ Tweak this preview");
+    expect(widgetSrc).toContain("setTweakingPreview(true)");
+    expect(widgetSrc).toContain("preview_draft:");
+    expect(widgetSrc).toContain("tweakingPreview && previewDraft");
+    expect(widgetSrc).toContain("JSON.stringify(previewDraft)");
+  });
+
+  it("a paid draft supersedes the free mock (clears it and the tweak state)", () => {
+    expect(widgetSrc).toContain("the free mock (superseded)");
+    expect(widgetSrc).toContain("const newDraft = extractPageDraft(reply)");
+    // The paid-draft branch resets the preview state.
+    const paidBranch = widgetSrc.slice(widgetSrc.indexOf("const newDraft = extractPageDraft(reply)"));
+    expect(paidBranch).toContain("setPreviewDraft(null)");
+  });
 });

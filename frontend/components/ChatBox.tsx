@@ -10,7 +10,7 @@
  * spoofed by picking someone's username.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useSession } from "@/lib/session";
+import { useSessionOptional } from "@/lib/session";
 import { SESSION_HEADER } from "@/lib/session-message";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import type { I18nKey } from "@/lib/i18n/dictionaries";
@@ -57,7 +57,11 @@ export default function ChatBox({
   preview?: boolean;
 }) {
   const { t } = useLanguage();
-  const { token } = useSession();
+  // The Buddy chat widget mounts outside SessionProvider: degrade to
+  // logged-out instead of throwing (the preview branch below renders an
+  // inert placeholder and never touches the token anyway).
+  const session = useSessionOptional();
+  const token = session?.token ?? null;
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [since, setSince] = useState(0);
   const [name, setName] = useState("");
@@ -82,9 +86,9 @@ export default function ChatBox({
   }, []);
 
   const authHeader = useCallback((): Record<string, string> => {
-    const tok = token();
+    const tok = token?.() ?? null;
     return tok ? { [SESSION_HEADER]: tok } : {};
-  }, [token]);
+  }, [token, session]);
 
   const applyMessages = useCallback((incoming: ChatMsg[]) => {
     if (incoming.length === 0) return;
@@ -132,7 +136,7 @@ export default function ChatBox({
   // Who am I in this room? (owner/mod get the mod panel state)
   useEffect(() => {
     if (preview) return;
-    const tok = token();
+    const tok = token?.() ?? null;
     if (!tok) {
       setRole("viewer");
       return;
@@ -158,7 +162,7 @@ export default function ChatBox({
     return () => {
       cancelled = true;
     };
-  }, [room, preview, token]);
+  }, [room, preview, token, session]);
 
   const send = useCallback(async () => {
     const cleanName = name.trim().slice(0, 24);
@@ -239,7 +243,7 @@ export default function ChatBox({
   }
 
   const canMod = role === "owner" || role === "mod";
-  const walletConnected = !!token();
+  const walletConnected = !!token?.();
 
   return (
     <section className="pv-block vs-chatbox" aria-label={title || t("pagechat.title")}>

@@ -251,3 +251,388 @@ export function isValidPage(input: unknown): input is VoicescapePage {
     return true;
   });
 }
+
+/**
+ * Render-safety normalizer for page blocks. Model-generated or user-supplied
+ * page JSON can pass isValidPage (which only checks block `type`) while
+ * missing the array fields PageRenderer maps over (e.g. a music block
+ * without `tracks`) — or carrying WRONG-TYPED scalars where the renderer
+ * expects strings (e.g. a hero `title` that is an object: `(block.title ||
+ * "?").trim()` throws, and `{block.title}` as a React child throws
+ * "Objects are not valid as a React child"). Either one unmounted the whole
+ * app live (2026-09-16).
+ *
+ * This rebuilds every block from scratch: arrays are filled with [] and
+ * their elements filtered/rebuilt, every renderer-touched scalar is
+ * coerced to a string (or dropped when optional), and unknown block types
+ * return null so the caller can skip them. A normalized page can never
+ * crash the renderer. Pure and dependency-free.
+ */
+export function normalizeBlockForRender(input: unknown): Block | null {
+  if (typeof input !== "object" || input === null) return null;
+  const b = input as Record<string, unknown>;
+  if (typeof b.type !== "string") return null;
+  // String-or-undefined: the only safe shape for renderer-touched scalars.
+  const str = (v: unknown): string | undefined =>
+    typeof v === "string" ? v : undefined;
+  const isObj = (e: unknown): e is Record<string, unknown> =>
+    typeof e === "object" && e !== null;
+  const num = (v: unknown, fallback: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  switch (b.type) {
+    case "hero": {
+      const hero: Record<string, unknown> = {
+        type: "hero",
+        title: str(b.title) ?? "?",
+      };
+      const subtitle = str(b.subtitle);
+      if (subtitle !== undefined) hero.subtitle = subtitle;
+      const avatarEmoji = str(b.avatarEmoji);
+      if (avatarEmoji !== undefined) hero.avatarEmoji = avatarEmoji;
+      const avatarImage = str(b.avatarImage);
+      if (avatarImage !== undefined) hero.avatarImage = avatarImage;
+      return hero as unknown as Block;
+    }
+    case "bio":
+      return { type: "bio", text: str(b.text) ?? "" } as Block;
+    case "tipJar": {
+      const tip: Record<string, unknown> = { type: "tipJar" };
+      const message = str(b.message);
+      if (message !== undefined) tip.message = message;
+      return tip as unknown as Block;
+    }
+    case "operator": {
+      const op: Record<string, unknown> = {
+        type: "operator",
+        wallet: str(b.wallet) ?? "",
+      };
+      const name = str(b.name);
+      if (name !== undefined) op.name = name;
+      const url = str(b.url);
+      if (url !== undefined) op.url = url;
+      return op as unknown as Block;
+    }
+    case "livestream": {
+      const platform = b.platform === "twitch" || b.platform === "youtube" ? b.platform : "youtube";
+      const ls: Record<string, unknown> = {
+        type: "livestream",
+        platform,
+        channel: str(b.channel) ?? "",
+      };
+      const title = str(b.title);
+      if (title !== undefined) ls.title = title;
+      return ls as unknown as Block;
+    }
+    case "chat": {
+      const ch: Record<string, unknown> = { type: "chat" };
+      const title = str(b.title);
+      if (title !== undefined) ch.title = title;
+      return ch as unknown as Block;
+    }
+    case "links":
+      return {
+        type: "links",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => ({
+              label: str(e.label) ?? "Link",
+              url: str(e.url) ?? "",
+            }))
+          : [],
+      } as unknown as Block;
+    case "guestbook":
+    case "reviews": {
+      const entries = Array.isArray(b.entries)
+        ? b.entries.filter(isObj).map((e) => {
+            const entry: Record<string, unknown> = {
+              name: str(e.name) ?? "Anonymous",
+              message: str(e.message) ?? "",
+              date: str(e.date) ?? "",
+            };
+            const txHash = str(e.txHash);
+            if (txHash !== undefined) entry.txHash = txHash;
+            return entry;
+          })
+        : [];
+      return (b.type === "guestbook"
+        ? { type: "guestbook", entries }
+        : {
+            type: "reviews",
+            entries,
+            ...(str(b.title) !== undefined ? { title: str(b.title) } : {}),
+          }) as unknown as Block;
+    }
+    case "music": {
+      const tracks = Array.isArray(b.tracks)
+        ? b.tracks.filter(isObj).flatMap((t) => {
+            const source = str(t.source);
+            const id = str(t.id);
+            if (!source || !id) return [];
+            const track: Record<string, unknown> = { source, id };
+            for (const k of ["kind", "url", "title", "artist"] as const) {
+              const v = str(t[k]);
+              if (v !== undefined) track[k] = v;
+            }
+            return [track];
+          })
+        : [];
+      const music: Record<string, unknown> = { type: "music", tracks };
+      const title = str(b.title);
+      if (title !== undefined) music.title = title;
+      const note = str(b.note);
+      if (note !== undefined) music.note = note;
+      return music as unknown as Block;
+    }
+    case "gallery": {
+      const gallery: Record<string, unknown> = {
+        type: "gallery",
+        images: Array.isArray(b.images)
+          ? b.images.filter((e): e is string => typeof e === "string")
+          : [],
+      };
+      const effect = str(b.effect);
+      if (effect === "dance" || effect === "marquee" || effect === "float")
+        gallery.effect = effect;
+      return gallery as unknown as Block;
+    }
+    case "top8": {
+      const top8: Record<string, unknown> = {
+        type: "top8",
+        friends: Array.isArray(b.friends)
+          ? b.friends.filter(isObj).map((f) => {
+              const friend: Record<string, unknown> = {
+                name: str(f.name) ?? "?",
+              };
+              const avatarEmoji = str(f.avatarEmoji);
+              if (avatarEmoji !== undefined) friend.avatarEmoji = avatarEmoji;
+              const url = str(f.url);
+              if (url !== undefined) friend.url = url;
+              return friend;
+            })
+          : [],
+      };
+      const title = str(b.title);
+      if (title !== undefined) top8.title = title;
+      return top8 as unknown as Block;
+    }
+    case "services":
+      return {
+        type: "services",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => ({
+              name: str(e.name) ?? "Service",
+              description: str(e.description) ?? "",
+              priceUsdCents: num(e.priceUsdCents, 0),
+              endpoint: str(e.endpoint) ?? "",
+            }))
+          : [],
+      } as unknown as Block;
+    case "capabilities":
+      return {
+        type: "capabilities",
+        items: Array.isArray(b.items)
+          ? b.items.filter((e): e is string => typeof e === "string")
+          : [],
+      } as unknown as Block;
+    case "booking": {
+      const booking: Record<string, unknown> = {
+        type: "booking",
+        items: Array.isArray(b.items)
+          ? b.items.filter(isObj).map((e) => {
+              const item: Record<string, unknown> = {
+                label: str(e.label) ?? "Book",
+                url: str(e.url) ?? "",
+              };
+              const note = str(e.note);
+              if (note !== undefined) item.note = note;
+              return item;
+            })
+          : [],
+      };
+      const title = str(b.title);
+      if (title !== undefined) booking.title = title;
+      return booking as unknown as Block;
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * Deterministic server-built preview mock (template fallback). When the
+ * model fails to produce a valid mock (truncated/invalid JSON even after a
+ * retry), the preview turn still delivers a REAL visual mock built from
+ * the collected username/bio/vibe — placeholder art only, never AI image
+ * generation. Always passes isValidPage and always renders. The visitor
+ * never sees raw JSON, never sees a crash, never sees nothing.
+ *
+ * ROUND 4 (2026-09-16): the template is now the PRIMARY mock path, not
+ * just the fallback — the model writes conversational text only and the
+ * mock is built here deterministically every time, so a garbled model
+ * reply can never break the visual preview.
+ */
+const PREVIEW_DARK_THEME = {
+  background: "#1e1e1e",
+  foreground: "#f5f5f5",
+  accent: "#ffcc00",
+  fontFamily: "system-ui, sans-serif",
+};
+const PREVIEW_LIGHT_THEME = {
+  background: "#fafafa",
+  foreground: "#1a1a1a",
+  accent: "#7c3aed",
+  fontFamily: "system-ui, sans-serif",
+};
+
+/** Accent palette cycled for visible mock-to-mock variation. */
+const PREVIEW_ACCENTS = [
+  "#ffcc00",
+  "#a855f7",
+  "#3b82f6",
+  "#22c55e",
+  "#ec4899",
+  "#22d3ee",
+  "#f97316",
+] as const;
+
+const PREVIEW_COLOR_WORDS: Array<{ re: RegExp; name: string; hex: string }> = [
+  { re: /\b(purple|violet|lavender)\b/, name: "purple", hex: "#a855f7" },
+  { re: /\b(blue|navy|azure)\b/, name: "blue", hex: "#3b82f6" },
+  { re: /\b(green|emerald|mint)\b/, name: "green", hex: "#22c55e" },
+  { re: /\b(pink|magenta|rose)\b/, name: "pink", hex: "#ec4899" },
+  { re: /\b(red|crimson|scarlet)\b/, name: "red", hex: "#ef4444" },
+  { re: /\b(gold|yellow|amber)\b/, name: "gold", hex: "#ffcc00" },
+  { re: /\b(cyan|teal|turquoise|aqua)\b/, name: "cyan", hex: "#22d3ee" },
+  { re: /\b(orange|tangerine|peach)\b/, name: "orange", hex: "#f97316" },
+];
+
+const PREVIEW_EMOJI_WORDS: Array<{ re: RegExp; emoji: string; name: string }> = [
+  { re: /\brocket\b/, emoji: "🚀", name: "rocket" },
+  { re: /\b(music|guitar|band|rock)\b/, emoji: "🎸", name: "guitar" },
+  { re: /\b(art|paint|draw)\b/, emoji: "🎨", name: "art" },
+  { re: /\b(game|gaming|gamer)\b/, emoji: "🎮", name: "gaming" },
+  { re: /\b(moon|night)\b/, emoji: "🌙", name: "moon" },
+  { re: /\bfire\b/, emoji: "🔥", name: "fire" },
+  { re: /\b(crown|king|queen|royal)\b/, emoji: "👑", name: "crown" },
+  { re: /\b(alien|space)\b/, emoji: "👽", name: "alien" },
+  { re: /\bheart\b/, emoji: "💜", name: "heart" },
+  { re: /\bstar\b/, emoji: "✨", name: "star" },
+];
+
+export function templatePreviewPage(
+  username: string,
+  bio: string,
+  vibe: string
+): VoicescapePage {
+  const u = (username || "you").toLowerCase().trim() || "you";
+  const display = u.charAt(0).toUpperCase() + u.slice(1);
+  const vibeLower = (vibe || "").toLowerCase();
+  const dark = /dark|midnight|noir|grunge|metal|night|emo|goth/.test(vibeLower);
+  const light = /light|clean|minimal|bright|pastel|soft/.test(vibeLower) && !dark;
+  const theme = dark || !light ? { ...PREVIEW_DARK_THEME } : { ...PREVIEW_LIGHT_THEME };
+  const avatarEmoji = /music|dj|band|rock/.test(vibeLower)
+    ? "🎸"
+    : /art|design|paint/.test(vibeLower)
+      ? "🎨"
+      : /game|gaming/.test(vibeLower)
+        ? "🎮"
+        : /dark|night/.test(vibeLower)
+          ? "🌙"
+          : "✨";
+  const bioText = (bio || "").trim() || `Welcome to ${display}'s corner of the internet.`;
+  return {
+    version: 1,
+    username: u,
+    theme,
+    blocks: [
+      { type: "hero", title: display, subtitle: `${display} — ${vibeLower || "my vibe"}`, avatarEmoji },
+      { type: "bio", text: bioText },
+      {
+        type: "links",
+        items: [
+          { label: "𝕏 / Twitter", url: `https://x.com/${u}` },
+          { label: "Website", url: `https://voicescape.vercel.app/${u}` },
+          { label: "Say hi", url: `https://t.me/${u}` },
+        ],
+      },
+      { type: "tipJar", message: "Thanks for stopping by — tips keep the lights on! 💜" },
+    ],
+  };
+}
+
+export interface PreviewTweakResult {
+  page: VoicescapePage;
+  /** Short human sentence describing the visible change (appended to the reply). */
+  note: string;
+}
+
+/**
+ * Deterministic mock revision (mock #2 of the free preview flow). Applies
+ * the visitor's plain-text tweak to the served mock: theme (dark/light),
+ * accent color words, avatar emoji words, and a "bigger/bolder hero"
+ * intent. Unknown tweaks still produce a VISIBLE variation (accent cycle)
+ * plus a note asking for specifics — mock #2 is never identical to mock
+ * #1 and never fails to render. Pure and dependency-free.
+ */
+export function applyPreviewTweak(
+  base: VoicescapePage,
+  tweak: string
+): PreviewTweakResult {
+  const safeBase = isValidPage(base)
+    ? (JSON.parse(JSON.stringify(base)) as VoicescapePage)
+    : templatePreviewPage("you", "", "");
+  const page = safeBase;
+  const t = (tweak || "").toLowerCase();
+  const changes: string[] = [];
+
+  if (/\bdarker\b|\bdark mode\b|\bgo dark\b/.test(t)) {
+    page.theme = { ...page.theme, ...PREVIEW_DARK_THEME };
+    changes.push("a darker theme");
+  } else if (/\blighter\b|\blight mode\b|\bgo light\b|\bbrighter\b|\bbright\b/.test(t)) {
+    page.theme = { ...page.theme, ...PREVIEW_LIGHT_THEME };
+    changes.push("a lighter theme");
+  }
+  for (const c of PREVIEW_COLOR_WORDS) {
+    if (c.re.test(t)) {
+      page.theme = { ...page.theme, accent: c.hex };
+      changes.push(`${c.name} accents`);
+      break;
+    }
+  }
+  const hero = page.blocks.find((b) => b.type === "hero");
+  for (const e of PREVIEW_EMOJI_WORDS) {
+    if (e.re.test(t) && hero && hero.type === "hero") {
+      (hero as { avatarEmoji?: string }).avatarEmoji = e.emoji;
+      changes.push(`a ${e.name} avatar`);
+      break;
+    }
+  }
+  if (
+    /\bhero\b/.test(t) &&
+    /\b(bigger|big|bold|bolder|large|larger|huge|punchier|prominent)\b/.test(t)
+  ) {
+    page.theme = { ...page.theme, ...PREVIEW_DARK_THEME };
+    if (hero && hero.type === "hero") {
+      (hero as { avatarEmoji?: string }).avatarEmoji = "🚀";
+    }
+    changes.push("a bolder hero");
+  }
+
+  if (changes.length === 0) {
+    // Unknown tweak: still visibly different — cycle the accent palette
+    // deterministically off the tweak text, and say what happened.
+    let hash = 0;
+    for (const ch of t) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+    const currentIdx = PREVIEW_ACCENTS.indexOf(
+      page.theme.accent as (typeof PREVIEW_ACCENTS)[number]
+    );
+    const next =
+      PREVIEW_ACCENTS[(hash + Math.max(0, currentIdx) + 1) % PREVIEW_ACCENTS.length];
+    page.theme = { ...page.theme, accent: next };
+    return {
+      page,
+      note:
+        "I gave your mock a fresh accent color — tell me exactly what to change (like “darker”, “purple”, or “rocket avatar”) and I'll apply it.",
+    };
+  }
+  return { page, note: `Updated your mock: ${changes.join(", ")}.` };
+}

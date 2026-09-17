@@ -58,6 +58,26 @@ export function consumeBuddyDraft(): VoicescapePage | null {
   }
 }
 
+/**
+ * Publish intent: set by the chat widget's "Publish page" button alongside
+ * the draft handoff. Consumed once by the builder on mount — when present,
+ * the builder opens on its Publish tab (existing PublishPanel flow) instead
+ * of Customize. Session-scoped on purpose: a fresh tab should not inherit
+ * another tab's intent.
+ */
+export const BUDDY_PUBLISH_INTENT_KEY = "vs_buddy_publish_intent";
+
+/** Read + clear the one-time publish intent flag. */
+export function consumeBuddyPublishIntent(): boolean {
+  try {
+    const raw = sessionStorage.getItem(BUDDY_PUBLISH_INTENT_KEY);
+    sessionStorage.removeItem(BUDDY_PUBLISH_INTENT_KEY);
+    return raw === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function isOnboarded(): boolean {
   if (typeof window === "undefined") return true; // SSR: never show
   try {

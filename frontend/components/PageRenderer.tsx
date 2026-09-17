@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
+import { normalizeBlockForRender } from "@/lib/schema";
 import { resolveFounderBadge } from "@/lib/founders";
 import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
@@ -802,6 +803,15 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
   // user-controlled, so gating on it would let anyone spoof the badge.
   const isFounder = resolveFounderBadge(canonicalUsername, page.username);
 
+  // Render-safety: page JSON (model-generated previews, user-pinned pages)
+  // can carry blocks whose array fields are missing — PageRenderer maps
+  // over them unconditionally. Normalize once here so a malformed block
+  // can never throw and unmount the whole app; unknown block types are
+  // dropped silently.
+  const safeBlocks = page.blocks
+    .map(normalizeBlockForRender)
+    .filter((b): b is Block => b !== null);
+
   return (
     <div className={`pv-root${isAgent ? " is-agent" : ""}`} style={themeStyle}>
       <header className="pv-header">
@@ -816,7 +826,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
       {agentMeta && <AgentBanner meta={agentMeta} />}
 
       <main className="pv-blocks">
-        {page.blocks.map((block, i) => (
+        {safeBlocks.map((block, i) => (
           <BlockView
             key={i}
             block={block}

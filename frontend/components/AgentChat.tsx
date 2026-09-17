@@ -12,10 +12,12 @@ import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
-import { type VoicescapePage } from "@/lib/schema";
+import { type VoicescapePage, isValidPage, normalizeBlockForRender } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import BuddyDraftPreview from "./BuddyDraftPreview";
-import { saveBuddyDraft } from "./Onboarding";
+import PreviewErrorBoundary from "./PreviewErrorBoundary";
+import BuddyPayButton from "./BuddyPayButton";
+import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
 import { recordConversionEvent } from "@/lib/metrics";
@@ -102,6 +104,21 @@ function openInBuilder(page: VoicescapePage) {
   window.location.href = "/builder";
 }
 
+/**
+ * Publish path: save the draft and open the builder straight on its
+ * Publish tab (via BUDDY_PUBLISH_INTENT_KEY). The builder's own publish
+ * flow does the signing — the widget never duplicates wallet logic.
+ */
+function publishDraft(page: VoicescapePage) {
+  saveBuddyDraft(page);
+  try {
+    sessionStorage.setItem(BUDDY_PUBLISH_INTENT_KEY, "1");
+  } catch {
+    /* storage unavailable — builder opens normally */
+  }
+  window.location.href = "/builder";
+}
+
 /** One-time greeting after the visitor publishes their blockpage. */
 function celebrationMsg(username: string | null): Msg {
   return {
@@ -155,6 +172,41 @@ export default function AgentChat() {
   // Free off-topic messages remaining (null = unknown / not metered).
   // Voicescape & blockchain questions are always free and never count.
   const [freeLeft, setFreeLeft] = useState<number | null>(null);
+  // Build-paywall state (from the server's machine-readable `build.paywall`
+  // field): "anon" = builds need a connected wallet, "unpaid" = signed-in
+  // wallet has no 5-HBAR credit yet. null = no paywall on this turn.
+  const [paywall, setPaywall] = useState<"anon" | "unpaid" | null>(null);
+  // Latest build-credit check (GET /api/agent/chat/build-credit): answers
+  // only about the caller's own session wallet.
+  const [credit, setCredit] = useState<{
+    signedIn: boolean;
+    hasCredit: boolean;
+  } | null>(null);
+  const creditTimer = useRef<number | null>(null);
+  // The draft currently being refined ("tweak" flow): echoed to the server
+  // as refine_draft so follow-ups revise THIS draft, and validated there.
+  const [tweakDraft, setTweakDraft] = useState<VoicescapePage | null>(null);
+  // The current FREE visual mock (from the server's machine-readable
+  // `build.preview`): rendered in-chat with BuddyDraftPreview. This is a
+  // mock with placeholder art — never the paid build, so it gets no
+  // "Open in Builder" / "Publish" buttons; those stay on the paid draft.
+  const [previewDraft, setPreviewDraft] = useState<VoicescapePage | null>(null);
+  // Free previews remaining for this build (null = previews don't apply).
+  const [previewsLeft, setPreviewsLeft] = useState<number | null>(null);
+  // Explicit "tweak the mock" mode: while on, the current mock is echoed
+  // as preview_draft so the next message revises it (preview 2 of 2).
+  const [tweakingPreview, setTweakingPreview] = useState(false);
+  // Async paid build in flight: the server can't finish a paid build
+  // inside one serverless turn, so the "go" reply carries a signed
+  // job-start token and the widget drives start -> poll -> deliver via
+  // /api/agent/chat/build-job. While set, this renders the live progress
+  // bubble below the messages. The 5-HBAR payment is consumed only when a
+  // valid draft is delivered — failed builds never charge.
+  const [buildJob, setBuildJob] = useState<{
+    progress: number;
+    note: string;
+  } | null>(null);
+  const buildJobAbort = useRef<AbortController | null>(null);
 
   // Funnel telemetry: fire "buddy_preview_shown" once per assistant message
   // that renders a page draft (the "Open in Builder" path). Message indices
@@ -195,6 +247,174 @@ export default function AgentChat() {
     }
   }, []);
 
+  // Build-credit status (GET /api/agent/chat/build-credit): answers only
+  // about the caller's own session wallet. Called when the paywall shows
+  // and polled after the visitor pays (mirror-node discovery lags).
+  function stopCreditPoll() {
+    if (creditTimer.current != null) {
+      window.clearInterval(creditTimer.current);
+      creditTimer.current = null;
+    }
+  }
+  async function queryCredit(): Promise<boolean> {
+    try {
+      const res = await fetch("/api/agent/chat/build-credit", {
+        headers: { ...sessionHeader() },
+        // The endpoint is read-only but answers about a live payment —
+        // never serve it from cache.
+        cache: "no-store",
+      });
+      if (!res.ok) return false;
+      const data = (await res.json().catch(() => null)) as {
+        signedIn?: boolean;
+        hasCredit?: boolean;
+      } | null;
+      if (data && typeof data.signedIn === "boolean") {
+        const found = data.signedIn && !!data.hasCredit;
+        setCredit({ signedIn: data.signedIn, hasCredit: found });
+        return found;
+      }
+    } catch {
+      /* keep the last known state */
+    }
+    return false;
+  }
+  function startCreditPoll() {
+    stopCreditPoll();
+    setCredit(null);
+    let tries = 0;
+    const tick = () => {
+      tries += 1;
+      void queryCredit().then((found) => {
+        if (found || tries >= 6) stopCreditPoll();
+      });
+    };
+    tick();
+    creditTimer.current = window.setInterval(tick, 20_000);
+  }
+  useEffect(() => {
+    stopCreditPoll();
+    // Abandon any in-flight paid build when the widget unmounts. The job
+    // itself stays resumable server-side; the payment is untouched until a
+    // valid draft is delivered.
+    return () => {
+      buildJobAbort.current?.abort();
+      buildJobAbort.current = null;
+    };
+  }, []);
+
+  // Drive an async paid build: POST start (idempotent per wallet+username),
+  // then poll step until the server delivers a valid draft. Each step call
+  // runs one bounded build step server-side; a timed-out step just retries.
+  // The payment is consumed server-side only on valid draft delivery.
+  async function driveBuildJob(token: string) {
+    const abort = new AbortController();
+    buildJobAbort.current = abort;
+    setBusy(true);
+    setPaywall(null);
+    stopCreditPoll();
+    setPreviewDraft(null);
+    setPreviewsLeft(null);
+    setTweakingPreview(false);
+    setBuildJob({ progress: 0.05, note: "Starting your build…" });
+    const call = async (
+      payload: Record<string, unknown>
+    ): Promise<Record<string, any> | null> => {
+      const res = await fetch("/api/agent/chat/build-job", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...sessionHeader(),
+        },
+        body: JSON.stringify(payload),
+        signal: abort.signal,
+      });
+      if (!res.ok) throw new Error(`build-job HTTP ${res.status}`);
+      return (await res.json().catch(() => null)) as Record<string, any> | null;
+    };
+    try {
+      const started = await call({ action: "start", token });
+      const jobId =
+        started && typeof started.jobId === "string" ? started.jobId : "";
+      if (!started || !jobId) throw new Error("build job did not start");
+      if (typeof started.progress === "number") {
+        setBuildJob({
+          progress: started.progress,
+          note:
+            typeof started.note === "string"
+              ? started.note
+              : "Starting your build…",
+        });
+      }
+      // Poll: each call runs one bounded step server-side. Forty rounds at
+      // ~3s cadence plus up to 45s per step comfortably covers copy +
+      // artwork + finalize.
+      for (let i = 0; i < 40; i++) {
+        const r = await call({ action: "step", jobId });
+        if (!r) throw new Error("build job lost");
+        if (r.error) {
+          const reason =
+            typeof r.reason === "string" && r.reason
+              ? r.reason
+              : "The build hit a snag — nothing was charged.";
+          setBuildJob(null);
+          setMsgs((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `⚠️ ${reason} Say "go" again and I'll restart the build.`,
+            },
+          ]);
+          return;
+        }
+        if (r.done && r.draft && isValidPage(r.draft)) {
+          const draft = r.draft as VoicescapePage;
+          setBuildJob(null);
+          // Same states as a synchronous paid draft: paywall and mocks
+          // cleared, tweaks chain onto the newest draft.
+          setPaywall(null);
+          stopCreditPoll();
+          setPreviewDraft(null);
+          setPreviewsLeft(null);
+          setTweakingPreview(false);
+          setTweakDraft((cur) => (cur ? draft : cur));
+          // Deliver as prose + the fenced page draft the renderer already
+          // understands: inline preview, "Open in Builder", Publish, Tweak.
+          setMsgs((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              content: `🎉 Your page is ready — here's your custom build with real AI artwork.\n\n\`\`\`json\n${JSON.stringify(draft)}\n\`\`\``,
+            },
+          ]);
+          return;
+        }
+        if (typeof r.progress === "number") {
+          setBuildJob({
+            progress: Math.min(0.99, r.progress),
+            note: typeof r.note === "string" ? r.note : "Building…",
+          });
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+      }
+      throw new Error("build job timed out");
+    } catch {
+      if (abort.signal.aborted) return;
+      setBuildJob(null);
+      setMsgs((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content:
+            '⚠️ The build ran long and I lost track of it — nothing was charged. Say "go" again and I\'ll pick it back up.',
+        },
+      ]);
+    } finally {
+      if (buildJobAbort.current === abort) buildJobAbort.current = null;
+      setBusy(false);
+    }
+  }
+
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
@@ -217,6 +437,17 @@ export default function AgentChat() {
           message: text,
           history,
           build_state: buildStateRef.current || undefined,
+          // "Tweak" flow: echo the current draft so the server revises THIS
+          // draft. Validated server-side against the page schema.
+          refine_draft: tweakDraft ? JSON.stringify(tweakDraft) : undefined,
+          // Free-mock revision flow: echo the current mock so the next
+          // message revises it (preview 2 of 2). Only in explicit
+          // tweak-the-mock mode, so unrelated questions never burn a
+          // preview.
+          preview_draft:
+            tweakingPreview && previewDraft
+              ? JSON.stringify(previewDraft)
+              : undefined,
         }),
       });
       let reply: string;
@@ -243,6 +474,70 @@ export default function AgentChat() {
         } else if (chat?.metered) {
           setFreeLeft(0);
         }
+        // Machine-readable build signal: paywall ("anon" | "unpaid" | null)
+        // drives the in-chat payment panel; preview carries the free visual
+        // mock. Start polling the credit endpoint so "Payment detected"
+        // appears when the on-chain tip lands.
+        const b = (
+          data as {
+            build?: {
+              paywall?: string;
+              preview?: unknown;
+              previewsLeft?: number;
+              previewSource?: string | null;
+              buildJob?: { token?: unknown };
+            };
+          } | null
+        )?.build;
+        const pw = b?.paywall;
+        if (pw === "anon" || pw === "unpaid") {
+          setPaywall(pw);
+          startCreditPoll();
+        }
+        // Async paid build: the "go" turn returns a signed job-start token
+        // instead of a synchronous build. Drive start -> poll -> deliver.
+        const jobToken = b?.buildJob?.token;
+        if (typeof jobToken === "string" && jobToken) {
+          void driveBuildJob(jobToken);
+        }
+        // A free mock arrived: validate client-side too, then show it in
+        // the preview panel — never as a paid draft. Normalize once more
+        // client-side (belt and suspenders: the server already normalized,
+        // but a malformed mock must never reach the renderer), and the
+        // error boundary below contains any residual render throw.
+        if (b && isValidPage(b.preview)) {
+          const incoming = b.preview as VoicescapePage;
+          const safe: VoicescapePage = {
+            ...incoming,
+            blocks: incoming.blocks
+              .map(normalizeBlockForRender)
+              .filter(
+                (blk): blk is NonNullable<ReturnType<typeof normalizeBlockForRender>> =>
+                  blk !== null
+              ),
+          };
+          setPreviewDraft(safe);
+          setPreviewsLeft(
+            typeof b.previewsLeft === "number" ? b.previewsLeft : null
+          );
+          // Not user-visible: which server path served the mock (live debugging).
+          if (typeof b.previewSource === "string") {
+            console.debug(`[buddy] preview served via ${b.previewSource}`);
+          }
+          setTweakingPreview(false);
+        }
+      }
+      const newDraft = extractPageDraft(reply);
+      if (newDraft) {
+        // A draft arrived — the paid build is live. Clear the paywall panel
+        // and the free mock (superseded), and chain tweaks onto the newest
+        // draft.
+        setPaywall(null);
+        stopCreditPoll();
+        setPreviewDraft(null);
+        setPreviewsLeft(null);
+        setTweakingPreview(false);
+        setTweakDraft((cur) => (cur ? newDraft : cur));
       }
       setMsgs((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
@@ -405,6 +700,51 @@ export default function AgentChat() {
                           >
                             Open in Builder →
                           </button>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              marginTop: 8,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => publishDraft(draft)}
+                              style={{
+                                flex: 1,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(130, 89, 239, 0.4)",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#fff",
+                                background: "rgba(130, 89, 239, 0.18)",
+                              }}
+                            >
+                              Publish page
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTweakDraft(draft);
+                                inputRef.current?.focus();
+                              }}
+                              style={{
+                                flex: 1,
+                                padding: "10px 12px",
+                                borderRadius: 10,
+                                border: "1px solid rgba(255, 255, 255, 0.18)",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: 13,
+                                color: "#fff",
+                                background: "rgba(255, 255, 255, 0.07)",
+                              }}
+                            >
+                              ✏️ Tweak
+                            </button>
+                          </div>
                         </>
                       )}
                     </>
@@ -430,9 +770,311 @@ export default function AgentChat() {
                 <span className="agent-chat-dots">● ● ●</span>
               </div>
             )}
+            {/* Async paid build in flight: live progress while the widget
+                drives start -> poll -> deliver. The payment is consumed only
+                when the finished draft is delivered below. */}
+            {buildJob && (
+              <div
+                style={{
+                  alignSelf: "flex-start",
+                  maxWidth: "92%",
+                  width: "100%",
+                  padding: "10px 12px",
+                  borderRadius: "14px 14px 14px 4px",
+                  border: "1px solid rgba(130, 89, 239, 0.45)",
+                  background: "rgba(130, 89, 239, 0.12)",
+                  color: "#fff",
+                  fontSize: 13.5,
+                }}
+                role="status"
+                aria-label="Building your page"
+              >
+                <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                  🔨 Building your page…
+                </div>
+                <div
+                  style={{
+                    height: 8,
+                    borderRadius: 4,
+                    background: "rgba(255, 255, 255, 0.12)",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.round(buildJob.progress * 100)}%`,
+                      height: "100%",
+                      borderRadius: 4,
+                      background:
+                        "linear-gradient(118deg, #8259ef, #b45cf0)",
+                      transition: "width 0.6s ease",
+                    }}
+                  />
+                </div>
+                <div
+                  style={{
+                    marginTop: 7,
+                    fontSize: 12,
+                    color: "rgba(232, 234, 240, 0.75)",
+                  }}
+                >
+                  {buildJob.note}
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Free visual-mock preview (placeholder art — not the paid build).
+              The mock renders with BuddyDraftPreview but never gets the
+              "Open in Builder" / "Publish" buttons: those stay on the paid
+              draft's card. */}
+          {previewDraft && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid rgba(61, 220, 132, 0.25)",
+                background: "rgba(61, 220, 132, 0.06)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>
+                  🎨 Preview{" "}
+                  <span
+                    style={{
+                      fontWeight: 400,
+                      color: "rgba(232, 234, 240, 0.6)",
+                      fontSize: 12,
+                    }}
+                  >
+                    {previewsLeft != null && previewsLeft > 0
+                      ? `· ${previewsLeft} free ${
+                          previewsLeft === 1 ? "tweak" : "tweaks"
+                        } left`
+                      : "· free previews used"}
+                  </span>
+                </strong>
+                <button
+                  type="button"
+                  aria-label="Dismiss preview"
+                  onClick={() => {
+                    setPreviewDraft(null);
+                    setPreviewsLeft(null);
+                    setTweakingPreview(false);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(232, 234, 240, 0.6)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <PreviewErrorBoundary>
+                <BuddyDraftPreview page={previewDraft} />
+              </PreviewErrorBoundary>
+              {previewsLeft != null && previewsLeft > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTweakingPreview(true);
+                    inputRef.current?.focus();
+                  }}
+                  style={{
+                    marginTop: 8,
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255, 255, 255, 0.18)",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    color: "#fff",
+                    background: "rgba(255, 255, 255, 0.07)",
+                  }}
+                >
+                  ✏️ Tweak this preview
+                </button>
+              ) : (
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12.5,
+                    color: "rgba(232, 234, 240, 0.75)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  This mock uses placeholder art. Pay 5 HBAR below and
+                  I&apos;ll build the real page with custom AI artwork.
+                </div>
+              )}
+            </div>
+          )}
           {/* Input */}
+          {paywall && (
+            <div
+              style={{
+                padding: "10px 12px",
+                borderTop: "1px solid rgba(130, 89, 239, 0.2)",
+                background: "rgba(130, 89, 239, 0.08)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 8,
+                }}
+              >
+                <strong style={{ fontSize: 13 }}>🏗️ Build payment</strong>
+                <button
+                  type="button"
+                  aria-label="Dismiss build payment panel"
+                  onClick={() => {
+                    setPaywall(null);
+                    stopCreditPoll();
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "rgba(232, 234, 240, 0.6)",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    padding: 4,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              {paywall === "anon" ? (
+                <div
+                  style={{
+                    fontSize: 12.5,
+                    color: "rgba(232, 234, 240, 0.85)",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  A custom blockpage build is 5 HBAR and needs a connected
+                  wallet. Connect your wallet (top-right), then tap Check
+                  again.
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => startCreditPoll()}
+                      style={{
+                        padding: "9px 14px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(130, 89, 239, 0.4)",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                        fontSize: 13,
+                        color: "#fff",
+                        background: "rgba(130, 89, 239, 0.18)",
+                      }}
+                    >
+                      Check again
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <BuddyPayButton onPaid={() => startCreditPoll()} />
+                  <div
+                    style={{
+                      marginTop: 8,
+                      fontSize: 12,
+                      color: "rgba(232, 234, 240, 0.75)",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {credit === null
+                      ? "Checking payment status…"
+                      : !credit.signedIn
+                        ? "No wallet signed in yet — sign in to check your credit."
+                        : credit.hasCredit
+                          ? "✅ Payment detected — say “go” and I'll start building."
+                          : "No build credit detected yet — pay above and I'll pick it up automatically."}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {tweakingPreview && previewDraft && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderTop: "1px solid rgba(61, 220, 132, 0.25)",
+                background: "rgba(61, 220, 132, 0.07)",
+                fontSize: 12.5,
+                color: "rgba(232, 234, 240, 0.9)",
+              }}
+            >
+              <span>🎨 Tweaking your preview — tell me what to change.</span>
+              <button
+                type="button"
+                aria-label="Stop tweaking preview"
+                onClick={() => setTweakingPreview(false)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(232, 234, 240, 0.6)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {tweakDraft && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "8px 12px",
+                borderTop: "1px solid rgba(130, 89, 239, 0.2)",
+                background: "rgba(61, 220, 132, 0.07)",
+                fontSize: 12.5,
+                color: "rgba(232, 234, 240, 0.9)",
+              }}
+            >
+              <span>
+                ✏️ Refining your draft — tell me what to change.{" "}
+                <strong>@{tweakDraft.username}</strong>
+              </span>
+              <button
+                type="button"
+                aria-label="Stop refining draft"
+                onClick={() => setTweakDraft(null)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "rgba(232, 234, 240, 0.6)",
+                  cursor: "pointer",
+                  fontSize: 14,
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
           {freeLeft !== null && freeLeft > 0 && (
             <div
               style={{
@@ -461,7 +1103,13 @@ export default function AgentChat() {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={INPUT_PLACEHOLDER}
+              placeholder={
+                tweakDraft
+                  ? `Tell Buddy what to change on @${tweakDraft.username}…`
+                  : tweakingPreview
+                    ? "Tell Buddy what to tweak on the preview…"
+                    : INPUT_PLACEHOLDER
+              }
               aria-label="Message Blockpage Buddy"
               maxLength={2000}
               style={{

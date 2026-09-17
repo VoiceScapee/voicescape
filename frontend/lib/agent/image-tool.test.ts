@@ -73,6 +73,16 @@ describe("generate_page_image tool", () => {
     expect(bytes.byteLength).toBeGreaterThan(0);
   });
 
+  it("falls back to ipfs.io when IPFS_GATEWAY is set but empty", async () => {
+    process.env.IPFS_GATEWAY = "";
+    globalThis.fetch = mockFetchImage(PNG, "image/png") as any;
+    const tool = makeImageTool(nextIp());
+    const raw = await tool.execute(undefined as any, {} as any, params());
+    const out = JSON.parse(raw as string);
+    expect(out.url).toBe("https://ipfs.io/ipfs/QmTestCid123");
+    delete process.env.IPFS_GATEWAY;
+  });
+
   it("enforces the per-IP daily quota and fails gracefully", async () => {
     process.env.BUDDY_IMAGE_DAILY_QUOTA = "1";
     globalThis.fetch = mockFetchImage(PNG, "image/png") as any;

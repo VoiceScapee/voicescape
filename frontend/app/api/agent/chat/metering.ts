@@ -42,17 +42,31 @@ import { keccak256, toUtf8Bytes } from "ethers";
 import { randomUUID } from "crypto";
 
 import { getKvStore, type KvStore } from "@/lib/server/store";
+import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
 export const CHAT_PRICE_TINYBAR = 500_000_000; // 5 HBAR
 export const BUILD_PRICE_TINYBAR = 500_000_000; // 5 HBAR
 export const FREE_MESSAGES = 5;
 export const CHAT_MESSAGES_PER_PAYMENT = 50;
+/**
+ * Free visual-mock previews per build (Brandon's 2026-09-16 spec): after
+ * the username/bio/vibe are collected, the visitor sees up to 2 free
+ * visual mocks BEFORE any paywall. Mocks are pure model output with
+ * placeholder art — no image generation, so they cost ~$0.001 each.
+ * Counted per identity + build username; a paid build resets the count
+ * so a brand-new build repeats the whole process.
+ */
+export const MAX_FREE_PREVIEWS = 2;
 
 const BUDDY_USERNAME = "forge";
 const TIPS_CONTRACT_ID = "0.0.10854060";
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 const WEI_PER_TINYBAR = 10_000_000_000n;
-const MIN_PAYMENT_WEI = BigInt(CHAT_PRICE_TINYBAR) * WEI_PER_TINYBAR; // 5 HBAR in wei
+// TipSent `amount` is denominated in tinybars on Hedera (the EVM value
+// unit is the tinybar: a 5-HBAR tipPage logs amount=500_000_000, verified
+// 2026-09-16 against mainnet). Do NOT scale by WEI_PER_TINYBAR here —
+// doing so sets the bar at 5e18 and no real payment is ever credited.
+const MIN_PAYMENT_TINYBAR = BigInt(CHAT_PRICE_TINYBAR); // 5 HBAR in tinybars
 
 // Atomic claim keys — identical to the ops agentkit metering.
 const PAY_CLAIM_PREFIX = "buddy:payclaim:"; // credit: one winner records the payment
@@ -308,6 +322,33 @@ function topic1Forge(): string {
 }
 
 /**
+ * The EVM address a Hedera wallet actually uses as msg.sender.
+ *
+ * Sessions canonicalize 0.0.x accounts to the long-zero form
+ * (0x0000...<num>), but a wallet with an ECDSA key calls contracts from
+ * its KEY-DERIVED 0x address — and TipSent logs msg.sender as that
+ * key-derived address. Filtering logs by the long-zero form matches
+ * nothing, so no payment is ever discovered. Resolve via the official
+ * mirror node; fall back to the input on any hiccup (fail-closed: a
+ * wrong filter finds no payments, never a false credit).
+ */
+async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
+  const m = /^0x0{24}([0-9a-fA-F]{16})$/.exec(evmAddress.trim());
+  if (!m) return evmAddress.toLowerCase();
+  const accountId = `0.0.${BigInt("0x" + m[1]).toString()}`;
+  try {
+    const res = await fetch(`${MIRROR_BASE}/accounts/${accountId}`);
+    if (!res.ok) return evmAddress.toLowerCase();
+    const body = (await res.json()) as { evm_address?: string };
+    return typeof body.evm_address === "string" && /^0x[0-9a-fA-F]{40}$/.test(body.evm_address)
+      ? body.evm_address.toLowerCase()
+      : evmAddress.toLowerCase();
+  } catch {
+    return evmAddress.toLowerCase();
+  }
+}
+
+/**
  * Find fresh 5-HBAR tipPage("forge") payments from this wallet by reading
  * the Tips contract's TipSent logs on the official mirror node. Returns
  * payment ids (`<consensusTimestamp>-<txIndex>`, unique per on-chain
@@ -319,26 +360,46 @@ async function discoverFreshPayments(
   knownIds: string[]
 ): Promise<string[]> {
   try {
-    const topic2 =
-      "0x" + evmAddress.slice(2).toLowerCase().padStart(64, "0");
+    const sender = await resolveSenderEvmAddress(evmAddress);
+    const topic2 = "0x" + sender.slice(2).toLowerCase().padStart(64, "0");
+    // Mirror node REQUIRES a bounded timestamp range (strictly under 7d)
+    // for log searches — verified 2026-09-16 against mainnet: without it
+    // the query silently returns zero logs and a paid build would NEVER be
+    // credited. The credit poll runs right after payment, so a 6-day window
+    // covers the flow with margin under the mirror's hard cap.
+    //
+    // Topic filters are NOT used: the mirror's topic index is flaky
+    // (verified 2026-09-17: topic0+topic1+topic2 filters returned zero logs
+    // for a payment the timestamp query finds). Filter topics client-side
+    // instead — the Tips contract's 6-day log volume is tiny.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const fromSec = nowSec - 6 * 24 * 3600;
     const url =
       `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results/logs` +
-      `?topic0=${topic0TipSent()}&topic1=${topic1Forge()}&topic2=${topic2}` +
-      `&order=desc&limit=50`;
+      `?order=desc&limit=100` +
+      `&timestamp=gte:${fromSec}.000000000&timestamp=lte:${nowSec}.999999999`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const body = (await res.json()) as {
       logs?: Array<{
         data?: string;
+        topics?: string[];
         timestamp?: string;
         transaction_index?: number;
       }>;
     };
+    const want0 = topic0TipSent().toLowerCase();
+    const want1 = topic1Forge().toLowerCase();
+    const want2 = topic2.toLowerCase();
     const fresh: string[] = [];
     for (const log of body.logs ?? []) {
+      const topics = (log.topics ?? []).map((t) => t.toLowerCase());
+      if (topics[0] !== want0 || topics[1] !== want1 || topics[2] !== want2)
+        continue;
       const id = `${log.timestamp ?? "?"}-${log.transaction_index ?? "?"}`;
       if (knownIds.includes(id)) continue;
-      // data = abi(amount uint256, fee uint256); amount is total tipped (wei)
+      // data = abi(amount uint256, fee uint256); amount is total tipped
+      // (tinybars on Hedera — see MIN_PAYMENT_TINYBAR above)
       const data = log.data ?? "";
       if (data.length < 66) continue;
       let amount = 0n;
@@ -347,7 +408,7 @@ async function discoverFreshPayments(
       } catch {
         continue;
       }
-      if (amount >= MIN_PAYMENT_WEI) fresh.push(id);
+      if (amount >= MIN_PAYMENT_TINYBAR) fresh.push(id);
     }
     return fresh;
   } catch {
@@ -379,13 +440,24 @@ async function creditPayments(
       // Atomic exactly-once: only the claim winner credits this payment.
       // Losers skip — the winner's save lands the single credit. A payment
       // whose claim failed stays undiscovered and is retried later.
-      if (
-        await store.setNx(
-          `${PAY_CLAIM_PREFIX}${encodeURIComponent(id)}`,
-          evm,
-          CLAIM_TTL_MS
-        )
-      ) {
+      const claimKey = `${PAY_CLAIM_PREFIX}${encodeURIComponent(id)}`;
+      let claimed = await store.setNx(claimKey, evm, CLAIM_TTL_MS);
+      if (!claimed) {
+        // Orphaned claim recovery (2026-09-16): if the claim exists but the
+        // payment is not in our ledger, a previous attempt claimed it without
+        // saving (e.g. instance recycled before save). If the claim is ours,
+        // reclaim it so the payment is not stuck forever.
+        try {
+          const existing = await store.get(claimKey);
+          if (existing === evm) {
+            await store.del(claimKey);
+            claimed = await store.setNx(claimKey, evm, CLAIM_TTL_MS);
+          }
+        } catch {
+          // If we can't verify/reclaim, skip — stays undiscovered for retry.
+        }
+      }
+      if (claimed) {
         ledger.consumed.push(id);
         ledger.payments.push({ id, kind: null, messagesLeft: 0 });
         credited = true;
@@ -561,6 +633,111 @@ export async function noteChatMessage(
   });
 }
 
+// Preview counters: free visual mocks per identity + build username.
+// Keyed separately from the payment ledger — previews are free, so they
+// never touch payments; the username scope means a brand-new build (new
+// username) gets its own 2 previews.
+const PREVIEW_PREFIX = "buddy:preview:";
+const PREVIEW_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days, matches the app session
+
+function previewKeyFor(identity: ChatIdentity, username: string): string {
+  const who =
+    identity.kind === "wallet"
+      ? `wallet:${identity.evm.toLowerCase()}`
+      : `anon:${identity.ip}`;
+  return `${PREVIEW_PREFIX}${who}:${username.toLowerCase()}`;
+}
+
+/**
+ * How many free visual-mock previews this identity has used for this
+ * build username. Throws when the store is unreachable (fail closed).
+ */
+export async function getPreviewsUsed(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<number> {
+  if (meteringBypass()) return 0;
+  const raw = await store.get(previewKeyFor(identity, username));
+  const n = raw === null ? 0 : Number(raw);
+  return Number.isSafeInteger(n) && n >= 0 ? n : 0;
+}
+
+/**
+ * Record one delivered free preview. Resolves the new total used. Only
+ * call after a valid mock was actually delivered — a model glitch that
+ * produced no mock must not eat the visitor's allowance. Throws when the
+ * store is unreachable (fail closed).
+ */
+export async function notePreview(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<number> {
+  if (meteringBypass()) return 0;
+  return store.incr(previewKeyFor(identity, username), PREVIEW_TTL_MS);
+}
+
+/**
+ * Reset the free-preview counters for this identity (all build usernames).
+ * Called when a build payment is consumed: the next brand-new build
+ * repeats the whole process (2 free previews -> 5 HBAR -> build).
+ */
+export async function resetBuildPreviews(
+  identity: ChatIdentity,
+  store: KvStore = getKvStore()
+): Promise<void> {
+  const who =
+    identity.kind === "wallet"
+      ? `wallet:${identity.evm.toLowerCase()}`
+      : `anon:${identity.ip}`;
+  await store.clearPrefix(`${PREVIEW_PREFIX}${who}:`);
+}
+
+/**
+ * Remember the last delivered free mock for this identity + build username,
+ * so a plain-text follow-up ("make the hero bigger") can revise the actual
+ * mock even when the widget didn't echo preview_draft. Mocks are free, so
+ * this never touches payments. Lives under the preview prefix, so a paid
+ * build resets it along with the counters. Validated on read; throws when
+ * the store is unreachable (fail closed, like the counters).
+ */
+const MOCK_KEY_SUFFIX = ":mock";
+
+function mockKeyFor(identity: ChatIdentity, username: string): string {
+  return `${previewKeyFor(identity, username)}${MOCK_KEY_SUFFIX}`;
+}
+
+export async function saveLastMock(
+  identity: ChatIdentity,
+  username: string,
+  page: VoicescapePage,
+  store: KvStore = getKvStore()
+): Promise<void> {
+  if (meteringBypass()) return;
+  await store.set(
+    mockKeyFor(identity, username),
+    JSON.stringify(page),
+    PREVIEW_TTL_MS
+  );
+}
+
+export async function getLastMock(
+  identity: ChatIdentity,
+  username: string,
+  store: KvStore = getKvStore()
+): Promise<VoicescapePage | null> {
+  if (meteringBypass()) return null;
+  const raw = await store.get(mockKeyFor(identity, username));
+  if (!raw) return null;
+  try {
+    const data: unknown = JSON.parse(raw);
+    return isValidPage(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Build access
 // ---------------------------------------------------------------------------
@@ -594,6 +771,24 @@ export async function checkBuildAccess(
 }
 
 /**
+ * Has this wallet ever paid for a build — i.e. does it hold an unspent
+ * build payment, or has it spent one on a build before? Used for draft
+ * refinements ("tweaks"): a tweak revises the already-paid build, so it
+ * must not consume another payment — but a wallet that never paid must
+ * not get a free build by sending a fabricated refine draft. Throws when
+ * the store is unreachable (fail closed).
+ */
+export async function hasBuildHistory(
+  evmAddress: string,
+  store: KvStore = getKvStore()
+): Promise<boolean> {
+  if (meteringBypass()) return true;
+  const identity: ChatIdentity = { kind: "wallet", evm: evmAddress };
+  const ledger = await loadLedger(store, identity);
+  return ledger.payments.some((p) => p.kind === null || p.kind === "build");
+}
+
+/**
  * Spend one unused 5-HBAR payment on a build. Resolves true when THIS call
  * spent a payment, false when none was available (or a concurrent build
  * won the race for the last one). Call only after the draft validated —
@@ -614,15 +809,42 @@ export async function consumeBuild(
       // Atomic spend claim (global per payment id): the first caller to win
       // assigns this payment to its build. A lost race retries against the
       // next unused payment instead of spending twice.
-      if (
-        await store.setNx(
-          `${PAY_SPEND_PREFIX}${encodeURIComponent(p.id)}`,
-          evmAddress.toLowerCase(),
-          CLAIM_TTL_MS
-        )
-      ) {
+      const spendKey = `${PAY_SPEND_PREFIX}${encodeURIComponent(p.id)}`;
+      let spendWon = await store.setNx(
+        spendKey,
+        evmAddress.toLowerCase(),
+        CLAIM_TTL_MS
+      );
+      if (!spendWon) {
+        // Orphaned spend-key recovery (2026-09-16): if a previous attempt
+        // won the spend claim but the build never completed (e.g. timeout),
+        // the key blocks retry. If the key belongs to us, reclaim it.
+        try {
+          const existing = await store.get(spendKey);
+          if (existing === evmAddress.toLowerCase()) {
+            await store.del(spendKey);
+            spendWon = await store.setNx(
+              spendKey,
+              evmAddress.toLowerCase(),
+              CLAIM_TTL_MS
+            );
+          }
+        } catch {
+          // If reclaim fails, treat as lost race — retry loop continues.
+        }
+      }
+      if (spendWon) {
         p.kind = "build";
         await saveLedger(store, identity, ledger);
+        // A paid build resets the free-preview counters: the visitor's
+        // next brand-new build repeats the whole process (2 free previews
+        // -> 5 HBAR -> build) instead of hitting an exhausted allowance.
+        try {
+          await resetBuildPreviews(identity, store);
+        } catch {
+          // Non-fatal: the payment is already spent and recorded. A stale
+          // preview counter only affects future free previews, never money.
+        }
         return true;
       }
     }

@@ -52,4 +52,33 @@ describe("stripPageDraft", () => {
   it("leaves content without a draft untouched", () => {
     expect(stripPageDraft("hello")).toBe("hello");
   });
+
+  it("strips a TRUNCATED (unclosed) fence so no raw JSON leaks — live failure 2026-09-16", () => {
+    // The model hit max tokens mid-JSON: the fence never closed and the
+    // reply ended mid-string. extractPageDraft returns null (can't parse)
+    // and the old strip left the raw JSON visible in chat.
+    const truncated =
+      "Here's your free preview! ```json\n" +
+      '{"version": 1, "username": "e2epreview03", "theme": {"background": "#1e1e1e"}, "blocks": [{"type": "hero", "title": "E2EPreview03"}, {"type": "top8", "friends": [{"name": "H';
+    expect(extractPageDraft(truncated)).toBeNull();
+    const stripped = stripPageDraft(truncated);
+    expect(stripped).not.toContain('"version": 1');
+    expect(stripped).not.toContain("```json");
+    expect(stripped).toBe("Here's your free preview!");
+  });
+
+  it("strips a truncated fence even with the route's cut-short note appended", () => {
+    const truncated =
+      "```json\n" + '{"version": 1, "username": "x", "blocks": [{"type": "hero"';
+    const withNote = truncated + " (note: my answer was cut short)";
+    expect(stripPageDraft(withNote)).toBe("");
+  });
+
+  it("strips multiple fenced blocks, not just the first", () => {
+    const content =
+      `prose\n\`\`\`json\n${JSON.stringify(PAGE)}\n\`\`\`\nmore prose\n\`\`\`json\n${JSON.stringify(PAGE)}\n\`\`\``;
+    const stripped = stripPageDraft(content);
+    expect(stripped).not.toContain("```json");
+    expect(stripped).not.toContain('"version": 1');
+  });
 });
