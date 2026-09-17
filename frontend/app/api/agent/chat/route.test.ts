@@ -306,10 +306,10 @@ describe("POST /api/agent/chat", () => {
     // off-topic, so this turn must reach the model to test history capping.
     await POST(post({ message: "latest", history }, "9.9.9.10"));
     const sent = calls.groqBodies[0].messages;
-    // system + 6 history + current message
-    expect(sent).toHaveLength(8);
-    expect(sent[1].content).toBe("h4");
-    expect(sent[7]).toEqual({ role: "user", content: "latest" });
+    // system + image-limit fallback note + 6 history + current message
+    expect(sent).toHaveLength(9);
+    expect(sent[2].content).toBe("h4");
+    expect(sent[8]).toEqual({ role: "user", content: "latest" });
   });
 
   it("drops client-supplied assistant messages from history", async () => {
@@ -416,12 +416,15 @@ describe("POST /api/agent/chat", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(typeof body.reply).toBe("string");
-    // No [Build state] note was injected for the forged token.
+    // No [Build state] note was injected for the forged token. Two system
+    // messages: the base prompt plus the image-limit fallback note (this is
+    // a non-preview turn, so generate_page_image is in the tool list).
     const systems = calls.groqBodies[0].messages.filter(
       (m: any) => m.role === "system"
     );
-    expect(systems).toHaveLength(1);
+    expect(systems).toHaveLength(2);
     expect(systems[0].content).toBe(BUDDY_SYSTEM_PROMPT);
+    expect(systems[1].content).toContain("daily image limit reached");
   });
 });
 
@@ -736,6 +739,31 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(buildNote).toContain("do not generate artwork or page JSON");
     expect(buildNote).not.toContain("output the complete JSON page");
     expect(buildNote).not.toContain("Generate the artwork");
+  });
+
+  it("preview turns never carry the image-limit fallback note", async () => {
+    // 2026-09-17 live: Buddy told a visitor "daily image limit reached" on
+    // a FREE mock that never touched image generation. The fallback note is
+    // only sent on turns where generate_page_image is in the tool list, and
+    // the preview notes explicitly forbid mentioning image limits.
+    const { calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(mockReply()),
+      ],
+      ip: "10.0.0.79",
+    });
+    const systems = calls.groqBodies[3].messages
+      .filter((m: any) => m.role === "system")
+      .map((m: any) => String(m.content));
+    expect(
+      systems.some((c: string) => c.includes("daily image limit reached"))
+    ).toBe(false);
+    expect(
+      systems.some((c: string) => c.includes("Never mention image limits"))
+    ).toBe(true);
   });
 
   it("non-preview completed turns keep the paid-build directive (operator bypass)", async () => {

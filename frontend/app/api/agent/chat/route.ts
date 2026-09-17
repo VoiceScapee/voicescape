@@ -106,6 +106,7 @@ const QUOTA_EXHAUSTED_REPLY =
 
 import {
   BUDDY_SYSTEM_PROMPT,
+  IMAGE_LIMIT_FALLBACK_NOTE,
   sanitizeHistory,
   type ChatMessage,
 } from "./guardrails";
@@ -350,7 +351,8 @@ const PREVIEW_NOTE = [
   "[MOCK PREVIEW — the visitor has NOT paid yet: this is a FREE preview, not the build.]",
   "A visual mock of their page is generated for them automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
   "Reply in one or two short sentences: present their free preview, invite one tweak, and say that saying “go” builds the real page with custom AI artwork for 5 HBAR.",
-  "PLACEHOLDER ART ONLY: never call generate_page_image — the image tool is unavailable this turn.",
+  "PLACEHOLDER ART ONLY: never call generate_page_image — the image tool is unavailable this turn. " +
+  "Never mention image limits — the free mock uses placeholder art by design.",
 ].join("\n");
 
 /** System note for revising the free mock (preview 2 of 2). The revised
@@ -362,6 +364,7 @@ function previewReviseNote(tweak: string): string {
     `The visitor's tweak request: "${tweak.slice(0, 300)}"`,
     "Their preview updates automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
     "Reply in one short sentence acknowledging the tweak, ending with: say “go” any time and the 5 HBAR build makes the real page.",
+    "Never mention image limits — the free mock uses placeholder art by design.",
   ].join("\n");
 }
 
@@ -721,7 +724,10 @@ export async function POST(req: NextRequest) {
         messages,
         signal,
         buildNote,
-        [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : [])],
+        // The image-limit fallback only reaches the model on turns where
+        // generate_page_image is actually in the tool list — never on free
+        // preview turns (the mock uses placeholder art by design).
+        [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : []), ...(!previewMode ? [IMAGE_LIMIT_FALLBACK_NOTE] : [])],
         previewMode ? PREVIEW_MAX_TOKENS : MAX_TOKENS
       );
       const choice = data?.choices?.[0];

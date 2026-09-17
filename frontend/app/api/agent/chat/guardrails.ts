@@ -81,9 +81,7 @@ export const BUDDY_SYSTEM_PROMPT =
   "item it marks collected, and NEVER double-check one ('are you sure?', " +
   "'is X right?') — accept what they gave and ask for the next missing " +
   "item only. When the note says all three are collected, generate and " +
-  "output the page immediately." +
-  "If the tool says the daily image limit is reached, say so plainly and " +
-  "finish the page with an emoji avatar instead. " +
+  "output the page immediately. " +
   "Then output the COMPLETE page as JSON in a single ```json fenced code " +
   "block, matching this schema exactly: " +
   '{ "version": 1, "username": "lowercase-letters-numbers-hyphens", ' +
@@ -98,6 +96,21 @@ export const BUDDY_SYSTEM_PROMPT =
   "every other word of your reply short: say the page is ready and tell " +
   "them to tap Open in Builder to review and publish it with their " +
   "wallet. You never publish for anyone.";
+
+/**
+ * Image-limit fallback — appended as a system note ONLY on turns where the
+ * generate_page_image tool is actually in the tool list (never on free
+ * preview turns: the mock uses placeholder art by design, so mentioning a
+ * limit there is a confabulation — 2026-09-17 live: Buddy told a visitor
+ * "daily image limit reached" on a free mock that never touched image
+ * generation). The "only if the tool itself returned it on THIS turn"
+ * wording stops the model from inventing a limit it never hit.
+ */
+export const IMAGE_LIMIT_FALLBACK_NOTE =
+  "IMAGE GENERATION: only if the generate_page_image tool itself returns a " +
+  "'daily image limit reached' error on THIS turn, say so plainly and " +
+  "finish the page with an emoji avatar instead. Never mention image " +
+  "limits otherwise.";
 
 /**
  * Keep only the visitor's own messages from client-supplied history.
