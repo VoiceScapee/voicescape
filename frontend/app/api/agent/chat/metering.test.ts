@@ -97,6 +97,8 @@ describe("isOnTopicMessage — Voicescape/blockchain Q&A is free", () => {
     "thanks",
     "hi",
     "yes",
+    "✨ Quick tour",
+    "give me the quick tour",
   ];
   for (const msg of onTopic) {
     it(`on-topic: ${JSON.stringify(msg)}`, () => {

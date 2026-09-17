@@ -91,8 +91,10 @@ const MAX_TOKENS = 2048;
 const PREVIEW_MAX_TOKENS = 4096;
 const MAX_ITERATIONS = 8;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-// Image generation can take up to a minute; the chat loop stays well under this.
-const AGENT_TIMEOUT_MS = 120_000;
+// The platform caps this function at 60s (see frontend/vercel.json), so our
+// own abort must fire first — a clean 504 with a "timed out" reply beats a
+// platform kill that surfaces as a generic network error.
+const AGENT_TIMEOUT_MS = 55_000;
 
 import {
   BUDDY_SYSTEM_PROMPT,
@@ -182,7 +184,7 @@ async function runToolCall(
   }
 }
 
-async function callGroq(
+async function callGroqOnce(
   apiKey: string,
   tools: Tool[],
   messages: ChatMessage[],
@@ -223,9 +225,52 @@ async function callGroq(
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`groq HTTP ${res.status} ${detail.slice(0, 200)}`);
+    const err = new Error(
+      `groq HTTP ${res.status} ${detail.slice(0, 200)}`
+    ) as Error & { groqStatus?: number };
+    err.groqStatus = res.status;
+    throw err;
   }
   return res.json();
+}
+
+/**
+ * One automatic retry on transient provider failures (429 / 5xx): the
+ * first-attempt-fails-retry-succeeds pattern seen in production is almost
+ * always a momentary Groq hiccup, and absorbing it here beats showing the
+ * visitor an error bubble. Never retries our own abort or a client error
+ * (4xx other than 429) — those would just fail the same way twice.
+ */
+async function callGroq(
+  apiKey: string,
+  tools: Tool[],
+  messages: ChatMessage[],
+  signal: AbortSignal,
+  buildNote: string | null,
+  extraNotes: string[] = [],
+  maxTokens: number = MAX_TOKENS
+): Promise<any> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+    try {
+      return await callGroqOnce(
+        apiKey,
+        tools,
+        messages,
+        signal,
+        buildNote,
+        extraNotes,
+        maxTokens
+      );
+    } catch (e: any) {
+      lastErr = e;
+      const status = typeof e?.groqStatus === "number" ? e.groqStatus : 0;
+      const retryable = status === 429 || (status >= 500 && status < 600);
+      if (e?.name === "AbortError" || !retryable) throw e;
+    }
+  }
+  throw lastErr;
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +476,7 @@ export async function POST(req: NextRequest) {
         buildState.u ?? ""
       );
     } catch {
+      console.error("[agent-chat] build store check failed");
       return NextResponse.json(
         { error: "preview_meter_unavailable", reply: BUILD_STORE_ERROR },
         { status: 503 }
@@ -598,6 +644,7 @@ export async function POST(req: NextRequest) {
     try {
       access = await checkChatAccess(chatIdentity);
     } catch {
+      console.error("[agent-chat] chat meter check failed");
       return NextResponse.json(
         { error: "chat_meter_unavailable", reply: CHAT_METER_ERROR },
         { status: 503 }
@@ -837,6 +884,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (e: any) {
     const aborted = signal.aborted;
+    // Log the real cause (never the API key) so the next "Something went
+    // wrong" is diagnosable from the server logs instead of a mystery.
+    console.error(
+      "[agent-chat]",
+      aborted ? "timeout after 55s" : "request failed",
+      e?.groqStatus ? `groq HTTP ${e.groqStatus}` : "",
+      String(e?.message ?? e).slice(0, 500)
+    );
     return NextResponse.json(
       { error: aborted ? "chat_timeout" : "chat_failed" },
       { status: aborted ? 504 : 502 }

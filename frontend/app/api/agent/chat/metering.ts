@@ -116,6 +116,7 @@ const ON_TOPIC_RES = [
   /usernames?/i,
   /\bbio\b/i,
   /cost|price|pricing|fees?|pay/i,
+  /\btour\b/i,
   /my\s+(page|profile|site|account)/i,
   // Page-editing vocabulary (build revisions are product questions).
   /background|colou?r|font|layout|theme|images?|pictures?|songs?|music/i,
@@ -162,15 +163,15 @@ export const BUILD_STORE_ERROR =
   "I can't check build payments right now — try again in a bit. Nothing was charged.";
 
 export const CHAT_PAYWALL_ANON =
-  "You've used your 5 free messages. Questions about Voicescape and " +
-  "blockchain are always free — to keep chatting about anything else, " +
-  "connect your wallet: 5 HBAR unlocks 50 more messages.";
+  "You're on a roll 🎉 You've used your 5 free off-topic chats. " +
+  "Voicescape & blockchain questions stay free forever — connect your " +
+  "wallet and 5 HBAR unlocks 50 more messages about anything.";
 
 export const CHAT_PAYWALL_WALLET =
-  "You've used your 5 free messages. Questions about Voicescape and " +
-  "blockchain are always free — for everything else, tip 5 HBAR to my " +
-  "'forge' page and I'll unlock 50 more messages as soon as it settles " +
-  "on-chain. (A custom blockpage build is also 5 HBAR.)";
+  "You're on a roll 🎉 You've used your 5 free off-topic chats. " +
+  "Voicescape & blockchain questions stay free forever — tip 5 HBAR to " +
+  "my 'forge' page and I'll unlock 50 more messages about anything as " +
+  "soon as it settles on-chain.";
 
 export const CHAT_METER_ERROR =
   "I can't check the chat meter right now — try again in a bit.";
