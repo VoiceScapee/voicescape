@@ -4,8 +4,22 @@
  * exercised against the same interface via dependency injection in the
  * quota/replay tests.
  */
-import { describe, expect, it } from "vitest";
-import { createMemoryKvStore } from "./store";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import {
+  createMemoryKvStore,
+  getKvStore,
+  resetKvStoreSingleton,
+  storeBackendKind,
+} from "./store";
+
+const ENV_KEYS = [
+  "VALKEY_URL",
+  "REDIS_URL",
+  "UPSTASH_REDIS_REST_URL",
+  "UPSTASH_REDIS_REST_TOKEN",
+  "UPSTASH_REDIS_KV_REST_API_URL",
+  "UPSTASH_REDIS_KV_REST_API_TOKEN",
+] as const;
 
 describe("MemoryKvStore", () => {
   it("incr counts up and reports the new count", async () => {
@@ -77,5 +91,87 @@ describe("MemoryKvStore", () => {
     await expect(s.incr("k", 0)).rejects.toThrow();
     await expect(s.setNx("k", "v", -1)).rejects.toThrow();
     await expect(s.set("k", "v", 0)).rejects.toThrow();
+  });
+});
+
+describe("backend selection (Upstash env var names)", () => {
+  const saved = new Map<string, string | undefined>();
+
+  beforeEach(() => {
+    saved.clear();
+    for (const k of ENV_KEYS) {
+      saved.set(k, process.env[k]);
+      delete process.env[k];
+    }
+    resetKvStoreSingleton();
+    vi.restoreAllMocks();
+  });
+
+  afterEach(() => {
+    for (const k of ENV_KEYS) {
+      const v = saved.get(k);
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    resetKvStoreSingleton();
+    vi.restoreAllMocks();
+  });
+
+  it("plain pair activates the upstash backend", () => {
+    process.env.UPSTASH_REDIS_REST_URL = "https://plain.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "plain-token";
+    expect(storeBackendKind()).toBe("upstash");
+  });
+
+  it("KV-prefixed pair alone activates the upstash backend", () => {
+    process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://kv.upstash.io";
+    process.env.UPSTASH_REDIS_KV_REST_API_TOKEN = "kv-token";
+    expect(storeBackendKind()).toBe("upstash");
+  });
+
+  it("plain pair takes precedence when both pairs are set", async () => {
+    const plainUrl = "https://plain.upstash.io";
+    process.env.UPSTASH_REDIS_REST_URL = plainUrl;
+    process.env.UPSTASH_REDIS_REST_TOKEN = "plain-token";
+    process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://kv.upstash.io";
+    process.env.UPSTASH_REDIS_KV_REST_API_TOKEN = "kv-token";
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue({ ok: true, json: async () => ({ result: 1 }) } as Response);
+    const store = getKvStore();
+    await store.incr("prec:k", 60_000);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      plainUrl,
+      expect.objectContaining({
+        headers: expect.objectContaining({ authorization: "Bearer plain-token" }),
+      }),
+    );
+  });
+
+  it("mixed pairs (KV url + plain token) resolve to upstash", () => {
+    process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://kv.upstash.io";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "plain-token";
+    expect(storeBackendKind()).toBe("upstash");
+  });
+
+  it("only one credential resolved falls back to memory with a warning", () => {
+    process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://kv.upstash.io";
+    expect(storeBackendKind()).toBe("memory");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    getKvStore();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("only one Upstash credential resolved"),
+    );
+  });
+
+  it("no Upstash vars set falls back to memory", () => {
+    expect(storeBackendKind()).toBe("memory");
+  });
+
+  it("Valkey keeps priority over the Upstash fallback pair", () => {
+    process.env.VALKEY_URL = "redis://localhost:6379";
+    process.env.UPSTASH_REDIS_KV_REST_API_URL = "https://kv.upstash.io";
+    process.env.UPSTASH_REDIS_KV_REST_API_TOKEN = "kv-token";
+    expect(storeBackendKind()).toBe("valkey");
   });
 });

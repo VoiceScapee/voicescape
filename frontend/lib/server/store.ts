@@ -18,9 +18,13 @@
  *     via `ioredis`. This is the Hedera-first / $0 self-hosted path — run
  *     Valkey in a single container next to the app (e.g. Coolify one-click).
  *   - Upstash Redis (REST): when UPSTASH_REDIS_REST_URL and
- *     UPSTASH_REDIS_REST_TOKEN are both set. Plain HTTPS fetch, no extra
- *     dependency. Upstash free tier (verified 2026-09-10): 500K commands /
- *     month, 256 MB, no credit card required.
+ *     UPSTASH_REDIS_REST_TOKEN are both set — or, as a fallback, when the
+ *     Vercel Upstash marketplace integration's own names are set:
+ *     UPSTASH_REDIS_KV_REST_API_URL and UPSTASH_REDIS_KV_REST_API_TOKEN.
+ *     The plain names take precedence when both pairs are present.
+ *     Plain HTTPS fetch, no extra dependency. Upstash free tier
+ *     (verified 2026-09-10): 500K commands / month, 256 MB, no credit
+ *     card required.
  *   - In-memory: when none of the above vars are set. Zero setup, correct
  *     on a single instance; a restart wipes state and a second instance
  *     does not share it. One loud boot warning says so.
@@ -310,9 +314,7 @@ let announced = false;
 /** Which backend the singleton resolved to (tests/dev introspection). */
 export function storeBackendKind(): "valkey" | "upstash" | "memory" {
   if (valkeyUrl()) return "valkey";
-  const url = (process.env.UPSTASH_REDIS_REST_URL ?? "").trim();
-  const token = (process.env.UPSTASH_REDIS_REST_TOKEN ?? "").trim();
-  return url && token ? "upstash" : "memory";
+  return upstashUrl() && upstashToken() ? "upstash" : "memory";
 }
 
 /** VALKEY_URL wins; REDIS_URL is accepted as a generic alias. */
@@ -321,15 +323,38 @@ function valkeyUrl(): string {
 }
 
 /**
+ * Upstash REST URL: plain UPSTASH_REDIS_REST_URL first, then the
+ * Vercel marketplace integration's UPSTASH_REDIS_KV_REST_API_URL fallback.
+ */
+function upstashUrl(): string {
+  return (
+    process.env.UPSTASH_REDIS_REST_URL ?? process.env.UPSTASH_REDIS_KV_REST_API_URL ?? ""
+  ).trim();
+}
+
+/**
+ * Upstash REST token: plain UPSTASH_REDIS_REST_TOKEN first, then the
+ * Vercel marketplace integration's UPSTASH_REDIS_KV_REST_API_TOKEN fallback.
+ */
+function upstashToken(): string {
+  return (
+    process.env.UPSTASH_REDIS_REST_TOKEN ??
+    process.env.UPSTASH_REDIS_KV_REST_API_TOKEN ??
+    ""
+  ).trim();
+}
+
+/**
  * Process-wide shared store. Valkey when VALKEY_URL (or REDIS_URL) is set,
- * Upstash when both REST vars are set, otherwise in-memory with a single
- * loud boot warning.
+ * Upstash when both REST vars resolve (plain names, or the Vercel-injected
+ * UPSTASH_REDIS_KV_REST_API_URL / UPSTASH_REDIS_KV_REST_API_TOKEN fallback),
+ * otherwise in-memory with a single loud boot warning.
  */
 export function getKvStore(): KvStore {
   if (!singleton) {
     const vurl = valkeyUrl();
-    const url = (process.env.UPSTASH_REDIS_REST_URL ?? "").trim();
-    const token = (process.env.UPSTASH_REDIS_REST_TOKEN ?? "").trim();
+    const url = upstashUrl();
+    const token = upstashToken();
     if (vurl) {
       singleton = new ValkeyKvStore(vurl);
     } else if (url && token) {
@@ -337,8 +362,10 @@ export function getKvStore(): KvStore {
     } else {
       if ((url || token) && !announced) {
         console.warn(
-          "[store] WARNING: only one of UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN is set — " +
-            "falling back to the in-memory store. Set both for shared quota state.",
+          "[store] WARNING: only one Upstash credential resolved — need both a REST URL " +
+            "(UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_KV_REST_API_URL) and a REST token " +
+            "(UPSTASH_REDIS_REST_TOKEN or UPSTASH_REDIS_KV_REST_API_TOKEN). Falling back " +
+            "to the in-memory store. Set both for shared quota state.",
         );
       }
       singleton = new MemoryKvStore();
@@ -350,8 +377,10 @@ export function getKvStore(): KvStore {
       console.warn(
         "[store] WARNING: using the in-memory quota/replay store — quotas and replay protection " +
           "reset on restart and are NOT shared across instances. Set VALKEY_URL (self-hosted " +
-          "Valkey, open source) or UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (free " +
-          "tier, no credit card) before multi-instance deployment.",
+          "Valkey, open source) or an Upstash pair — UPSTASH_REDIS_REST_URL and " +
+          "UPSTASH_REDIS_REST_TOKEN, or the Vercel-injected UPSTASH_REDIS_KV_REST_API_URL " +
+          "and UPSTASH_REDIS_KV_REST_API_TOKEN (free tier, no credit card) — before " +
+          "multi-instance deployment.",
       );
     } else if (singleton instanceof ValkeyKvStore) {
       console.info("[store] shared quota/replay store: self-hosted Valkey (open source).");
