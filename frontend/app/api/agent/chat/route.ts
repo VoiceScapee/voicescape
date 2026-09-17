@@ -89,6 +89,11 @@ const MAX_TOKENS = 2048;
 // Preview turns emit a full 6-9 block page JSON plus prose — 2048 tokens
 // truncated the mock mid-string live (2026-09-16), leaking raw JSON.
 const PREVIEW_MAX_TOKENS = 4096;
+// Plain chat turns (no build in progress) only ever need the 2-4 sentence
+// reply the system prompt demands — cap their output budget so a
+// degenerate turn can't burn the daily token quota. Build turns keep 2048
+// (the paid build and refine turns emit full page JSON).
+const CHAT_MAX_TOKENS = 1024;
 const MAX_ITERATIONS = 8;
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 // The platform caps this function at 60s (see frontend/vercel.json), so our
@@ -685,12 +690,16 @@ export async function POST(req: NextRequest) {
 
   // Buddy's tools: Hedera's Agent Kit (read-only Voicescape plugin) plus the
   // image-generation tool (no chain access — artwork only).
-  // ECONOMICS INVARIANT: preview turns NEVER get the image tool — a free
-  // mock is pure model output with placeholder art, so even a misbehaving
-  // model can't burn image generation before payment.
-  const tools = previewMode
-    ? getBuddyTools(signal)
-    : [...getBuddyTools(signal), makeImageTool(agentChatClientIp(req))];
+  // TOKEN ECONOMICS: generate_page_image is only ever usable once the three
+  // build slots are collected (the paid build or a paid tweak — the system
+  // prompt only authorizes it "once you have all three"). On every other
+  // turn its ~280-token definition is dead weight, so it is withheld; a
+  // model that can't see the tool also can't burn image quota on a free
+  // turn. Preview turns were already excluded (deterministic mocks).
+  const canGenerateImages = buildComplete && !previewMode;
+  const tools = canGenerateImages
+    ? [...getBuddyTools(signal), makeImageTool(agentChatClientIp(req))]
+    : getBuddyTools(signal);
 
   try {
     const messages: ChatMessage[] = [...history, { role: "user", content: message }];
@@ -714,7 +723,11 @@ export async function POST(req: NextRequest) {
         signal,
         buildNote,
         [...(refineNote ? [refineNote] : []), ...(previewNote ? [previewNote] : [])],
-        previewMode ? PREVIEW_MAX_TOKENS : MAX_TOKENS
+        previewMode
+          ? PREVIEW_MAX_TOKENS
+          : buildState.active
+            ? MAX_TOKENS
+            : CHAT_MAX_TOKENS
       );
       const choice = data?.choices?.[0];
       const msg = choice?.message;

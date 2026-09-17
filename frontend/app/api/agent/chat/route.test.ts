@@ -287,11 +287,12 @@ describe("POST /api/agent/chat", () => {
       expect(body.model).toBe("openai/gpt-oss-20b");
       expect(body.messages[0].role).toBe("system");
       expect(body.messages[0].content).toMatch(/never invent chain data/);
+      // TOKEN ECONOMICS: a plain chain-fact turn is not a build turn, so
+      // the image tool is withheld — the model can never need it here.
       expect(body.tools.map((t: any) => t.function.name)).toEqual([
         "resolve_blockpage",
         "verify_tip",
         "treasury_stats",
-        "generate_page_image",
       ]);
     }
   });
@@ -360,7 +361,7 @@ describe("POST /api/agent/chat", () => {
     expect(system).toMatch(/cannot change anything on the Voicescape site/);
     expect(system).toMatch(/never see, touch, or act on anyone's connected wallet/);
     expect(system).toMatch(/help them build THEIR OWN blockpage/);
-    expect(system).toMatch(/You never publish for anyone/);
+    expect(system).toMatch(/you never publish for anyone/i);
   });
 
   it("unknown tool calls fail closed", async () => {
@@ -1374,6 +1375,14 @@ describe("build refinement (tweak — revises the paid draft, no second charge)"
       )
     ).toBe(true);
 
+    // TOKEN ECONOMICS: the paid tweak turn keeps the image tool (artwork
+    // revisions are legitimate here) and the full output budget for the
+    // page JSON.
+    expect(tweakBody.max_tokens).toBe(2048);
+    expect(tweakBody.tools.map((t: any) => t.function.name)).toContain(
+      "generate_page_image"
+    );
+
     // Exactly one payment exists on the ledger and it is still the single
     // consumed build payment — no second payment was touched.
     const raw = await getKvStore().get(`buddy:chat:${EVM_TWEAK}`);
@@ -1742,5 +1751,43 @@ describe("Buddy system prompt — pricing knowledge", () => {
   it("names making it right as Buddy's superpower", () => {
     expect(BUDDY_SYSTEM_PROMPT).toContain("making it right is your");
     expect(BUDDY_SYSTEM_PROMPT).toContain("#customer-support");
+  });
+});
+
+describe("token efficiency (Groq daily-quota budget)", () => {
+  it("plain chat turns use the smaller output budget and withhold the image tool", async () => {
+    const { calls } = mockFetch([groqFinal("Voicescape is a blockpage platform.")]);
+    const res = await POST(post({ message: "What is Voicescape?" }, "10.9.0.1"));
+    expect(res.status).toBe(200);
+    const body = calls.groqBodies[0];
+    // Plain chat only ever needs the 2-4 sentence reply the system prompt
+    // demands — cap output so a degenerate turn can't burn the daily quota.
+    expect(body.max_tokens).toBe(1024);
+    expect(body.tools.map((t: any) => t.function.name)).toEqual([
+      "resolve_blockpage",
+      "verify_tip",
+      "treasury_stats",
+    ]);
+  });
+
+  it("system prompt stays within its token budget with every rule intact", () => {
+    // ~4 chars/token: 4000 chars ≈ 1000 tokens. Was 4356 before the trim.
+    expect(BUDDY_SYSTEM_PROMPT.length).toBeLessThan(4000);
+    // The trim only removed redundant wording — every guardrail survives.
+    expect(BUDDY_SYSTEM_PROMPT).toMatch(/never invent chain data/);
+    expect(BUDDY_SYSTEM_PROMPT).toMatch(
+      /cannot change anything on the Voicescape site/
+    );
+    expect(BUDDY_SYSTEM_PROMPT).toMatch(/you never publish for anyone/);
+    expect(BUDDY_SYSTEM_PROMPT).toContain("5 free chat messages");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("5 HBAR flat");
+    expect(BUDDY_SYSTEM_PROMPT).toMatch(/never invent urls/);
+  });
+
+  it("sanitizeHistory caps each echoed message at 1000 chars", () => {
+    const long = "x".repeat(1500);
+    const kept = sanitizeHistory([{ role: "user", content: long }]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].content).toHaveLength(1000);
   });
 });
