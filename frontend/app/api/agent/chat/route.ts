@@ -401,7 +401,10 @@ export async function POST(req: NextRequest) {
   // what is collected and what to ask next.
   const prevState = verifyBuildState(body?.build_state);
   const buildState = advanceBuildState(prevState, message);
-  const buildNote = buildStateNote(buildState);
+  // Computed AFTER previewMode is finalized below (the all-collected note
+  // differs on free-mock turns — see buildStateNote). Declared here so the
+  // whole handler can reference it.
+  let buildNote: string | null = null;
 
   // Build entitlement (5 HBAR per custom build, Brandon's pricing). The
   // state is complete when username + bio + vibe are all collected — that
@@ -611,6 +614,11 @@ export async function POST(req: NextRequest) {
     }
     if (!fallbackMock) previewMode = "new";
   }
+
+  // The authoritative build-progress note, now that previewMode is final:
+  // on free-mock turns it defers to the preview instructions instead of
+  // contradicting them with the paid-build directive.
+  buildNote = buildStateNote(buildState, previewMode);
 
   // Refine turns ride on the ORIGINAL build payment: the wallet must have
   // build history (it paid for a build before). No history → unpaid

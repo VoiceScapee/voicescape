@@ -711,6 +711,57 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(note).toContain("do NOT need to output any JSON");
   });
 
+  it("preview turns get the free-mock build note, not the paid-build directive", async () => {
+    const { calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(mockReply()),
+      ],
+      ip: "10.0.0.77",
+    });
+    // 4th turn is the preview turn: the build-state note must defer to the
+    // preview instructions instead of contradicting them (the live bug that
+    // had Buddy re-asking for the bio on the preview turn).
+    const systems = calls.groqBodies[3].messages.filter(
+      (m: any) => m.role === "system"
+    );
+    const buildNote = systems
+      .map((m: any) => String(m.content))
+      .find((c: string) => c.includes("server-tracked"));
+    expect(buildNote).toBeTruthy();
+    expect(buildNote).toContain("All three are collected");
+    expect(buildNote).toContain("FREE visual mock");
+    expect(buildNote).toContain("do not generate artwork or page JSON");
+    expect(buildNote).not.toContain("output the complete JSON page");
+    expect(buildNote).not.toContain("Generate the artwork");
+  });
+
+  it("non-preview completed turns keep the paid-build directive (operator bypass)", async () => {
+    vi.stubEnv("BUDDY_OPERATOR", "1");
+    const { calls } = await runBuildFlow({
+      groqReplies: [
+        groqFinal("t1"),
+        groqFinal("t2"),
+        groqFinal("t3"),
+        groqFinal(draftReply()),
+      ],
+      ip: "10.0.0.78",
+    });
+    // meteringBypass() means previewMode stays null: the completed build
+    // turn still tells the model to generate artwork + page JSON.
+    const systems = calls.groqBodies[3].messages.filter(
+      (m: any) => m.role === "system"
+    );
+    const buildNote = systems
+      .map((m: any) => String(m.content))
+      .find((c: string) => c.includes("server-tracked"));
+    expect(buildNote).toBeTruthy();
+    expect(buildNote).toContain("output the complete JSON page");
+    expect(buildNote).not.toContain("FREE visual mock");
+  });
+
   it("an invalid model mock is ignored — deterministic template served, consuming one preview; a tweak revises it deterministically", async () => {
     // The model emits a fence that fails validation (no version/username
     // envelope, junk placeholders). Round 4: model output is never parsed

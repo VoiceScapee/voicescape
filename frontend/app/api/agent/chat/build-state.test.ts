@@ -160,6 +160,46 @@ describe("advanceBuildState", () => {
     expect(s.b).toBeUndefined();
   });
 
+  it("does not file frustration or UI commands into the bio slot", () => {
+    const base = { active: true, u: "coolpage" };
+    for (const msg of [
+      "already told you",
+      "Already told you!",
+      "i already told you",
+      "I already said it",
+      "i already gave you",
+      "you already asked",
+      "you already asked me",
+      "preview",
+      "Preview",
+      "show me",
+      "what?",
+      "huh",
+    ]) {
+      const s = advanceBuildState(base, msg);
+      expect(s.b).toBeUndefined();
+      expect(s.v).toBeUndefined();
+    }
+  });
+
+  it("does not file frustration or UI commands into the vibe slot", () => {
+    const base = { active: true, u: "coolpage", b: "a real bio" };
+    for (const msg of ["already told you", "i already said it", "Preview", "show me", "huh"]) {
+      const s = advanceBuildState(base, msg);
+      expect(s.v).toBeUndefined();
+      expect(s.b).toBe("a real bio");
+    }
+  });
+
+  it("still files real one-line bios and vibes", () => {
+    const s1 = advanceBuildState({ active: true, u: "coolpage" }, "The human behind Bacon the Dino");
+    expect(s1.b).toBe("The human behind Bacon the Dino");
+    const s2 = advanceBuildState(s1, "dark synthwave");
+    expect(s2.v).toBe("dark synthwave");
+    const s3 = advanceBuildState(s1, "moody neon synths");
+    expect(s3.v).toBe("moody neon synths");
+  });
+
   it("rejects too-short answers", () => {
     const s = advanceBuildState({ active: true, u: "coolpage" }, "ok");
     expect(s.b).toBeUndefined();
@@ -216,6 +256,23 @@ describe("buildStateNote", () => {
     expect(note).toContain("All three are collected");
     expect(note).toContain("output the complete JSON page");
     expect(note).toContain("Do not ask any more questions");
+  });
+
+  it("on free-preview turns defers to the preview instructions instead of contradicting them", () => {
+    const full = {
+      active: true,
+      u: "coolpage",
+      b: "bio here",
+      v: "vibe here",
+    };
+    for (const mode of ["new", "revise"] as const) {
+      const note = buildStateNote(full, mode)!;
+      expect(note).toContain("All three are collected");
+      expect(note).toContain("FREE visual mock");
+      expect(note).toContain("do not generate artwork or page JSON");
+      expect(note).not.toContain("output the complete JSON page");
+      expect(note).not.toContain("Generate the artwork");
+    }
   });
 
   it("states the 5 HBAR price FIRST when no slots are collected yet", () => {

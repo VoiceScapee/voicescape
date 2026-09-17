@@ -55,6 +55,15 @@ const RESTART_RE =
 const QUESTION_RE =
   /\?\s*$|^(what|how|why|when|where|who|which|is|are|can|could|do|does|should|will|would|tell me)\b/i;
 /**
+ * Non-answers: frustration/confusion or UI commands that must NOT fill the
+ * bio/vibe slots. Seen live 2026-09-17: a lone "Preview" filled
+ * vibe="Preview", and "Already told you" would have too — polluting the
+ * authoritative state and derailing the model. Anchored and tight so real
+ * one-line bios/vibes ("dark synthwave", "moody neon synths") still fill.
+ */
+const NON_ANSWER_RE =
+  /^(already told you|i already (told|said|gave)( you| it)?|you already asked( me)?|preview|show me|what|huh)[.!?\s]*$/i;
+/**
  * Explicit "my username is X" phrasing ("Name KimmyPossible", "call me X").
  * Only consulted while the build is active and the username slot is still
  * empty — i.e. the server just asked for a username — so "call me X" can
@@ -181,14 +190,31 @@ export function advanceBuildState(
   // Seen live 2026-09-16: the repeat derailed the model into the lookup flow.
   const dup = (v?: string) => !!v && msg.toLowerCase() === v.toLowerCase();
 
-  // Slots 2-3: bio, then vibe — skip questions ("what does it cost?").
-  if (s.u && !s.b && !QUESTION_RE.test(msg) && !dup(s.u)) {
+  // Slots 2-3: bio, then vibe — skip questions ("what does it cost?") and
+  // non-answers ("already told you", "preview") so frustration or UI
+  // commands never pollute the authoritative slots; the state is returned
+  // unchanged and the model handles them conversationally.
+  if (
+    s.u &&
+    !s.b &&
+    !QUESTION_RE.test(msg) &&
+    !NON_ANSWER_RE.test(msg) &&
+    !dup(s.u)
+  ) {
     if (msg.length >= BIO_MIN && msg.length <= BIO_MAX) {
       return { ...s, b: msg };
     }
     return s;
   }
-  if (s.u && s.b && !s.v && !QUESTION_RE.test(msg) && !dup(s.u) && !dup(s.b)) {
+  if (
+    s.u &&
+    s.b &&
+    !s.v &&
+    !QUESTION_RE.test(msg) &&
+    !NON_ANSWER_RE.test(msg) &&
+    !dup(s.u) &&
+    !dup(s.b)
+  ) {
     if (msg.length >= VIBE_MIN && msg.length <= VIBE_MAX) {
       return { ...s, v: msg };
     }
@@ -199,8 +225,19 @@ export function advanceBuildState(
 /**
  * The authoritative progress note injected into the model context.
  * Null when no build is in progress — the model just chats normally.
+ *
+ * previewMode ("new"/"revise") flips the all-collected branch: on a free
+ * mock turn the model must follow the preview instructions (conversational
+ * text only, no JSON, no artwork) — the paid-build instruction ("generate
+ * the artwork… output the complete JSON page") would directly contradict
+ * the preview note and confuses the model into re-asking questions (seen
+ * live 2026-09-17). The paid instruction stays only when there is no
+ * previewMode.
  */
-export function buildStateNote(state: BuildState): string | null {
+export function buildStateNote(
+  state: BuildState,
+  previewMode?: "new" | "revise" | null
+): string | null {
   if (!state.active) return null;
   const line = (label: string, v?: string) =>
     v ? `${label} (collected): "${v}"` : `${label}: MISSING`;
@@ -211,9 +248,15 @@ export function buildStateNote(state: BuildState): string | null {
     line("vibe/layout", state.v),
   ];
   if (state.u && state.b && state.v) {
-    lines.push(
-      "All three are collected. Generate the artwork now (up to 3 images: avatar, banner, background) and output the complete JSON page. Do not ask any more questions."
-    );
+    if (previewMode) {
+      lines.push(
+        "All three are collected. This turn serves the FREE visual mock — follow the preview instructions; do not generate artwork or page JSON."
+      );
+    } else {
+      lines.push(
+        "All three are collected. Generate the artwork now (up to 3 images: avatar, banner, background) and output the complete JSON page. Do not ask any more questions."
+      );
+    }
   } else if (!state.u && !state.b && !state.v) {
     // Price-first: the visitor hasn't invested anything yet, so the price
     // comes before any question — never after three answers. One short

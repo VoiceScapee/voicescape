@@ -206,6 +206,32 @@ function sessionHeader(): Record<string, string> {
   return {};
 }
 
+/**
+ * Server-signed build-progress token persistence. The token carries the
+ * authoritative build state (username/bio/vibe collected so far); it used
+ * to live only in a useRef, so closing/reopening the chat wiped progress
+ * and the model flailed on stripped history. sessionStorage survives a
+ * close/reload within the tab session; the in-memory ref stays the hot
+ * path. Seen live 2026-09-17: reopened chat lost track of the build.
+ */
+const BUILD_STATE_STORAGE_KEY = "buddy_build_state";
+
+function readStoredBuildState(): string {
+  try {
+    return window.sessionStorage.getItem(BUILD_STATE_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredBuildState(token: string): void {
+  try {
+    window.sessionStorage.setItem(BUILD_STATE_STORAGE_KEY, token);
+  } catch {
+    /* storage unavailable — in-memory ref still works this session */
+  }
+}
+
 export default function AgentChat() {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>(GREETING_MSGS);
@@ -217,7 +243,9 @@ export default function AgentChat() {
   const panelRef = useRef<HTMLDivElement>(null);
   // Server-signed build-progress token (opaque): echoed back each turn so
   // Buddy can track the multi-turn blockpage flow. Never displayed.
-  const buildStateRef = useRef<string>("");
+  // Initialized from sessionStorage so closing/reopening the chat keeps
+  // the server-tracked progress; written back on every new token.
+  const buildStateRef = useRef<string>(readStoredBuildState());
   // Free off-topic messages remaining (null = unknown / not metered).
   // Voicescape & blockchain questions are always free and never count.
   // Anonymous visitors start at the documented allowance so the pill is
@@ -669,9 +697,11 @@ export default function AgentChat() {
             ? data.reply
             : FAILED;
         failed = reply === FAILED;
-        // Keep the signed build token for the next turn (opaque string).
+        // Keep the signed build token for the next turn (opaque string),
+        // persisted so the build survives chat close/reload.
         if (data && typeof data.build_state === "string") {
           buildStateRef.current = data.build_state;
+          writeStoredBuildState(data.build_state);
         }
         // Free-message countdown for off-topic chat (on-topic Q&A is free
         // and never counts). The paywall reply clears it to zero.
