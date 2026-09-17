@@ -83,6 +83,9 @@ function mockFetch(groqReplies: unknown[], mirrorBatches: unknown[][] = []) {
       groqBodies.push(JSON.parse(String(init?.body ?? "{}")));
       const next = groqReplies.shift();
       if (!next) throw new Error("unexpected extra Groq call");
+      // Raw Response-like objects (ok:false) pass through unwrapped so
+      // provider error paths (429/5xx) can be tested.
+      if ((next as any)?.__rawResponse) return next;
       return jsonResponse(next);
     }
     if (u.includes("/contracts/call")) {
@@ -219,6 +222,43 @@ describe("POST /api/agent/chat", () => {
     // Only one Groq call, no mirror-node traffic.
     expect(calls.groqBodies).toHaveLength(1);
     expect(calls.seen.every((u) => !u.includes("mirrornode"))).toBe(true);
+  });
+
+  it("a daily-quota 429 is never retried and degrades to a friendly resting reply", async () => {
+    const quota429 = {
+      __rawResponse: true,
+      ok: false,
+      status: 429,
+      text: async () =>
+        '{"error":{"message":"Rate limit reached for model `openai/gpt-oss-20b` in organization `org_test` service tier `on_demand` on tokens per day (TPD): Limit 200000, Used 199999, Requested 1"}}',
+    };
+    const { calls } = mockFetch([quota429]);
+    const res = await POST(post({ message: "What is Voicescape?" }));
+    // HTTP 200 with a normal Buddy reply — no error bubble, no tap-to-retry.
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.reply).toMatch(/daily limit/i);
+    expect(json.reply).toMatch(/tomorrow/i);
+    // Exactly one Groq call — a TPD-exhausted 429 is never retried.
+    expect(calls.groqBodies).toHaveLength(1);
+    // build_state still returned so the conversation can resume tomorrow.
+    expect(typeof json.build_state).toBe("string");
+    expect(json.chat.metered).toBe(false);
+  });
+
+  it("a per-minute 429 still gets the one automatic retry", async () => {
+    const rpm429 = {
+      __rawResponse: true,
+      ok: false,
+      status: 429,
+      text: async () =>
+        '{"error":{"message":"Rate limit reached for model `openai/gpt-oss-20b` on requests per minute (RPM): Limit 30, Used 30"}}',
+    };
+    const { calls } = mockFetch([rpm429, groqFinal("recovered after retry")]);
+    const res = await POST(post({ message: "What is Voicescape?" }));
+    expect(res.status).toBe(200);
+    expect((await res.json()).reply).toMatch(/recovered after retry/);
+    expect(calls.groqBodies).toHaveLength(2);
   });
 
   it("runs the resolve_blockpage tool round trip and returns the final answer", async () => {

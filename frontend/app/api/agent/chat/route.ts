@@ -96,6 +96,14 @@ const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 // platform kill that surfaces as a generic network error.
 const AGENT_TIMEOUT_MS = 55_000;
 
+// Graceful degradation when the free Groq plan's daily token quota is spent:
+// Buddy tells the visitor he's resting instead of an error bubble. Retrying
+// is futile until the quota resets, so the widget gets a normal HTTP 200
+// reply (no tap-to-retry). No chat unit is consumed on this path — the
+// accounting lives in the try block and is skipped when the model throws.
+const QUOTA_EXHAUSTED_REPLY =
+  "My AI brain just hit its daily limit — I'm on the free plan, so I get a fresh batch of thinking tokens every day. Try me again tomorrow and I'll be back to full strength!";
+
 import {
   BUDDY_SYSTEM_PROMPT,
   sanitizeHistory,
@@ -227,8 +235,13 @@ async function callGroqOnce(
     const detail = await res.text().catch(() => "");
     const err = new Error(
       `groq HTTP ${res.status} ${detail.slice(0, 200)}`
-    ) as Error & { groqStatus?: number };
+    ) as Error & { groqStatus?: number; groqQuotaExhausted?: boolean };
     err.groqStatus = res.status;
+    // A 429 for tokens-per-day means the free plan's daily quota is spent:
+    // retrying can never succeed until it resets, so mark it for the
+    // caller to degrade gracefully instead of retrying.
+    err.groqQuotaExhausted =
+      res.status === 429 && /tokens per day|\(TPD\)/i.test(detail);
     throw err;
   }
   return res.json();
@@ -238,8 +251,10 @@ async function callGroqOnce(
  * One automatic retry on transient provider failures (429 / 5xx): the
  * first-attempt-fails-retry-succeeds pattern seen in production is almost
  * always a momentary Groq hiccup, and absorbing it here beats showing the
- * visitor an error bubble. Never retries our own abort or a client error
- * (4xx other than 429) — those would just fail the same way twice.
+ * visitor an error bubble. Never retries our own abort, a client error
+ * (4xx other than 429) — those would just fail the same way twice — or a
+ * 429 that means the daily token quota is exhausted, which cannot clear
+ * until the quota resets.
  */
 async function callGroq(
   apiKey: string,
@@ -265,6 +280,9 @@ async function callGroq(
       );
     } catch (e: any) {
       lastErr = e;
+      // Daily-quota 429: fail fast so the route degrades gracefully instead
+      // of burning a second request that cannot succeed.
+      if (e?.groqQuotaExhausted) throw e;
       const status = typeof e?.groqStatus === "number" ? e.groqStatus : 0;
       const retryable = status === 429 || (status >= 500 && status < 600);
       if (e?.name === "AbortError" || !retryable) throw e;
@@ -892,6 +910,22 @@ export async function POST(req: NextRequest) {
       e?.groqStatus ? `groq HTTP ${e.groqStatus}` : "",
       String(e?.message ?? e).slice(0, 500)
     );
+    // Daily token quota exhausted: degrade gracefully. Buddy tells the
+    // visitor he's resting (HTTP 200 with a normal reply — no error bubble,
+    // no tap-to-retry, since retrying is futile until the quota resets).
+    // The signed build state is still returned so a build in progress can
+    // resume tomorrow; no chat unit is consumed on this path.
+    if (!aborted && e?.groqQuotaExhausted) {
+      return NextResponse.json({
+        reply: QUOTA_EXHAUSTED_REPLY,
+        build_state: signBuildState(buildState),
+        chat: {
+          metered: chatMetered,
+          kind: chatMetered && chatKind ? chatKind : "none",
+          left: Math.max(0, chatLeft),
+        },
+      });
+    }
     return NextResponse.json(
       { error: aborted ? "chat_timeout" : "chat_failed" },
       { status: aborted ? 504 : 502 }
