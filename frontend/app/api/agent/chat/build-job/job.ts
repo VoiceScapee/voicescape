@@ -61,6 +61,14 @@ const TOKEN_TTL_MS = 10 * 60 * 1000;
 const MAX_ARTWORK = 3;
 /** Image attempts per artwork slot before the job fails (credit preserved). */
 const MAX_IMAGE_ATTEMPTS = 3;
+/**
+ * Slow-generation retries per artwork slot before the job fails (credit
+ * preserved). A step-budget abort means Pollinations was still painting when
+ * the 45s serverless budget ran out — a cold/slow art service, not a broken
+ * build — so it retries on a separate, more patient counter instead of
+ * burning one of the 3 hard-error strikes above.
+ */
+const MAX_IMAGE_TIMEOUTS = 8;
 
 const JOB_PREFIX = "buddy:buildjob:";
 const JOB_ACTIVE_PREFIX = "buddy:buildjob:active:";
@@ -113,6 +121,12 @@ export type BuildJob = {
   artworkTotal: number;
   /** Attempts used on the current front artwork slot (retries, not slots). */
   imgAttempts?: number;
+  /**
+   * Step-budget timeouts on the current front artwork slot. Timeouts mean
+   * the art service was too slow, not broken, so they retry on this
+   * separate patient counter and never burn an imgAttempts strike.
+   */
+  imgTimeouts?: number;
   failReason?: string;
   createdAt: number;
 };
@@ -456,13 +470,17 @@ async function defaultRunImage(
   prompt: string,
   signal: AbortSignal,
   clientIp: string
-): Promise<{ url: string } | { error: string }> {
+): Promise<{ url: string } | { error: string; timedOut?: boolean }> {
   const tool = makeImageTool(clientIp);
   const raw = await tool.execute(undefined as never, { signal } as never, {
     kind,
     prompt,
   });
   const text = typeof raw === "string" ? raw : JSON.stringify(raw);
+  // The step controller aborts ONLY when the 45s serverless budget runs out,
+  // so an aborted signal here means the art service was too slow — a
+  // retryable timeout, not a hard failure.
+  const timedOut = signal.aborted === true;
   try {
     const parsed = JSON.parse(text) as { url?: unknown; error?: unknown };
     if (typeof parsed.url === "string" && parsed.url.startsWith("https://")) {
@@ -473,9 +491,10 @@ async function defaultRunImage(
         typeof parsed.error === "string"
           ? parsed.error
           : "image generation failed",
+      ...(timedOut ? { timedOut: true as const } : {}),
     };
   } catch {
-    return { error: "image generation failed" };
+    return { error: "image generation failed", ...(timedOut ? { timedOut: true as const } : {}) };
   }
 }
 
@@ -493,7 +512,7 @@ export type JobDeps = {
     kind: ImageKind,
     prompt: string,
     signal: AbortSignal
-  ) => Promise<{ url: string } | { error: string }>;
+  ) => Promise<{ url: string } | { error: string; timedOut?: boolean }>;
   spend?: (wallet: string, store: KvStore) => Promise<boolean>;
   clientIp?: string;
 };
@@ -674,6 +693,30 @@ async function runImagesStep(
       defaultRunImage(kind, prompt, s, deps.clientIp ?? "unknown"));
   const result = await runImage(next.kind, next.prompt, signal);
   if (!("url" in result)) {
+    if (result.timedOut === true) {
+      // Slow art service, not a broken build: the 45s step budget ran out
+      // while Pollinations was still painting (cold model). Retry on the
+      // patient counter — this never burns a hard-error strike and never
+      // consumes anything. The slot stays at the front of the queue.
+      const timeouts = (job.imgTimeouts ?? 0) + 1;
+      job.imgTimeouts = timeouts;
+      await saveJob(store, job);
+      if (timeouts >= MAX_IMAGE_TIMEOUTS) {
+        return await failJob(
+          job,
+          store,
+          "The art service is taking too long right now — nothing was charged. " +
+            "Your 5 HBAR credit is still available; try \u201cgo\u201d again in a little while."
+        );
+      }
+      return {
+        ok: true,
+        done: false,
+        step: "images",
+        progress: stepProgress(job),
+        note: "Still painting — the art service is slow right now, hanging in there…",
+      };
+    }
     // Artwork failed: keep the slot at the front, count the attempt, and
     // let the widget retry it on the next poll. A failed artwork must never
     // silently become an empty image on a paid page — after MAX attempts
@@ -702,6 +745,7 @@ async function runImagesStep(
   // the slot already filled and moves on, so artwork is never generated
   // twice for the same slot.
   job.imgAttempts = 0;
+  job.imgTimeouts = 0;
   const serialized = JSON.stringify(job.draft);
   const updated = serialized.split(next.slot).join(result.url);
   try {

@@ -481,4 +481,86 @@ describe("stepBuildJob", () => {
     expect(r4.ok).toBe(false);
     expect(spendCalls).toBe(0);
   });
+
+  it("retries slow art-service timeouts without burning hard-error strikes", async () => {
+    const store = createMemoryKvStore();
+    const started = await startBuildJob(signFor(WALLET_A), WALLET_A, store);
+    const jobId = started.ok ? started.jobId : "";
+    const page = validPage();
+    (page.blocks[0] as { avatarImage?: string }).avatarImage =
+      IMAGE_MARKERS.avatar;
+    let calls = 0;
+    const deps = {
+      store,
+      runCopy: async () =>
+        copyText(page, [
+          {
+            slot: IMAGE_MARKERS.avatar,
+            kind: "avatar",
+            prompt: "a vivid square avatar, wholesome",
+          },
+        ]),
+      // First two polls time out (slow art service), third succeeds.
+      runImage: async () => {
+        calls += 1;
+        if (calls < 3) return { error: "image service unreachable", timedOut: true };
+        return { url: "https://ipfs.io/ipfs/QmTestAvatar" };
+      },
+      spend: async () => true,
+    };
+    await stepBuildJob(jobId, WALLET_A, deps); // copy -> images
+    const r1 = await stepBuildJob(jobId, WALLET_A, deps); // timeout 1
+    expect(r1.ok && !r1.done && r1.step).toBe("images");
+    expect(r1.ok && !r1.done ? r1.note : "").toMatch(/slow right now/i);
+    const r2 = await stepBuildJob(jobId, WALLET_A, deps); // timeout 2
+    expect(r2.ok && !r2.done && r2.step).toBe("images");
+    // Timeouts must not count as hard-error strikes: a single real error
+    // afterwards is still strike 1 of 3, not strike 3.
+    const errDeps = { ...deps, runImage: async () => ({ error: "boom" }) };
+    const r3 = await stepBuildJob(jobId, WALLET_A, errDeps);
+    expect(r3.ok && !r3.done && r3.step).toBe("images");
+    expect(r3.ok && !r3.done ? r3.note : "").toMatch(/1\/3/);
+    // And the job still completes once the art service delivers.
+    const r4 = await stepBuildJob(jobId, WALLET_A, deps);
+    expect(r4.ok && !r4.done && r4.step).toBe("finalize");
+  });
+
+  it("fails the job with credit preserved after too many slow timeouts", async () => {
+    const store = createMemoryKvStore();
+    const started = await startBuildJob(signFor(WALLET_A), WALLET_A, store);
+    const jobId = started.ok ? started.jobId : "";
+    const page = validPage();
+    (page.blocks[0] as { avatarImage?: string }).avatarImage =
+      IMAGE_MARKERS.avatar;
+    let spendCalls = 0;
+    const deps = {
+      store,
+      runCopy: async () =>
+        copyText(page, [
+          {
+            slot: IMAGE_MARKERS.avatar,
+            kind: "avatar",
+            prompt: "a vivid square avatar, wholesome",
+          },
+        ]),
+      runImage: async () => ({ error: "image service unreachable", timedOut: true }),
+      spend: async () => {
+        spendCalls += 1;
+        return true;
+      },
+    };
+    await stepBuildJob(jobId, WALLET_A, deps); // copy -> images
+    let last: unknown = null;
+    for (let i = 0; i < 8; i++) {
+      last = await stepBuildJob(jobId, WALLET_A, deps);
+      if (i < 7) {
+        expect((last as { ok: boolean }).ok).toBe(true);
+        expect((last as { done?: boolean }).done ?? false).toBe(false);
+      }
+    }
+    expect((last as { ok: boolean }).ok).toBe(false);
+    expect((last as { error?: string }).error).toBe("failed");
+    expect((last as { reason?: string }).reason).toMatch(/nothing was charged/i);
+    expect(spendCalls).toBe(0);
+  });
 });

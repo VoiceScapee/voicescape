@@ -107,6 +107,27 @@ describe("generate_page_image tool", () => {
     expect(pinImageFile).not.toHaveBeenCalled();
   });
 
+  it("does not burn daily quota on a failed generation", async () => {
+    process.env.BUDDY_IMAGE_DAILY_QUOTA = "1";
+    const ip = nextIp();
+    const tool = makeImageTool(ip);
+    // Two failed generations (service unreachable, then bad bytes)...
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("socket hang up");
+    }) as any;
+    const f1 = JSON.parse((await tool.execute(undefined as any, {} as any, params())) as string);
+    expect(f1.error).toMatch(/unreachable/);
+    globalThis.fetch = mockFetchImage(new Uint8Array([104, 105]), "text/html") as any;
+    const f2 = JSON.parse((await tool.execute(undefined as any, {} as any, params())) as string);
+    expect(f2.error).toMatch(/did not return a valid image/);
+    // ...then a real generation must still be within quota.
+    globalThis.fetch = mockFetchImage(PNG, "image/png") as any;
+    const ok = JSON.parse((await tool.execute(undefined as any, {} as any, params())) as string);
+    expect(ok.error).toBeUndefined();
+    expect(ok.url).toBe("https://ipfs.io/ipfs/QmTestCid123");
+    expect(pinImageFile).toHaveBeenCalledTimes(1);
+  });
+
   it("fails gracefully when the image service is unreachable", async () => {
     globalThis.fetch = vi.fn(async () => {
       throw new Error("socket hang up");

@@ -121,22 +121,6 @@ export function makeImageTool(clientIp: string): Tool {
       const signal = (ctx as { signal?: AbortSignal } | undefined)?.signal;
       const { kind, prompt } = imageParamsSchema.parse(params);
 
-      // Per-IP daily quota, fail gracefully (the model tells the visitor).
-      const limit = quotaLimitFromEnv("BUDDY_IMAGE_DAILY_QUOTA", 3);
-      let quota;
-      try {
-        quota = await globalQuotaStore().consume("buddy:image", clientIp, limit);
-      } catch (e) {
-        return JSON.stringify({
-          error: `image quota store unreachable: ${e instanceof Error ? e.message : String(e)}`,
-        });
-      }
-      if (!quota.allowed) {
-        return JSON.stringify({
-          error: `daily image limit reached (${limit}/day) — try again tomorrow`,
-        });
-      }
-
       // Sanitize the model-written prompt: printable chars, length-capped.
       const cleanPrompt = prompt.replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, 500);
       if (cleanPrompt.length < 8) {
@@ -169,6 +153,25 @@ export function makeImageTool(clientIp: string): Tool {
       }
       if (bytes.byteLength > MAX_IMAGE_BYTES) {
         return JSON.stringify({ error: "generated image too large" });
+      }
+
+      // Per-IP daily quota, consumed only once the art service actually
+      // delivered valid image bytes: a timed-out or errored generation must
+      // not eat the visitor's daily budget (a paid build needs all 3).
+      // Pinning (the real platform cost) stays behind the quota gate.
+      const limit = quotaLimitFromEnv("BUDDY_IMAGE_DAILY_QUOTA", 3);
+      let quota;
+      try {
+        quota = await globalQuotaStore().consume("buddy:image", clientIp, limit);
+      } catch (e) {
+        return JSON.stringify({
+          error: `image quota store unreachable: ${e instanceof Error ? e.message : String(e)}`,
+        });
+      }
+      if (!quota.allowed) {
+        return JSON.stringify({
+          error: `daily image limit reached (${limit}/day) — try again tomorrow`,
+        });
       }
 
       const mime = contentType.split(";")[0].trim() || "image/jpeg";
