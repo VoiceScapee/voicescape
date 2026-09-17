@@ -8,7 +8,7 @@
  *     (0.0.10854060) — tips (and marketplace purchases) settled on chain.
  */
 
-export const MIRROR_BASE = "https://mainnet-public.mirror-node.hedera.com/api/v1";
+export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const REGISTRY_ID = "0.0.10854058";
 export const TIPS_ID = "0.0.10854060";
 export const PAGE_LIMIT = 100;
