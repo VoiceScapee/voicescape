@@ -1,6 +1,6 @@
 /**
  * GET /api/chain/stats tests: selector derivation, paginated counting with
- * per-page SUCCESS/selector filtering, 15-minute module cache, and the
+ * per-page success/selector filtering, 15-minute module cache, and the
  * fail-soft contract (any error → 200 { pages: null, tips: null }, never 500).
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
@@ -9,7 +9,7 @@ const REGISTRY_RESULTS_1 = "/api/v1/contracts/0.0.10854058/results";
 const TIPS_RESULTS_1 = "/api/v1/contracts/0.0.10854060/results";
 
 function page(
-  results: Array<{ result?: string; function_parameters?: string | null }>,
+  results: Array<{ error_message?: string | null; function_parameters?: string | null }>,
   next: string | null,
 ): Response {
   return new Response(JSON.stringify({ results, links: { next } }), {
@@ -20,8 +20,10 @@ function page(
 
 /**
  * Mirror stub: registry has 2 successful registerPage calls spread over two
- * pages (plus noise that must NOT count — a wrong-selector SUCCESS and a
+ * pages (plus noise that must NOT count — a wrong-selector success and a
  * reverted registerPage); tips has 3 successful results on a single page.
+ * Row shape matches the real mirror node: success = empty/missing
+ * error_message, failure = non-empty error_message (revert data).
  */
 function mirrorStub() {
   return vi.fn((url: string | URL | Request) => {
@@ -31,7 +33,7 @@ function mirrorStub() {
         return Promise.resolve(
           page(
             [
-              { result: "SUCCESS", function_parameters: "0xc02fdb27aaaa" },
+              { error_message: "", function_parameters: "0xc02fdb27aaaa" },
             ],
             null,
           ),
@@ -40,11 +42,11 @@ function mirrorStub() {
       return Promise.resolve(
         page(
           [
-            { result: "SUCCESS", function_parameters: "0xc02fdb27dead" },
+            { error_message: "", function_parameters: "0xc02fdb27dead" },
             // Wrong selector — a different Registry function call: excluded.
-            { result: "SUCCESS", function_parameters: "0xdeadbeef1234" },
-            // Reverted registerPage call: excluded (not SUCCESS).
-            { result: "CONTRACT_REVERT_EXECUTED", function_parameters: "0xc02fdb27beef" },
+            { error_message: "", function_parameters: "0xdeadbeef1234" },
+            // Reverted registerPage call: excluded (non-empty error_message).
+            { error_message: "0x08c379a0", function_parameters: "0xc02fdb27beef" },
           ],
           `${REGISTRY_RESULTS_1}?limit=100&order=asc&timestamp=lt:1789500000.0`,
         ),
@@ -54,10 +56,10 @@ function mirrorStub() {
       return Promise.resolve(
         page(
           [
-            { result: "SUCCESS", function_parameters: "0x1111" },
-            { result: "SUCCESS", function_parameters: "0x2222" },
-            { result: "SUCCESS", function_parameters: "0x3333" },
-            { result: "CONTRACT_REVERT_EXECUTED", function_parameters: "0x4444" },
+            { error_message: "", function_parameters: "0x1111" },
+            { error_message: "", function_parameters: "0x2222" },
+            { error_message: null, function_parameters: "0x3333" },
+            { error_message: "0x08c379a0", function_parameters: "0x4444" },
           ],
           null,
         ),
@@ -82,16 +84,16 @@ describe("GET /api/chain/stats", () => {
     expect(REGISTER_PAGE_SELECTOR).toBe("0xc02fdb27");
   });
 
-  it("counts paginated SUCCESS results, filtering registerPage selector on the Registry only", async () => {
+  it("counts paginated successful results, filtering registerPage selector on the Registry only", async () => {
     const fetchMock = mirrorStub();
     vi.stubGlobal("fetch", fetchMock);
     const { GET } = await import("./route");
     const res = await GET();
     const json = (await res.json()) as { pages: number | null; tips: number | null };
     expect(res.status).toBe(200);
-    // Registry: 2 SUCCESS registerPage calls across 2 pages (noise excluded).
+    // Registry: 2 successful registerPage calls across 2 pages (noise excluded).
     expect(json.pages).toBe(2);
-    // Tips: 3 SUCCESS results (1 reverted excluded), selector filter off.
+    // Tips: 3 successful results (1 reverted excluded), selector filter off.
     expect(json.tips).toBe(3);
     // Both lanes paginate via contract results on the official mirror node.
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("0.0.10854058"))).toBe(true);
