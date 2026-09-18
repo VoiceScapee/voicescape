@@ -1,7 +1,7 @@
 # @voicescape/ipfs
 
 IPFS helper module for Project Voicescape. Page content (the JSON behind a
-MySpace-style block page) is published to IPFS; the smart contract only stores
+custom blockpage) is published to IPFS; the smart contract only stores
 a `username → CID` registry.
 
 **Live code:** [`frontend/lib/server/publish.js`](../frontend/lib/server/publish.js)

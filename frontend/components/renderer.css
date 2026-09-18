@@ -363,7 +363,7 @@
   text-overflow: ellipsis;
 }
 
-/* MySpace-style featured profile song. */
+/* Custom blockpages featured profile song. */
 .pv-profile-song {
   width: 100%;
   display: grid;

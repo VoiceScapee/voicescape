@@ -1,4 +1,4 @@
-# Voicescape — MySpace-style block pages with on-chain tips
+# Voicescape — Custom blockpages with on-chain tips
 
 **Status: MVP wired end-to-end.** Contracts compile, all 10 tests pass,
 frontend typechecks and `next build` succeeds. Wallets (HashPack/Blade/
@@ -150,7 +150,7 @@ Verified: `npx tsc --noEmit` clean, `next build` succeeds.
   public gateway — both need the contracts deployed and a Pinata JWT for the
   publish side.
 - Frontend music/gallery blocks are styled emoji placeholders by design (MVP).
-- The full visual redesign (splash screen, blockchain/MySpace reskin) is still
+- The full visual redesign (splash screen, blockchain/custom blockpages reskin) is still
   ahead — this build is functionally wired with the scaffold UI.
 
 ## Suggested path to launch
