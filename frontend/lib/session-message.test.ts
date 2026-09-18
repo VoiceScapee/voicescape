@@ -25,7 +25,11 @@ import {
   verifyEvmSignature,
 } from "./session-message";
 
-const NOW = Date.parse("2026-09-10T12:00:00.000Z");
+// Frozen "now" for deterministic tests: anchored to the real current time so
+// expiry-relative assertions don't rot as wall-clock time passes. (A hardcoded
+// date here was a time-bomb: once now passed hard-coded NOW + SESSION_TTL_MS,
+// every createSession call threw "no valid expiry".)
+const NOW = Date.now();
 const ORIGIN = "https://voicescape.app";
 
 function fields(over: Partial<Parameters<typeof buildSignInMessage>[0]> = {}) {
