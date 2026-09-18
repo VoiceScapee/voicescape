@@ -23,7 +23,11 @@ export const FETCH_TIMEOUT_MS = 10_000;
 export const REGISTER_PAGE_SELECTOR = "0xc02fdb27";
 
 interface MirrorResultRow {
-  result?: string;
+  // The contract-results endpoint signals failure via a non-empty
+  // error_message (revert data); successful calls carry "" or omit it.
+  // (There is no `result: "SUCCESS"` field on this endpoint — that shape
+  // belongs to /api/v1/transactions.)
+  error_message?: string | null;
   function_parameters?: string | null;
 }
 
@@ -63,7 +67,7 @@ export async function countSuccessfulResults(
       if (!res.ok) throw new Error(`mirror node GET ${url}: HTTP ${res.status}`);
       const body = (await res.json()) as MirrorResultsPage;
       for (const row of body.results ?? []) {
-        if (row.result !== "SUCCESS") continue;
+        if (row.error_message) continue; // reverted/failed call — not a success
         if (functionSelector) {
           const params = (row.function_parameters ?? "").toLowerCase();
           if (!params.startsWith(functionSelector.toLowerCase())) continue;
