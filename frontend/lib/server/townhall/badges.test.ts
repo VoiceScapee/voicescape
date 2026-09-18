@@ -1,5 +1,5 @@
 /** Badge system tests — pure computation. No network, no chain. */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { ethers } from "ethers";
 import {
   ALL_BADGES,
@@ -325,6 +325,27 @@ describe("badgesForUser", () => {
     expect(badgesForUser(null, EMPTY_ENRICHMENT, null, now)).toEqual([]);
   });
 
+  it("awards on-chain enrichment badges without townhall activity (null stats)", () => {
+    // Regression 2026-09-18: a real user bought the Bacon badge on-chain but
+    // had no HCS chat activity, so the old `if (!s) return out` gate dropped
+    // every badge and their blockpage showed none.
+    const ids = badgesForUser(null, { ...EMPTY_ENRICHMENT, baconBadge: true }, null, now).map((b) => b.id);
+    expect(ids).toContain("bacon-badge");
+    const builder = badgesForUser(
+      null,
+      { ...EMPTY_ENRICHMENT, ownsPage: true, tipsReceived: 1 },
+      null,
+      now,
+    ).map((b) => b.id);
+    expect(builder).toContain("builder");
+    expect(builder).toContain("tipped");
+    const patron = badgesForUser(null, { ...EMPTY_ENRICHMENT, tipsSent: 1 }, null, now).map((b) => b.id);
+    expect(patron).toContain("patron");
+    // Activity-gated badges still need stats.
+    expect(ids).not.toContain("first-words");
+    expect(ids).not.toContain("clean-record");
+  });
+
   it("never awards the same badge twice", () => {
     const s = statsFor("alice", { chat: 1000, activeDays: new Set(["2026-09-10"]) });
     const ids = badgesForUser(s, EMPTY_ENRICHMENT, 1, now).map((b) => b.id);
@@ -464,5 +485,70 @@ describe("bacon badge (purchasable)", () => {
     expect(withBadge).toContain("bacon-badge");
     const without = badgesForUser(s, EMPTY_ENRICHMENT, null).map((b) => b.id);
     expect(without).not.toContain("bacon-badge");
+  });
+
+  it("matches the buyer via an explicit topic set (alias form)", () => {
+    // 2026-09-18: the buyer's on-chain topic is the alias EVM address while
+    // the site knows the wallet as 0.0.x — the explicit set bridges the gap.
+    const alias = "0xfc1177680ecf347f06cf3c086fa58ca2713fb462";
+    const topics = new Set([pad(alias)]);
+    expect(hasBaconBadge([purchaseLog({ buyer: alias })], "0.0.10425049", topics)).toBe(true);
+    expect(hasBaconBadge([purchaseLog({})], "0.0.10425049", topics)).toBe(false);
+  });
+});
+
+describe("walletTopicForms", () => {
+  const pad = (addr: string) => "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const ALIAS = "0xfc1177680ecf347f06cf3c086fa58ca2713fb462";
+  const LONG_ZERO = "0x" + BigInt("10425049").toString(16).padStart(40, "0");
+
+  beforeEach(async () => {
+    const { getKvStore } = await import("../store");
+    await getKvStore().clearPrefix("vs:badges:evm:");
+    vi.unstubAllGlobals();
+  });
+
+  it("returns both long-zero and alias topic forms for a 0.0.x wallet", async () => {
+    const { walletTopicForms } = await import("./badges");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ evm_address: ALIAS }) })),
+    );
+    const topics = await walletTopicForms("0.0.10425049");
+    expect(topics.has(pad(LONG_ZERO))).toBe(true);
+    expect(topics.has(pad(ALIAS))).toBe(true);
+    expect(topics.size).toBe(2);
+  });
+
+  it("derives the account id from a long-zero 0x input too", async () => {
+    const { walletTopicForms } = await import("./badges");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({ evm_address: ALIAS }) })),
+    );
+    const topics = await walletTopicForms(LONG_ZERO);
+    expect(topics.has(pad(LONG_ZERO))).toBe(true);
+    expect(topics.has(pad(ALIAS))).toBe(true);
+  });
+
+  it("needs no lookup when the wallet is already the alias form", async () => {
+    const { walletTopicForms } = await import("./badges");
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }));
+    vi.stubGlobal("fetch", fetchMock);
+    const topics = await walletTopicForms(ALIAS);
+    expect(topics).toEqual(new Set([pad(ALIAS)]));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("fails open to the long-zero form when the mirror lookup fails", async () => {
+    const { walletTopicForms } = await import("./badges");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("mirror down");
+      }),
+    );
+    const topics = await walletTopicForms("0.0.10425049");
+    expect(topics).toEqual(new Set([pad(LONG_ZERO)]));
   });
 });
