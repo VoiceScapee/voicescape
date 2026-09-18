@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
 import { fetchRegisteredUsername } from "@/lib/identity";
 import { Onboarding } from "@/components/Onboarding";
+import { FORCE_ONBOARDING_EVENT } from "@/components/landing/BuildCtaButton";
 
 const PUBLISHED_KEY = "vs_published_username";
 
@@ -37,10 +38,20 @@ export function OnboardingTrigger() {
   const sessionAddress = session?.address ?? null;
   const [visible, setVisible] = useState(false);
   const [checking, setChecking] = useState(false);
+  // Forced open by the landing hero CTA (BuildCtaButton) — shows the wizard
+  // to wallet-less newcomers. Skipping/completing still marks them onboarded.
+  const [forced, setForced] = useState(false);
   // The on-chain page check runs once per connected address.
   const checkedFor = useRef<string | null>(null);
 
   useEffect(() => {
+    const open = () => setForced(true);
+    window.addEventListener(FORCE_ONBOARDING_EVENT, open);
+    return () => window.removeEventListener(FORCE_ONBOARDING_EVENT, open);
+  }, []);
+
+  useEffect(() => {
+    if (forced) return; // explicit open — the auto logic must not hide it
     if (status === "loading") return;
     if (!isAuthenticated) {
       setVisible(false);
@@ -88,8 +99,11 @@ export function OnboardingTrigger() {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, status, account, sessionAddress]);
+  }, [forced, isAuthenticated, status, account, sessionAddress]);
 
+  if (forced) {
+    return <Onboarding onDone={() => setForced(false)} account={account ?? sessionAddress} />;
+  }
   if (!visible || checking) return null;
   return <Onboarding onDone={() => setVisible(false)} account={account ?? sessionAddress} />;
 }

@@ -11,7 +11,7 @@ const ENTERED_KEY = "vs_splash_entered";
 function hasEntered(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return sessionStorage.getItem(ENTERED_KEY) === "1";
+    return localStorage.getItem(ENTERED_KEY) === "1";
   } catch {
     return false;
   }
@@ -23,13 +23,13 @@ function hasEntered(): boolean {
  *
  * The splash is a fixed full-viewport overlay — not a scrollable part of
  * the landing flow. Page scroll is locked while it is up, and only an
- * explicit Enter click dismisses it (it unmounts and is skipped for the
- * rest of the session).
+ * explicit Enter click dismisses it (it unmounts and is skipped on this
+ * browser from then on).
  */
 export default function Splash() {
   const [entered, setEntered] = useState(false);
 
-  // Skip the splash if the user already entered this session.
+  // Skip the splash if the user already entered on this browser.
   // Done in an effect (not render) to keep SSR and first paint identical.
   useEffect(() => {
     if (hasEntered()) setEntered(true);
@@ -50,9 +50,9 @@ export default function Splash() {
 
   const handleEnter = () => {
     try {
-      sessionStorage.setItem(ENTERED_KEY, "1");
+      localStorage.setItem(ENTERED_KEY, "1");
     } catch {
-      // sessionStorage unavailable — splash just shows again next load
+      // localStorage unavailable — splash just shows again next load
     }
     setEntered(true);
     // Splash unmounts on the next paint; then glide to the content.

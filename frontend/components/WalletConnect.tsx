@@ -252,6 +252,7 @@ export function WalletConnect() {
               }}
             >
               This proves you own the wallet — 1 tinybar to yourself, not a payment.
+              Sign once — you&apos;re signed in for 7 days.
             </div>
           </>
         ) : null}
@@ -371,13 +372,22 @@ export function WalletConnect() {
               color: "var(--vs-muted)",
             }}
           >
-            New to wallets?{" "}
-            <ExternalLink
-              href="https://www.hashpack.app"
+            New to crypto?{" "}
+            <Link
+              href="/new-to-web3"
               style={{ color: "var(--vs-accent)", textDecoration: "underline" }}
             >
-              Get HashPack (free)
-            </ExternalLink>
+              Start here →
+            </Link>
+            <div style={{ marginTop: 4 }}>
+              New to wallets?{" "}
+              <ExternalLink
+                href="https://www.hashpack.app"
+                style={{ color: "var(--vs-accent)", textDecoration: "underline" }}
+              >
+                Get HashPack (free)
+              </ExternalLink>
+            </div>
             <div style={{ marginTop: 4, fontSize: 11 }}>
               A wallet lets you create pages and receive tips.
             </div>
