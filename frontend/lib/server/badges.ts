@@ -14,7 +14,7 @@
 import { canonicalAddress } from "../session-message";
 import { isFounderWallet } from "./client-errors";
 import { getKvStore } from "./store";
-import { countPaymentsReceived, ownsRegisteredPage } from "./townhall/badges";
+import { countPaymentsReceived, ownsRegisteredPage, walletTopicForms } from "./townhall/badges";
 
 /** Reserved chat room id for the builders-only Town Hall room. */
 export const BUILDERS_ROOM_ID = "builders";
@@ -74,7 +74,7 @@ export async function builderBadgeProgress(
     }
   }
   const [hasPage, tips] = await Promise.all([
-    ownsRegisteredPage(canon),
+    ownsRegisteredPage(walletAddress, await walletTopicForms(walletAddress)),
     countPaymentsReceived(canon),
   ]);
   const progress: BuilderBadgeProgress = {
