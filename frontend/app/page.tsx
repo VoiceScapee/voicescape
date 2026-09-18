@@ -10,6 +10,7 @@ import { DateStrip } from "@/components/landing/DateStrip";
 import { ChainPulseStats } from "@/components/landing/ChainPulseStats";
 import { Headlines } from "@/components/landing/Headlines";
 import { ChatPreview } from "@/components/landing/ChatPreview";
+import { BuildCtaButton } from "@/components/landing/BuildCtaButton";
 import { FeaturedBlockpages } from "@/components/landing/FeaturedBlockpages";
 
 const SERIF = "Georgia, 'Times New Roman', serif";
@@ -64,13 +65,9 @@ export default function LandingPage() {
             <T k="landing.brandSub" />
           </p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-            <Link
-              href="/builder"
-              className="vs-btn vs-btn-primary"
-              style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
-            >
-              <T k="landing.brandBuildCta" />
-            </Link>
+            {/* First-timers go through the 3-step wizard (even wallet-less);
+                onboarded users go straight to the builder. */}
+            <BuildCtaButton />
             <Link
               href="/explore"
               className="vs-btn vs-btn-ghost"

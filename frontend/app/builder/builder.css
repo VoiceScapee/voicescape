@@ -889,6 +889,27 @@ select.vs-input option {
     min-height: 70vh;
   }
 
+  /* Floating jump-to-preview: hidden on desktop, fixed pill on phones. */
+  .vb-preview-jump {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    position: fixed;
+    right: 16px;
+    bottom: 20px;
+    z-index: 60;
+    border-radius: 999px;
+    padding: 12px 18px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    color: #fff;
+    background: linear-gradient(135deg, #8259ef, #22d3ee);
+    border: none;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  }
+
   .vb-header {
     padding: 0 14px;
     gap: 10px;
@@ -1013,6 +1034,11 @@ select.vs-input option {
 
 .vb-preview-banner-text span {
   color: var(--vs-muted);
+}
+
+/* Jump-to-preview pill: desktop-hidden; enabled inside the ≤960px query. */
+.vb-preview-jump {
+  display: none;
 }
 
 @media (prefers-reduced-motion: no-preference) {

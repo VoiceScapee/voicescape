@@ -16,6 +16,7 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
@@ -399,6 +400,12 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 everything via API.
               </p>
             )}
+            <p style={{ fontSize: 13, color: "var(--vs-muted)", lineHeight: 1.6, marginTop: 4 }}>
+              New to crypto?{" "}
+              <Link href="/new-to-web3" style={{ color: "var(--vs-accent)", textDecoration: "underline" }}>
+                Start here →
+              </Link>
+            </p>
           </div>
         )}
 

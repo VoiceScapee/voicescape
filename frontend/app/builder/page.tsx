@@ -14,6 +14,7 @@ import {
   IconBolt,
   IconBook,
   IconCheck,
+  IconChevronDown,
   IconClose,
   IconExternal,
   IconGrid,
@@ -1167,7 +1168,12 @@ function VibecodeChat({
   // API key; "x402" pays the x402 vibecode endpoint per edit from the
   // wallet. There is no server-paid AI path.
   const x402Url = getX402VibecodeUrl();
-  const [payMode, setPayMode] = useState<"byok" | "x402">("byok");
+  // Default to pay-per-edit (x402) — the simpler path for first-timers with
+  // no API key. Falls back to BYOK when a key is already stored or x402 is
+  // not configured.
+  const [payMode, setPayMode] = useState<"byok" | "x402">(() =>
+    hasByokKey() || !x402Url ? "byok" : "x402",
+  );
   const [x402Rails, setX402Rails] = useState<X402Rail[] | null>(null);
   const [x402Rail, setX402Rail] = useState<X402Rail | null>(null);
   const [x402Pending, setX402Pending] = useState<string | null>(null);
@@ -1371,15 +1377,6 @@ function VibecodeChat({
       <div className="vb-paymode" role="group" aria-label="AI edit payment mode">
         <button
           type="button"
-          className={`vb-chip-btn${payMode === "byok" ? " is-active" : ""}`}
-          onClick={() => setPayMode("byok")}
-          disabled={loading}
-          title="Use your own Anthropic API key — billed by Anthropic to you"
-        >
-          <IconSpark size={13} /> My AI key
-        </button>
-        <button
-          type="button"
           className={`vb-chip-btn${payMode === "x402" ? " is-active" : ""}`}
           onClick={() => setPayMode("x402")}
           disabled={loading || !x402Url}
@@ -1387,12 +1384,22 @@ function VibecodeChat({
         >
           <IconBolt size={13} /> Pay per edit (x402)
         </button>
+        <button
+          type="button"
+          className={`vb-chip-btn${payMode === "byok" ? " is-active" : ""}`}
+          onClick={() => setPayMode("byok")}
+          disabled={loading}
+          title="Advanced: use your own Anthropic API key — billed by Anthropic to you"
+        >
+          <IconSpark size={13} /> Advanced: My AI key
+        </button>
       </div>
 
       {payMode === "byok" && (
         <div className="vb-x402-box" aria-live="polite">
           <p className="vb-x402-status">
-            🔑 AI generation uses <strong>your own Anthropic API key</strong> — billed by Anthropic to you.
+            🔑 <strong>Advanced:</strong> AI generation uses your own Anthropic API key — billed
+            by Anthropic to you, key stays in this browser. No key? Use “Pay per edit (x402)” instead.
             Voicescape never sees your key and never pays for your generations.
           </p>
           <button
@@ -2452,7 +2459,11 @@ function BuilderInner() {
         <div className="vb-preview-banner" role="note">
           <div className="vb-preview-banner-text">
             <strong>Preview mode.</strong>{" "}
-            <span>Design your blockpage freely — connect your wallet when you're ready to publish it on-chain.</span>
+            <span>Design your blockpage freely — connect your wallet when you're ready to publish it on-chain. New to crypto?{" "}
+              <a href="/new-to-web3" style={{ color: "var(--vs-accent)", textDecoration: "underline" }}>
+                Start here →
+              </a>
+            </span>
           </div>
           <SignInButton />
         </div>
@@ -2568,7 +2579,7 @@ function BuilderInner() {
         </div>
 
         {/* Right: live preview */}
-        <div className="vb-preview">
+        <div className="vb-preview" id="vb-preview">
           {aiDraft ? (
             <div className="vb-draft-wrap">
               <div className="vb-draft-inner">
@@ -2593,6 +2604,20 @@ function BuilderInner() {
           )}
         </div>
       </div>
+
+      {/* Mobile only (≤960px, CSS-gated): the controls stack above the
+          preview on phones, so this jump button takes the user straight to
+          the live preview instead of editing blind. */}
+      <button
+        type="button"
+        className="vb-preview-jump"
+        onClick={() =>
+          document.getElementById("vb-preview")?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+        aria-label="Jump to live preview"
+      >
+        <IconChevronDown size={15} /> See preview
+      </button>
     </div>
   );
 }
