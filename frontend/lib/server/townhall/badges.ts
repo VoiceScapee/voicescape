@@ -935,7 +935,7 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
 }
 
 /** Rehydrate a cache entry into UserStats for the pure badge function. */
-function toStats(u: UserStatsEntry): UserStats {
+export function toStats(u: UserStatsEntry): UserStats {
   return {
     username: u.username,
     chat: u.chat,
