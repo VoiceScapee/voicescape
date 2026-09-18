@@ -981,6 +981,83 @@ a {
   }
 }
 
+/* Purchase celebration — the post-purchase moment (badge medallion or
+   check burst), same visual language as the tip celebration. */
+.pv-buy-celebration {
+  text-align: center;
+  padding: 6px 0 2px;
+  animation: pvCelebrateIn 0.45s ease both;
+}
+
+.pv-buy-medallion {
+  position: relative;
+  width: 124px;
+  height: 124px;
+  margin: 0 auto 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pv-buy-medallion-core {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  font-size: 38px;
+  line-height: 1;
+  background: linear-gradient(135deg, #ffc93c, #ff9d3c);
+  box-shadow:
+    0 0 0 4px rgba(255, 201, 60, 0.22),
+    0 0 36px rgba(255, 201, 60, 0.55);
+  animation: pvCorePop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.pv-buy-check {
+  font-size: 34px;
+  font-weight: 800;
+  color: #0e3320;
+  background: linear-gradient(135deg, #7ce3a1, #3ecf7a);
+  box-shadow:
+    0 0 0 4px rgba(62, 207, 122, 0.22),
+    0 0 36px rgba(62, 207, 122, 0.55);
+}
+
+.pv-buy-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid #ffc93c;
+  animation: pvRipple 2.1s ease-out infinite;
+  pointer-events: none;
+}
+
+.pv-buy-medallion.is-generic .pv-buy-ring {
+  border-color: #3ecf7a;
+}
+
+.pv-buy-celebration-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.pv-buy-celebration-sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--vs-muted, #9b9b9d);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-buy-celebration,
+  .pv-buy-medallion-core,
+  .pv-buy-ring {
+    animation: none;
+  }
+}
+
 /* Success receipt — exact finality proof, breakdown, HashScan, next step. */
 .tx-receipt {
   text-align: center;

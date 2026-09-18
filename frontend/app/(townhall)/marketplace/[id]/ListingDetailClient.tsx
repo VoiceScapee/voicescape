@@ -9,7 +9,8 @@ import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
-import { TxConfirming } from "@/components/TxConfirm";
+import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
+import PurchaseCelebration from "@/components/PurchaseCelebration";
 import { recordConversionEvent } from "@/lib/metrics";
 import { getActiveChain } from "@/lib/chains";
 import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/marketplace-verify";
@@ -50,6 +51,17 @@ function sellerToEvm(addr: string): string {
   return accountToEvmAddress(addr);
 }
 
+/**
+ * Listing id → earned-badge meta for listings that award a badge.
+ * Display-only: the server badge catalog (ALL_BADGES in
+ * lib/server/townhall/badges.ts) remains the source of truth for awarding.
+ * Add future badge listings here so their purchase moment celebrates the
+ * badge across the whole dapp.
+ */
+const BADGE_LISTING_META: Record<string, { icon: string; name: string }> = {
+  "bacon-badge": { icon: "🦕", name: "Bacon Badge" },
+};
+
 export default function ListingDetailClient({ id }: { id: string }) {
   const { account, getTxSender } = useWallet();
   const { username: me, canWrite } = useWriteGate();
@@ -65,6 +77,10 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [buy, setBuy] = useState<BuyPhase>({ kind: "idle" });
+  /** Success-receipt snapshots, captured at wallet approval like the tip flow. */
+  const [buyApprovedAt, setBuyApprovedAt] = useState<number | null>(null);
+  const [buyFinalizedAt, setBuyFinalizedAt] = useState<Date | null>(null);
+  const [buyReceiptLines, setBuyReceiptLines] = useState<TxReceiptLine[]>([]);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState<string | null>(null);
   /**
@@ -203,6 +219,9 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
   const startBuy = async () => {
     setBuy({ kind: "buying" });
+    setBuyApprovedAt(null);
+    setBuyFinalizedAt(null);
+    setBuyReceiptLines([]);
     recordConversionEvent("purchase_attempt");
     try {
       if (!account) throw new Error("Connect a wallet to buy.");
@@ -237,12 +256,29 @@ export default function ListingDetailClient({ id }: { id: string }) {
       const sender = await getTxSender();
       // One atomic transaction: 98% to the seller, 2% to the treasury.
       // The contract never holds your funds — there is no escrow.
+      // Snapshot the breakdown for the success receipt — these amounts are
+      // baked into the transaction, so they hold for every outcome path.
+      // (Same pattern as the tip flow.)
+      const hbarAmt = hbarPrice ? usd / hbarPrice : null;
+      setBuyReceiptLines(
+        hbarAmt != null
+          ? [
+              { label: "You paid", value: `≈ ${hbarAmt.toFixed(4)} HBAR` },
+              { label: "Seller gets (98%)", value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+            ]
+          : [],
+      );
       const tx = await buyListing(v.sellerAddress, listing.id, wei, sender);
+      // Approved — start the finality clock and confirm the real on-chain
+      // outcome reactively.
+      setBuyApprovedAt(Date.now());
       // Verify on-chain before claiming "complete" — the wallet receipt only
       // proves submission, not success. (Same pattern as the tip flow.)
       setBuy({ kind: "confirming", tx });
       const result = await verifyPurchaseOnChain(tx);
       if (result.status === "confirmed") {
+        setBuyFinalizedAt(new Date());
         recordPurchase({
           listingId: listing.id,
           note: listing.title,
@@ -418,17 +454,35 @@ export default function ListingDetailClient({ id }: { id: string }) {
           )}
 
           {buy.kind === "done" && (
-            <div className="th-dust" role="status">
-              <div className="th-dust-title">Purchase complete ✅</div>
-              <p>
-                Paid in one transaction (tx <span className="vs-mono">{buy.tx.slice(0, 24)}…</span>) —
-                98% went straight to the seller, 2% to the Voicescape treasury. Nothing was
-                held in escrow. Arrange delivery with the seller directly.
-              </p>
-              <Link href="/marketplace/purchases" className="vs-btn vs-btn-primary th-btn-sm">
-                View my purchases →
-              </Link>
-            </div>
+            <>
+              <PurchaseCelebration
+                badge={BADGE_LISTING_META[listing.id] ?? null}
+                title={listing.title}
+              />
+              <TxReceipt
+                title="Purchase confirmed"
+                approvedAt={buyApprovedAt}
+                finalizedAt={buyFinalizedAt}
+                txId={buy.tx}
+                explorerBase={getActiveChain().blockExplorer}
+                lines={buyReceiptLines}
+                nextStep={
+                  BADGE_LISTING_META[listing.id]
+                    ? "Your badge is live on your blockpage — wear it proud."
+                    : "Arrange delivery with the seller directly."
+                }
+                onDone={() => setBuy({ kind: "idle" })}
+              />
+              {BADGE_LISTING_META[listing.id] && me ? (
+                <Link href={`/${me}`} className="vs-btn vs-btn-primary th-btn-sm">
+                  See it on your blockpage →
+                </Link>
+              ) : (
+                <Link href="/marketplace/purchases" className="vs-btn vs-btn-primary th-btn-sm">
+                  View my purchases →
+                </Link>
+              )}
+            </>
           )}
 
           {buy.kind === "error" && (
