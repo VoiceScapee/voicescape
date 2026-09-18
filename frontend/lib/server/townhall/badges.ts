@@ -18,7 +18,7 @@
  */
 
 import { ethers } from "ethers";
-import { canonicalAddress } from "../../session-message";
+import { canonicalAddress, longZeroToAccountId } from "../../session-message";
 import { isFounderWallet } from "../client-errors";
 import { getKvStore } from "../store";
 import { defaultHcsPort, type HcsPort } from "./hcs";
@@ -328,6 +328,26 @@ export function badgesForUser(
     const b = BADGE_BY_ID[id];
     if (b && !out.some((x) => x.id === id)) out.push(b);
   };
+
+  // Enrichment-driven badges are on-chain facts — they must not require
+  // townhall chat activity. A user who bought Bacon's badge (or earned the
+  // Builder badge) but never posted in chat has no HCS stats entry (s is
+  // null); gating these on s hid their real on-chain badges entirely
+  // (seen live 2026-09-18: bacon-badge purchase confirmed on-chain, API
+  // returned zero badges).
+  if (e.tipsReceived >= 1) give("tipped");
+  if (e.tipsSent >= THRESHOLDS.patron) give("patron");
+  if (e.tipsSent >= THRESHOLDS.generousTipper) give("generous-tipper");
+  if (e.purchasesBought >= THRESHOLDS.collector) give("collector");
+  if (e.purchasesSold >= THRESHOLDS.merchant) give("merchant");
+  // Builder: proven on-platform — published a page AND received a first tip.
+  if (e.ownsPage && e.tipsReceived >= 1) give("builder");
+  if (e.isAgent && e.agentRank !== null && e.agentRank >= 1 && e.agentRank <= THRESHOLDS.agentPioneerRank) {
+    give("agent-pioneer");
+  }
+  // Purchased: Bacon the Dino's official badge from his blockpage store.
+  if (e.baconBadge) give("bacon-badge");
+
   if (!s) return out;
 
   // Activity
@@ -339,11 +359,6 @@ export function badgesForUser(
   if (s.listings >= THRESHOLDS.marketplaceMogul) give("marketplace-mogul");
 
   // Quality
-  if (e.tipsReceived >= 1) give("tipped");
-  if (e.tipsSent >= THRESHOLDS.patron) give("patron");
-  if (e.tipsSent >= THRESHOLDS.generousTipper) give("generous-tipper");
-  if (e.purchasesBought >= THRESHOLDS.collector) give("collector");
-  if (e.purchasesSold >= THRESHOLDS.merchant) give("merchant");
   if (s.positiveVoters.size >= THRESHOLDS.communityHelper) give("community-helper");
   if (s.positiveVoters.size >= THRESHOLDS.crowdFavorite) give("crowd-favorite");
   const ageDays = (now - s.firstTs) / (24 * 60 * 60 * 1000);
@@ -359,16 +374,9 @@ export function badgesForUser(
   if (Number.isFinite(s.firstTs) && s.firstTs <= TOWNHALL_LAUNCH_TS + PIONEER_WINDOW_MS) give("pioneer");
   if (s.activeDays.size >= THRESHOLDS.settledInDays) give("settled-in");
   if (pioneerRank !== null && pioneerRank >= 1 && pioneerRank <= THRESHOLDS.earlyAdopterRank) give("early-adopter");
-  // Builder: proven on-platform — published a page AND received a first tip.
-  if (e.ownsPage && e.tipsReceived >= 1) give("builder");
 
   // Special
-  if (e.isAgent && e.agentRank !== null && e.agentRank >= 1 && e.agentRank <= THRESHOLDS.agentPioneerRank) {
-    give("agent-pioneer");
-  }
   if (totalActions(s) >= THRESHOLDS.prolific) give("prolific");
-  // Purchased: Bacon the Dino's official badge from his blockpage store.
-  if (e.baconBadge) give("bacon-badge");
 
   // Growth — referral badges
   if (s.referrals.size >= THRESHOLDS.connector) give("connector");
@@ -500,6 +508,74 @@ function paddedTopic(hexAddr: string): string {
   return "0x" + hexAddr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
 }
 
+/** KV cache for account → EVM address lookups (an account's EVM address never changes). */
+const EVM_ADDR_CACHE_PREFIX = "vs:badges:evm:";
+const EVM_ADDR_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * The account's true EVM address (alias for ECDSA wallets) via the mirror
+ * node, KV-cached. Returns null when unresolvable — callers fall back to
+ * the long-zero form alone.
+ */
+async function accountEvmAddress(accountId: string): Promise<string | null> {
+  const kv = getKvStore();
+  const key = EVM_ADDR_CACHE_PREFIX + accountId;
+  try {
+    const cached = await kv.get(key);
+    if (cached && /^0x[0-9a-fA-F]{40}$/.test(cached)) return cached.toLowerCase();
+  } catch {
+    /* cache miss → fetch */
+  }
+  try {
+    const res = await fetch(`${mirrorBaseUrl()}/api/v1/accounts/${accountId}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { evm_address?: unknown };
+    const evm =
+      typeof data.evm_address === "string" && /^0x[0-9a-fA-F]{40}$/.test(data.evm_address)
+        ? data.evm_address.toLowerCase()
+        : null;
+    if (evm) {
+      try {
+        await kv.set(key, evm, EVM_ADDR_CACHE_TTL_MS);
+      } catch {
+        /* best-effort cache */
+      }
+    }
+    return evm;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every padded log-topic form a wallet can appear under: the long-zero
+ * form plus the account's true EVM address (alias for ECDSA wallets).
+ *
+ * Contracts emit `msg.sender` as the alias for ECDSA wallets (verified
+ * live 2026-09-18: a PurchaseCompleted buyer topic carried the alias, not
+ * the long-zero form), so matching only the long-zero form silently
+ * misses all on-chain activity for those wallets. Matching both forms
+ * keeps ED25519 wallets (long-zero everywhere) working too.
+ */
+export async function walletTopicForms(wallet: string): Promise<Set<string>> {
+  const forms = new Set<string>();
+  const canon = canonicalAddress(wallet.trim());
+  if (canon) forms.add(paddedTopic(canon).toLowerCase());
+  // Derive the 0.0.x account id so the mirror node can supply the alias.
+  let accountId: string | null = null;
+  const trimmed = wallet.trim();
+  if (/^0\.0\.\d+$/.test(trimmed)) accountId = trimmed;
+  else if (canon) accountId = longZeroToAccountId(canon);
+  // Alias-form input: already the true EVM address — nothing more to add.
+  if (accountId) {
+    const evm = await accountEvmAddress(accountId);
+    if (evm) forms.add(paddedTopic(evm).toLowerCase());
+  }
+  return forms;
+}
+
 interface MirrorLogsResponse {
   logs?: { topics?: string[]; timestamp?: string; data?: string }[];
   links?: { next?: string | null };
@@ -532,10 +608,10 @@ const PURCHASE_DATA_ABI = ["string", "uint256", "uint256"] as const; // listingR
  * since the contract emits whichever form the buyer paid. Bounded to
  * the fetched log list; fail-open → false.
  */
-export function hasBaconBadge(logs: TipsLog[], wallet: string): boolean {
-  const canonBuyer = canonicalAddress(wallet);
-  if (!canonBuyer) return false;
-  const buyerTopic = paddedTopic(canonBuyer).toLowerCase();
+export function hasBaconBadge(logs: TipsLog[], wallet: string, buyerTopics?: Set<string>): boolean {
+  const buyerSet =
+    buyerTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
+  if (buyerSet.size === 0) return false;
   const baconTopics = new Set(
     [BACON_ALIAS_ADDRESS, canonicalAddress(BACON_WALLET_ID)]
       .filter((a): a is string => !!a)
@@ -544,7 +620,7 @@ export function hasBaconBadge(logs: TipsLog[], wallet: string): boolean {
   const coder = ethers.AbiCoder.defaultAbiCoder();
   for (const l of logs) {
     if (l.topics?.[0]?.toLowerCase() !== PURCHASE_TOPIC0.toLowerCase()) continue;
-    if (l.topics?.[1]?.toLowerCase() !== buyerTopic) continue;
+    if (!buyerSet.has(l.topics?.[1]?.toLowerCase() ?? "")) continue;
     if (!baconTopics.has(l.topics?.[2]?.toLowerCase() ?? "")) continue;
     try {
       const [listingRef] = coder.decode(PURCHASE_DATA_ABI, l.data ?? "0x") as unknown as [string, bigint, bigint];
@@ -600,11 +676,16 @@ async function fetchTipsContractLogs(): Promise<TipsLog[]> {
 }
 
 /** Pure count of logs matching one event signature with the wallet in one topic slot. */
-function countWalletLogs(logs: TipsLog[], topic0: string, slot: number, walletTopic: string): number {
+function countWalletLogs(
+  logs: TipsLog[],
+  topic0: string,
+  slot: number,
+  walletTopics: Set<string>,
+): number {
   const sig = topic0.toLowerCase();
   return logs.filter((l) => {
     const t = l.topics?.[slot];
-    return l.topics?.[0]?.toLowerCase() === sig && typeof t === "string" && t.toLowerCase() === walletTopic;
+    return l.topics?.[0]?.toLowerCase() === sig && typeof t === "string" && walletTopics.has(t.toLowerCase());
   }).length;
 }
 
@@ -612,18 +693,20 @@ function countWalletLogs(logs: TipsLog[], topic0: string, slot: number, walletTo
 export function countWalletActivity(
   logs: TipsLog[],
   wallet: string,
+  walletTopics?: Set<string>,
 ): { received: number; sent: number; bought: number; sold: number } {
-  const wantTopic = paddedTopic(wallet).toLowerCase();
+  const wantTopics =
+    walletTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
   const tipSig = TIPSENT_TOPIC0;
   const saleSig = PURCHASE_TOPIC0;
   return {
     // TipSent: from = topic2, toOwner = topic3
     received:
-      countWalletLogs(logs, tipSig, 3, wantTopic) + countWalletLogs(logs, saleSig, 2, wantTopic),
-    sent: countWalletLogs(logs, tipSig, 2, wantTopic),
+      countWalletLogs(logs, tipSig, 3, wantTopics) + countWalletLogs(logs, saleSig, 2, wantTopics),
+    sent: countWalletLogs(logs, tipSig, 2, wantTopics),
     // PurchaseCompleted: buyer = topic1, seller = topic2
-    bought: countWalletLogs(logs, saleSig, 1, wantTopic),
-    sold: countWalletLogs(logs, saleSig, 2, wantTopic),
+    bought: countWalletLogs(logs, saleSig, 1, wantTopics),
+    sold: countWalletLogs(logs, saleSig, 2, wantTopics),
   };
 }
 
@@ -633,25 +716,25 @@ export function countWalletActivity(
  */
 export async function countPaymentsReceived(wallet: string): Promise<number> {
   const logs = await fetchTipsContractLogs();
-  return countWalletActivity(logs, wallet).received;
+  return countWalletActivity(logs, wallet, await walletTopicForms(wallet)).received;
 }
 
 /** Count TipSent events FROM a wallet (topic2). Bounded; fail-open → 0. */
 export async function countTipsSent(wallet: string): Promise<number> {
   const logs = await fetchTipsContractLogs();
-  return countWalletActivity(logs, wallet).sent;
+  return countWalletActivity(logs, wallet, await walletTopicForms(wallet)).sent;
 }
 
 /** Count PurchaseCompleted events with the wallet as buyer (topic1). Bounded; fail-open → 0. */
 export async function countPurchasesBought(wallet: string): Promise<number> {
   const logs = await fetchTipsContractLogs();
-  return countWalletActivity(logs, wallet).bought;
+  return countWalletActivity(logs, wallet, await walletTopicForms(wallet)).bought;
 }
 
 /** Count PurchaseCompleted events with the wallet as seller (topic2). Bounded; fail-open → 0. */
 export async function countPurchasesSold(wallet: string): Promise<number> {
   const logs = await fetchTipsContractLogs();
-  return countWalletActivity(logs, wallet).sold;
+  return countWalletActivity(logs, wallet, await walletTopicForms(wallet)).sold;
 }
 
 type RegistryLog = { topics?: string[]; timestamp?: string; data?: string };
@@ -680,21 +763,21 @@ async function fetchRegistryLogs(pages: number): Promise<RegistryLog[]> {
  * OwnerType). PageRegistered logs filtered by owner = topic2 in code.
  * Bounded scan; fail-open → false.
  */
-export async function ownsRegisteredPage(wallet: string): Promise<boolean> {
-  const want = paddedTopic(wallet).toLowerCase();
+export async function ownsRegisteredPage(wallet: string, walletTopics?: Set<string>): Promise<boolean> {
+  const want = walletTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
   const logs = await fetchRegistryLogs(2);
   return logs.some(
-    (l) => l.topics?.[0]?.toLowerCase() === PAGE_REGISTERED_TOPIC0.toLowerCase() && l.topics?.[2]?.toLowerCase() === want,
+    (l) => l.topics?.[0]?.toLowerCase() === PAGE_REGISTERED_TOPIC0.toLowerCase() && want.has(l.topics?.[2]?.toLowerCase() ?? ""),
   );
 }
 
 /** True when the wallet owns a page registered as AGENT (OwnerType = 1). */
-export async function isAgentWallet(wallet: string): Promise<boolean> {
-  const want = paddedTopic(wallet).toLowerCase();
+export async function isAgentWallet(wallet: string, walletTopics?: Set<string>): Promise<boolean> {
+  const want = walletTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
   const logs = await fetchRegistryLogs(2);
   for (const log of logs) {
     if (log.topics?.[0]?.toLowerCase() !== PAGE_REGISTERED_TOPIC0.toLowerCase()) continue;
-    if (log.topics?.[2]?.toLowerCase() !== want) continue;
+    if (!want.has(log.topics?.[2]?.toLowerCase() ?? "")) continue;
     try {
       const parsed = PAGE_REGISTERED_IFACE.decodeEventLog("PageRegistered", log.data ?? "0x", log.topics ?? []);
       if (Number(parsed.ownerType) === 1) return true;
@@ -817,13 +900,17 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     baconBadge: false,
   };
   if (wallet) {
+    // Resolve every topic form the wallet can appear under (long-zero +
+    // alias) ONCE — contracts emit msg.sender as the alias for ECDSA
+    // wallets, so single-form matching would miss their activity.
+    const topics = await walletTopicForms(wallet);
     const [logs, agent, violations, ownsPage] = await Promise.all([
       fetchTipsContractLogs(),
-      isAgentWallet(wallet),
+      isAgentWallet(wallet, topics),
       countViolations(hcs, wallet),
-      ownsRegisteredPage(wallet),
+      ownsRegisteredPage(wallet, topics),
     ]);
-    const activity = countWalletActivity(logs, wallet);
+    const activity = countWalletActivity(logs, wallet, topics);
     enrichment.tipsReceived = activity.received;
     enrichment.isAgent = agent;
     enrichment.violations = violations;
@@ -831,7 +918,7 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     enrichment.tipsSent = activity.sent;
     enrichment.purchasesBought = activity.bought;
     enrichment.purchasesSold = activity.sold;
-    enrichment.baconBadge = hasBaconBadge(logs, wallet);
+    enrichment.baconBadge = hasBaconBadge(logs, wallet, topics);
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
     // Founder bypass: the founder wallet always qualifies for the Builder badge.
     applyFounderEnrichment(wallet, enrichment);
