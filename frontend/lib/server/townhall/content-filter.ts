@@ -10,8 +10,10 @@
  *  - Pure function, precompiled regexes: runs in well under 1ms on a
  *    5000-char input (the MAX_BODY cap), far below the 5ms budget.
  *  - Deliberately biased toward false POSITIVES for illegal content
- *    (CSAM, terrorism, violent threats, doxxing): a blocked legit message
- *    is a support ticket; a published illegal message is a platform risk.
+ *    (CSAM, terrorism, violent threats, doxxing) and for sexually
+ *    explicit adult content: a blocked legit message is a support
+ *    ticket; a published illegal message or a pornographic blockpage
+ *    is a platform takedown risk.
  *  - Gray-area content (harassment, spam, scams) is NOT blocked here —
  *    it goes through user reporting + moderator hide actions instead.
  *  - Reasons are categorical ("threats of violence") and never echo the
@@ -51,6 +53,34 @@ const CSAM_PHRASES = [
   "preteen",
   "preteens",
   "jailbait",
+];
+
+/**
+ * Sexually explicit adult content markers — porn industry terms, adult
+ * sites, and explicit sexual acts. Kept to unambiguous terms; suggestive
+ * or context-dependent content is handled via user reporting + moderation.
+ * Deliberately biased toward false positives: a blocked legit page is a
+ * support ticket, while a pornographic blockpage is a platform takedown
+ * risk (hosting ToS, payment rails, brand safety).
+ */
+const ADULT_PHRASES = [
+  // Adult-industry sites & markers
+  "porn", "porno", "pornography",
+  "pornhub", "xvideos", "xnxx", "xhamster", "redtube", "youporn",
+  "onlyfans", "only fans", "fansly",
+  "hentai",
+  "xxx",
+  // Explicit adult-content descriptors
+  "adult video", "adult videos", "adult content", "adult film", "adult films",
+  "adult entertainment",
+  "sex video", "sex videos", "sex tape", "sextape",
+  "nude pics", "leaked nudes", "nude photo", "nude photos",
+  "cam girl", "camgirl", "cam girls", "camwhore",
+  // Explicit sexual acts
+  "blowjob", "blow job", "handjob", "hand job",
+  "deepthroat", "deep throat",
+  "gangbang", "gang bang", "orgy", "bukkake",
+  "prostitute", "prostitutes", "prostitution",
 ];
 
 /** Named terrorist organizations (recruitment/propaganda signal). */
@@ -258,6 +288,7 @@ const REPEATED_WORD_RE = /\b(\w+)(?:\s+\1){4,}\b/i;
 /* ------------------------------------------------------------------ */
 
 const CSAM_RE = new RegExp(`\\b(?:${CSAM_PHRASES.map(escapeRegExp).join("|")})\\b`, "i");
+const ADULT_RE = new RegExp(`\\b(?:${ADULT_PHRASES.map(escapeRegExp).join("|")})\\b`, "i");
 const TERROR_RE = new RegExp(`\\b(?:${TERROR_PHRASES.map(escapeRegExp).join("|")})\\b`, "i");
 const PROFANITY_RE = new RegExp(`\\b(?:${PROFANITY_WORDS.map(escapeRegExp).join("|")})\\b`, "i");
 const SLUR_RE = new RegExp(`\\b(?:${SLUR_WORDS.map(escapeRegExp).join("|")})\\b`, "i");
@@ -279,6 +310,7 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
 
   // Cheapest checks first: illegal-content categories.
   if (CSAM_RE.test(text)) return blocked("sexual content involving minors is prohibited");
+  if (ADULT_RE.test(text)) return blocked("sexually explicit adult content is not allowed");
   if (TERROR_RE.test(text)) return blocked("terrorist content is prohibited");
   if (SLUR_RE.test(text)) return blocked("hate speech is prohibited");
   for (const re of THREAT_PATTERNS) {
@@ -351,6 +383,32 @@ export function checkContent(text: string, label = "content"): ContentCheckResul
     return blocked("excessive ALL CAPS looks like spam");
   }
   return { allowed: true };
+}
+
+/**
+ * Recursively walk every string value in a JSON document and run it
+ * through checkContent. Used by the /api/pin pre-sign gate: blockpage JSON
+ * is immutable on IPFS, so PII/unsafe/adult content must be rejected
+ * before pinning — and before the wallet is asked to sign.
+ *
+ * @returns the block reason when unsafe content is found, null when clean.
+ * Reasons are categorical and never echo the offending text.
+ */
+export function checkPageJson(value: unknown, seen = new Set<object>()): string | null {
+  if (typeof value === "string") {
+    const check = checkContent(value, "page content");
+    return check.allowed ? null : (check.reason ?? "content blocked");
+  }
+  if (value && typeof value === "object") {
+    if (seen.has(value)) return null; // cycle guard
+    seen.add(value);
+    const vals = Array.isArray(value) ? value : Object.values(value);
+    for (const v of vals) {
+      const hit = checkPageJson(v, seen);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }
 
 /**

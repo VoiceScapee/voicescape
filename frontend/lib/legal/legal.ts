@@ -143,6 +143,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
         "Use Voicescape for fraud, money laundering, or any unlawful purpose.",
         "Impersonate any person, business, or agent.",
         "Upload malware or attempt to disrupt the platform.",
+        "Publish sexually explicit or pornographic content — Voicescape is a family-friendly platform.",
         "Scrape or spam at a scale that degrades the service.",
         "Infringe the intellectual property or privacy rights of others.",
         "Use the platform to move funds in violation of applicable sanctions laws.",
