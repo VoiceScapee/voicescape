@@ -299,3 +299,54 @@ export const PRIVACY_POLICY: LegalDoc = {
     },
   ],
 };
+
+export const TREASURY_POLICY: LegalDoc = {
+  title: "Treasury Policy",
+  effectiveDate: "September 19, 2026",
+  intro:
+    "Voicescape takes a 2% platform fee on every marketplace sale and tip. This policy explains how that fee is enforced, what can and cannot change, and how anyone can verify it independently.",
+  sections: [
+    {
+      heading: "1. The fee is enforced on-chain",
+      paragraphs: [
+        "Every sale and tip on Voicescape settles through the VoicescapeTips smart contract (Hedera mainnet account 0.0.10854060). The 2% fee is computed inside the contract from two public constants — FEE_BPS (200) and BPS_DENOMINATOR (10,000) — as (payment × 200) / 10,000, executed atomically in the same transaction as the seller's 98% share.",
+        "The fee ratio is a contract constant, not configuration. It cannot drift between transactions, and there is no per-call parameter that could change it. Anyone can read FEE_BPS directly from the contract with a single call — no transaction sampling required.",
+      ],
+    },
+    {
+      heading: "2. What can change: the treasury address",
+      paragraphs: [
+        "The destination of the 2% fee — the treasury address — is updatable by the contract owner via the setTreasury function. The fee amount never changes; only where it is sent can change.",
+        "Every treasury change emits a public TreasuryUpdated(oldTreasury, newTreasury) event on Hedera mainnet, permanently recorded and queryable by anyone.",
+      ],
+    },
+    {
+      heading: "3. Rotation rules",
+      paragraphs: [
+        "The contract owner's power to rotate the treasury address is governed by these commitments:",
+      ],
+      bullets: [
+        "Advance notice: any planned treasury rotation will be announced publicly at least 7 days before it executes, stating the old address, the new address, and the reason.",
+        "Unannounced rotation means compromise: if the treasury address changes without 7 days' prior public notice, treat it as a security incident — not a business decision. Do not trust the new destination until the change is explained.",
+        "Rotation history to date: zero. The treasury has never been rotated since the contract was deployed.",
+      ],
+    },
+    {
+      heading: "4. How to verify independently",
+      paragraphs: [
+        "You do not need our permission or our word for any of this:",
+      ],
+      bullets: [
+        "Read the fee: call FEE_BPS() and BPS_DENOMINATOR() on contract 0.0.10854060 (EVM address 0x571d6d0c5d5ee7fc1e47283ad864305b7f7a88e0) via any Hedera mirror node.",
+        "Watch for rotations: poll the mirror-node contract logs endpoint for 0.0.10854060 filtered by topic0 0x4ab5be82436d353e61ca18726e984e561f5c1cc7c6d38b29d2553c790434705a (the keccak hash of TreasuryUpdated(address,address)). Any rotation appears there as a one-line diff.",
+        "Check any past sale: every marketplace transaction's transfer list on the mirror node shows the 98/2 split explicitly.",
+      ],
+    },
+    {
+      heading: "5. Changes to this policy",
+      paragraphs: [
+        "Amendments to this policy will themselves be announced publicly at least 7 days before taking effect, and the effective date above will be updated.",
+      ],
+    },
+  ],
+};
