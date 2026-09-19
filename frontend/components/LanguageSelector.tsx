@@ -40,7 +40,14 @@ export function LanguageSelector() {
         }}
       >
         {LANGS.map((l) => (
-          <option key={l.code} value={l.code}>
+          // Explicit option colors: on desktop the native dropdown renders
+          // options on the OS default (light) background, which made the
+          // inherited light text unreadable. Dark option rows fix it.
+          <option
+            key={l.code}
+            value={l.code}
+            style={{ backgroundColor: "var(--vs-bg)", color: "var(--vs-text)" }}
+          >
             {l.nativeLabel}
           </option>
         ))}
