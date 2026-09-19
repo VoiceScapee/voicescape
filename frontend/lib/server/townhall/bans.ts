@@ -24,6 +24,7 @@
 import { canonicalAddress } from "../../session-message";
 import { getTopicId } from "./topics";
 import type { HcsPort } from "./hcs";
+import { isCopyrightSuspended } from "../dmca/strikes";
 import type {
   AppealMessage,
   AppealResolveMessage,
@@ -351,25 +352,49 @@ export interface RestrictionCheck {
  * restricted users are never charged. Returns null when clear, otherwise
  * the 403 result to return — same shape as the other guards
  * (safetyGate, requireDustFee).
+ *
+ * Copyright-suspended wallets (DMCA repeat-infringer policy, ToS §12) are
+ * also blocked here. The strike store is KV-backed; if it is unreadable we
+ * fail OPEN on this check only (loud log) so a store blip cannot silence
+ * the whole town hall — the HCS enforcement state above stays fail-closed
+ * as before.
  */
 export async function requireNotRestricted(
   deps: HcsOnly,
   sessionAddress: string,
 ): Promise<RestrictionCheck | null> {
   const state = await getStateFor(deps, sessionAddress);
-  if (state.status === "clean" || state.status === "warned") return null;
-  const remaining = state.remainingMs !== null ? ` (${formatRemaining(state.remainingMs)} remaining)` : "";
-  const what =
-    state.status === "timed-out"
-      ? "timed out"
-      : state.status === "temp-banned"
-        ? "temporarily banned"
-        : "banned";
-  console.warn(`[townhall] enforcement: blocked write from ${state.status} wallet — ${state.reason}`);
-  return {
-    status: 403,
-    json: { error: `This wallet has been ${what}: ${state.reason}${remaining}` },
-  };
+  if (state.status !== "clean" && state.status !== "warned") {
+    const remaining = state.remainingMs !== null ? ` (${formatRemaining(state.remainingMs)} remaining)` : "";
+    const what =
+      state.status === "timed-out"
+        ? "timed out"
+        : state.status === "temp-banned"
+          ? "temporarily banned"
+          : "banned";
+    console.warn(`[townhall] enforcement: blocked write from ${state.status} wallet — ${state.reason}`);
+    return {
+      status: 403,
+      json: { error: `This wallet has been ${what}: ${state.reason}${remaining}` },
+    };
+  }
+  try {
+    if (await isCopyrightSuspended(sessionAddress)) {
+      console.warn(
+        `[townhall] enforcement: blocked write from copyright-suspended wallet (DMCA repeat infringer)`,
+      );
+      return {
+        status: 403,
+        json: {
+          error:
+            "This wallet is suspended under our repeat-infringer policy (ToS §12). If you believe this is a mistake, file a counter-notice at /dmca.",
+        },
+      };
+    }
+  } catch (e) {
+    console.error(`[townhall] copyright-suspension check failed (fail-open):`, e);
+  }
+  return null;
 }
 
 /** Back-compat alias for the earlier on/off guard. */
