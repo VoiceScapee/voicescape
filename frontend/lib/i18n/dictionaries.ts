@@ -371,7 +371,7 @@ const en = {
   "landing.brandSub": "Buddy, our AI, builds it with you. Share your streams, music, and merch — when fans tip or buy, 98% lands straight in your wallet. No middleman, no platform cut. This is yours.",
   "landing.brandBuildCta": "Build your blockpage",
   "landing.brandExploreCta": "Explore",
-  "landing.splitExplain": "98% goes to the person you tip. 2% keeps the lights on. On-chain, every time — you can check.",
+  "landing.splitExplain": "98% of every tip goes to the creator. The other 2% is Voicescape's platform fee. Hedera's network fee (about $0.0001 per transaction) is separate. It goes to the network, not to us.",
   "landing.pulsePages": "blockpages on chain",
   "landing.pulseTips": "tips settled",
   "landing.pulseShare": "of every tip goes to the creator",
