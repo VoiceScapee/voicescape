@@ -13,7 +13,6 @@ import { ChatPreview } from "@/components/landing/ChatPreview";
 import { BuildCtaButton } from "@/components/landing/BuildCtaButton";
 import { FeaturedBlockpages } from "@/components/landing/FeaturedBlockpages";
 
-const SERIF = "Georgia, 'Times New Roman', serif";
 
 const FOOT_LINKS = [
   { k: "nav.support" as const, href: "https://discord.gg/2KGzPduUN5", external: true },
@@ -28,7 +27,7 @@ const FOOT_LINKS = [
  * Order: Splash → navbar (no logo; wallet button right) → slim date strip →
  * hero (eyebrow, gradient H1, sub, CTAs, 98/2 split strip) → community pulse
  * (live on-chain stats) → Hedera headlines (live /api/pulse) → happening in
- * the lobby (live chat preview) → founder quote (serif) → minimal footer.
+ * the lobby (live chat preview) → featured blockpages → minimal footer.
  *
  * Deliberately NOT rendered here (per the approved mock): ClarityCountdown,
  * HalvingCountdowns, proof chips, features grid, Hedera stack strip, closing
@@ -119,36 +118,6 @@ export default function LandingPage() {
 
         {/* Featured blockpages — curated, ranked live by followers + badges */}
         <FeaturedBlockpages />
-
-        {/* Founder quote — serif is reserved for human-voice moments */}
-        <section className="vs-section" style={{ paddingTop: 0 }}>
-          <blockquote
-            style={{
-              fontFamily: SERIF,
-              fontStyle: "italic",
-              fontSize: 21,
-              lineHeight: 1.55,
-              color: "#e8e4f5",
-              maxWidth: "32em",
-              margin: "0 auto",
-              textAlign: "center",
-            }}
-          >
-            <T k="landing.founderQuote" />
-          </blockquote>
-          <p
-            className="vs-mono"
-            style={{
-              fontSize: 11,
-              color: "var(--vs-muted)",
-              margin: "12px 0 0",
-              textAlign: "center",
-              letterSpacing: "0.06em",
-            }}
-          >
-            <T k="landing.founderQuoteBy" />
-          </p>
-        </section>
 
         {/* Minimal footer */}
         <footer
