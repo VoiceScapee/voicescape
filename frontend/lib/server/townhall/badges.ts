@@ -22,6 +22,7 @@ import { canonicalAddress, longZeroToAccountId } from "../../session-message";
 import { isFounderWallet } from "../client-errors";
 import { getKvStore } from "../store";
 import { defaultHcsPort, type HcsPort } from "./hcs";
+import { isAttestedVote } from "./attestations";
 import type { StoredMessage } from "./types";
 import { getTopicId, mirrorBaseUrl } from "./topics";
 
@@ -246,6 +247,8 @@ export function gatherUserStats(lists: {
   for (const m of lists.votes) {
     const c = m.contents as { kind?: string; voter?: string; target?: string; value?: number };
     if (c.kind !== "rep-vote" || !c.voter || !c.target) continue;
+    // Anti-impersonation (audit fix #1): forged/unattested votes don't count toward badges.
+    if (!isAttestedVote(m, c.voter)) continue;
     const key = `${c.voter.toLowerCase()}→${c.target.toLowerCase()}`;
     const prev = latestVotes.get(key);
     if (!prev || m.seq > prev.seq) {

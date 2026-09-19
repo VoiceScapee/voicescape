@@ -13,6 +13,7 @@ import { mirrorBaseUrl, townhallNetwork } from "./topics";
 import type { StoredMessage, TownhallMessage } from "./types";
 import { globalHcsCache, type HcsCache } from "./hcs-cache";
 import { verifyHcsTransaction, type VerifiedHcsTx } from "./hcs-verify";
+import { getAttestations, hashMessageContent, type Attestation } from "./attestations";
 
 export interface QueryOpts {
   /** Only messages with seq greater than this. */
@@ -56,20 +57,47 @@ export function isValidEnvelope(raw: unknown): raw is TownhallMessage {
   return m.v === 1 && typeof m.kind === "string" && typeof m.author === "string" && typeof m.ts === "string";
 }
 
-function decodeMirrorMessage(topicId: string, m: MirrorMessage): StoredMessage | null {
+function decodeMirrorMessage(topicId: string, m: MirrorMessage): { stored: StoredMessage; raw: string } | null {
+  // Hash the EXACT bytes that were base64-decoded, BEFORE JSON parsing —
+  // this must match what the write path hashed in verifyUserHcsTx.
+  const raw = Buffer.from(m.message, "base64").toString("utf8");
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(m.message, "base64").toString("utf8"));
+    parsed = JSON.parse(raw);
   } catch {
     return null;
   }
   if (!isValidEnvelope(parsed)) return null;
   return {
-    seq: m.sequence_number,
-    topic: topicId,
-    consensusTimestamp: m.consensus_timestamp,
-    contents: parsed,
+    stored: {
+      seq: m.sequence_number,
+      topic: topicId,
+      consensusTimestamp: m.consensus_timestamp,
+      contents: parsed,
+    },
+    raw,
   };
+}
+
+/**
+ * Attach authorship attestations to decoded messages. Best-effort: a store
+ * failure degrades to unattested messages (flagged, not hidden) rather
+ * than failing the whole read.
+ */
+async function attachAttestations<T>(items: { stored: StoredMessage<T>; raw: string }[]): Promise<void> {
+  if (items.length === 0) return;
+  try {
+    const hashes = items.map((i) => hashMessageContent(i.raw));
+    const atts = await getAttestations(hashes);
+    items.forEach((item, idx) => {
+      const att = atts.get(hashes[idx]);
+      // Leave the field UNSET (not null/undefined) when no attestation
+      // exists — existing toEqual assertions on StoredMessage keep passing.
+      if (att) item.stored.attestation = { payer: att.payer, author: att.author };
+    });
+  } catch (e) {
+    console.warn(`[townhall] attestation enrichment failed: ${e instanceof Error ? e.message : String(e)}`);
+  }
 }
 
 export class RealHcsClient implements HcsPort {
@@ -91,12 +119,13 @@ export class RealHcsClient implements HcsPort {
       throw new Error(`Mirror node query failed (${res.status}) for topic ${topicId}`);
     }
     const data = (await res.json()) as MirrorMessagesResponse;
-    const out: StoredMessage<T>[] = [];
+    const decoded: { stored: StoredMessage<T>; raw: string }[] = [];
     for (const m of data.messages ?? []) {
-      const decoded = decodeMirrorMessage(topicId, m);
-      if (decoded) out.push(decoded as StoredMessage<T>);
+      const d = decodeMirrorMessage(topicId, m);
+      if (d) decoded.push(d as { stored: StoredMessage<T>; raw: string });
     }
-    return out;
+    await attachAttestations(decoded);
+    return decoded.map((d) => d.stored);
   }
 
   async queryAll<T = TownhallMessage>(topicId: string, max = 2000): Promise<StoredMessage<T>[]> {
@@ -115,8 +144,9 @@ export class RealHcsClient implements HcsPort {
 
 /** In-memory HcsPort for tests and local dev without a network. */
 export class MemoryHcsClient implements HcsPort {
-  private store = new Map<string, StoredMessage[]>();
+  private store = new Map<string, { stored: StoredMessage; raw: string }[]>();
   private verifiedTxs = new Map<string, VerifiedHcsTx>();
+  private attestations = new Map<string, Attestation>();
 
   async verifyTx(
     txId: string,
@@ -155,14 +185,35 @@ export class MemoryHcsClient implements HcsPort {
     });
   }
 
+  /**
+   * Test helper: record an authorship attestation for a message hash,
+   * simulating the API write path. Compute the hash with
+   * `hashMessageContent(JSON.stringify(message))` using the same object
+   * passed to `seed()`.
+   */
+  __attest(hash: string, att: Omit<Attestation, "at">): void {
+    this.attestations.set(hash, { ...att, at: Date.now() });
+  }
+
+  /** Attach attestations the same way RealHcsClient does (field left unset when absent). */
+  private enrich(list: { stored: StoredMessage; raw: string }[]): StoredMessage[] {
+    return list.map((m) => {
+      const att = this.attestations.get(hashMessageContent(m.raw));
+      if (!att) return m.stored;
+      return { ...m.stored, attestation: { payer: att.payer, author: att.author } };
+    });
+  }
+
   async query<T = TownhallMessage>(topicId: string, opts: QueryOpts = {}): Promise<StoredMessage<T>[]> {
-    const list = (this.store.get(topicId) ?? []) as StoredMessage<T>[];
+    const list = this.store.get(topicId) ?? [];
     const after = opts.afterSeq ?? 0;
-    return list.filter((m) => m.seq > after).slice(0, opts.limit ?? 100);
+    const page = list.filter((m) => m.stored.seq > after).slice(0, opts.limit ?? 100);
+    return this.enrich(page) as StoredMessage<T>[];
   }
 
   async queryAll<T = TownhallMessage>(topicId: string, max = 2000): Promise<StoredMessage<T>[]> {
-    return ((this.store.get(topicId) ?? []) as StoredMessage<T>[]).slice(0, max);
+    const list = (this.store.get(topicId) ?? []).slice(0, max);
+    return this.enrich(list) as StoredMessage<T>[];
   }
 
   /** Seed a raw message (tests). */
@@ -170,10 +221,15 @@ export class MemoryHcsClient implements HcsPort {
     const list = this.store.get(topicId) ?? [];
     const seq = list.length + 1;
     list.push({
-      seq,
-      topic: topicId,
-      consensusTimestamp: new Date().toISOString(),
-      contents: message as TownhallMessage,
+      stored: {
+        seq,
+        topic: topicId,
+        consensusTimestamp: new Date().toISOString(),
+        contents: message as TownhallMessage,
+      },
+      // The raw form a real client would have submitted: canonical
+      // JSON serialization. Tests hashing this object get the same hash.
+      raw: JSON.stringify(message),
     });
     this.store.set(topicId, list);
     return seq;

@@ -34,6 +34,8 @@ function msg(
     topic: "0.0.1",
     consensusTimestamp: ts,
     contents: { v: 1, kind, author, ts, ...extra } as unknown as TownhallMessage,
+    // Test messages simulate the API write path, which attests authorship.
+    attestation: { payer: "0.0.0", author },
   };
 }
 

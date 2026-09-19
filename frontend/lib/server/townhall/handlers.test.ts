@@ -4,6 +4,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MemoryHcsClient } from "./hcs";
+import { hashMessageContent, clearAttestations } from "./attestations";
 import {
   castRepVote,
   collectReferralCounts,
@@ -61,6 +62,7 @@ process.env.HCS_SUBMIT_FEE_TINYBARS = "100";
 
 beforeEach(async () => {
   await clearConsumedDustFees();
+  await clearAttestations();
 });
 
 /** On-chain page owners in the test world. */
@@ -167,7 +169,20 @@ function fee() {
  * simulate the user's wallet submit, so query paths see the messages.
  */
 function seedHcs(deps: TownhallDeps, topic: string, contents: object): number {
-  return (deps.hcs as MemoryHcsClient).seed(topic, contents);
+  const hcs = deps.hcs as MemoryHcsClient;
+  const seq = hcs.seed(topic, contents);
+  // Simulate the API write path: in production, verifyUserHcsTx records an
+  // attestation binding the message bytes to (payer, author). Seeded test
+  // messages went through the (mocked) write path, so attest them the same
+  // way. Tests for forgeries use hcs.seed() directly WITHOUT attesting.
+  const author = (contents as { author?: unknown }).author;
+  hcs.__attest(hashMessageContent(JSON.stringify(contents)), {
+    payer: "0.0.0",
+    author: typeof author === "string" ? author : "",
+    topic,
+    txId: "0.0.0@0.0",
+  });
+  return seq;
 }
 
 const T = {

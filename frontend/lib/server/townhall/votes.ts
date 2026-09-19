@@ -14,6 +14,7 @@ import type {
   StoredMessage,
   TownhallMessage,
 } from "./types";
+import { isAttestedVote } from "./attestations";
 
 function isKind<T extends TownhallMessage>(m: StoredMessage, kind: string): m is StoredMessage<T> {
   return m.contents.kind === kind;
@@ -33,6 +34,12 @@ export interface RepTally {
  * Aggregate rep-votes: latest per (voter, target) wins. Self-votes are
  * ignored at aggregation time as defense-in-depth (the POST route also
  * rejects them with 400).
+ *
+ * Anti-impersonation (audit fix #1): only votes whose on-chain bytes carry
+ * a write-path attestation for the claimed voter count. Direct-to-topic
+ * forgeries have no attestation and are skipped. Tradeoff: votes submitted
+ * before attestations existed are unattested and stop counting — scores
+ * effectively reset. Correctness beats continuity.
  */
 export function aggregateRepVotes(
   messages: StoredMessage[],
@@ -47,6 +54,7 @@ export function aggregateRepVotes(
     if (v.target.toLowerCase() !== t) continue;
     if (v.voter.toLowerCase() === t) continue; // self-votes don't count
     if (v.value !== 1 && v.value !== -1) continue;
+    if (!isAttestedVote(m, v.voter)) continue; // forged/unattested votes don't count
     latest.set(v.voter.toLowerCase(), v.value);
   }
   let up = 0;
@@ -69,7 +77,7 @@ export interface ProposalTally {
   abstain: number;
 }
 
-/** Count proposal votes: latest per (voter, proposal) wins. */
+/** Count proposal votes: latest per (voter, proposal) wins. Unattested/forged votes are skipped (see aggregateRepVotes). */
 export function countProposalVotes(messages: StoredMessage[], proposalId: string): ProposalTally {
   const latest = new Map<string, "yes" | "no" | "abstain">();
   for (const m of messages) {
@@ -77,6 +85,7 @@ export function countProposalVotes(messages: StoredMessage[], proposalId: string
     const v = m.contents;
     if (v.proposal !== proposalId) continue;
     if (v.choice !== "yes" && v.choice !== "no" && v.choice !== "abstain") continue;
+    if (!isAttestedVote(m, v.voter)) continue; // forged/unattested votes don't count
     latest.set(v.voter.toLowerCase(), v.choice);
   }
   const tally: ProposalTally = { yes: 0, no: 0, abstain: 0 };

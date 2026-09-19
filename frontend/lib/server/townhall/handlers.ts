@@ -92,6 +92,7 @@ import {
   countProposalVotes,
   orderNewestFirst,
 } from "./votes";
+import { hashMessageContent, isAuthorVerified, recordAttestation } from "./attestations";
 
 export interface TownhallDeps {
   hcs: HcsPort;
@@ -164,8 +165,10 @@ function safetyGate(label: string, text: string, writeKind: string): HandlerResu
  * 3. Was paid for by the authenticated user's account
  *
  * Returns null on success, or a HandlerResult error on failure.
+ *
+ * Exported for tests (attestations.test.ts drives the write path directly).
  */
-async function verifyUserHcsTx(
+export async function verifyUserHcsTx(
   deps: TownhallDeps,
   session: VerifiedSession,
   hcsTxId: unknown,
@@ -245,6 +248,24 @@ async function verifyUserHcsTx(
     await consumeHcsTxId(txId);
   } catch (e) {
     console.error(`[townhall] failed to consume HCS tx id: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  // Authorship attestation (audit fix #1): bind the exact on-chain message
+  // bytes to (payer, author) so the read path can reject impersonation.
+  // The payer already proved ownership of the claimed username above, so
+  // this records knowledge the server verified — not a new trust claim.
+  // Best-effort: never fails the write.
+  try {
+    const onChain = JSON.parse(verified.message) as { author?: unknown };
+    if (typeof onChain.author === "string" && onChain.author) {
+      await recordAttestation(hashMessageContent(verified.message), {
+        payer: payerId,
+        author: onChain.author,
+        topic,
+        txId,
+      });
+    }
+  } catch {
+    // Unparseable message (e.g. the "{}" test dummy) — skip attestation.
   }
   return null;
 }
@@ -473,6 +494,7 @@ export async function getPosts(deps: TownhallDeps, q: GetPostsQuery): Promise<Ha
     body: p.contents.body,
     replyTo: p.contents.replyTo,
     ts: p.contents.ts,
+    authorVerified: isAuthorVerified(p),
   }));
   return ok({ posts: views });
 }
@@ -513,6 +535,7 @@ export async function queryPostViews(
       body: p.contents.body,
       replyTo: p.contents.replyTo,
       ts: p.contents.ts,
+      authorVerified: isAuthorVerified(p),
     }));
 }
 
@@ -796,6 +819,7 @@ export async function getProposals(deps: TownhallDeps): Promise<HandlerResult> {
       title: p.contents.title,
       body: p.contents.body,
       closesAt: p.contents.closesAt,
+      authorVerified: isAuthorVerified(p),
       ...tally,
     };
   });
@@ -950,7 +974,7 @@ export async function queryChatMessages(
     if (m.contents.kind === "chat") {
       const c = m.contents as ChatMessage;
       if (c.room !== room) continue;
-      events.push({ seq: m.seq, room: c.room, author: c.author, body: c.body, ts: c.ts });
+      events.push({ seq: m.seq, room: c.room, author: c.author, body: c.body, ts: c.ts, authorVerified: isAuthorVerified(m) });
     } else if (m.contents.kind === "mod-action") {
       modActions.push(m.contents as ModActionMessage);
     }

@@ -50,6 +50,8 @@ export interface TownhallPost {
   body: string;
   replyTo?: number | null;
   ts: number;
+  /** False when the author's identity wasn't attested via the API write path. */
+  authorVerified?: boolean;
 }
 
 export interface Proposal {
@@ -95,6 +97,8 @@ export interface ChatMessage {
   author: string;
   body: string;
   ts: number;
+  /** False when the author's identity wasn't attested via the API write path. */
+  authorVerified?: boolean;
 }
 
 export interface ReputationInfo {

@@ -332,6 +332,14 @@ export default function PostCard({
         <Link href={`/${post.author}`} className="th-post-author">
           @{post.author}
         </Link>
+        {post.authorVerified === false && (
+          <span
+            className="th-muted"
+            title="This author wasn't verified through the Voicescape API — the name may not belong to the wallet that posted it"
+          >
+            {" "}⚠ unverified
+          </span>
+        )}
         <ReputationBadge username={post.author} compact />
         <AgentMark username={post.author} />
         <span className="th-post-ts" title={new Date(post.ts).toLocaleString()}>
