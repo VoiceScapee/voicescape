@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { NextRequest } from "next/server";
+import { AbiCoder } from "ethers";
 
 import { GET } from "./route";
 import { PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC } from "@/lib/registry-topics";
@@ -22,13 +23,29 @@ function mockReq(sort?: string): NextRequest {
 
 const realFetch = globalThis.fetch;
 
-/** Minimal ABI encoding of registerPage(username, ...) — decodeUsername only reads the first string arg. */
-function encodeRegisterCall(username: string): string {
-  const strHex = Buffer.from(username, "utf8").toString("hex");
-  const offset = (32).toString(16).padStart(64, "0");
-  const len = username.length.toString(16).padStart(64, "0");
-  const padded = strHex.padEnd(Math.ceil(strHex.length / 64) * 64, "0");
-  return "0xdeadbeef" + offset + len + padded;
+const coder = AbiCoder.defaultAbiCoder();
+
+/**
+ * Real ABI encoding of registerPage(username, ipfsHash, ownerType, operator,
+ * purpose) with the on-chain selector — decodePageFromCalldata validates the
+ * selector and decodes the ownerType uint8, exactly like production.
+ */
+function encodeRegisterCall(username: string, ownerType: 0 | 1 = 0): string {
+  return (
+    "0xc02fdb27" +
+    coder
+      .encode(
+        ["string", "string", "uint8", "address", "string"],
+        [
+          username,
+          "QmTestHash",
+          ownerType,
+          "0x0000000000000000000000000000000000000001",
+          "test purpose",
+        ],
+      )
+      .slice(2)
+  );
 }
 
 function log(timestamp: string, topic: string, owner = "fc1177680ecf347f06cf3c086fa58ca2713fb462") {
@@ -39,8 +56,8 @@ function log(timestamp: string, topic: string, owner = "fc1177680ecf347f06cf3c08
 }
 
 interface MockSetup {
-  /** timestamp -> username for registration logs */
-  registrations: Record<string, string>;
+  /** timestamp -> registration (username + on-chain owner type) */
+  registrations: Record<string, { username: string; ownerType: 0 | 1 }>;
   /** log pages returned by the logs endpoint, in order */
   logPages: { logs: ReturnType<typeof log>[]; next?: string }[];
   failLogs?: boolean;
@@ -71,11 +88,13 @@ function mockMirrorNode(setup: MockSetup) {
     if (url.includes("/contracts/results/")) {
       const txId = url.split("/contracts/results/")[1];
       const ts = txId.replace(/^tx-/, "");
-      const username = setup.registrations[ts];
+      const reg = setup.registrations[ts];
       return {
         ok: true,
         json: async () => ({
-          function_parameters: username ? encodeRegisterCall(username) : "0x",
+          function_parameters: reg
+            ? encodeRegisterCall(reg.username, reg.ownerType)
+            : "0x",
         }),
       };
     }
@@ -107,9 +126,9 @@ describe("GET /api/explore/pages", () => {
     ];
     mockMirrorNode({
       registrations: {
-        "1789000003.000000000": "new-user",
-        "1789000002.000000000": "mid-user",
-        "1789000001.000000000": "old-user",
+        "1789000003.000000000": { username: "new-user", ownerType: 0 },
+        "1789000002.000000000": { username: "mid-user", ownerType: 0 },
+        "1789000001.000000000": { username: "old-user", ownerType: 0 },
       },
       logPages: [{ logs }],
     });
@@ -127,7 +146,7 @@ describe("GET /api/explore/pages", () => {
   it("dedupes the featured founder against their on-chain registration", async () => {
     const logs = [log("1789000001.000000000", PAGEREGISTERED_TOPIC)];
     mockMirrorNode({
-      registrations: { "1789000001.000000000": "user-10424063" },
+      registrations: { "1789000001.000000000": { username: "user-10424063", ownerType: 0 } },
       logPages: [{ logs }],
     });
 
@@ -144,8 +163,8 @@ describe("GET /api/explore/pages", () => {
     const page2 = [log("1789000001.000000000", PAGEREGISTERED_TOPIC)];
     mockMirrorNode({
       registrations: {
-        "1789000002.000000000": "page-one",
-        "1789000001.000000000": "page-two",
+        "1789000002.000000000": { username: "page-one", ownerType: 0 },
+        "1789000001.000000000": { username: "page-two", ownerType: 1 },
       },
       logPages: [{ logs: page1, next: "/api/v1/contracts/0.0.10854058/results/logs?order=desc&limit=100&page=2" }, { logs: page2 }],
     });
@@ -163,7 +182,7 @@ describe("GET /api/explore/pages", () => {
       log("1789000001.000000000", PAGEREGISTERED_TOPIC), // no registration entry -> decode fails
     ];
     mockMirrorNode({
-      registrations: { "1789000002.000000000": "good-user" },
+      registrations: { "1789000002.000000000": { username: "good-user", ownerType: 0 } },
       logPages: [{ logs }],
     });
 
@@ -192,8 +211,8 @@ describe("GET /api/explore/pages", () => {
     ];
     mockMirrorNode({
       registrations: {
-        "1789000002.000000000": "newer-user",
-        "1789000001.000000000": "older-user",
+        "1789000002.000000000": { username: "newer-user", ownerType: 0 },
+        "1789000001.000000000": { username: "older-user", ownerType: 1 },
       },
       logPages: [{ logs }],
     });
@@ -215,8 +234,8 @@ describe("GET /api/explore/pages", () => {
     ];
     mockMirrorNode({
       registrations: {
-        "1789000002.000000000": "newer-user",
-        "1789000001.000000000": "older-user",
+        "1789000002.000000000": { username: "newer-user", ownerType: 0 },
+        "1789000001.000000000": { username: "older-user", ownerType: 1 },
       },
       logPages: [{ logs }],
     });
@@ -226,5 +245,32 @@ describe("GET /api/explore/pages", () => {
     expect(body.sort).toBe("new");
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames).toEqual(["user-10424063", "newer-user", "older-user"]);
+  });
+
+  it("includes the on-chain owner type so Explore can mark agent pages", async () => {
+    const logs = [
+      log("1789000002.000000000", PAGEREGISTERED_TOPIC),
+      log("1789000001.000000000", PAGEREGISTERED_TOPIC),
+    ];
+    mockMirrorNode({
+      registrations: {
+        "1789000002.000000000": { username: "human-user", ownerType: 0 },
+        "1789000001.000000000": { username: "agent-user", ownerType: 1 },
+      },
+      logPages: [{ logs }],
+    });
+
+    const res = await GET(mockReq("new"));
+    const body = await res.json();
+    const byName = new Map(
+      body.pages.map((p: { username: string; ownerType: string }) => [
+        p.username,
+        p.ownerType,
+      ]),
+    );
+    expect(byName.get("human-user")).toBe("human");
+    expect(byName.get("agent-user")).toBe("agent");
+    // Featured founder is a known human page.
+    expect(byName.get("user-10424063")).toBe("human");
   });
 });

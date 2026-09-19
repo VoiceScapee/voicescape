@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PAGEREGISTERED_TOPIC } from "@/lib/registry-topics";
+import {
+  decodePageFromCalldata,
+  type RegisteredPage,
+} from "@/lib/registry-reverse";
 import { getKvStore } from "@/lib/server/store";
 import { followerCount } from "@/lib/follows";
 import { getTownhallStats } from "@/lib/server/townhall/badges";
@@ -40,6 +44,7 @@ const FEATURED_PAGES = [
     displayName: "Voicescape Founder",
     description: "Founder's blockpage — the first on Voicescape.",
     featured: true,
+    ownerType: "human" as const,
   },
 ];
 
@@ -48,6 +53,8 @@ interface ExplorePage {
   displayName?: string;
   description?: string;
   featured?: boolean;
+  /** On-chain registry owner type: "human" | "agent". Drives the 🤖 AGENT mark. */
+  ownerType: "human" | "agent";
 }
 
 interface RegistryLog {
@@ -55,23 +62,30 @@ interface RegistryLog {
   topics: string[];
 }
 
-/** Decode the first string arg (username) from registerPage call data. */
-function decodeUsername(functionParameters: string): string | null {
+/** Resolve a registration log to its username + on-chain owner type via the
+ * originating tx. The registry is the source of truth for human vs agent. */
+async function registrationForLog(
+  log: RegistryLog,
+): Promise<RegisteredPage | null> {
   try {
-    const hex = functionParameters.startsWith("0x")
-      ? functionParameters.slice(2)
-      : functionParameters;
-    if (hex.length < 8 + 64) return null;
-    // Skip 4-byte selector, read offset of first string (32 bytes)
-    const offset = parseInt(hex.slice(8, 8 + 64), 16);
-    const strStart = 8 + offset * 2;
-    const len = parseInt(hex.slice(strStart, strStart + 64), 16);
-    if (len <= 0 || len > 64) return null;
-    const strHex = hex.slice(strStart + 64, strStart + 64 + len * 2);
-    const username = Buffer.from(strHex, "hex").toString("utf8");
-    // Validate: 3-32 chars of a-z 0-9 _ -
-    if (!/^[a-z0-9_-]{3,32}$/.test(username)) return null;
-    return username;
+    // Get transaction ID from timestamp
+    const txRes = await fetch(
+      `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!txRes.ok) return null;
+    const txData = await txRes.json();
+    const txId = txData.transactions?.[0]?.transaction_id;
+    if (!txId) return null;
+
+    // Get function parameters to decode username + ownerType
+    const resultRes = await fetch(
+      `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${txId}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!resultRes.ok) return null;
+    const resultData = await resultRes.json();
+    return decodePageFromCalldata(resultData.function_parameters || "");
   } catch {
     return null;
   }
@@ -103,32 +117,6 @@ async function fetchAllLogs(): Promise<RegistryLog[]> {
     url = next ? `https://mainnet.mirrornode.hedera.com${next}` : null;
   }
   return logs;
-}
-
-/** Resolve a registration log to its username via the originating tx. */
-async function usernameForLog(log: RegistryLog): Promise<string | null> {
-  try {
-    // Get transaction ID from timestamp
-    const txRes = await fetch(
-      `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!txRes.ok) return null;
-    const txData = await txRes.json();
-    const txId = txData.transactions?.[0]?.transaction_id;
-    if (!txId) return null;
-
-    // Get function parameters to decode username
-    const resultRes = await fetch(
-      `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${txId}`,
-      { headers: { Accept: "application/json" } },
-    );
-    if (!resultRes.ok) return null;
-    const resultData = await resultRes.json();
-    return decodeUsername(resultData.function_parameters || "");
-  } catch {
-    return null;
-  }
 }
 
 /** Rank pages by real signals: followers (KV) + earned badges (HCS stats). */
@@ -164,18 +152,19 @@ export async function GET(req: NextRequest) {
     const pages: ExplorePage[] = [];
 
     for (const log of registrations) {
-      const username = await usernameForLog(log);
-      if (!username || seen.has(username)) continue;
-      seen.add(username);
+      const reg = await registrationForLog(log);
+      if (!reg || seen.has(reg.username)) continue;
+      seen.add(reg.username);
 
       // Owner from topic2
       const owner = log.topics[2] ? "0x" + log.topics[2].slice(-40) : null;
 
       pages.push({
-        username,
-        displayName: username,
+        username: reg.username,
+        displayName: reg.username,
         description: owner ? `Owner: ${owner.slice(0, 6)}…${owner.slice(-4)}` : "",
         featured: false,
+        ownerType: reg.ownerType,
       });
 
       if (pages.length >= 500) break;

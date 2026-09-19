@@ -5,12 +5,14 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { RecentActivity } from "@/components/RecentActivity";
+import AgentMark from "@/components/AgentMark";
 
 interface ExplorePage {
   username: string;
   displayName?: string;
   description?: string;
   featured?: boolean;
+  ownerType?: "human" | "agent";
 }
 
 export default function ExplorePage() {
@@ -161,7 +163,8 @@ export default function ExplorePage() {
                     </span>
                   )}
                   <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
-                    {p.displayName || p.username}
+                    {p.displayName || p.username}{" "}
+                    <AgentMark username={p.username} ownerType={p.ownerType} />
                   </div>
                   <div className="vs-mono" style={{ fontSize: 13, color: "var(--vs-muted)", marginBottom: 8 }}>
                     @{p.username}

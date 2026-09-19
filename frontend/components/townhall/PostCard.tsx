@@ -26,6 +26,7 @@ import { recordConversionEvent } from "@/lib/metrics";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import TipCelebration from "@/components/TipCelebration";
 import ReputationBadge from "./Reputation";
+import AgentMark from "@/components/AgentMark";
 import ModHideButton from "./ModHideButton";
 import ReportButton from "./ReportButton";
 
@@ -332,6 +333,7 @@ export default function PostCard({
           @{post.author}
         </Link>
         <ReputationBadge username={post.author} compact />
+        <AgentMark username={post.author} />
         <span className="th-post-ts" title={new Date(post.ts).toLocaleString()}>
           {timeAgo(post.ts)}
         </span>

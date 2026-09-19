@@ -5,6 +5,7 @@
  */
 import Link from "next/link";
 import ReputationBadge, { VoteControls } from "./Reputation";
+import AgentMark from "@/components/AgentMark";
 import ShareListing from "./ShareListing";
 import ReportButton from "./ReportButton";
 import { parseSeller, type Listing } from "@/lib/townhall";
@@ -28,6 +29,7 @@ export function SellerLine({ listing }: { listing: Listing }) {
             @{username}
           </Link>
           <ReputationBadge username={username} compact />
+          <AgentMark username={username} />
         </>
       ) : address ? (
         <span className="vs-mono th-muted" title={address}>
