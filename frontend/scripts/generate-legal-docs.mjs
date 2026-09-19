@@ -25,7 +25,7 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { TERMS_OF_SERVICE, PRIVACY_POLICY } = require(join(outDir, "legal.cjs"));
+const { TERMS_OF_SERVICE, PRIVACY_POLICY, TREASURY_POLICY } = require(join(outDir, "legal.cjs"));
 
 function toMarkdown(doc) {
   const lines = [
@@ -52,4 +52,5 @@ const dest = join(homedir(), "workspace", "your_files", "legal");
 mkdirSync(dest, { recursive: true });
 writeFileSync(join(dest, "terms-of-service.md"), toMarkdown(TERMS_OF_SERVICE));
 writeFileSync(join(dest, "privacy-policy.md"), toMarkdown(PRIVACY_POLICY));
+writeFileSync(join(dest, "treasury-policy.md"), toMarkdown(TREASURY_POLICY));
 console.log("wrote", dest);

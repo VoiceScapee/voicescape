@@ -31,6 +31,7 @@ const LEARN_ITEMS: NavDropdownItem[] = [
   { href: "/terms", label: <>Terms</> },
   { href: "/privacy", label: <>Privacy</> },
   { href: "/dmca", label: <>Copyright</> },
+  { href: "/treasury", label: <>Treasury</> },
 ];
 
 const COMMUNITY_ITEMS: NavDropdownItem[] = [
