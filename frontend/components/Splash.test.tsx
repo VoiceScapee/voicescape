@@ -51,9 +51,18 @@ describe("splash scroll behavior", () => {
     expect(splash).not.toContain("mixBlendMode");
   });
 
-  it("makes the first impression pop: community eyebrow, sound ripples, glowing CTA", () => {
-    expect(splash).toContain("splash.eyebrow");
-    expect(splash).toContain("vs-eyebrow");
+  it("is a brand interstitial, not a second homepage: logo + tagline + Enter only", () => {
+    // One homepage: the value proposition lives on the landing page.
+    // The splash carries the brand moment — no competing pitch.
+    expect(splash).toContain("splash.tagline");
+    expect(splash).toContain("splash.enter");
+    expect(splash).not.toContain("splash.eyebrow");
+    expect(splash).not.toContain("splash.sub");
+    expect(splash).not.toContain("splash.poweredBy");
+    expect(splash).not.toContain("splash.hederaSpecs");
+  });
+
+  it("makes the first impression pop: sound ripples, glowing CTA", () => {
     expect(splash).toContain("vs-anim-ripple");
     expect(splash).toContain("vs-anim-cta-glow");
   });
