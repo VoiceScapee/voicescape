@@ -231,7 +231,7 @@ export interface ValidatedSubscription {
   lang: string;
 }
 
-const SUPPORTED_LANGS = new Set(["en", "es", "zh", "hi", "ar", "pt", "fr"]);
+const SUPPORTED_LANGS = new Set(["en", "es", "zh", "hi", "pt", "fr"]);
 
 /** Validate a subscription payload from the client. Never throws. */
 export function validateSubscriptionPayload(

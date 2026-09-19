@@ -64,9 +64,9 @@ const AUTO_BUILD_PHRASES = [
 describe("i18n dictionaries", () => {
   const enKeys = Object.keys(dictionaries.en).sort();
 
-  it("declares all fourteen supported languages", () => {
+  it("declares all thirteen supported languages", () => {
     const codes = LANGS.map((l) => l.code).sort();
-    expect(codes).toEqual(["ar", "en", "es", "fr", "hi", "id", "ja", "ko", "pt", "th", "tl", "tr", "vi", "zh"]);
+    expect(codes).toEqual(["en", "es", "fr", "hi", "id", "ja", "ko", "pt", "th", "tl", "tr", "vi", "zh"]);
   });
 
   for (const { code } of LANGS) {

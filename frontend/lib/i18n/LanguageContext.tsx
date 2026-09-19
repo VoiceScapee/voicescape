@@ -5,10 +5,10 @@
  *
  * - Language persists in localStorage ("vs_lang").
  * - First visit defaults to the browser language (matched against the
- *   supported codes, e.g. "pt-BR" → "pt", "ar-EG" → "ar"), otherwise English.
+ *   supported codes, e.g. "pt-BR" → "pt", "ja-JP" → "ja"), otherwise English.
  * - t(key) falls back to English, then to the key itself — never blank.
  * - Keeps <html lang> in sync for screen readers and SEO, and sets
- *   dir="rtl" for right-to-left languages (Arabic).
+ *   dir="rtl" for any right-to-left languages listed in RTL_LANGS.
  */
 import React, {
   createContext,
