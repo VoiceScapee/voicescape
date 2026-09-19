@@ -8,9 +8,17 @@
  * how many newer PageUpdated events exist.
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import type { NextRequest } from "next/server";
 
 import { GET } from "./route";
 import { PAGEREGISTERED_TOPIC, PAGEUPDATED_TOPIC } from "@/lib/registry-topics";
+
+/** Minimal NextRequest stub — the route only reads nextUrl.searchParams. */
+function mockReq(sort?: string): NextRequest {
+  return {
+    nextUrl: { searchParams: new URLSearchParams(sort ? { sort } : {}) },
+  } as unknown as NextRequest;
+}
 
 const realFetch = globalThis.fetch;
 
@@ -106,7 +114,7 @@ describe("GET /api/explore/pages", () => {
       logPages: [{ logs }],
     });
 
-    const res = await GET();
+    const res = await GET(mockReq("new"));
     const body = await res.json();
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames).toContain("old-user");
@@ -123,7 +131,7 @@ describe("GET /api/explore/pages", () => {
       logPages: [{ logs }],
     });
 
-    const res = await GET();
+    const res = await GET(mockReq("new"));
     const body = await res.json();
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames.filter((u: string) => u === "user-10424063")).toHaveLength(1);
@@ -142,7 +150,7 @@ describe("GET /api/explore/pages", () => {
       logPages: [{ logs: page1, next: "/api/v1/contracts/0.0.10854058/results/logs?order=desc&limit=100&page=2" }, { logs: page2 }],
     });
 
-    const res = await GET();
+    const res = await GET(mockReq("new"));
     const body = await res.json();
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames).toContain("page-one");
@@ -159,7 +167,7 @@ describe("GET /api/explore/pages", () => {
       logPages: [{ logs }],
     });
 
-    const res = await GET();
+    const res = await GET(mockReq("new"));
     const body = await res.json();
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames).toContain("good-user");
@@ -169,11 +177,54 @@ describe("GET /api/explore/pages", () => {
   it("fails soft to the featured fallback when the mirror node is down", async () => {
     mockMirrorNode({ registrations: {}, logPages: [], failLogs: true });
 
-    const res = await GET();
+    const res = await GET(mockReq());
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.pages).toHaveLength(1);
     expect(body.pages[0].username).toBe("user-10424063");
     expect(body.count).toBe(1);
+  });
+
+  it("defaults to trending and keeps newest-first order when all signals are zero", async () => {
+    const logs = [
+      log("1789000002.000000000", PAGEREGISTERED_TOPIC),
+      log("1789000001.000000000", PAGEREGISTERED_TOPIC),
+    ];
+    mockMirrorNode({
+      registrations: {
+        "1789000002.000000000": "newer-user",
+        "1789000001.000000000": "older-user",
+      },
+      logPages: [{ logs }],
+    });
+
+    // No sort param → trending. In tests the KV store is in-memory and the
+    // stats blob is unavailable, so every signal is 0 and the stable sort
+    // keeps the newest-first input order.
+    const res = await GET(mockReq());
+    const body = await res.json();
+    expect(body.sort).toBe("trending");
+    const usernames = body.pages.map((p: { username: string }) => p.username);
+    expect(usernames).toEqual(["user-10424063", "newer-user", "older-user"]);
+  });
+
+  it("echoes sort=new and returns newest-first", async () => {
+    const logs = [
+      log("1789000002.000000000", PAGEREGISTERED_TOPIC),
+      log("1789000001.000000000", PAGEREGISTERED_TOPIC),
+    ];
+    mockMirrorNode({
+      registrations: {
+        "1789000002.000000000": "newer-user",
+        "1789000001.000000000": "older-user",
+      },
+      logPages: [{ logs }],
+    });
+
+    const res = await GET(mockReq("new"));
+    const body = await res.json();
+    expect(body.sort).toBe("new");
+    const usernames = body.pages.map((p: { username: string }) => p.username);
+    expect(usernames).toEqual(["user-10424063", "newer-user", "older-user"]);
   });
 });

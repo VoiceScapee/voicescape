@@ -15,16 +15,17 @@ interface ExplorePage {
 
 export default function ExplorePage() {
   const [pages, setPages] = useState<ExplorePage[]>([]);
+  const [sort, setSort] = useState<"trending" | "new">("trending");
   const [search, setSearch] = useState("");
   const [searchResult, setSearchResult] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
-    fetch("/api/explore/pages")
+    fetch(`/api/explore/pages?sort=${sort}`)
       .then((r) => r.json())
       .then((d) => setPages(d.pages ?? []))
       .catch(() => setPages([]));
-  }, []);
+  }, [sort]);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +107,31 @@ export default function ExplorePage() {
         )}
 
         {/* Featured / Recent */}
-        <h2 style={{ fontSize: "1.3rem", margin: "32px 0 16px" }}>Featured</h2>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "32px 0 16px", flexWrap: "wrap", gap: 8 }}>
+          <h2 style={{ fontSize: "1.3rem", margin: 0 }}>Featured</h2>
+          <div style={{ display: "flex", gap: 8 }} role="group" aria-label="Sort blockpages">
+            {(["trending", "new"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSort(s)}
+                aria-pressed={sort === s}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 999,
+                  border: "1px solid var(--vs-border)",
+                  background: sort === s ? "var(--vs-gradient)" : "var(--vs-glass)",
+                  color: sort === s ? "#fff" : "var(--vs-text)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {s === "trending" ? "Trending" : "Newest"}
+              </button>
+            ))}
+          </div>
+        </div>
         {pages.length === 0 ? (
           <p style={{ color: "var(--vs-muted)" }}>Loading...</p>
         ) : (

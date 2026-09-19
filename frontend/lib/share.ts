@@ -41,3 +41,24 @@ export function buildFacebookShareUrl(pageUrl: string): string {
   const url = encodeURIComponent(pageUrl);
   return `https://www.facebook.com/sharer/sharer.php?u=${url}`;
 }
+
+/**
+ * Minimal badge shape needed for share text — only real earned badges are
+ * ever passed in (the badges prop comes from the badges API, never
+ * invented client-side).
+ */
+export interface ShareableBadge {
+  id: string;
+  name: string;
+}
+
+/** Honest share text listing the page's real earned badge names. */
+export function buildBadgesShareText(badges: ShareableBadge[], username: string): string {
+  const names = badges
+    .map((b) => b.name)
+    .filter(Boolean)
+    .slice(0, 5)
+    .join(", ");
+  const n = badges.length;
+  return `${username} earned ${n} badge${n === 1 ? "" : "s"} on Voicescape${names ? `: ${names}` : ""}`;
+}

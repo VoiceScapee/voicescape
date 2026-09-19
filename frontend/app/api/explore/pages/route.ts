@@ -1,5 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { PAGEREGISTERED_TOPIC } from "@/lib/registry-topics";
+import { getKvStore } from "@/lib/server/store";
+import { followerCount } from "@/lib/follows";
+import { getTownhallStats } from "@/lib/server/townhall/badges";
+import {
+  attachScores,
+  badgeCountFor,
+  parseExploreSort,
+  sortTrending,
+} from "@/lib/server/explore-ranking";
 
 /**
  * GET /api/explore/pages
@@ -14,6 +23,10 @@ import { PAGEREGISTERED_TOPIC } from "@/lib/registry-topics";
  * The computed list is cached for 5 minutes (route-level revalidate) so
  * Explore loads don't hammer the mirror node. Fail-soft: ANY error returns
  * the featured fallback with HTTP 200, never a 500.
+ *
+ * ?sort=new returns newest-first; the default (trending) ranks by real
+ * earned badges + real follower counts, so pages with more badges/followers
+ * stay more visible.
  */
 
 const REGISTRY_ID = "0.0.10854058";
@@ -118,7 +131,26 @@ async function usernameForLog(log: RegistryLog): Promise<string | null> {
   }
 }
 
-export async function GET() {
+/** Rank pages by real signals: followers (KV) + earned badges (HCS stats). */
+async function rankPages(pages: ExplorePage[]): Promise<ExplorePage[]> {
+  const store = getKvStore();
+  const blob = await getTownhallStats().catch(() => null);
+  const signals = await Promise.all(
+    pages.map(async (p) => ({
+      username: p.username,
+      followers: await followerCount(store, p.username).catch(() => 0),
+      badges: badgeCountFor(blob, p.username),
+    })),
+  );
+  const byName = new Map(signals.map((s) => [s.username, s]));
+  // Input is newest-first and the sort is stable, so score ties keep
+  // recency order.
+  return sortTrending(attachScores(pages, (u) => byName.get(u)));
+}
+
+export async function GET(req: NextRequest) {
+  // ?sort=new → newest-first; default is trending (badges + followers rank).
+  const sort = parseExploreSort(req.nextUrl.searchParams.get("sort"));
   try {
     const allLogs = await fetchAllLogs();
 
@@ -153,9 +185,15 @@ export async function GET() {
     const featuredUsernames = new Set(FEATURED_PAGES.map((p) => p.username));
     const realPages = pages.filter((p) => !featuredUsernames.has(p.username));
 
+    // Trending: rank by real earned badges + real follower counts, so pages
+    // with more badges/followers stay more visible (fail-open: signal
+    // failures score 0, never break the list).
+    const ranked = sort === "trending" ? await rankPages(realPages) : realPages;
+
     return NextResponse.json({
-      pages: [...FEATURED_PAGES, ...realPages],
-      count: FEATURED_PAGES.length + realPages.length,
+      pages: [...FEATURED_PAGES, ...ranked],
+      count: FEATURED_PAGES.length + ranked.length,
+      sort,
     });
   } catch (err) {
     console.error("[explore] Error fetching pages:", err);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getJson } from "@/lib/townhall";
 import BadgeRow from "@/components/townhall/BadgeRow";
+import { BadgeShareButtons } from "@/components/BadgeShareButtons";
 import type { Badge } from "@/lib/server/townhall/badges";
 
 /**
@@ -29,5 +30,10 @@ export default function PageBadges({ username, wallet }: { username: string; wal
   }, [username, wallet]);
 
   if (!badges || badges.length === 0) return null;
-  return <BadgeRow badges={badges} />;
+  return (
+    <>
+      <BadgeRow badges={badges} />
+      <BadgeShareButtons username={username} badges={badges} />
+    </>
+  );
 }
