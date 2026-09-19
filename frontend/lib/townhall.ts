@@ -149,7 +149,9 @@ function apiErrorMessage(json: unknown, fallback: string): string {
 export async function getJson<T>(url: string): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { accept: "application/json" } });
+    res = await fetch(url, {
+      headers: { accept: "application/json", ...getAuthHeaders() },
+    });
   } catch (e) {
     throw new Error(`Town Hall API unreachable: ${e instanceof Error ? e.message : String(e)}`);
   }
