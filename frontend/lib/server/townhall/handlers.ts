@@ -16,6 +16,7 @@ import { defaultHcsPort } from "./hcs";
 import type { MirrorPort } from "./mirror";
 import { consumeDustFeeTx, consumeHcsTxId, defaultMirrorPort, releaseDustFeeTx, releaseHcsTxId, reserveDustFeeTx, reserveHcsTxId } from "./mirror";
 import { filterHiddenPosts, isAuthorizedModAction, isGlobalMod, isModWallet, isOwnerAddress } from "./mod";
+import { getCopyrightStatus, getMaxStrikes } from "../dmca/strikes";
 import type { RegistryPort } from "./registry-check";
 import { defaultRegistryPort } from "./registry-check";
 import type { AuthPort, VerifiedSession } from "./auth";
@@ -1690,11 +1691,24 @@ export async function getMyRestriction(deps: TownhallDeps, body: AuthBody): Prom
   const wallet = canonicalAddress(s.session.address);
   if (!wallet) return err(401, "invalid session wallet");
   const state = await getStateFor(deps, wallet);
+  // DMCA repeat-infringer state (ToS §12). Fail-open: a store blip reports
+  // clean here; the write path enforces independently.
+  let copyright: { strikes: number; maxStrikes: number; suspended: boolean } = {
+    strikes: 0,
+    maxStrikes: getMaxStrikes(),
+    suspended: false,
+  };
+  try {
+    copyright = await getCopyrightStatus(wallet);
+  } catch (e) {
+    console.error("[townhall] getMyRestriction: copyright status check failed (fail-open):", e);
+  }
   return ok({
     status: state.status,
     reason: state.reason,
     remainingMs: state.remainingMs,
     expiresAt: state.expiresAt,
+    copyright,
   });
 }
 

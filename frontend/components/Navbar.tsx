@@ -30,6 +30,7 @@ const LEARN_ITEMS: NavDropdownItem[] = [
   // Legal doc titles stay untranslated: the English versions govern.
   { href: "/terms", label: <>Terms</> },
   { href: "/privacy", label: <>Privacy</> },
+  { href: "/dmca", label: <>Copyright</> },
 ];
 
 const COMMUNITY_ITEMS: NavDropdownItem[] = [

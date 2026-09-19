@@ -26,7 +26,7 @@ export interface LegalDoc {
 
 export const TERMS_OF_SERVICE: LegalDoc = {
   title: "Terms of Service",
-  effectiveDate: "September 16, 2026",
+  effectiveDate: "September 18, 2026",
   intro:
     'These Terms of Service ("Terms") govern your use of Voicescape. Please read them carefully — using the platform means you accept them.',
   sections: [
@@ -151,7 +151,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
     {
       heading: "12. Copyright",
       paragraphs: [
-        "If you believe content on Voicescape infringes your copyright, send a notice in the #customer-support channel of the Voicescape Discord. A valid notice includes: a description of the copyrighted work, where the infringing material is (a link is enough), your contact information, a good-faith statement that the use is unauthorized, and your signature. If your content was removed by mistake, you may send a counter-notice with the same details and we will review it.",
+        "If you believe content on Voicescape infringes your copyright, send a notice in the #customer-support channel of the Voicescape Discord, or use the form at /dmca. A valid notice includes: a description of the copyrighted work, where the infringing material is (a link is enough), your contact information, a good-faith statement that the use is unauthorized, and your signature. If your content was removed by mistake, you may send a counter-notice with the same details and we will review it.",
         "Repeat infringers will have their access terminated.",
       ],
     },
@@ -207,7 +207,7 @@ export const TERMS_OF_SERVICE: LegalDoc = {
 
 export const PRIVACY_POLICY: LegalDoc = {
   title: "Privacy Policy",
-  effectiveDate: "September 14, 2026",
+  effectiveDate: "September 18, 2026",
   intro:
     "Voicescape is built to know as little about you as possible. This policy explains what we see, what we don't, and why.",
   sections: [
@@ -224,8 +224,27 @@ export const PRIVACY_POLICY: LegalDoc = {
         "Wallet identifiers: when you connect a wallet, we see its public address (for example, 0.0.xxxxx). This is public information on Hedera.",
         "On-chain activity: tips sent and received, purchases, fundraiser progress, and page registrations are recorded on the Hedera network. This data is public and permanent by the nature of the blockchain — we do not control it.",
         "Anonymous telemetry: we count tip successes and failures and record a coarse, optional surface label (for example, whether the tip happened on a blockpage or a post) to detect broken features. These counts contain no wallet addresses, IP addresses, or page identifiers.",
-        "Analytics: we use privacy-respecting, cookieless analytics to understand aggregate traffic (such as visitor counts, countries, and popular pages). This does not track you personally.",
+        "Analytics: we use Vercel Web Analytics — privacy-respecting, cookieless analytics — to understand aggregate traffic (such as visitor counts, countries, and popular pages). This does not track you personally.",
         "Support: if you contact us through the Discord #customer-support channel, we see the messages you send there, as Discord does.",
+        "Copyright notices: a DMCA takedown notice or counter-notice must by law include the reporter's name, contact information, and signature. Notices filed through the form at /dmca are kept in a private log so we can act on them and keep an audit trail; they are never published.",
+        "Data-rights requests: if you submit a request through the form at /privacy-request, we record the request type and your wallet address (so we can answer) with a timestamp. No email or other contact details are collected.",
+      ],
+    },
+    {
+      heading: "2a. Lawful basis (EU/UK)",
+      paragraphs: [
+        "Where the GDPR or UK GDPR applies, we process the limited data above on these bases:",
+      ],
+      bullets: [
+        "Consent: connecting your wallet and submitting forms (copyright notices, data-rights requests, support messages) — you choose to share that information with us.",
+        "Legitimate interests: operating the platform, keeping it secure, and preventing abuse (for example, rate limits and spam prevention).",
+        "Legal obligation: retaining copyright notices and acting on them as required by the DMCA.",
+      ],
+    },
+    {
+      heading: "2b. Data minimization",
+      paragraphs: [
+        "We keep only what the platform needs to function and nothing more: no names, emails, or addresses at sign-up; wallet addresses instead of accounts; aggregate counts instead of per-user tracking. New features are built against the same rule — if the platform doesn't need a piece of personal data, we don't collect it.",
       ],
     },
     {
@@ -263,7 +282,7 @@ export const PRIVACY_POLICY: LegalDoc = {
       paragraphs: [
         "Depending on where you live, you may have rights to access, correct, delete, or restrict the personal data we hold about you. Because we hold almost nothing about you, most requests will simply confirm that.",
         "On-chain data cannot be deleted by us — it is controlled by the Hedera network, not by Voicescape.",
-        "To make a request, contact us via the Discord #customer-support channel.",
+        "To make a request, use the form at /privacy-request (sign in with your wallet so we can answer it) or contact us via the Discord #customer-support channel. We respond to every request; if we hold nothing about you, we'll say so.",
       ],
     },
     {
