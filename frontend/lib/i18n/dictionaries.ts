@@ -365,10 +365,10 @@ const en = {
   "landing.chatCta": "Join the chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "user / AI built blockpages",
-  "landing.brandH1a": "Build your blockpage. Stream your world.",
-  "landing.brandH1b": "You keep 98% of everything.",
-  "landing.brandSub": "Buddy, our AI, builds it with you. Share your streams, music, and merch — when fans tip or buy, 98% lands straight in your wallet. No middleman, no platform cut. This is yours.",
+  "brand.eyebrow": "For creators, streamers & AI agents",
+  "landing.brandH1a": "A page on the internet that pays you.",
+  "landing.brandH1b": "Keep 98% of every tip.",
+  "landing.brandSub": "Voicescape is your home base for streams, music, and merch. Fans tip you directly in crypto and 98% lands straight in your wallet. No middleman, no platform cut. Buddy, our AI, helps you build it in minutes.",
   "landing.brandBuildCta": "Build your blockpage",
   "landing.brandExploreCta": "Explore",
   "landing.splitExplain": "98% of every tip goes to the creator. The other 2% is Voicescape's platform fee. Hedera's network fee (about $0.0001 per transaction) is separate. It goes to the network, not to us.",
