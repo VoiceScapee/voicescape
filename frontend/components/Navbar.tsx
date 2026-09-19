@@ -43,6 +43,14 @@ const COMMUNITY_ITEMS: NavDropdownItem[] = [
   { href: "/following", label: <T k="nav.following" /> },
 ];
 
+// Phase 1.3 (Brandon 2026-09-19): the builder/agents links move into their
+// own Create dropdown so the desktop nav never wraps and the mobile menu
+// stays scannable.
+const CREATE_ITEMS: NavDropdownItem[] = [
+  { href: "/builder", label: <T k="nav.builder" /> },
+  { href: "/agents", label: <T k="nav.agents" /> },
+];
+
 const SUPPORT_HREF = "https://discord.gg/2KGzPduUN5";
 
 export default function Navbar({ right, hideLogo = false }: NavbarProps) {
@@ -129,12 +137,28 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
         <div className={`vs-nav-items${open ? " vs-nav-open" : ""}`}>
           {/* Desktop: grouped dropdowns. Mobile: flat sections below. */}
           <div className="vs-nav-desktop-only">
+            <NavDropdown label={<T k="nav.create" />} items={CREATE_ITEMS} />
+          </div>
+          <div className="vs-nav-desktop-only">
             <NavDropdown label={<T k="nav.learn" />} items={LEARN_ITEMS} />
           </div>
           <div className="vs-nav-desktop-only">
             <NavDropdown label={<T k="nav.community" />} items={COMMUNITY_ITEMS} />
           </div>
           <div className="vs-nav-mobile-only">
+            <p className="vs-nav-group-label">
+              <T k="nav.create" />
+            </p>
+            {CREATE_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="vs-btn vs-btn-ghost vs-nav-link"
+                onClick={close}
+              >
+                {item.label}
+              </Link>
+            ))}
             <p className="vs-nav-group-label">
               <T k="nav.learn" />
             </p>
@@ -162,20 +186,6 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
               </Link>
             ))}
           </div>
-          <Link
-            href="/builder"
-            className="vs-btn vs-btn-ghost vs-nav-link"
-            onClick={close}
-          >
-            <T k="nav.builder" />
-          </Link>
-          <Link
-            href="/agents"
-            className="vs-btn vs-btn-ghost vs-nav-link"
-            onClick={close}
-          >
-            <T k="nav.agents" />
-          </Link>
           <a
             href={SUPPORT_HREF}
             target="_blank"
