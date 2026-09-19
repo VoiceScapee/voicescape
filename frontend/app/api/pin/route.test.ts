@@ -184,3 +184,57 @@ describe("POST /api/pin page validation", () => {
     expect(json.error).not.toMatch(/schema/i);
   });
 });
+
+describe("POST /api/pin content safety gate", () => {
+  // The pre-sign gate: adult/illegal content in ANY page field is rejected
+  // here, before IPFS pinning and before the wallet is asked to sign.
+  // A 400 here means publish() throws and no signature prompt appears.
+  const pageWithBio = (text: string) => ({
+    ...VALID_PAGE,
+    blocks: [{ type: "bio", text }],
+  });
+
+  it("rejects a page whose bio contains sexually explicit adult content", async () => {
+    const res = await POST(
+      pinReq({ token: GOOD_TOKEN, json: pageWithBio("subscribe to my onlyfans for xxx videos") }),
+    );
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toContain("sexually explicit adult content");
+  });
+
+  it("rejects an adult-content username", async () => {
+    const res = await POST(
+      pinReq({ token: GOOD_TOKEN, json: { ...VALID_PAGE, username: "xxx-porn-videos" } }),
+    );
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toContain("sexually explicit adult content");
+  });
+
+  it("rejects child sexual content anywhere in the page", async () => {
+    const res = await POST(
+      pinReq({ token: GOOD_TOKEN, json: pageWithBio("totally innocent except child porn links") }),
+    );
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toContain("sexual content involving minors");
+  });
+
+  it("never echoes the offending text back in the error", async () => {
+    const res = await POST(
+      pinReq({
+        token: GOOD_TOKEN,
+        json: pageWithBio("my onlyfans is onlyfans.com/supersecretname"),
+      }),
+    );
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).not.toContain("supersecretname");
+  });
+
+  it("still pins a clean page after the gate", async () => {
+    const res = await POST(pinReq({ token: GOOD_TOKEN, json: VALID_PAGE }));
+    expect(res.status).toBe(200);
+  });
+});

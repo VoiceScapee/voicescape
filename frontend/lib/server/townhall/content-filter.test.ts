@@ -2,7 +2,7 @@
  * Content filter tests — pure function, no network.
  */
 import { describe, expect, it } from "vitest";
-import { checkContent, checkUrl, MAX_URLS_PER_POST } from "./content-filter";
+import { checkContent, checkPageJson, checkUrl, MAX_URLS_PER_POST } from "./content-filter";
 
 describe("checkContent", () => {
   it("allows ordinary text", () => {
@@ -42,6 +42,33 @@ describe("checkContent", () => {
     expect(r.allowed).toBe(false);
     expect(r.reason).toContain("sexual content involving minors");
     expect(r.reason).toContain("chat message");
+  });
+
+  it("blocks sexually explicit adult content", () => {
+    for (const t of [
+      "check out my onlyfans link",
+      "hot xxx videos here",
+      "cam girl live now",
+      "blowjob tutorial video",
+      "my pornhub channel",
+    ]) {
+      const r = checkContent(t, "page bio");
+      expect(r.allowed).toBe(false);
+      expect(r.reason).toContain("sexually explicit adult content");
+      expect(r.reason).toContain("page bio");
+    }
+  });
+
+  it("still classifies child sexual content as CSAM, not adult", () => {
+    const r = checkContent("child porn", "page bio");
+    expect(r.allowed).toBe(false);
+    expect(r.reason).toContain("sexual content involving minors");
+  });
+
+  it("does not flag innocent words containing adult substrings", () => {
+    // Word boundaries: "porn" must not match inside unrelated words.
+    expect(checkContent("welcome to my corner of the internet", "page bio").allowed).toBe(true);
+    expect(checkContent("Esport tournament this weekend", "post body").allowed).toBe(true);
   });
 
   it("blocks terrorist organization names", () => {
@@ -209,5 +236,35 @@ describe("checkUrl", () => {
   it("rejects malformed URLs", () => {
     expect(checkUrl("not a url at all !!!", "link").allowed).toBe(false);
     expect(checkUrl("", "link").allowed).toBe(false);
+  });
+});
+
+describe("checkPageJson — recursive page-document scan", () => {
+  it("returns null for a clean nested document", () => {
+    expect(
+      checkPageJson({ a: "hello", b: { c: ["x", { d: "world" }] } }),
+    ).toBeNull();
+  });
+
+  it("finds adult content nested deep in blocks", () => {
+    const reason = checkPageJson({
+      blocks: [{ type: "bio", text: "my onlyfans link below" }],
+    });
+    expect(reason).toContain("sexually explicit adult content");
+  });
+
+  it("finds CSAM nested in arrays", () => {
+    const reason = checkPageJson({ tags: ["music", "child porn"] });
+    expect(reason).toContain("sexual content involving minors");
+  });
+
+  it("handles cyclic structures without hanging", () => {
+    const obj: Record<string, unknown> = { text: "clean" };
+    obj.self = obj;
+    expect(checkPageJson(obj)).toBeNull();
+  });
+
+  it("returns null for non-string leaves", () => {
+    expect(checkPageJson({ n: 42, b: true, z: null })).toBeNull();
   });
 });

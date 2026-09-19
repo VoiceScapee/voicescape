@@ -1822,4 +1822,12 @@ describe("Buddy system prompt — pricing knowledge", () => {
     expect(BUDDY_SYSTEM_PROMPT).toContain("making it right is your");
     expect(BUDDY_SYSTEM_PROMPT).toContain("#customer-support");
   });
+
+  it("sets family-friendly content boundaries", () => {
+    expect(BUDDY_SYSTEM_PROMPT).toContain("CONTENT BOUNDARIES");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("family-friendly");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("sexually explicit");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("no adult or NSFW page drafts");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("never sexualized depictions of people");
+  });
 });
