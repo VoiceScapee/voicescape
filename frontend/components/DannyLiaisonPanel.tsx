@@ -249,7 +249,7 @@ export default function DannyLiaisonPanel() {
             );
           }
         })
-        .catch(() => setPayError("Couldn't unlock your purchase — the request timed out. Your payment is safe; try again and it will be credited."))
+        .catch(() => setPayError("Couldn't unlock your purchase — the request timed out. If you were charged, contact support and it will be credited."))
         .finally(() => {
           clearTimeout(timeout);
           setPaying(null);

@@ -54,6 +54,7 @@ import { normalizeUsername } from "@/lib/identity";
 import { canonicalAddress } from "@/lib/session-message";
 import { TipPushToggle } from "@/components/TipPushToggle";
 import TipCelebration from "@/components/TipCelebration";
+import TaxNotice from "@/components/TaxNotice";
 import { EarningsPanel } from "@/components/EarningsPanel";
 import { GoalBar } from "@/components/GoalBar";
 import { FollowButton } from "@/components/FollowButton";
@@ -516,6 +517,7 @@ function TipBox({
             <p className="pv-tip-approve" style={{ whiteSpace: "pre-line" }}>
               {t("tip.approveNote")}
             </p>
+            <TaxNotice compact />
 
             {error && (
               <div className="pv-tip-error">

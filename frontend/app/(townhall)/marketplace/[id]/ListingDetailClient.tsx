@@ -17,6 +17,7 @@ import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/ma
 import { longZeroToAccountId } from "@/lib/session-message";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei } from "@/lib/tokens";
+import TaxNotice from "@/components/TaxNotice";
 import {
   accountToEvmAddress,
   getJson,
@@ -392,6 +393,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
               Buy now — {formatUsd(listing.priceUsdCents)}
             </button>
           )}
+          {!sold && !isOwnListing && buy.kind === "idle" && <TaxNotice compact />}
           {isOwnListing && !sold && (
             <p className="th-note">This is your listing. Buyers pay you directly — 98% lands in your payout address the moment they buy.</p>
           )}

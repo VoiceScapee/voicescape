@@ -18,6 +18,7 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { useSession } from "@/lib/session";
 import { HbarAmount } from "@/components/HbarAmount";
 import { getHbarUsdPrice } from "@/lib/x402";
+import TaxNotice from "@/components/TaxNotice";
 
 interface EarningsData {
   hbar7d: string;
@@ -249,6 +250,7 @@ export function EarningsPanel({
             />
             <StatCard label={t("earnings.allTime")} value={<HbarAmount hbar={fmtHbar(earnings?.hbarAllTime)} />} />
           </div>
+          <TaxNotice compact />
           {earnings?.error && (
             <p style={{ fontSize: "0.8rem", color: "var(--vs-danger, #f87171)", margin: "10px 0 0" }} role="alert">
               {earnings.error}
