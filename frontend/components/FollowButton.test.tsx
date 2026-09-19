@@ -68,10 +68,11 @@ describe("navbar", () => {
     expect(navSrc).toContain('k="nav.leaderboard"');
   });
 
-  it("keeps builder, agents and support as top-level links", () => {
-    expect(navSrc).toContain('href="/builder"');
+  it("groups builder and agents under a translated Create dropdown, support stays top-level", () => {
+    expect(navSrc).toContain('k="nav.create"');
+    expect(navSrc).toContain('href: "/builder"');
     expect(navSrc).toContain('k="nav.builder"');
-    expect(navSrc).toContain('href="/agents"');
+    expect(navSrc).toContain('href: "/agents"');
     expect(navSrc).toContain('k="nav.agents"');
     expect(navSrc).toContain("discord.gg/2KGzPduUN5");
     expect(navSrc).toContain('k="nav.support"');
