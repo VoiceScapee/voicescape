@@ -6,10 +6,13 @@
  * Same read-only feed as the town-hall preview: the last few public lobby
  * messages from /api/townhall/chat/lobby, auto-refreshing. Renders as the
  * mock's simple message list — no card chrome, no title, no CTA.
+ * Dev/test posts are filtered out (lobbyTestFilter) so the homepage never
+ * showcases test spam as community activity.
  * Nothing to show (or chat unreachable) → renders nothing.
  */
 import { useEffect, useState } from "react";
 import { T } from "@/components/T";
+import { isLobbyTestMessage } from "./lobbyTestFilter";
 
 interface ChatMsg {
   seq: number;
@@ -34,7 +37,9 @@ export function ChatPreview() {
         if (!res.ok) return;
         const json = (await res.json()) as { messages?: ChatMsg[] };
         if (alive && Array.isArray(json.messages)) {
-          setMsgs(json.messages.slice(-6));
+          // Skip dev/test posts — the landing showcase must never present
+          // test spam as community activity (see lobbyTestFilter).
+          setMsgs(json.messages.filter((m: ChatMsg) => !isLobbyTestMessage(m.body)).slice(-6));
         }
       } catch {
         /* preview stays hidden on failure */
