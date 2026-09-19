@@ -299,6 +299,14 @@ export default function ChatRoomClient({ room }: { room: string }) {
               <Link href={`/${m.author}`} className="th-post-author">
                 @{m.author}
               </Link>
+              {m.authorVerified === false && (
+                <span
+                  className="th-muted"
+                  title="This author wasn't verified through the Voicescape API — the name may not belong to the wallet that posted it"
+                >
+                  {" "}⚠ unverified
+                </span>
+              )}
               <span className="th-post-ts">{timeAgo(m.ts)}</span>
               {(() => {
                 const flags = m as unknown as {

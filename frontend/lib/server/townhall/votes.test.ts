@@ -9,6 +9,22 @@ import {
 import type { StoredMessage } from "./types";
 
 function msg(contents: object, seq: number): StoredMessage {
+  const c = contents as { author?: unknown };
+  const m: StoredMessage = {
+    seq,
+    topic: "0.0.1",
+    consensusTimestamp: "2026-09-10T00:00:00Z",
+    contents: contents as StoredMessage["contents"],
+  };
+  // Test messages simulate the API write path, which attests authorship.
+  if (typeof c.author === "string") {
+    m.attestation = { payer: "0.0.0", author: c.author };
+  }
+  return m;
+}
+
+/** A message that bypassed the API write path (direct-to-topic forgery): no attestation. */
+function msgUnattested(contents: object, seq: number): StoredMessage {
   return {
     seq,
     topic: "0.0.1",
@@ -122,5 +138,49 @@ describe("aggregateListings", () => {
     expect(latest.size).toBe(2);
     expect(latest.get("l1")!.contents.status).toBe("sold");
     expect(latest.get("l2")!.contents.status).toBe("active");
+  });
+});
+
+describe("attestation filtering (audit fix #1)", () => {
+  it("skips unattested rep-votes (direct-to-topic forgeries)", () => {
+    const messages = [
+      repVote("alice", "bob", 1),
+      msgUnattested(
+        { v: 1, kind: "rep-vote", ts: "2026-09-10T00:00:00Z", author: "mallory", target: "bob", voter: "mallory", value: 1 },
+        0,
+      ),
+    ];
+    const t = aggregateRepVotes(messages, "bob");
+    expect(t).toEqual({ up: 1, down: 0, score: 1, myVote: null });
+  });
+
+  it("skips votes where the attestation author differs from the claimed voter", () => {
+    const forged = msg(
+      { v: 1, kind: "rep-vote", ts: "2026-09-10T00:00:00Z", author: "mallory", target: "bob", voter: "alice", value: -1 },
+      0,
+    );
+    // Attestation binds the bytes to mallory (the real submitter), not alice (the claimed voter).
+    forged.attestation = { payer: "0.0.999", author: "mallory" };
+    const messages = [repVote("alice", "bob", 1), forged];
+    const t = aggregateRepVotes(messages, "bob");
+    expect(t).toEqual({ up: 1, down: 0, score: 1, myVote: null });
+  });
+
+  it("skips unattested proposal votes", () => {
+    const pv = (voter: string, proposal: string, choice: string) =>
+      msg({ v: 1, kind: "proposal-vote", ts: "2026-09-10T00:00:00Z", author: voter, proposal, voter, choice }, 0);
+    const forged = msgUnattested(
+      { v: 1, kind: "proposal-vote", ts: "2026-09-10T00:00:00Z", author: "mallory", proposal: "p1", voter: "mallory", choice: "no" },
+      0,
+    );
+    expect(countProposalVotes([pv("alice", "p1", "yes"), forged], "p1")).toEqual({ yes: 1, no: 0, abstain: 0 });
+  });
+
+  it("myVote only reflects attested votes", () => {
+    const unattested = msgUnattested(
+      { v: 1, kind: "rep-vote", ts: "2026-09-10T00:00:00Z", author: "dave", target: "bob", voter: "dave", value: -1 },
+      0,
+    );
+    expect(aggregateRepVotes([unattested], "bob", "dave").myVote).toBe(null);
   });
 });

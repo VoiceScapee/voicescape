@@ -299,6 +299,14 @@ export interface StoredMessage<T = TownhallMessage> {
   /** Consensus timestamp (ISO-8601). */
   consensusTimestamp: string;
   contents: T;
+  /**
+   * Authorship attestation, attached by the read path when the message's
+   * exact on-chain bytes carry a write-path attestation (see
+   * attestations.ts). Unset (not null) when the message bypassed the API
+   * or predates attestations — counting surfaces skip unattested votes and
+   * views flag the author as unverified.
+   */
+  attestation?: { payer: string; author: string };
 }
 
 /* ------------------------------------------------------------------ */
@@ -319,6 +327,12 @@ export interface PostView {
   body: string;
   replyTo: number | null;
   ts: string;
+  /**
+   * True when the message's on-chain bytes carry a write-path attestation
+   * for this author (see attestations.ts). False for direct-to-topic
+   * submissions and pre-fix messages — the UI flags, never hides.
+   */
+  authorVerified: boolean;
 }
 
 export interface ReputationView {
@@ -339,6 +353,8 @@ export interface ProposalView {
   yes: number;
   no: number;
   abstain: number;
+  /** See PostView.authorVerified — poll authors are flagged the same way. */
+  authorVerified: boolean;
 }
 
 export interface ChatEvent {
@@ -347,6 +363,8 @@ export interface ChatEvent {
   author: string;
   body: string;
   ts: string;
+  /** See PostView.authorVerified — chat authors are flagged the same way. */
+  authorVerified: boolean;
 }
 
 /** Chatroom view: the built-in lobby plus rooms created via chatroom-create. */
