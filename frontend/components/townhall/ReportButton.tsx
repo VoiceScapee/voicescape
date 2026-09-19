@@ -68,8 +68,9 @@ export default function ReportButton({
     try {
       const reasonText = `[${reason}] ${detailText}`.slice(0, 500);
       // User signs the report via their wallet first (transparent on-chain).
-      // Reports go to the forum topic for post/chat/profile, market for listings.
-      const topicDomain = targetKind === "listing" ? "market" : "forum";
+      // Reports live on the same topic as their target: chat for chat
+      // messages, market for listings, forum for post/profile.
+      const topicDomain = targetKind === "listing" ? "market" : targetKind === "chat" ? "chat" : "forum";
       const reporterName = myUsername ?? session.session?.address ?? "anonymous";
       // Normalize the profile target the same way the server does so the
       // on-chain message matches the POST body exactly.
