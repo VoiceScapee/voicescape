@@ -89,7 +89,8 @@ export function VoteControls({ target }: { target: string }) {
     setBusy(true);
     try {
       // User signs the rep-vote via their wallet first (transparent on-chain).
-      const hcsTxId = await hcs.submit("forum", {
+      // Rep-votes live on the votes topic (server verifies against it) — not forum.
+      const hcsTxId = await hcs.submit("votes", {
         v: 1,
         kind: "rep-vote",
         ts: new Date().toISOString(),

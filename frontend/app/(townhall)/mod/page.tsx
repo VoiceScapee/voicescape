@@ -406,7 +406,9 @@ function ReportActions({
     setError(null);
     try {
       // Mod signs the hide action via their wallet first (transparent on-chain).
-      const hcsTxId = await hcs.submit("forum", {
+      // Hide actions live on the same topic as their target (chat for chat
+      // messages, forum for posts) — the server verifies against it.
+      const hcsTxId = await hcs.submit(report.targetKind === "chat" ? "chat" : "forum", {
         v: 1,
         kind: "mod-action",
         ts: new Date().toISOString(),
