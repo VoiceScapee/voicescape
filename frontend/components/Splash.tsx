@@ -19,9 +19,10 @@ function hasEntered(): boolean {
 
 /**
  * Opening screen: lattice canvas, blurred gradient orbs, the official
- * Voicescape logo lockup, staggered hero copy and an Enter CTA.
+ * Voicescape logo lockup, the brand tagline and an Enter CTA.
  *
- * The splash is a fixed full-viewport overlay — not a scrollable part of
+ * The splash is a brand interstitial, not a second homepage — the value
+ * proposition lives on the landing page below. It is a fixed full-viewport
  * the landing flow. Page scroll is locked while it is up, and only an
  * explicit Enter click dismisses it (it unmounts and is skipped on this
  * browser from then on).
@@ -128,11 +129,6 @@ export default function Splash() {
           gap: 20,
         }}
       >
-        <div className="vs-anim-fade-up" style={{ ...stagger(0) }}>
-          <span className="vs-eyebrow">
-            <T k="splash.eyebrow" />
-          </span>
-        </div>
         <div style={{ position: "relative", width: "min(760px, 94vw)" }}>
           <div
             aria-hidden="true"
@@ -182,7 +178,7 @@ export default function Splash() {
         <p
           className="vs-anim-fade-up"
           style={{
-            ...stagger(1),
+            ...stagger(0),
             margin: 0,
             fontSize: "clamp(1.25rem, 3.4vw, 1.8rem)",
             fontWeight: 600,
@@ -191,20 +187,7 @@ export default function Splash() {
         >
           <T k="splash.tagline" />
         </p>
-        <p
-          className="vs-anim-fade-up"
-          style={{
-            ...stagger(2),
-            margin: 0,
-            fontSize: "clamp(1rem, 2.6vw, 1.15rem)",
-            lineHeight: 1.7,
-            color: "var(--vs-muted)",
-            maxWidth: 560,
-          }}
-        >
-          <T k="splash.sub" />
-        </p>
-        <div className="vs-anim-fade-up" style={stagger(3)}>
+        <div className="vs-anim-fade-up" style={stagger(1)}>
           <button
             type="button"
             onClick={handleEnter}
@@ -214,11 +197,6 @@ export default function Splash() {
             <T k="splash.enter" />
             <IconArrowRight size={20} />
           </button>
-        </div>
-        <div className="vs-anim-fade-up" style={stagger(4)}>
-          <span className="vs-chip vs-anim-pulse-glow">
-            <T k="splash.poweredBy" /> · <T k="splash.hederaSpecs" />
-          </span>
         </div>
       </div>
 
