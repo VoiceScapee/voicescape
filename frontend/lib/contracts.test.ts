@@ -16,11 +16,13 @@
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  buyListing,
   getRegistryAddress,
   getTipsAddress,
   requireRegistryAddress,
   requireTipsAddress,
   resolvePage,
+  tipPage,
 } from "./contracts";
 
 const REAL_TIPS_EVM = "0x571D6d0C5D5ee7Fc1e47283Ad864305b7f7A88e0";
@@ -131,5 +133,52 @@ describe("resolvePage (read path degrades gracefully)", () => {
     // returning null. The read itself needs a chain/RPC — this test just
     // verifies getRegistryAddress returns the fallback.
     expect(getRegistryAddress()).toBe(REAL_REGISTRY_EVM);
+  });
+});
+
+describe("non-custodial invariant (tips + marketplace)", () => {
+  /**
+   * The platform never touches user funds: tipPage and buyListing send the
+   * FULL value to the Tips contract in ONE transaction — no escrow
+   * intermediary, no client-side skimming. The 98/2 split happens inside
+   * the contract (see sales.test.ts, which verifies the atomic split from
+   * mirror-node logs).
+   */
+  function mockSender() {
+    const calls: { method: string; args: unknown[] }[] = [];
+    const sender = {
+      calls,
+      sendRegister: async (...a: unknown[]) => (calls.push({ method: "sendRegister", args: a }), "0xreg"),
+      sendUpdate: async (...a: unknown[]) => (calls.push({ method: "sendUpdate", args: a }), "0xupd"),
+      sendTip: async (...a: unknown[]) => (calls.push({ method: "sendTip", args: a }), "0xtip"),
+      sendBuy: async (...a: unknown[]) => (calls.push({ method: "sendBuy", args: a }), "0xbuy"),
+    };
+    return sender;
+  }
+
+  it("tipPage routes the full value straight to the Tips contract (no escrow)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
+    const sender = mockSender();
+    const value = 500_000_000_000_000_000n; // 0.5 HBAR in wei
+    await tipPage("someuser", value, sender as never);
+    expect(sender.calls).toHaveLength(1);
+    const [c] = sender.calls;
+    expect(c.method).toBe("sendTip");
+    expect(c.args[0]).toBe(REAL_TIPS_EVM); // recipient is the contract itself
+    expect(c.args[2]).toBe(value); // full value — nothing taken client-side
+  });
+
+  it("buyListing routes the full value straight to the Tips contract (no escrow)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", "");
+    const sender = mockSender();
+    const value = 1_000_000_000_000_000_000n;
+    const seller = "0x1234567890123456789012345678901234567890";
+    await buyListing(seller, "listing-1", value, sender as never);
+    expect(sender.calls).toHaveLength(1);
+    const [c] = sender.calls;
+    expect(c.method).toBe("sendBuy");
+    expect(c.args[0]).toBe(REAL_TIPS_EVM); // one tx to the contract — buyer funds never sit anywhere
+    expect(c.args[1]).toBe(seller);
+    expect(c.args[3]).toBe(value); // full value — the 98/2 split is on-chain, not here
   });
 });
