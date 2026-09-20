@@ -5,7 +5,19 @@
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
 export type Block =
-  | { type: "hero"; title: string; subtitle?: string; avatarEmoji?: string; avatarImage?: string }
+  | {
+    type: "hero";
+    title: string;
+    subtitle?: string;
+    avatarEmoji?: string;
+    avatarImage?: string;
+    /**
+     * Small text chips rendered beside the platform Founder badge
+     * (e.g. HUMAN on the founder's page). The Founder badge itself
+     * stays renderer-owned; these are page-authored identity chips.
+     */
+    badges?: string[];
+  }
   | { type: "bio"; text: string }
   | { type: "links"; items: { label: string; url: string }[] }
   | { type: "tipJar"; message?: string }
@@ -32,6 +44,26 @@ export type Block =
    * `channel` is the Twitch login name or the YouTube UC… channel ID.
    */
   | { type: "livestream"; platform: "twitch" | "youtube"; channel: string; title?: string }
+  /**
+   * Blockchain Heartbeat (builder module #14): the page's live chain
+   * connection. Hairline EKG trace + status dot + micro-mono readout;
+   * each real settled tip on the page wallet draws one violet/mint spike.
+   * On by default for blockchain pages; the renderer needs the page
+   * owner's wallet (passed as tipOwner) to poll /api/heartbeat.
+   */
+  | { type: "heartbeat"; showProofChips?: boolean }
+  /**
+   * Badges: a centered row of small uppercase chips (e.g. profile badges
+   * like HUMAN · FOUNDER · MAINNET, or hero chips like MAINNET → ONE LIFE).
+   * Plain text chips — the platform Founder badge stays renderer-owned.
+   */
+  | { type: "badges"; items: string[] }
+  /**
+   * Tabbed presentation: a small set of labeled tabs, each holding its own
+   * blocks (e.g. Proof vs Profile badges). Renderers recurse through
+   * BlockView with the same page props. Max 4 tabs, 8 blocks per tab.
+   */
+  | { type: "tabs"; tabs: { label: string; blocks: Block[] }[] }
   /**
    * Native page chat room. Anyone with a wallet session can chat; the page
    * owner moderates (mute/ban/delete, promote/demote mods). Off-chain relay,
@@ -156,6 +188,9 @@ export const BLOCK_TYPES = [
   "booking",
   "livestream",
   "chat",
+  "heartbeat",
+  "tabs",
+  "badges",
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
@@ -207,6 +242,12 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
       return { type: "livestream", platform: "twitch", channel: "" };
     case "chat":
       return { type: "chat", title: "Chat" };
+    case "heartbeat":
+      return { type: "heartbeat" };
+    case "tabs":
+      return { type: "tabs", tabs: [{ label: "Tab", blocks: [] }] };
+    case "badges":
+      return { type: "badges", items: ["Badge"] };
   }
 }
 
@@ -291,6 +332,12 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       if (avatarEmoji !== undefined) hero.avatarEmoji = avatarEmoji;
       const avatarImage = str(b.avatarImage);
       if (avatarImage !== undefined) hero.avatarImage = avatarImage;
+      const badges = (Array.isArray(b.badges) ? b.badges : [])
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim().slice(0, 24))
+        .filter((x) => x.length > 0)
+        .slice(0, 4);
+      if (badges.length > 0) hero.badges = badges;
       return hero as unknown as Block;
     }
     case "bio":
@@ -328,6 +375,39 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       const title = str(b.title);
       if (title !== undefined) ch.title = title;
       return ch as unknown as Block;
+    }
+    case "heartbeat": {
+      const hb: Record<string, unknown> = { type: "heartbeat" };
+      if (typeof b.showProofChips === "boolean") hb.showProofChips = b.showProofChips;
+      return hb as unknown as Block;
+    }
+    case "badges": {
+      const items = (Array.isArray(b.items) ? b.items : [])
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim().slice(0, 24))
+        .filter((x) => x.length > 0)
+        .slice(0, 8);
+      if (items.length === 0) return null;
+      return { type: "badges", items } as unknown as Block;
+    }
+    case "tabs": {
+      // Tabbed presentation: nested blocks render through BlockView with
+      // the same props (owner, tip name, preview). Sanitized recursively;
+      // empty tabs are dropped so a tab never renders blank.
+      const tabsIn = Array.isArray(b.tabs) ? b.tabs : [];
+      const tabs = tabsIn.slice(0, 4).flatMap((t) => {
+        if (typeof t !== "object" || t === null) return [];
+        const tr = t as Record<string, unknown>;
+        const label = (typeof tr.label === "string" ? tr.label : "Tab").slice(0, 24);
+        const nested = (Array.isArray(tr.blocks) ? tr.blocks : [])
+          .slice(0, 8)
+          .map((n) => normalizeBlockForRender(n))
+          .filter((n): n is Block => n !== null);
+        if (nested.length === 0) return [];
+        return [{ label, blocks: nested }];
+      });
+      if (tabs.length === 0) return null;
+      return { type: "tabs", tabs } as unknown as Block;
     }
     case "links":
       return {

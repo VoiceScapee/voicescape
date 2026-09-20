@@ -8,6 +8,7 @@ import { LanguageSelector } from "./LanguageSelector";
 import { T } from "./T";
 import NavDropdown from "./NavDropdown";
 import type { NavDropdownItem } from "./NavDropdown";
+import NetworkPulse from "./NetworkPulse";
 
 interface NavbarProps {
   right?: React.ReactNode;
@@ -134,6 +135,8 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
         >
           <span aria-hidden="true">{open ? "✕" : "☰"}</span>
         </button>
+        {/* Global network pulse: the dapp breathing with Hedera mainnet. */}
+        <NetworkPulse />
         <div className={`vs-nav-items${open ? " vs-nav-open" : ""}`}>
           {/* Desktop: grouped dropdowns. Mobile: flat sections below. */}
           <div className="vs-nav-desktop-only">

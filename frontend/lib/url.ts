@@ -1,9 +1,10 @@
 /**
  * Sanitize a user-supplied URL before rendering it as an <a href>.
  *
- * Only absolute http: and https: URLs are allowed. Everything else —
- * javascript:, data:, vbscript:, file:, relative paths, bare strings —
- * returns null so the caller can render plain text instead.
+ * Allowed: absolute http:/https: URLs, and same-origin absolute paths
+ * ("/builder") so pages can link inside the dapp. Everything else —
+ * javascript:, data:, vbscript:, file:, protocol-relative ("//evil"),
+ * bare strings — returns null so the caller can render plain text instead.
  *
  * This is the single choke point for all user-controlled links on public
  * pages (links block, booking block, top8, operator disclosure, music
@@ -17,6 +18,10 @@ export function safeExternalUrl(raw: unknown): string | null {
   // JaVaScRiPt: casing. Leading whitespace is trimmed above so
   // "  javascript:..." can't sneak past.
   if (/^https?:\/\//i.test(v)) return v;
+  // Same-origin absolute path: must start with exactly one slash —
+  // "//evil.com/x" is protocol-relative and navigates away, so it stays
+  // blocked. A lone "/" is harmless.
+  if (/^\/(?!\/)/.test(v)) return v;
   return null;
 }
 
