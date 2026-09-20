@@ -6,7 +6,7 @@
  * One interface, multiple adapters:
  *  - Hedera (HashPack, Blade, WalletConnect): paired through DAppConnector
  *    from @hashgraph/hedera-wallet-connect (official, HIP-820 based).
- *    Contract calls go through @hashgraph/sdk transactions signed in the
+ *    Contract calls go through @hiero-ledger/sdk transactions signed in the
  *    wallet — see @voicescape/contracts.
  *  - MetaMask: injected window.ethereum provider + ethers v6, pointed at
  *    Hedera (adds/switches to the Hedera network automatically).
@@ -28,7 +28,7 @@ import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import { getActiveChain, type ChainConfig } from "./chains";
 import type { TxSender } from "./types";
 // NOTE: @voicescape/contracts is intentionally NOT statically imported here.
-// It pulls in the entire @hashgraph/sdk (~2.3MB) which Vercel's CDN fails to
+// It pulls in the entire @hiero-ledger/sdk (~2.3MB) which Vercel's CDN fails to
 // serve reliably on mobile ("Loading chunk 3322 failed"). The tx senders are
 // dynamically imported only when actually signing a transaction (after wallet
 // connection). The @hashgraph/hedera-wallet-connect package is also
@@ -180,7 +180,7 @@ function accountIdFromSession(session: { namespaces?: Record<string, { accounts?
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // Dynamic import keeps the wallet library out of the initial bundle and
   // avoids SSR issues (the package touches browser APIs at import time).
-  // NOTE: We deliberately do NOT import @hashgraph/sdk here — it creates a
+  // NOTE: We deliberately do NOT import @hiero-ledger/sdk here — it creates a
   // 2.3MB chunk that Vercel's CDN fails to serve on mobile (ChunkLoadError).
   // LedgerId is replaced by the MinimalLedgerId shim above; the full SDK
   // (via @voicescape/contracts) is only loaded when actually signing a transaction.
@@ -268,7 +268,7 @@ function hederaGetTxSender(chain: ChainConfig): () => Promise<TxSender> {
     if (!dAppConnectorInstance || !hcAccountId) {
       throw new Error("Hedera wallet is not connected.");
     }
-    // Dynamic import: @voicescape/contracts pulls in @hashgraph/sdk (~2.3MB).
+    // Dynamic import: @voicescape/contracts pulls in @hiero-ledger/sdk (~2.3MB).
     // Only load it when actually signing — never on page load or wallet
     // connection.
     const { createHederaTxSender } = await import("@voicescape/contracts");
@@ -363,7 +363,7 @@ const metamaskAdapter: WalletAdapter = {
     const account = accounts[0];
     const ethForProvider = eth;
     const getTxSender = async (): Promise<TxSender> => {
-      // Dynamic import keeps @hashgraph/sdk out of the initial bundle.
+      // Dynamic import keeps @hiero-ledger/sdk out of the initial bundle.
       const { createEvmTxSender } = await import("@voicescape/contracts");
       const provider = new ethers.BrowserProvider(ethForProvider as ethers.Eip1193Provider);
       const signer = await provider.getSigner();

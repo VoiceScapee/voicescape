@@ -6,7 +6,7 @@
  *  - EVM (MetaMask on Hedera): ethers v6 against the chain's JSON-RPC.
  *    Reads go through a public JsonRpcProvider; writes use the wallet signer.
  *  - Hedera (HashPack / Blade / WalletConnect): the same Solidity contracts
- *    are called through @hashgraph/sdk ContractExecuteTransaction /
+ *    are called through @hiero-ledger/sdk ContractExecuteTransaction /
  *    ContractCallQuery, signed in the wallet via DAppConnector
  *    (signAndExecuteTransaction, HIP-820). Contract addresses are the EVM
  *    addresses from the Hardhat deploy, converted with
@@ -24,7 +24,7 @@ import {
   ContractFunctionParameters,
   ContractId,
   Hbar,
-} from "@hashgraph/sdk";
+} from "@hiero-ledger/sdk";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig, TxSender } from "@voicescape/wallet";
 import { REGISTRY_ABI, TIPS_ABI } from "./abis";
@@ -88,7 +88,7 @@ export function createEvmTxSender(
 }
 
 /* ------------------------------------------------------------------ */
-/* Hedera implementation (@hashgraph/sdk + HashConnect)                 */
+/* Hedera implementation (@hiero-ledger/sdk)                                  */
 /* ------------------------------------------------------------------ */
 
 const HEDERA_WRITE_GAS = 600_000;
@@ -143,8 +143,8 @@ export function createHederaTxSender(
       tx.setPayableAmount(Hbar.fromTinybars(tinybars.toString()));
     }
     // freezeWithSigner fills in transaction id + node account ids via the wallet.
-    // DAppConnector.getSigner returns a DAppSigner (hiero-sdk based); cast to
-    // the hashgraph-sdk Signer interface — the two SDKs are runtime-compatible.
+    // DAppConnector.getSigner returns a DAppSigner (also @hiero-ledger/sdk
+    // based); the cast just widens the parameter type it accepts.
     const signer = (liveConnector.getSigner as unknown as (id: unknown) => Parameters<typeof tx.freezeWithSigner>[0])(accountId);
     await tx.freezeWithSigner(signer);
     const txId = tx.transactionId?.toString() ?? "";

@@ -5,7 +5,7 @@
  * the boundary between wallet connection (this package) and transaction
  * construction (@voicescape/contracts). Concrete senders are created by the
  * factories in @voicescape/contracts and dynamically imported by the
- * wallet provider so the ~2.3MB @hashgraph/sdk never lands in the initial
+ * wallet provider so the ~2.3MB @hiero-ledger/sdk never lands in the initial
  * bundle.
  */
 
@@ -30,7 +30,7 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
  * - EVM (MetaMask on Hedera): ethers v6 against the chain's JSON-RPC.
  *   Reads go through a public JsonRpcProvider; writes use the wallet signer.
  * - Hedera (HashPack / Blade / WalletConnect): the same Solidity contracts
- *   are called through @hashgraph/sdk ContractExecuteTransaction /
+ *   are called through @hiero-ledger/sdk ContractExecuteTransaction /
  *   ContractCallQuery, signed in the wallet.
  */
 export interface TxSender {

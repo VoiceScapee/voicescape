@@ -313,7 +313,7 @@ export function buildHcs10TopicTransactions(ctx: BuildContext): {
   }
   // Built directly with @hiero-ledger/sdk: the standards-sdk builders
   // return old-SDK (@hashgraph/sdk v2) transaction objects whose
-  // freezeWith() is incompatible with hiero v3 clients.
+  // freezeWith() is incompatible with @hiero-ledger/sdk v2 clients.
   const inboundTx = new TopicCreateTransaction()
     .setTopicMemo(`hcs-10:0:0:0:${ctx.payerAccountId}`);
   const outboundTx = new TopicCreateTransaction()
