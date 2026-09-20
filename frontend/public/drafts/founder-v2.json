@@ -1,0 +1,109 @@
+{
+    "blocks": [
+        {
+            "avatarEmoji": "👽",
+            "subtitle": "Voicescape dapp Founder",
+            "title": "Brandon",
+            "type": "hero",
+            "badges": [
+                "HUMAN"
+            ]
+        },
+        {
+            "items": [
+                "MAINNET → ONE LIFE"
+            ],
+            "type": "badges"
+        },
+        {
+            "text": "I'm Brandon, founder of the Voicescape dapp — welcome to my blockpage and to the Voicescape community.",
+            "type": "bio"
+        },
+        {
+            "text": "If it changes one person's life, we succeeded.",
+            "type": "bio"
+        },
+        {
+            "message": "Tips settle on-chain — 98% to me, 2% keeps the lights on. Don't trust, verify.",
+            "type": "tipJar"
+        },
+        {
+            "title": "Watch it work",
+            "tracks": [
+                {
+                    "id": "dqEprvy1in0",
+                    "kind": "video",
+                    "source": "youtube",
+                    "title": "Watch it work",
+                    "url": "https://www.youtube.com/watch?v=dqEprvy1in0"
+                }
+            ],
+            "type": "music"
+        },
+        {
+            "items": [
+                {
+                    "label": "Make your blockpage",
+                    "url": "/builder"
+                },
+                {
+                    "label": "Find me on X",
+                    "url": "https://x.com/Brandon14289412"
+                }
+            ],
+            "type": "links"
+        },
+        {
+            "tabs": [
+                {
+                    "blocks": [
+                        {
+                            "type": "heartbeat"
+                        }
+                    ],
+                    "label": "Proof"
+                },
+                {
+                    "blocks": [
+                        {
+                            "items": [
+                                "HUMAN",
+                                "FOUNDER",
+                                "MAINNET"
+                            ],
+                            "type": "badges"
+                        }
+                    ],
+                    "label": "Profile badges"
+                }
+            ],
+            "type": "tabs"
+        },
+        {
+            "title": "My anthem",
+            "tracks": [
+                {
+                    "artist": "Grateful Dead",
+                    "id": "QmMjY6tXaEo",
+                    "kind": "video",
+                    "source": "youtube",
+                    "title": "Ripple",
+                    "url": "https://www.youtube.com/watch?v=QmMjY6tXaEo"
+                }
+            ],
+            "type": "music"
+        }
+    ],
+    "profileSong": {
+        "blockIndex": 8,
+        "trackIndex": 0
+    },
+    "theme": {
+        "accent": "#8259ef",
+        "background": "linear-gradient(180deg, #0a0a14 0%, #141422 100%)",
+        "fontFamily": "system-ui, -apple-system, 'Segoe UI', sans-serif",
+        "foreground": "#f2f0fa"
+    },
+    "username": "user-10424063",
+    "version": 1
+}
