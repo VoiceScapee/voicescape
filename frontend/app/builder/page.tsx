@@ -122,6 +122,12 @@ function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) 
       return <IconBook size={size} />;
     case "booking":
       return <IconLink size={size} />;
+    case "heartbeat":
+      return <IconBolt size={size} />;
+    case "tabs":
+      return <IconGrid size={size} />;
+    case "badges":
+      return <IconSpark size={size} />;
   }
 }
 
@@ -479,6 +485,80 @@ function BlockEditor({
             onChange={(e) => onChange({ ...block, message: e.target.value })}
           />
         </label>
+      )}
+
+      {block.type === "heartbeat" && (
+        <p className="vs-hint">
+          The Blockchain Heartbeat is automatic — it shows this page&apos;s live
+          connection to Hedera mainnet and pulses when real tips settle. No
+          setup needed.
+        </p>
+      )}
+
+      {block.type === "badges" && (
+        <>
+          <span className="vs-label">Badges</span>
+          {block.items.map((item, i) => (
+            <div className="vb-entry" key={i}>
+              <div className="vb-entry-head">
+                <input
+                  className="vs-input"
+                  value={item}
+                  maxLength={24}
+                  onChange={(e) =>
+                    onChange({
+                      ...block,
+                      items: block.items.map((x, j) => (j === i ? e.target.value : x)),
+                    })
+                  }
+                  aria-label={`Badge ${i + 1}`}
+                />
+                <button
+                  type="button"
+                  className="vb-icon-btn vb-icon-btn-danger"
+                  onClick={() => onChange({ ...block, items: block.items.filter((_, j) => j !== i) })}
+                  title="Delete badge"
+                  aria-label="Delete badge"
+                >
+                  <IconTrash size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+          <button
+            type="button"
+            className="vs-btn vs-btn-ghost"
+            onClick={() => onChange({ ...block, items: [...block.items, "Badge"] })}
+          >
+            <IconPlus size={16} /> Add badge
+          </button>
+        </>
+      )}
+
+      {block.type === "tabs" && (
+        <>
+          <span className="vs-label">Tabs</span>
+          {block.tabs.map((t, i) => (
+            <label className="vb-field" key={i}>
+              <span className="vs-label">Tab {i + 1} label</span>
+              <input
+                className="vs-input"
+                value={t.label}
+                maxLength={24}
+                onChange={(e) =>
+                  onChange({
+                    ...block,
+                    tabs: block.tabs.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)),
+                  })
+                }
+              />
+            </label>
+          ))}
+          <p className="vs-hint">
+            Each tab holds its own blocks — describe what goes in a tab to the
+            AI builder and it will arrange them.
+          </p>
+        </>
       )}
 
       {block.type === "guestbook" && (
@@ -1204,6 +1284,11 @@ function VibecodeChat({
     "operator",
     "reviews",
     "booking",
+    "livestream",
+    "chat",
+    "heartbeat",
+    "tabs",
+    "badges",
   ];
   const unknownToX402 = page.blocks.map((b) => b.type).filter((t) => !X402_KNOWN_BLOCKS.includes(t));
 

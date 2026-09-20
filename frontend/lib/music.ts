@@ -147,10 +147,12 @@ export function trackEmbedUrl(track: MusicTrack): string | null {
       return `https://open.spotify.com/embed/${kind}/${encodeURIComponent(track.id)}?utm_source=generator`;
     }
     case "youtube": {
+      // Privacy-enhanced embeds: no cookies are set until the visitor
+      // presses play (approved for the founder blockpage's demo video).
       if (track.kind === "playlist") {
-        return `https://www.youtube.com/embed/videoseries?list=${encodeURIComponent(track.id)}`;
+        return `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(track.id)}`;
       }
-      return `https://www.youtube.com/embed/${encodeURIComponent(track.id)}?rel=0`;
+      return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(track.id)}?rel=0`;
     }
     case "soundcloud": {
       const pageUrl = encodeURIComponent(`https://soundcloud.com/${track.id}`);

@@ -1168,3 +1168,62 @@ a {
     animation: none !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* NetworkPulse — the dapp-wide global pulse (heartbeat layer 1).      */
+/* A quiet dot that pings once per newly settled Hedera mainnet block. */
+/* Transform/opacity only; no transition: all.                         */
+/* ------------------------------------------------------------------ */
+.vs-netpulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  cursor: default;
+}
+.vs-netpulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #5eead4;
+  box-shadow: 0 0 6px rgba(94, 234, 212, 0.8);
+  /* One ping per newly settled block; remounting retriggers it. */
+  animation: vs-netpulse-ping 900ms ease-out;
+}
+@keyframes vs-netpulse-ping {
+  0% { transform: scale(1); opacity: 1; }
+  35% {
+    transform: scale(1.7);
+    opacity: 0.55;
+    box-shadow: 0 0 12px rgba(94, 234, 212, 0.9);
+  }
+  100% { transform: scale(1); opacity: 1; }
+}
+/* Silent: mirror unreachable or throttled — hollow dot, no motion, no
+   claims, until blocks resume. */
+.vs-netpulse.is-silent .vs-netpulse-dot {
+  background: transparent;
+  border: 1.5px solid rgba(148, 163, 184, 0.6);
+  box-shadow: none;
+  animation: none;
+}
+.vs-netpulse-dot.is-static {
+  animation: none;
+}
+.vs-netpulse-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: inherit;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .vs-netpulse-label {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vs-netpulse-dot {
+    animation: none;
+  }
+}

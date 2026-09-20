@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
 import { normalizeBlockForRender } from "@/lib/schema";
@@ -33,6 +33,8 @@ import {
 } from "@/components/icons";
 import LivestreamBlock from "@/components/LivestreamBlock";
 import ChatBox from "@/components/ChatBox";
+import HeartbeatBlock from "@/components/HeartbeatBlock";
+import NetworkPulse from "@/components/NetworkPulse";
 import "./renderer.css";
 
 interface RendererProps {
@@ -328,6 +330,102 @@ function TipJarCard({
   );
 }
 
+/**
+ * Tabbed presentation (builder block "tabs"). A small tablist; each tab
+ * holds its own blocks rendered through BlockView with the same page
+ * props. Keyboard: tabs are real buttons, arrow keys move between them.
+ */
+function TabsBlock({
+  tabs,
+  onPayService,
+  isFounder,
+  tipName,
+  tipInteractive,
+  onTip,
+  tipPaused,
+  tipOwner,
+  preview,
+}: {
+  tabs: { label: string; blocks: Block[] }[];
+  onPayService?: (s: ServiceItem) => void;
+  isFounder?: boolean;
+  tipName: string;
+  tipInteractive?: boolean;
+  onTip?: () => void;
+  tipPaused?: boolean;
+  tipOwner?: string | null;
+  preview?: boolean;
+}) {
+  const [active, setActive] = useState(0);
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const safeActive = Math.min(active, tabs.length - 1);
+
+  const onKeyDown = (e: React.KeyboardEvent, i: number) => {
+    let next: number | null = null;
+    if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
+    else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabs.length - 1;
+    if (next !== null) {
+      e.preventDefault();
+      setActive(next);
+      tabRefs.current[next]?.focus();
+    }
+  };
+
+  return (
+    <section className="pv-block pv-tabs" aria-label="Page sections">
+      <div className="pv-tabs-bar" role="tablist" aria-label="Page sections">
+        {tabs.map((t, i) => (
+          <button
+            key={i}
+            ref={(el) => {
+              tabRefs.current[i] = el;
+            }}
+            type="button"
+            role="tab"
+            id={`pv-tab-${i}`}
+            aria-selected={i === safeActive}
+            aria-controls={`pv-tabpanel-${i}`}
+            tabIndex={i === safeActive ? 0 : -1}
+            className={`pv-tab${i === safeActive ? " is-active" : ""}`}
+            onClick={() => setActive(i)}
+            onKeyDown={(e) => onKeyDown(e, i)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tabs.map((t, i) => (
+        <div
+          key={i}
+          role="tabpanel"
+          id={`pv-tabpanel-${i}`}
+          aria-labelledby={`pv-tab-${i}`}
+          hidden={i !== safeActive}
+          className="pv-tabpanel"
+        >
+          {i === safeActive &&
+            t.blocks.map((b, j) => (
+              <BlockView
+                key={j}
+                block={b}
+                onPayService={onPayService}
+                isFounder={isFounder}
+                tipName={tipName}
+                tipInteractive={tipInteractive}
+                onTip={onTip}
+                tipPaused={tipPaused}
+                tipOwner={tipOwner}
+                preview={preview}
+              />
+            ))}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function BlockView({
   block,
   onPayService,
@@ -554,6 +652,34 @@ function BlockView({
       );
     case "chat":
       return <ChatBox room={tipName} title={block.title} preview={preview} />;
+    case "heartbeat":
+      // The heartbeat needs the page owner's on-chain wallet (never page
+      // JSON content) to poll /api/heartbeat for real settled tip events.
+      return <HeartbeatBlock owner={tipOwner} preview={preview} />;
+    case "badges":
+      return (
+        <div className="pv-block pv-badges" aria-label="Badges">
+          {block.items.map((item, i) => (
+            <span key={i} className="pv-badge vs-mono">
+              {item}
+            </span>
+          ))}
+        </div>
+      );
+    case "tabs":
+      return (
+        <TabsBlock
+          tabs={block.tabs}
+          onPayService={onPayService}
+          isFounder={isFounder}
+          tipName={tipName}
+          tipInteractive={tipInteractive}
+          onTip={onTip}
+          tipPaused={tipPaused}
+          tipOwner={tipOwner}
+          preview={preview}
+        />
+      );
     default:
       return null;
   }
@@ -821,6 +947,8 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
             voicescape <span className="pv-username vs-mono">/{page.username}</span>
           </span>
         </a>
+        {/* Global network pulse: the dapp breathing with Hedera mainnet. */}
+        <NetworkPulse />
       </header>
 
       {agentMeta && <AgentBanner meta={agentMeta} />}

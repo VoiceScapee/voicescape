@@ -34,10 +34,15 @@ describe("safeExternalUrl", () => {
     expect(safeExternalUrl("vbscript:msgbox(1)")).toBeNull();
   });
 
-  it("blocks relative paths and bare strings", () => {
-    expect(safeExternalUrl("/brandon")).toBeNull();
-    expect(safeExternalUrl("example.com")).toBeNull();
+  it("allows same-origin absolute paths", () => {
+    expect(safeExternalUrl("/builder")).toBe("/builder");
+    expect(safeExternalUrl("/brandon?tip=1")).toBe("/brandon?tip=1");
+  });
+
+  it("blocks protocol-relative URLs and bare strings", () => {
     expect(safeExternalUrl("//example.com/x")).toBeNull();
+    expect(safeExternalUrl("///evil.com")).toBeNull();
+    expect(safeExternalUrl("example.com")).toBeNull();
   });
 
   it("returns null for empty / non-string input", () => {
