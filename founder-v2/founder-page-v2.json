@@ -1,19 +1,22 @@
 {
     "blocks": [
         {
-            "avatarEmoji": "\ud83d\udc7d",
+            "avatarEmoji": "👽",
             "subtitle": "Voicescape dapp Founder",
             "title": "Brandon",
-            "type": "hero"
+            "type": "hero",
+            "badges": [
+                "HUMAN"
+            ]
         },
         {
             "items": [
-                "MAINNET \u2192 ONE LIFE"
+                "MAINNET → ONE LIFE"
             ],
             "type": "badges"
         },
         {
-            "text": "I'm Brandon, founder of the Voicescape dapp. Welcome to my blockpage \u2014 you're part of this community now.",
+            "text": "I'm Brandon, founder of the Voicescape dapp — welcome to my blockpage and to the Voicescape community.",
             "type": "bio"
         },
         {
@@ -21,7 +24,7 @@
             "type": "bio"
         },
         {
-            "message": "Tips settle on-chain \u2014 98% to me, 2% keeps the lights on. Don't trust, verify.",
+            "message": "Tips settle on-chain — 98% to me, 2% keeps the lights on. Don't trust, verify.",
             "type": "tipJar"
         },
         {
@@ -71,7 +74,7 @@
                             "type": "badges"
                         }
                     ],
-                    "label": "Badges"
+                    "label": "Profile badges"
                 }
             ],
             "type": "tabs"

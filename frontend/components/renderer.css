@@ -190,6 +190,20 @@
   }
 }
 
+/* Hero identity chips — platform Founder badge + page-authored chips
+   (e.g. HUMAN) side by side under the hero subtitle. */
+.pv-hero-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.pv-hero-badges .pv-founder-badge {
+  margin-top: 0;
+}
+
 /* ---------- bio ---------- */
 
 .pv-bio {

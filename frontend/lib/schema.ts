@@ -5,7 +5,19 @@
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
 export type Block =
-  | { type: "hero"; title: string; subtitle?: string; avatarEmoji?: string; avatarImage?: string }
+  | {
+    type: "hero";
+    title: string;
+    subtitle?: string;
+    avatarEmoji?: string;
+    avatarImage?: string;
+    /**
+     * Small text chips rendered beside the platform Founder badge
+     * (e.g. HUMAN on the founder's page). The Founder badge itself
+     * stays renderer-owned; these are page-authored identity chips.
+     */
+    badges?: string[];
+  }
   | { type: "bio"; text: string }
   | { type: "links"; items: { label: string; url: string }[] }
   | { type: "tipJar"; message?: string }
@@ -320,6 +332,12 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       if (avatarEmoji !== undefined) hero.avatarEmoji = avatarEmoji;
       const avatarImage = str(b.avatarImage);
       if (avatarImage !== undefined) hero.avatarImage = avatarImage;
+      const badges = (Array.isArray(b.badges) ? b.badges : [])
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim().slice(0, 24))
+        .filter((x) => x.length > 0)
+        .slice(0, 4);
+      if (badges.length > 0) hero.badges = badges;
       return hero as unknown as Block;
     }
     case "bio":

@@ -476,7 +476,16 @@ function BlockView({
           </div>
           <h1 className="pv-title">{block.title}</h1>
           {block.subtitle && <p className="pv-subtitle">{block.subtitle}</p>}
-          {isFounder && <FounderBadge />}
+          {(isFounder || (block.badges && block.badges.length > 0)) && (
+            <div className="pv-hero-badges">
+              {isFounder && <FounderBadge />}
+              {(block.badges ?? []).map((badge, i) => (
+                <span key={i} className="pv-badge vs-mono">
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
         </section>
       );
     }

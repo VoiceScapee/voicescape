@@ -102,3 +102,26 @@ describe("badges block", () => {
     expect(normalizeBlockForRender({ type: "badges" })).toBeNull();
   });
 });
+
+describe("hero block badges", () => {
+  it("keeps page-authored hero badges", () => {
+    expect(
+      normalizeBlockForRender({ type: "hero", title: "Brandon", badges: ["HUMAN"] }),
+    ).toEqual({ type: "hero", title: "Brandon", badges: ["HUMAN"] });
+  });
+
+  it("trims, drops empties, and caps hero badges at 4", () => {
+    const out = normalizeBlockForRender({
+      type: "hero",
+      title: "Brandon",
+      badges: [" HUMAN ", "", 42, "A".repeat(40), "b", "c", "d", "e"],
+    }) as { badges?: string[] };
+    expect(out.badges).toEqual(["HUMAN", "A".repeat(24), "b", "c"]);
+  });
+
+  it("omits badges when none survive", () => {
+    expect(
+      normalizeBlockForRender({ type: "hero", title: "Brandon", badges: ["  "] }),
+    ).toEqual({ type: "hero", title: "Brandon" });
+  });
+});
