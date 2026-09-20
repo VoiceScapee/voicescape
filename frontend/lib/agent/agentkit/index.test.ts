@@ -1,9 +1,9 @@
 /**
  * Voicescape Agent Kit plugin tests: the chat route's brain runs on
  * Hedera's official `@hashgraph/hedera-agent-kit` — these tests lock in
- * that the plugin exposes exactly the three read-only query tools, that
+ * that the plugin exposes exactly the four read-only query tools, that
  * the model-facing function names stay stable, and that tool execution
- * works against a mocked mirror node.
+ * works against a mocked mirror node / docs MCP.
  */
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { AbiCoder } from "ethers";
@@ -36,9 +36,9 @@ afterEach(() => {
 });
 
 describe("voicescape Agent Kit plugin", () => {
-  it("exposes exactly three QUERY tools (read-only by construction)", () => {
+  it("exposes exactly four QUERY tools (read-only by construction)", () => {
     const tools = getBuddyTools();
-    expect(tools).toHaveLength(3);
+    expect(tools).toHaveLength(4);
     for (const tool of tools) {
       expect(tool.toolType).toBe(TOOL_TYPE.QUERY);
     }
@@ -50,6 +50,7 @@ describe("voicescape Agent Kit plugin", () => {
       "resolve_blockpage",
       "verify_tip",
       "treasury_stats",
+      "search_hedera_docs",
     ]);
   });
 
@@ -60,6 +61,7 @@ describe("voicescape Agent Kit plugin", () => {
       "resolve_blockpage",
       "verify_tip",
       "treasury_stats",
+      "search_hedera_docs",
     ]);
     const lookup: any = defs[0].function.parameters;
     expect(lookup.type).toBe("object");
@@ -147,5 +149,62 @@ describe("voicescape Agent Kit plugin", () => {
     expect(result.directCalls).toBe(1);
     expect(result.totalHbar).toBe(2);
     expect(seen[0]).toContain(`/contracts/${TIPS_ID}/results`);
+  });
+
+  it("executes search_hedera_docs_tool against the docs MCP server", async () => {
+    const seen: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: any, init: any) => {
+        const body = JSON.parse(init.body);
+        seen.push(body.method);
+        let payload: unknown;
+        if (body.method === "tools/list") {
+          payload = { result: { tools: [{ name: "search_hedera" }] } };
+        } else if (body.method === "tools/call") {
+          expect(body.params.name).toBe("search_hedera");
+          payload = {
+            result: {
+              content: [
+                {
+                  type: "text",
+                  text:
+                    "Title: Create your first topic\n" +
+                    "Link: https://docs.hedera.com/native/tutorials/consensus/create-first-topic\n" +
+                    "Page: native/tutorials/consensus/create-first-topic\n" +
+                    "Content: Use TopicCreateTransaction from @hiero-ledger/sdk to create an HCS topic.",
+                },
+              ],
+            },
+          };
+        } else {
+          payload = { result: { protocolVersion: "2024-11-05" } };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => `data: ${JSON.stringify(payload)}\n\n`,
+        };
+      })
+    );
+    const tools = getBuddyTools();
+    const tool = findTool(tools, "search_hedera_docs")!;
+    const out = await tool.execute(
+      undefined as never,
+      {},
+      tool.parameters.parse({ query: "How do I create an HCS topic?" })
+    );
+    const result = JSON.parse(out);
+    expect(seen).toEqual(["initialize", "tools/list", "tools/call"]);
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0].title).toBe("Create your first topic");
+    expect(result.results[0].link).toContain("docs.hedera.com");
+    expect(result.source).toBe("official Hedera docs (live)");
+  });
+
+  it("rejects docs queries shorter than 3 characters", () => {
+    const tools = getBuddyTools();
+    const tool = findTool(tools, "search_hedera_docs")!;
+    expect(() => tool.parameters.parse({ query: "hi" })).toThrow();
   });
 });

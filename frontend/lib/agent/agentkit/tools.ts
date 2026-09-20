@@ -13,6 +13,7 @@
 import { TOOL_TYPE, type Context, type Tool } from "@hashgraph/hedera-agent-kit";
 import {
   lookupBlockpageSchema,
+  searchHederaDocsSchema,
   treasuryStatsSchema,
   verifyTipSchema,
 } from "./schemas";
@@ -31,6 +32,7 @@ import {
 export const LOOKUP_BLOCKPAGE_TOOL = "lookup_blockpage_tool";
 export const VERIFY_TIP_TOOL = "verify_tip_tool";
 export const TREASURY_STATS_TOOL = "treasury_stats_tool";
+export const SEARCH_HEDERA_DOCS_TOOL = "search_hedera_docs_tool";
 
 function signalOf(context: Context): AbortSignal | undefined {
   return (context as { signal?: AbortSignal } | undefined)?.signal;
@@ -234,6 +236,126 @@ export function treasuryStatsTool(_context: Context): Tool {
         directCalls: direct.length,
         totalHbar: tinybarToHbar(totalTinybar),
         selectors,
+      });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tool 4: search_hedera_docs_tool
+// ---------------------------------------------------------------------------
+
+const HEDERA_DOCS_MCP = "https://docs.hedera.com/mcp";
+const DOCS_MAX_RESULTS = 3;
+const DOCS_MAX_SNIPPET = 600;
+const DOCS_TIMEOUT_MS = 25000;
+
+async function docsMcpCall(
+  method: string,
+  params: object,
+  id: number,
+  signal?: AbortSignal
+): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOCS_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  signal?.addEventListener("abort", onAbort);
+  try {
+    const res = await fetch(HEDERA_DOCS_MCP, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`docs server HTTP ${res.status}`);
+    const body = await res.text();
+    for (const line of body.split("\n")) {
+      if (line.startsWith("data: ")) return JSON.parse(line.slice(6));
+    }
+    throw new Error("docs server returned no data frame");
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function docsToResults(rawText: string) {
+  // SearchHedera returns "Title: ...\nLink: ...\nPage: ...\nContent: ..." blocks.
+  const results: Array<{ title: string; link: string; snippet: string }> = [];
+  for (const chunk of rawText.split(/(?=^Title: )/m)) {
+    if (results.length >= DOCS_MAX_RESULTS) break;
+    const title = /Title:\s*(.+)/.exec(chunk)?.[1]?.trim() ?? "";
+    const link = /Link:\s*(\S+)/.exec(chunk)?.[1]?.trim() ?? "";
+    const content = /Content:\s*([\s\S]+)/.exec(chunk)?.[1]?.trim() ?? "";
+    if (!title && !content) continue;
+    results.push({
+      title: title.slice(0, 160),
+      link: link.slice(0, 300),
+      snippet: content.replace(/\s+/g, " ").slice(0, DOCS_MAX_SNIPPET),
+    });
+  }
+  return results;
+}
+
+export function searchHederaDocsTool(_context: Context): Tool {
+  return {
+    method: SEARCH_HEDERA_DOCS_TOOL,
+    name: "Search Hedera Docs",
+    description:
+      "Search the OFFICIAL, LIVE Hedera documentation (docs.hedera.com) " +
+      "for Hedera how-to, SDK, API, and network questions. Use it whenever " +
+      "the visitor asks how to DO something on Hedera (code, transactions, " +
+      "tokens, topics, accounts, wallets, fees) instead of answering from " +
+      "memory — the docs are always current. Returns titles, official docs " +
+      "links, and excerpts. Read-only; cite the docs link in your reply.",
+    parameters: searchHederaDocsSchema,
+    toolType: TOOL_TYPE.QUERY,
+    execute: async (_client, ctx, params) => {
+      const signal = signalOf(ctx);
+      const { query } = searchHederaDocsSchema.parse(params);
+      await docsMcpCall(
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "blockpage-buddy", version: "1.0" },
+        },
+        1,
+        signal
+      );
+      const tools = await docsMcpCall("tools/list", {}, 2, signal);
+      const names: string[] = (tools?.result?.tools ?? []).map(
+        (t: any) => t?.name
+      );
+      const toolName = names.includes("search_hedera") ? "search_hedera" : names[0];
+      if (!toolName) throw new Error("docs server exposed no tools");
+      const call = await docsMcpCall(
+        "tools/call",
+        { name: toolName, arguments: { query } },
+        3,
+        signal
+      );
+      const blocks: Array<{ type: string; text?: string }> =
+        call?.result?.content ?? [];
+      const rawText = blocks
+        .filter((b) => b?.type === "text" && b.text)
+        .map((b) => b.text as string)
+        .join("\n\n");
+      const results = docsToResults(rawText);
+      if (!results.length) {
+        return JSON.stringify({
+          query,
+          results: [],
+          note: "no docs hits — say you don't know",
+        });
+      }
+      return JSON.stringify({
+        query,
+        results,
+        source: "official Hedera docs (live)",
       });
     },
   };

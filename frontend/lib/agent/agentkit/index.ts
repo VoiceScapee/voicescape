@@ -20,9 +20,11 @@ import {
 import zodToJsonSchema from "zod-to-json-schema";
 import {
   LOOKUP_BLOCKPAGE_TOOL,
+  SEARCH_HEDERA_DOCS_TOOL,
   TREASURY_STATS_TOOL,
   VERIFY_TIP_TOOL,
   lookupBlockpageTool,
+  searchHederaDocsTool,
   treasuryStatsTool,
   verifyTipTool,
 } from "./tools";
@@ -32,20 +34,23 @@ export type BuddyContext = Context & { signal?: AbortSignal };
 
 const voicescapePlugin: Plugin = {
   name: "voicescape-plugin",
-  version: "1.0.0",
+  version: "1.1.0",
   description:
     "Read-only Voicescape chain tools: blockpage lookup, tip verification, " +
-    "and treasury stats via the Hedera mainnet mirror node.",
+    "treasury stats via the Hedera mainnet mirror node, plus live official " +
+    "Hedera docs search.",
   tools: (context: Context) => [
     lookupBlockpageTool(context),
     verifyTipTool(context),
     treasuryStatsTool(context),
+    searchHederaDocsTool(context),
   ],
 };
 
 export default voicescapePlugin;
 export {
   LOOKUP_BLOCKPAGE_TOOL,
+  SEARCH_HEDERA_DOCS_TOOL,
   TREASURY_STATS_TOOL,
   VERIFY_TIP_TOOL,
   type Tool,
@@ -78,6 +83,8 @@ export function functionNameFor(method: string): string {
       return "verify_tip";
     case TREASURY_STATS_TOOL:
       return "treasury_stats";
+    case SEARCH_HEDERA_DOCS_TOOL:
+      return "search_hedera_docs";
     default:
       return method;
   }

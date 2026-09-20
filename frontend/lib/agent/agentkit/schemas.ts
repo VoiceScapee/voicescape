@@ -36,3 +36,15 @@ export const treasuryStatsSchema = z.object({
     .default(24)
     .describe("Lookback window in hours"),
 });
+
+/** searchHederaDocs — input schema. */
+export const searchHederaDocsSchema = z.object({
+  query: z
+    .string()
+    .min(3)
+    .max(200)
+    .describe(
+      "Hedera how-to / SDK / API question to look up in the official Hedera docs, " +
+        "e.g. 'How do I create an HCS topic with the Hiero SDK?'"
+    ),
+});

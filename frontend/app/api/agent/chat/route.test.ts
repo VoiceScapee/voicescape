@@ -291,6 +291,7 @@ describe("POST /api/agent/chat", () => {
         "resolve_blockpage",
         "verify_tip",
         "treasury_stats",
+        "search_hedera_docs",
         "generate_page_image",
       ]);
     }
