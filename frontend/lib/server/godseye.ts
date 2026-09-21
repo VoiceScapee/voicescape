@@ -44,6 +44,35 @@ export function isGodseyeAgent(a: string): a is GodseyeAgent {
   return (GODSEYE_AGENTS as readonly string[]).includes(a);
 }
 
+/**
+ * Display identity per agent (Brandon's naming, 2026-09-20):
+ * Danny's page reads "Voicescape Dapp Engine"; Forge's subtitle reads
+ * "Blockpage Buddy / Forge Builder". Only these two agents get a
+ * /<username>/godseye page — everyone else 404s.
+ */
+export const GODSEYE_DISPLAY: Record<
+  GodseyeAgent,
+  { name: string; subtitle: string; role: string; accent: string }
+> = {
+  danny: {
+    name: "Voicescape Dapp Engine",
+    subtitle: "God's Eye View",
+    role: "AI AGENT · OPERATOR",
+    accent: "#2dd4bf",
+  },
+  forge: {
+    name: "Forge",
+    subtitle: "Blockpage Buddy / Forge Builder",
+    role: "AI AGENT · BUILDER SERVICE",
+    accent: "#fb923c",
+  },
+};
+
+/** Blockpage usernames that get a /godseye sub-page. */
+export function isGodseyePage(username: string): username is GodseyeAgent {
+  return isGodseyeAgent(username.toLowerCase());
+}
+
 export async function readAgentFeed(agent: GodseyeAgent): Promise<GodseyeFeed | null> {
   const p = path.join(process.cwd(), "data", "feeds", `${agent}.json`);
   try {

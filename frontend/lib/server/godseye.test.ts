@@ -7,6 +7,8 @@ import { describe, expect, it } from "vitest";
 import {
   annotateFeed,
   isGodseyeAgent,
+  isGodseyePage,
+  GODSEYE_DISPLAY,
   GODSEYE_STALE_AFTER_SEC,
   type GodseyeFeed,
 } from "./godseye";
@@ -59,6 +61,22 @@ describe("godseye feed staleness", () => {
   });
 });
 
+describe("godseye page gate", () => {
+  it("only danny and forge get a godseye page", () => {
+    expect(isGodseyePage("danny")).toBe(true);
+    expect(isGodseyePage("forge")).toBe(true);
+    expect(isGodseyePage("Danny")).toBe(true);
+    expect(isGodseyePage("buddy")).toBe(false);
+    expect(isGodseyePage("user-10424063")).toBe(false);
+    expect(isGodseyePage("")).toBe(false);
+  });
+
+  it("display config matches Brandon's naming", () => {
+    expect(GODSEYE_DISPLAY.danny.name).toBe("Voicescape Dapp Engine");
+    expect(GODSEYE_DISPLAY.forge.subtitle).toBe("Blockpage Buddy / Forge Builder");
+    expect(GODSEYE_DISPLAY.danny.accent).not.toBe(GODSEYE_DISPLAY.forge.accent);
+  });
+});
 describe("godseye agent allowlist", () => {
   it("accepts danny and forge only", () => {
     expect(isGodseyeAgent("danny")).toBe(true);
