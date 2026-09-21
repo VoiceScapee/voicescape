@@ -3,7 +3,7 @@ import {
   annotateFeed,
   GODSEYE_DISPLAY,
   isGodseyePage,
-  readAgentFeed,
+  readLiveFeed,
 } from "@/lib/server/godseye";
 import { GodseyeView } from "@/components/godseye/GodseyeView";
 
@@ -25,7 +25,7 @@ export default async function GodseyePage({
 }) {
   const username = decodeURIComponent(params.username ?? "").toLowerCase();
   if (!isGodseyePage(username)) notFound();
-  const feed = await readAgentFeed(username);
+  const feed = await readLiveFeed(username);
   return (
     <GodseyeView
       agent={username}

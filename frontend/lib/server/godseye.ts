@@ -78,13 +78,64 @@ export async function readAgentFeed(agent: GodseyeAgent): Promise<GodseyeFeed | 
   try {
     const raw = await fs.readFile(p, "utf8");
     const feed = JSON.parse(raw) as GodseyeFeed;
-    if (!feed || typeof feed.generatedAt !== "string" || !Array.isArray(feed.events)) {
+    if (!isValidFeedShape(feed) || feed.agent !== agent) {
       return null;
     }
     return feed;
   } catch {
     return null;
   }
+}
+
+/**
+ * Public gist holding the live feed snapshots. The deployed bundle can't be
+ * rewritten, so the VM collector publishes here every ~5 min and the dapp
+ * reads live from it; the bundled file above is only the fallback. The gist
+ * is public — the feed is public data by design (the collector is the
+ * privacy firewall; this reader only ever serves what it was given).
+ */
+const GODSEYE_GIST_ID = "b588cd71644df34755ac75af42515d27";
+const GODSEYE_GIST_RAW = (agent: GodseyeAgent) =>
+  `https://gist.github.com/VoiceScapee/${GODSEYE_GIST_ID}/raw/${agent}.json`;
+
+/** Shape check for anything fetched off the network — never trust it blindly. */
+export function isValidFeedShape(u: unknown): u is GodseyeFeed {
+  if (!u || typeof u !== "object") return false;
+  const f = u as Record<string, unknown>;
+  return (
+    typeof f["generatedAt"] === "string" &&
+    typeof f["agent"] === "string" &&
+    Array.isArray(f["events"]) &&
+    Array.isArray(f["systems"]) &&
+    Array.isArray(f["queue"])
+  );
+}
+
+async function readRemoteFeed(agent: GodseyeAgent): Promise<GodseyeFeed | null> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    const r = await fetch(GODSEYE_GIST_RAW(agent), {
+      cache: "no-store",
+      signal: ctl.signal,
+    });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    const feed: unknown = await r.json();
+    if (!isValidFeedShape(feed) || feed.agent !== agent) return null;
+    return feed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Live-first feed reader: the gist (refreshed ~5 min by the collector), then
+ * the bundled snapshot as fallback. Used by both the API route and the
+ * server page so first paint is fresh too.
+ */
+export async function readLiveFeed(agent: GodseyeAgent): Promise<GodseyeFeed | null> {
+  return (await readRemoteFeed(agent)) ?? (await readAgentFeed(agent));
 }
 
 export function annotateFeed(feed: GodseyeFeed, nowMs = Date.now()): AnnotatedFeed {

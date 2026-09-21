@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ipGate } from "@/lib/server/rate-limit";
-import { annotateFeed, isGodseyeAgent, readAgentFeed } from "@/lib/server/godseye";
+import { annotateFeed, isGodseyeAgent, readLiveFeed } from "@/lib/server/godseye";
 
 export const runtime = "nodejs";
 
@@ -8,7 +8,8 @@ export const runtime = "nodejs";
  * GET /api/agents/[agent]/feed
  *
  * God's Eye View public feed. Serves the sanitized snapshot the VM
- * collector publishes (frontend/data/feeds/<agent>.json) — the page polls
+ * collector publishes — live from the public gist (~5 min refresh), with
+ * the bundled frontend/data/feeds/<agent>.json as fallback. The page polls
  * this roughly every 45s. The collector is the privacy firewall; this route
  * only reads, computes staleness (the dead-man's switch), and caches.
  *
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: { agent: strin
   if (!isGodseyeAgent(agent)) {
     return NextResponse.json({ ok: false, error: "unknown agent" }, { status: 404 });
   }
-  const feed = await readAgentFeed(agent);
+  const feed = await readLiveFeed(agent);
   if (!feed) {
     return NextResponse.json(
       { ok: false, agent, error: "feed not published yet" },

@@ -8,6 +8,9 @@ import {
   annotateFeed,
   isGodseyeAgent,
   isGodseyePage,
+  isValidFeedShape,
+  readAgentFeed,
+  readLiveFeed,
   GODSEYE_DISPLAY,
   GODSEYE_STALE_AFTER_SEC,
   type GodseyeFeed,
@@ -84,5 +87,42 @@ describe("godseye agent allowlist", () => {
     expect(isGodseyeAgent("buddy")).toBe(false);
     expect(isGodseyeAgent("")).toBe(false);
     expect(isGodseyeAgent("DANNY")).toBe(false);
+  });
+});
+
+describe("godseye live feed", () => {
+  const good = {
+    v: 1,
+    agent: "danny",
+    generatedAt: new Date().toISOString(),
+    systems: [{ id: "engine", wired: true }],
+    now: null,
+    events: [],
+    queue: [],
+  };
+
+  it("accepts a well-formed snapshot", () => {
+    expect(isValidFeedShape(good)).toBe(true);
+  });
+
+  it("rejects malformed snapshots", () => {
+    expect(isValidFeedShape(null)).toBe(false);
+    expect(isValidFeedShape({})).toBe(false);
+    expect(isValidFeedShape({ ...good, events: "nope" })).toBe(false);
+    expect(isValidFeedShape({ ...good, generatedAt: 123 })).toBe(false);
+    expect(isValidFeedShape("string")).toBe(false);
+  });
+
+  it("readLiveFeed returns danny's feed from live source or fallback", async () => {
+    const feed = await readLiveFeed("danny");
+    expect(feed).not.toBeNull();
+    expect(feed?.agent).toBe("danny");
+    expect(Array.isArray(feed?.events)).toBe(true);
+  }, 15000);
+
+  it("readAgentFeed still reads the bundled fallback", async () => {
+    const feed = await readAgentFeed("danny");
+    expect(feed).not.toBeNull();
+    expect(feed?.agent).toBe("danny");
   });
 });
