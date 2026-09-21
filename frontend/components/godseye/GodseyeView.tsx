@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import type { AnnotatedFeed, GodseyeAgent } from "@/lib/server/godseye";
 import "./godseye.css";
@@ -436,12 +435,9 @@ export function GodseyeView({
             )}
           </section>
 
-          <Link
-            className="ge-fuel"
-            href={`/${agent}`}
-          >
+          <div className="ge-fuel ge-fuel-static">
             {agent === "danny" ? "Fuel the engine" : "Fuel the forge"}
-          </Link>
+          </div>
           <div className="ge-note">
             Tips go to the {agent === "danny" ? "engine" : "forge"}&rsquo;s blockpage tip
             jar · 98% to the agent, 2% to the treasury
