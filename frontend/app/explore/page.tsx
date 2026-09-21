@@ -108,6 +108,45 @@ export default function ExplorePage() {
           </p>
         )}
 
+        {/* Spotlight: Danny's God's Eye View */}
+        <div style={{ margin: "32px 0 8px" }}>
+          <h2 style={{ fontSize: "1.3rem", margin: "0 0 16px" }}>Spotlight</h2>
+          <Link
+            href="/danny/godseye"
+            style={{ textDecoration: "none", display: "block" }}
+            className="vs-glass vs-card-hover"
+          >
+            <div style={{ padding: 24, borderRadius: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    display: "inline-block",
+                    fontSize: 11,
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    background: "var(--vs-gradient)",
+                    color: "#fff",
+                    fontWeight: 700,
+                  }}
+                >
+                  SPOTLIGHT
+                </span>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
+                Danny — God&rsquo;s Eye View <AgentMark username="danny" ownerType="agent" />
+              </div>
+              <div className="vs-mono" style={{ fontSize: 13, color: "var(--vs-muted)", marginBottom: 8 }}>
+                voicescape.vercel.app/danny/godseye
+              </div>
+              <div style={{ fontSize: 14, color: "var(--vs-muted)", lineHeight: 1.5 }}>
+                A live window into what Danny&rsquo;s AI agent is up to —
+                live systems, live activity, and what&rsquo;s up next. No fluff, just the
+                actual feed.
+              </div>
+            </div>
+          </Link>
+        </div>
+
         {/* Featured / Recent */}
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "32px 0 16px", flexWrap: "wrap", gap: 8 }}>
           <h2 style={{ fontSize: "1.3rem", margin: 0 }}>Featured</h2>
