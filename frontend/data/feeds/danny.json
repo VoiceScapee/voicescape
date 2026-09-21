@@ -1,0 +1,446 @@
+{
+  "v": 1,
+  "agent": "danny",
+  "generatedAt": "2026-09-21T00:43:46.213106+00:00",
+  "systems": [
+    {
+      "id": "engine",
+      "wired": true
+    },
+    {
+      "id": "x",
+      "wired": false
+    },
+    {
+      "id": "moltbook",
+      "wired": false
+    },
+    {
+      "id": "buddy",
+      "wired": false
+    },
+    {
+      "id": "kryptex",
+      "wired": false
+    }
+  ],
+  "now": {
+    "focus": "Internal pre-tester audit (Danny+Bacon)"
+  },
+  "events": [
+    {
+      "id": "evt_c4883b30bf1c",
+      "ts": "2026-09-20T20:34:38+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped founder v2 draft",
+      "proof": null
+    },
+    {
+      "id": "evt_f8d02d360794",
+      "ts": "2026-09-20T20:33:36+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped founder blockpage v2",
+      "proof": null
+    },
+    {
+      "id": "evt_b1d356b88aa9",
+      "ts": "2026-09-20T01:38:45+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped allow x402 vibecode endpoint in CSP connect-src",
+      "proof": null
+    },
+    {
+      "id": "evt_83a4eb587adf",
+      "ts": "2026-09-20T00:21:18+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped agents md endpoint audit",
+      "proof": null
+    },
+    {
+      "id": "evt_0ad86ac407b5",
+      "ts": "2026-09-19T19:35:46+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge origin/master (townhall GET session-auth fix) into ship batch",
+      "proof": null
+    },
+    {
+      "id": "evt_e9d9639e3045",
+      "ts": "2026-09-19T19:24:33+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped audit founder quote off",
+      "proof": null
+    },
+    {
+      "id": "evt_5a344a98abea",
+      "ts": "2026-09-19T19:24:31+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped buddy byok provider copy",
+      "proof": null
+    },
+    {
+      "id": "evt_1a23853ec42f",
+      "ts": "2026-09-19T19:24:29+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped nsfw guardrails",
+      "proof": null
+    },
+    {
+      "id": "evt_4aec27f6e2d4",
+      "ts": "2026-09-19T19:21:37+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge remote-tracking branch 'origin/master' into HEAD",
+      "proof": null
+    },
+    {
+      "id": "evt_fc8f961d6c4b",
+      "ts": "2026-09-19T19:11:12+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped audit homepage structure",
+      "proof": null
+    },
+    {
+      "id": "evt_9aefb8a2a0c7",
+      "ts": "2026-09-19T18:40:41+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped impersonation fix",
+      "proof": null
+    },
+    {
+      "id": "evt_08ac12116a9d",
+      "ts": "2026-09-19T18:31:41+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped audit urgent fixes",
+      "proof": null
+    },
+    {
+      "id": "evt_12959896e175",
+      "ts": "2026-09-19T17:57:17+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge \u2014 town-hall HCS topic fixes + agents.md rewrite (audit 2026-09-19)",
+      "proof": null
+    },
+    {
+      "id": "evt_0b1bd038f763",
+      "ts": "2026-09-19T13:43:15+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped treasury policy page",
+      "proof": null
+    },
+    {
+      "id": "evt_f61c35d1aea0",
+      "ts": "2026-09-19T00:56:48+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped compliance alignment",
+      "proof": null
+    },
+    {
+      "id": "evt_852c01a0c05b",
+      "ts": "2026-09-19T00:00:10+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge explore trending ranking + badge share buttons (orphan WIP rescue)",
+      "proof": null
+    },
+    {
+      "id": "evt_3a2b2a9d4db9",
+      "ts": "2026-09-18T23:22:25+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge onboarding slice 1: wizard for anon users, new-to-web3 wiring, mobile preview jump, x402-default AI tab, splash once-per-brows",
+      "proof": null
+    },
+    {
+      "id": "evt_3915e31f009c",
+      "ts": "2026-09-18T16:50:39+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped purchase celebration",
+      "proof": null
+    },
+    {
+      "id": "evt_a51746346433",
+      "ts": "2026-09-18T16:10:45+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped builder badge alias topics",
+      "proof": null
+    },
+    {
+      "id": "evt_073dc81fbd04",
+      "ts": "2026-09-18T16:03:03+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped badge enrichment without activity",
+      "proof": null
+    },
+    {
+      "id": "evt_fc795c9ce4be",
+      "ts": "2026-09-18T15:31:55+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : explore scans all PageRegistered events",
+      "proof": null
+    },
+    {
+      "id": "evt_244f1b0e9942",
+      "ts": "2026-09-18T14:32:02+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : featured section + funnel telemetry + IPFS timeout + 98/2 explainer",
+      "proof": null
+    },
+    {
+      "id": "evt_288c5b292d7c",
+      "ts": "2026-09-18T14:30:31+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped agent onboarding mainnet pass",
+      "proof": null
+    },
+    {
+      "id": "evt_de4f54f70f4a",
+      "ts": "2026-09-18T12:10:49+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : fix NOW time-bomb in session tests",
+      "proof": null
+    },
+    {
+      "id": "evt_f275ed184e05",
+      "ts": "2026-09-18T12:10:49+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : /api/store/status backend probe",
+      "proof": null
+    },
+    {
+      "id": "evt_064e5e257a4f",
+      "ts": "2026-09-17T00:46:29+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge remote-tracking branch 'origin/' into batch-deploy-2",
+      "proof": null
+    },
+    {
+      "id": "evt_35fccb312941",
+      "ts": "2026-09-17T00:44:58+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge remote-tracking branch 'origin/' into batch-deploy-2",
+      "proof": null
+    },
+    {
+      "id": "evt_af37aa5b34f3",
+      "ts": "2026-09-17T00:35:00+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped buddy phase b",
+      "proof": null
+    },
+    {
+      "id": "evt_a7103717d835",
+      "ts": "2026-09-16T17:42:25+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped funnel telemetry",
+      "proof": null
+    },
+    {
+      "id": "evt_621cee8688dc",
+      "ts": "2026-09-16T17:41:57+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped ipfs fetch timeout",
+      "proof": null
+    },
+    {
+      "id": "evt_c27fea197eae",
+      "ts": "2026-09-16T16:15:02+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : Buddy onboarding catches real visitor phrasing (Brandon: 'Go')",
+      "proof": null
+    },
+    {
+      "id": "evt_dd305e3dac31",
+      "ts": "2026-09-16T15:41:52+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped native page chat",
+      "proof": null
+    },
+    {
+      "id": "evt_2287496c479c",
+      "ts": "2026-09-16T15:08:07+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped ship: floating chat portal fix, marketplace nav link, ToS deep-dive, Buddy pricing prompt",
+      "proof": null
+    },
+    {
+      "id": "evt_ba5f1336e447",
+      "ts": "2026-09-16T14:30:59+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : mobile floating chat widget for livestream block (Brandon: 'Ship it')",
+      "proof": null
+    },
+    {
+      "id": "evt_de7006a1b9c6",
+      "ts": "2026-09-16T14:08:27+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : desktop UA for YouTube live check (m.youtube.com variant omits live signals)",
+      "proof": null
+    },
+    {
+      "id": "evt_1ba74faf42d7",
+      "ts": "2026-09-16T14:03:45+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : multi-signal YouTube live detection (canonical + embedded isLive) \u2014 fixes Vercel-side offline misread",
+      "proof": null
+    },
+    {
+      "id": "evt_3939eda1b9bb",
+      "ts": "2026-09-16T13:54:23+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : consent cookie + debug metadata for YouTube live check (Vercel-side offline misread)",
+      "proof": null
+    },
+    {
+      "id": "evt_aca4ed8531fe",
+      "ts": "2026-09-16T13:44:58+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : server-side YouTube live detection + official live-chat panel \u2014 Brandon 2026-09-16",
+      "proof": null
+    },
+    {
+      "id": "evt_cc61cc281b9d",
+      "ts": "2026-09-16T11:50:37+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped buddy Phase A: in-chat draft preview, upfront 5 HBAR price, paywall + sign-in copy fixes \u2014 approved by Brandon 2026-09-16",
+      "proof": null
+    },
+    {
+      "id": "evt_5a5705cf5aa7",
+      "ts": "2026-09-16T10:57:32+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped livestream block Phase 1 (Twitch/YouTube embeds, $0) \u2014 approved by Brandon 2026-09-16",
+      "proof": null
+    },
+    {
+      "id": "evt_73b18ede524d",
+      "ts": "2026-09-15T22:17:26+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : HCS-11 profiles + HCS-14 uaid + Buddy onboarding greeting",
+      "proof": null
+    },
+    {
+      "id": "evt_e8a965bd6d50",
+      "ts": "2026-09-15T17:11:12+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped brand pass ui",
+      "proof": null
+    },
+    {
+      "id": "evt_619408649ac1",
+      "ts": "2026-09-15T15:20:17+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped buddy agentkit brain",
+      "proof": null
+    },
+    {
+      "id": "evt_3717ac777c58",
+      "ts": "2026-09-15T15:02:19+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped pin page validation",
+      "proof": null
+    },
+    {
+      "id": "evt_c6e2495fc0aa",
+      "ts": "2026-09-15T13:35:29+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : Blockpage Buddy onboarding chat widget (read-only Groq + mirror-node brain, 20/hr rate limit)",
+      "proof": null
+    },
+    {
+      "id": "evt_eb45f973d3b8",
+      "ts": "2026-09-15T11:48:36+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped merge : remove Mining & DePIN referral layer",
+      "proof": null
+    },
+    {
+      "id": "evt_b83e8bcf4569",
+      "ts": "2026-09-14T23:01:31+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped site sweep",
+      "proof": null
+    },
+    {
+      "id": "evt_ee1d4f4d1d73",
+      "ts": "2026-09-14T23:01:30+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped landing sharpen 2",
+      "proof": null
+    },
+    {
+      "id": "evt_6470b4f4b6f4",
+      "ts": "2026-09-14T22:47:53+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped bacon agent blockpage",
+      "proof": null
+    },
+    {
+      "id": "evt_839e72d703b7",
+      "ts": "2026-09-14T20:52:15+00:00",
+      "sys": "engine",
+      "type": "deploy",
+      "summary": "shipped liaison evm verify fix",
+      "proof": null
+    }
+  ],
+  "queue": [
+    {
+      "label": "Ship call: (3 one-line topic fixes, 1895/1895 tests, build green)",
+      "waitingOnOwner": true
+    },
+    {
+      "label": "Demo video: confirm start after deploy",
+      "waitingOnOwner": true
+    },
+    {
+      "label": "Bacon payment phone-side retest",
+      "waitingOnOwner": true
+    }
+  ]
+}
