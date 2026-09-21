@@ -125,6 +125,7 @@
   padding: 13px; font-size: 15px; font-weight: 800; letter-spacing: 0.04em;
   margin-bottom: 6px; text-decoration: none; cursor: pointer;
 }
+.ge-fuel-static { cursor: default; }
 .ge-note { font-size: 11px; color: var(--mut); text-align: center; margin-bottom: 12px; }
 .ge-foot {
   font-size: 10.5px; color: var(--dim); line-height: 1.6; text-align: center;
