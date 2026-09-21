@@ -25,13 +25,11 @@ export default async function GodseyePage({
 }) {
   const username = decodeURIComponent(params.username ?? "").toLowerCase();
   if (!isGodseyePage(username)) notFound();
-  const other = username === "danny" ? "forge" : "danny";
   const feed = await readAgentFeed(username);
   return (
     <GodseyeView
       agent={username}
       display={GODSEYE_DISPLAY[username]}
-      other={{ username: other, name: GODSEYE_DISPLAY[other].name }}
       initial={feed ? annotateFeed(feed) : null}
     />
   );

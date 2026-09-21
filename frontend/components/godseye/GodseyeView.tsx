@@ -237,12 +237,10 @@ function Constellation({
 export function GodseyeView({
   agent,
   display,
-  other,
   initial,
 }: {
   agent: GodseyeAgent;
   display: Display;
-  other: { username: string; name: string };
   initial: AnnotatedFeed | null;
 }) {
   const [feed, setFeed] = useState<AnnotatedFeed | null>(initial);
@@ -355,19 +353,7 @@ export function GodseyeView({
                       >
                         {e.sys.toUpperCase()}
                       </span>
-                      <span className="ge-tx">
-                        {e.summary}
-                        {e.proof && (
-                          <a
-                            className="ge-proof"
-                            href={e.proof}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            verify ↗
-                          </a>
-                        )}
-                      </span>
+                      <span className="ge-tx">{e.summary}</span>
                     </li>
                   );
                 })}
@@ -476,10 +462,6 @@ export function GodseyeView({
                 <b>Nothing here is simulated.</b>
               </>
             )}
-            <br />
-            <Link href={`/${other.username}/godseye`} style={{ color: "var(--accent)" }}>
-              View {other.name} →
-            </Link>
           </footer>
         </div>
       </div>
