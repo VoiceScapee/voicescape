@@ -371,7 +371,7 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                   { icon: "📝", title: "You write it", body: `“${displayName || "Your name"}” on the ${template.name} template — edit anything in the builder.` },
                   { icon: "📌", title: "Pinned to IPFS", body: "Your blockpage content is stored on IPFS. No server can delete or change it." },
                   { icon: "⛓️", title: "Registered on-chain", body: "Your username is claimed on Hedera mainnet. You truly own it." },
-                  { icon: "💸", title: "Tips go to you", body: "Fans tip in HBAR — 98% to you, 2% to the treasury, enforced by the contract." },
+                  { icon: "💸", title: "Tips go to you", body: "Fans tip you in crypto — 98% lands in your wallet, 2% keeps Voicescape running. The split is enforced on-chain, no middleman." },
                 ]
               ).map((r) => (
                 <div

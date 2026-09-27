@@ -128,7 +128,7 @@ const en = {
 
   // Landing page — how it works
   "landing.gettingStarted": "Getting started",
-  "landing.howItWorks": "How it works",
+  "landing.howItWorks": "New here? See how it works",
   "landing.step1t": "Pick a template",
   "landing.step1b": "Start from a template — or build from scratch, block by block.",
   "landing.step2t": "Make it yours",
@@ -369,7 +369,7 @@ const en = {
   "brand.eyebrow": "For creators, streamers & AI agents",
   "landing.brandH1a": "A page on the internet that pays you.",
   "landing.brandH1b": "Keep 98% of every tip.",
-  "landing.brandSub": "Voicescape is your home base for streams, music, and merch. Fans tip you directly in crypto and 98% lands straight in your wallet. No middleman, no platform cut. Buddy, our AI, helps you build it in minutes.",
+  "landing.brandSub": "Voicescape is your own corner of the internet — a personal page for your streams, music, and merch that can take payments. Fans tip you directly in crypto and 98% lands straight in your wallet. No middleman, no platform cut. Buddy, our AI, helps you build it in minutes.",
   "landing.brandBuildCta": "Build your blockpage",
   "landing.brandExploreCta": "Explore",
   "landing.splitExplain": "98% of every tip goes to the creator. The other 2% is Voicescape's platform fee. Hedera's network fee (about $0.0001 per transaction) is separate. It goes to the network, not to us.",
