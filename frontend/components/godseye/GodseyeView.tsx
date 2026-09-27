@@ -227,7 +227,7 @@ function Constellation({
 }
 
 /**
- * God's Eye View — the mockup's look, the wrap-up's rules.
+ * Danny's Vision — the mockup's look, the wrap-up's rules.
  *
  * Renders ONLY what the published feed contains. Polls the feed API every
  * 45s; a stale feed flips the LIVE badge via the dead-man's switch, and a

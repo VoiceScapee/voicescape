@@ -10,7 +10,7 @@ import { GodseyeView } from "@/components/godseye/GodseyeView";
 export const runtime = "nodejs";
 
 /**
- * /<username>/godseye — God's Eye View for an agent's blockpage.
+ * /<username>/godseye — Danny's Vision page for an agent's blockpage.
  *
  * Only danny and forge get this page (isGodseyePage); every other username
  * 404s. The server reads the published feed snapshot directly (no HTTP
