@@ -1,0 +1,168 @@
+/* Danny's Vision — full-screen live constellation. Phone-first. */
+
+.dv-scope {
+  --accent: #2dd4bf;
+  background: #05080c;
+  min-height: 100dvh;
+  color: #e8f4f1;
+}
+
+.dv-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 57px);
+  background:
+    radial-gradient(1px 1px at 12% 22%, rgba(255, 255, 255, 0.5), transparent),
+    radial-gradient(1px 1px at 78% 12%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(1px 1px at 34% 68%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(1px 1px at 88% 74%, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(1.5px 1.5px at 55% 38%, rgba(45, 212, 191, 0.35), transparent),
+    radial-gradient(1px 1px at 22% 88%, rgba(255, 255, 255, 0.3), transparent),
+    radial-gradient(1px 1px at 66% 92%, rgba(255, 255, 255, 0.35), transparent),
+    radial-gradient(ellipse 80% 55% at 50% 45%, rgba(13, 60, 54, 0.35), transparent),
+    #05080c;
+}
+
+.dv-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 6px;
+}
+
+.dv-title {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.dv-sub {
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  color: #8aa5a1;
+  margin-top: 2px;
+}
+
+.dv-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: #4ade80;
+}
+
+.dv-live.off {
+  color: #5f7a77;
+}
+
+.dv-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.dv-agent {
+  margin: 2px 16px 0;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #5f7a77;
+  text-align: center;
+}
+
+.dv-canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 420px;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.dv-foot {
+  padding: 10px 16px 18px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: #5f7a77;
+  text-align: center;
+}
+
+/* Bottom-sheet status card — one-thumb friendly. */
+.dv-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(3, 6, 9, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.dv-card {
+  width: 100%;
+  max-width: 480px;
+  background: #0b1118;
+  border-top: 1px solid rgba(45, 212, 191, 0.25);
+  border-radius: 16px 16px 0 0;
+  padding: 14px 18px calc(18px + env(safe-area-inset-bottom));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+  animation: dv-rise 0.18s ease-out;
+}
+
+@keyframes dv-rise {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.dv-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+.dv-card-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.dv-card-x {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #8aa5a1;
+  font-size: 16px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.dv-card-headline {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #e8f4f1;
+}
+
+.dv-card-line {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8aa5a1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-card {
+    animation: none;
+  }
+}
