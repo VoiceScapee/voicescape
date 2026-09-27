@@ -29,11 +29,8 @@ interface NodeDef {
 
 const NODES: NodeDef[] = [
   { id: "voicescape", label: "VOICESCAPE", color: TEAL },
-  { id: "mirror", label: "MIRROR", color: TEAL },
-  { id: "hcs", label: "HCS AUDIT", color: TEAL, quietNote: "Listening for x402 audit receipts." },
   { id: "registry", label: "REGISTRY", color: GREEN },
   { id: "tips", label: "TIPS", color: GOLD },
-  { id: "ipfs", label: "IPFS", color: TEAL, quietNote: "Listening for page pins." },
   { id: "x", label: null, color: SKY, icon: "x" },
   { id: "discord", label: null, color: VIOLET, icon: "discord" },
 ];
@@ -61,6 +58,7 @@ interface Ribbon {
 interface NodeInfo {
   headline: string; // one-line status for the popup
   lines: string[]; // popup detail lines
+  links?: { label: string; url: string }[]; // verifiable proof — HashScan
   active: boolean; // seen real activity this session
 }
 
@@ -84,6 +82,15 @@ function ago(ts: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+/** HashScan URL for a transaction. Accepts the mirror's "0.0.x-ssss-nnn"
+ *  transaction_id (converted to the 0.0.x@ssss.nnn form HashScan wants) or
+ *  a 0x transaction hash, which HashScan also resolves. */
+function hashscanTxUrl(txHash: string): string {
+  const m = txHash.match(/^(0\.0\.\d+)-(\d+)-(\d+)$/);
+  const id = m ? `${m[1]}@${m[2]}.${m[3]}` : txHash;
+  return `https://hashscan.io/mainnet/transaction/${id}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -115,6 +122,7 @@ export function DannysVision({
   const [popup, setPopup] = useState<string | null>(null);
   const [popupInfo, setPopupInfo] = useState<NodeInfo | null>(null);
   const [live, setLive] = useState(true);
+  const [vitals, setVitals] = useState<string | null>(null);
 
   const centerLabel = agent === "forge" ? "FORGE" : "ENGINE";
 
@@ -183,13 +191,18 @@ export function DannysVision({
             setTimeout(() => {
               if (!alive) return;
               fire("engine", TEAL);
-              fire("mirror", TEAL);
             }, i * 180);
           }
         }
         info.current.engine = {
           headline: `Block ${n.toLocaleString()} settled`,
           lines: ["Hedera mainnet · live mirror", "One pulse per settled block"],
+          links: [
+            {
+              label: `Block ${n.toLocaleString()} on HashScan`,
+              url: `https://hashscan.io/mainnet/block/${n}`,
+            },
+          ],
           active: true,
         };
         if (!mirrorOk.current) {
@@ -220,11 +233,16 @@ export function DannysVision({
           }
         }
         if (tips[0]) {
+          const recent = tips.slice(0, 3);
           info.current.tips = {
             headline: `${tips[0].amountHbar} HBAR tip · ${ago(tips[0].timestamp)}`,
-            lines: tips
-              .slice(0, 3)
-              .map((t) => `${t.amountHbar} HBAR · ${ago(t.timestamp)}`),
+            lines: recent.map(
+              (t) => `${t.amountHbar} HBAR · ${ago(t.timestamp)}`,
+            ),
+            links: recent.map((t) => ({
+              label: `${t.amountHbar} HBAR tip receipt`,
+              url: hashscanTxUrl(t.txHash),
+            })),
             active: true,
           };
         }
@@ -254,6 +272,16 @@ export function DannysVision({
           info.current.registry = {
             headline: `Registry active · ${ago(logs[0].timestamp)}`,
             lines: [`${logs.length} recent registry transactions`, "0.0.10854058 · mainnet"],
+            links: [
+              {
+                label: "Latest registry transaction",
+                url: hashscanTxUrl(logs[0].transaction_hash),
+              },
+              {
+                label: "Registry contract on HashScan",
+                url: "https://hashscan.io/mainnet/contract/0.0.10854058",
+              },
+            ],
             active: true,
           };
         }
@@ -298,10 +326,11 @@ export function DannysVision({
         const r = await fetch(SOCIAL_URL, { cache: "no-store" });
         if (!r.ok) return;
         const d = await r.json();
-        const events: { platform: string; summary: string; ts: string }[] =
-          d.events ?? [];
+        // Content-free activity signal: platform + timestamp only. No post
+        // text, captions, or previews ever leave the server (Brandon's rule).
+        const events: { platform: string; ts: string }[] = d.events ?? [];
         for (const e of events) {
-          const key = `${e.platform}:${e.ts}:${e.summary}`;
+          const key = `${e.platform}:${e.ts}`;
           if (!seen.current.social.has(key)) {
             seen.current.social.add(key);
             if (seen.current.primed) fire(e.platform, e.platform === "x" ? SKY : VIOLET);
@@ -312,8 +341,65 @@ export function DannysVision({
       }
     };
 
+    /* Hedera mainnet vitals, straight from the mirror node: network TPS
+       (derived from the latest transaction window), block time (from the
+       two latest blocks), and consensus node count. The "bigger blockchain
+       picture" the constellation lives inside. */
+    const pollVitals = async () => {
+      if (!alive || hidden()) return;
+      try {
+        const [txR, blkR, nodeR] = await Promise.all([
+          fetch(
+            "https://mainnet.mirrornode.hedera.com/api/v1/transactions?limit=100&order=desc",
+            { cache: "no-store" },
+          ),
+          fetch(
+            "https://mainnet.mirrornode.hedera.com/api/v1/blocks?limit=2&order=desc",
+            { cache: "no-store" },
+          ),
+          fetch(
+            "https://mainnet.mirrornode.hedera.com/api/v1/network/nodes?limit=100",
+            { cache: "no-store" },
+          ),
+        ]);
+        if (!txR.ok || !blkR.ok || !nodeR.ok) return;
+        const txs = ((await txR.json()).transactions ?? []) as {
+          consensus_timestamp: string;
+        }[];
+        const blocks = ((await blkR.json()).blocks ?? []) as {
+          timestamp: { from: string };
+        }[];
+        const nodes = ((await nodeR.json()).nodes ?? []) as unknown[];
+        const parts: string[] = [];
+        if (txs.length >= 2) {
+          const span =
+            parseFloat(txs[0].consensus_timestamp) -
+            parseFloat(txs[txs.length - 1].consensus_timestamp);
+          if (span > 0)
+            parts.push(`~${((txs.length - 1) / span).toFixed(1)} TPS`);
+        }
+        if (blocks.length >= 2) {
+          const bt =
+            parseFloat(blocks[0].timestamp.from) -
+            parseFloat(blocks[1].timestamp.from);
+          if (bt > 0) parts.push(`${bt.toFixed(1)}s blocks`);
+        }
+        if (nodes.length > 0) parts.push(`${nodes.length} consensus nodes`);
+        if (parts.length > 0 && alive) setVitals(parts.join(" · "));
+      } catch {
+        /* keep last good vitals */
+      }
+    };
+
     const prime = async () => {
-      await Promise.all([pollBlocks(), pollTips(), pollRegistry(), pollFeed(), pollSocial()]);
+      await Promise.all([
+        pollBlocks(),
+        pollTips(),
+        pollRegistry(),
+        pollFeed(),
+        pollSocial(),
+        pollVitals(),
+      ]);
       if (alive) seen.current.primed = true;
     };
     prime();
@@ -324,6 +410,7 @@ export function DannysVision({
       pollRegistry();
       pollFeed();
       pollSocial();
+      pollVitals();
     }, SLOW_POLL_MS);
     return () => {
       alive = false;
@@ -595,12 +682,27 @@ export function DannysVision({
                   {l}
                 </div>
               ))}
+              {(popupInfo?.links ?? []).map((l, i) => (
+                <div className="dv-card-line" key={`proof-${i}`}>
+                  <a
+                    href={l.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="dv-proof-link"
+                  >
+                    {l.label} ↗
+                  </a>
+                </div>
+              ))}
             </div>
           </div>
         )}
 
         <footer className="dv-foot">
-          Live Hedera mainnet activity — every ping is a real event.
+          {vitals && (
+            <div className="dv-vitals">Hedera mainnet · {vitals}</div>
+          )}
+          <div>Live Hedera mainnet activity — every ping is a real event.</div>
         </footer>
       </div>
     </div>

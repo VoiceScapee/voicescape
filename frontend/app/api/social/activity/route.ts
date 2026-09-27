@@ -5,11 +5,16 @@ import { readSocialActivity } from "@/lib/server/social-activity";
 export const runtime = "nodejs";
 
 /**
- * GET /api/social/activity → { ok, events: [{platform, summary, ts}] }
+ * GET /api/social/activity → { ok, events: [{platform, ts}] }
  *
- * Recent X/Discord bot posts, newest first — the real-data feed for the
- * X and Discord nodes on Danny's Vision. Returns an empty array (not an
- * error) until automation resumes; the page renders those nodes quiet.
+ * Recent X/Discord bot activity signal, newest first — the real-data feed
+ * for the X and Discord nodes on Danny's Vision. Returns an empty array
+ * (not an error) until automation resumes; the page renders those nodes
+ * quiet.
+ *
+ * The public contract is a CONTENT-FREE signal: platform + timestamp only.
+ * Summaries stay server-side and are never served — Brandon's rule: no X /
+ * Discord post text, captions, messages, or previews ever leave the server.
  *
  * Read-only public data. No keys, no HBAR movement.
  */
@@ -25,7 +30,10 @@ export async function GET(req: NextRequest) {
   if (gated) return gated;
 
   const events = await readSocialActivity(20);
-  const res = NextResponse.json({ ok: true, events });
+  // Content-free public signal: platform + timestamp only. The summary
+  // stays server-side — it is never part of the public contract.
+  const publicEvents = events.map(({ platform, ts }) => ({ platform, ts }));
+  const res = NextResponse.json({ ok: true, events: publicEvents });
   res.headers.set(
     "Cache-Control",
     "public, s-maxage=30, stale-while-revalidate=120",

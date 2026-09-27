@@ -161,6 +161,21 @@
   color: #8aa5a1;
 }
 
+/* Verifiable-proof links — every on-chain event links to HashScan. */
+.dv-proof-link {
+  color: #2dd4bf;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Live Hedera mainnet vitals ticker above the footer tagline. */
+.dv-vitals {
+  margin-bottom: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #e8f4f1;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dv-card {
     animation: none;
