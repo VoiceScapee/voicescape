@@ -11,3 +11,6 @@ build/
 deployments/
 coverage/
 .vercel/
+
+# marketing assets live outside the repo (see ~/workspace/user/branding)
+branding/
