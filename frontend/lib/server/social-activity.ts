@@ -21,7 +21,9 @@ export type SocialPlatform = "x" | "discord";
 
 export interface SocialEvent {
   platform: SocialPlatform;
-  /** Short, safe-to-display description of the post. Never secrets. */
+  /** Short internal description of the post. Server-side only — the public
+   *  API strips this field (Brandon's rule: no X/Discord post text, captions,
+   *  or previews ever leave the server). */
   summary: string;
   /** ISO timestamp of when the post was sent. */
   ts: string;
