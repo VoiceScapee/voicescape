@@ -55,11 +55,6 @@ export default function LandingPage() {
           <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
             <T k="brand.eyebrow" />
           </span>
-          <h1 style={{ fontSize: "clamp(34px, 7.5vw, 58px)", maxWidth: "16em", margin: "0 auto" }}>
-            <T k="landing.brandH1a" />
-            <br />
-            <span className="vs-gradient-text"><T k="landing.brandH1b" /></span>
-          </h1>
           <p style={{ color: "var(--vs-muted)", fontSize: "16.5px", lineHeight: 1.55, maxWidth: "34em", margin: "18px auto 26px" }}>
             <T k="landing.brandSub" />
           </p>
