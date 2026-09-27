@@ -32,9 +32,9 @@ const NODES: NodeDef[] = [
   { id: "registry", label: "REGISTRY", color: GREEN },
   { id: "tips", label: "TIPS", color: GOLD },
   { id: "x", label: null, color: SKY, icon: "x",
-    quietNote: "Quiet — no posts logged yet. Automation is paused." },
+    quietNote: "Quiet — no posts logged yet." },
   { id: "discord", label: null, color: VIOLET, icon: "discord",
-    quietNote: "Quiet — no messages logged yet. Automation is paused." },
+    quietNote: "Quiet — no messages logged yet." },
 ];
 
 /* Simplified brand marks, drawn small on canvas via Path2D. */
