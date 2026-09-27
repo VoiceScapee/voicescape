@@ -4,8 +4,10 @@
  * NetworkPulse — the dapp-wide global pulse (heartbeat layer 1).
  *
  * A quiet dot in the site chrome (navbar + public blockpage header) that
- * pulses once per newly settled Hedera mainnet block. The whole dapp
- * breathes with the chain. Mounted everywhere; never intrusive.
+ * pulses once per newly settled Hedera mainnet block — a radar ring
+ * expands and fades on every block, and the live block number shows
+ * next to it (including on phones). The whole dapp breathes with the
+ * chain. Mounted everywhere; never intrusive.
  *
  * Polls the public mirror node directly from the browser
  * (GET /api/v1/blocks, ~8s while visible) — a few hundred bytes per call,
