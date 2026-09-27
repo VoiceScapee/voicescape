@@ -75,6 +75,16 @@ export default function LandingPage() {
               <T k="landing.brandExploreCta" />
             </Link>
           </div>
+          {/* Quiet low-commitment path for the curious-but-confused:
+              the plain-language explainer, not the footer. */}
+          <div style={{ marginTop: 14 }}>
+            <Link
+              href="/new-to-web3"
+              style={{ color: "var(--vs-muted)", fontSize: 14, textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              <T k="landing.howItWorks" /> →
+            </Link>
+          </div>
           {/* 98/2 split strip */}
           <div
             style={{
