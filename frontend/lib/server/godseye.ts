@@ -2,7 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 
 /**
- * God's Eye View feed reader (server-only).
+ * Danny's Vision feed reader (server-only).
  *
  * The public feed is a static JSON snapshot written by the VM collector
  * (ops/godseye/collector.py). The privacy firewall lives in the collector:
@@ -56,7 +56,7 @@ export const GODSEYE_DISPLAY: Record<
 > = {
   danny: {
     name: "Voicescape Dapp Engine",
-    subtitle: "God's Eye View",
+    subtitle: "Danny's Vision",
     role: "AI AGENT · OPERATOR",
     accent: "#2dd4bf",
   },

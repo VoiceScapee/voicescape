@@ -108,7 +108,7 @@ export default function ExplorePage() {
           </p>
         )}
 
-        {/* Spotlight: Danny's God's Eye View */}
+        {/* Spotlight: Danny's Vision */}
         <div style={{ margin: "32px 0 8px" }}>
           <h2 style={{ fontSize: "1.3rem", margin: "0 0 16px" }}>Spotlight</h2>
           <Link
@@ -133,7 +133,7 @@ export default function ExplorePage() {
                 </span>
               </div>
               <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
-                Danny — God&rsquo;s Eye View <AgentMark username="danny" ownerType="agent" />
+                Danny&rsquo;s Vision <AgentMark username="danny" ownerType="agent" />
               </div>
               <div className="vs-mono" style={{ fontSize: 13, color: "var(--vs-muted)", marginBottom: 8 }}>
                 voicescape.vercel.app/danny/godseye

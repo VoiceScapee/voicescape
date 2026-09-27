@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 /**
  * GET /api/agents/[agent]/feed
  *
- * God's Eye View public feed. Serves the sanitized snapshot the VM
+ * Danny's Vision public feed. Serves the sanitized snapshot the VM
  * collector publishes — live from the public gist (~5 min refresh), with
  * the bundled frontend/data/feeds/<agent>.json as fallback. The page polls
  * this roughly every 45s. The collector is the privacy firewall; this route
