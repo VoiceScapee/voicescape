@@ -1174,12 +1174,37 @@ a {
 /* A quiet dot that pings once per newly settled Hedera mainnet block. */
 /* Transform/opacity only; no transition: all.                         */
 /* ------------------------------------------------------------------ */
+.vs-netpulse-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
 .vs-netpulse {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   flex: none;
-  cursor: default;
+  cursor: pointer;
+  /* Glass pill: reads as tappable, stays quiet in the chrome. */
+  background: rgba(94, 234, 212, 0.06);
+  border: 1px solid rgba(94, 234, 212, 0.16);
+  border-radius: 999px;
+  padding: 4px 10px 4px 8px;
+  color: inherit;
+  font: inherit;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+.vs-netpulse:hover {
+  background: rgba(94, 234, 212, 0.12);
+}
+.vs-netpulse:active,
+.vs-netpulse.is-open {
+  background: rgba(94, 234, 212, 0.16);
+  border-color: rgba(94, 234, 212, 0.35);
+}
+.vs-netpulse:focus-visible {
+  outline: 2px solid rgba(94, 234, 212, 0.7);
+  outline-offset: 2px;
 }
 .vs-netpulse-dot {
   position: relative;
@@ -1216,6 +1241,10 @@ a {
 }
 /* Silent: mirror unreachable or throttled — hollow dot, no motion, no
    claims, until blocks resume. */
+.vs-netpulse.is-silent {
+  background: rgba(148, 163, 184, 0.05);
+  border-color: rgba(148, 163, 184, 0.15);
+}
 .vs-netpulse.is-silent .vs-netpulse-dot {
   background: transparent;
   border: 1.5px solid rgba(148, 163, 184, 0.6);
@@ -1235,13 +1264,84 @@ a {
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   color: inherit;
-  opacity: 0.6;
+  opacity: 0.85;
   white-space: nowrap;
+}
+/* Freshness readout: "· 4s" — the human liveness cue. Dimmer than the
+   number so it never shouts. */
+.vs-netpulse-ago {
+  opacity: 0.55;
+}
+/* Explainer card: plain-language "what is this number" for first-time
+   humans. Opens below the chip, right-aligned; tap scrim/✕/Escape to
+   dismiss. */
+.vs-netpulse-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  cursor: default;
+}
+.vs-netpulse-card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 61;
+  width: min(280px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(10, 12, 24, 0.97);
+  border: 1px solid rgba(94, 234, 212, 0.25);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  text-align: left;
+  cursor: default;
+}
+.vs-netpulse-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.vs-netpulse-card-head strong {
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5eead4;
+  flex: 1;
+}
+.vs-netpulse-card-close {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.5;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 4px;
+  line-height: 1;
+}
+.vs-netpulse-card-close:hover {
+  opacity: 1;
+}
+.vs-netpulse-card p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  opacity: 0.85;
+}
+.vs-netpulse-card-block {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 8px;
 }
 @media (max-width: 640px) {
   /* Phones see the live block number too — compact, still honest. */
   .vs-netpulse-label {
     font-size: 0.55rem;
+  }
+  .vs-netpulse {
+    padding: 3px 8px 3px 7px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
