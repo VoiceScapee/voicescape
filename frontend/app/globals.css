@@ -1182,6 +1182,7 @@ a {
   cursor: default;
 }
 .vs-netpulse-dot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -1189,6 +1190,20 @@ a {
   box-shadow: 0 0 6px rgba(94, 234, 212, 0.8);
   /* One ping per newly settled block; remounting retriggers it. */
   animation: vs-netpulse-ping 900ms ease-out;
+}
+/* Radar ring: expands outward and fades on every block — the "cool" ping. */
+.vs-netpulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(94, 234, 212, 0.9);
+  pointer-events: none;
+  animation: vs-netpulse-ring 900ms ease-out;
+}
+@keyframes vs-netpulse-ring {
+  0% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(3.4); opacity: 0; }
 }
 @keyframes vs-netpulse-ping {
   0% { transform: scale(1); opacity: 1; }
@@ -1207,8 +1222,14 @@ a {
   box-shadow: none;
   animation: none;
 }
+.vs-netpulse.is-silent .vs-netpulse-dot::after {
+  display: none;
+}
 .vs-netpulse-dot.is-static {
   animation: none;
+}
+.vs-netpulse-dot.is-static::after {
+  display: none;
 }
 .vs-netpulse-label {
   font-size: 0.62rem;
@@ -1218,12 +1239,16 @@ a {
   white-space: nowrap;
 }
 @media (max-width: 640px) {
+  /* Phones see the live block number too — compact, still honest. */
   .vs-netpulse-label {
-    display: none;
+    font-size: 0.55rem;
   }
 }
 @media (prefers-reduced-motion: reduce) {
   .vs-netpulse-dot {
     animation: none;
+  }
+  .vs-netpulse-dot::after {
+    display: none;
   }
 }
