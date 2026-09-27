@@ -23,6 +23,11 @@ function req(): NextRequest {
 beforeEach(() => {
   resetKvStoreSingleton();
   vi.resetModules();
+  // The merged reader also checks the gist sink — keep it empty/offline.
+  globalThis.fetch = (async () => ({
+    ok: true,
+    text: async () => "[]",
+  })) as unknown as typeof fetch;
 });
 
 describe("GET /api/social/activity", () => {
@@ -42,6 +47,22 @@ describe("GET /api/social/activity", () => {
     expect(body.events).toHaveLength(2);
     expect(body.events[0].platform).toBe("discord");
     expect(body.events[1].platform).toBe("x");
+  });
+
+  it("merges gist-sink events into the content-free public feed", async () => {
+    globalThis.fetch = (async () => ({
+      ok: true,
+      text: async () =>
+        JSON.stringify([{ platform: "x", ts: "2026-09-27T20:00:00.000Z" }]),
+    })) as unknown as typeof fetch;
+    const res = await GET(req());
+    const body = await res.json();
+    expect(body.events).toHaveLength(1);
+    // Content-free contract: platform + ts only, no summary.
+    expect(body.events[0]).toEqual({
+      platform: "x",
+      ts: "2026-09-27T20:00:00.000Z",
+    });
   });
 
   it("sets a short public cache header for pollers", async () => {

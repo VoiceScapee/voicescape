@@ -31,8 +31,10 @@ const NODES: NodeDef[] = [
   { id: "voicescape", label: "VOICESCAPE", color: TEAL },
   { id: "registry", label: "REGISTRY", color: GREEN },
   { id: "tips", label: "TIPS", color: GOLD },
-  { id: "x", label: null, color: SKY, icon: "x" },
-  { id: "discord", label: null, color: VIOLET, icon: "discord" },
+  { id: "x", label: null, color: SKY, icon: "x",
+    quietNote: "Quiet — no posts logged yet. Automation is paused." },
+  { id: "discord", label: null, color: VIOLET, icon: "discord",
+    quietNote: "Quiet — no messages logged yet. Automation is paused." },
 ];
 
 /* Simplified brand marks, drawn small on canvas via Path2D. */
@@ -65,6 +67,9 @@ interface NodeInfo {
 const TIPS_URL = "/api/activity/recent";
 const REGISTRY_LOGS_URL =
   "https://mainnet.mirrornode.hedera.com/api/v1/contracts/0.0.10854058/results/logs?order=desc&limit=10";
+/** Platform treasury on Hedera mainnet — every 98/2 split settles here. */
+const TREASURY_TXS_URL =
+  "https://mainnet.mirrornode.hedera.com/api/v1/transactions?account.id=0.0.10424063&limit=10&order=desc";
 const SOCIAL_URL = "/api/social/activity";
 const BLOCK_POLL_MS = 8_000;
 const SLOW_POLL_MS = 60_000;
@@ -74,6 +79,9 @@ function hexA(hex: string, a: number): string {
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 }
 
+/** Display name for icon-only nodes in popups (canvas stays icon-only). */
+const NODE_TITLES: Record<string, string> = { x: "X", discord: "DISCORD" };
+
 function ago(ts: string): string {
   const s = Math.max(0, Math.floor((Date.now() - Date.parse(ts)) / 1000));
   if (s < 60) return `${s}s ago`;
@@ -82,6 +90,20 @@ function ago(ts: string): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Mirror-node "seconds.nanoseconds" → ms, exact (no float rounding). */
+function mirrorTsToMs(ts: string): number {
+  const [sec, frac = ""] = ts.split(".");
+  const s = Number(sec);
+  if (!Number.isFinite(s)) return NaN;
+  return s * 1000 + Number((frac + "000").slice(0, 3));
+}
+
+function mirrorAgo(ts: string): string {
+  const ms = mirrorTsToMs(ts);
+  if (!Number.isFinite(ms)) return "recently";
+  return ago(new Date(ms).toISOString());
 }
 
 /** HashScan URL for a transaction. Accepts the mirror's "0.0.x-ssss-nnn"
@@ -110,7 +132,7 @@ export function DannysVision({
   const seen = useRef({
     tips: new Set<string>(),
     registry: new Set<string>(),
-    deploys: new Set<string>(),
+    voicescape: new Set<string>(),
     social: new Set<string>(),
     primed: false,
   });
@@ -161,10 +183,10 @@ export function DannysVision({
     const def = NODES.find((n) => n.id === nodeId);
     if (!def) return;
     if (nodeId === "x" || nodeId === "discord") {
-      // Icon-only nodes: a visual pulse, never a popup or text.
+      // Icon-only nodes: pulse + a content-free status popup (counts and
+      // recency only — no post text ever leaves the server).
       fire(nodeId, def.color);
       setTick((t) => t + 1);
-      return;
     }
     setPopupInfo(info.current[nodeId] ?? null);
     setPopup(nodeId);
@@ -291,30 +313,50 @@ export function DannysVision({
       }
     };
 
-    const pollFeed = async () => {
+    /* VOICESCAPE node — the platform treasury account on Hedera mainnet.
+       Every 98/2 split settles into 0.0.10424063, so this account's real
+       transaction history IS the platform's on-chain heartbeat: one ribbon
+       per new treasury transaction, HashScan proof on the latest. */
+    const pollVoicescape = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(`/api/agents/${agent}/feed`, { cache: "no-store" });
+        const r = await fetch(TREASURY_TXS_URL, { cache: "no-store" });
         if (!r.ok) return;
         const d = await r.json();
-        const events: { id: string; type: string; summary: string; ts: string }[] =
-          d.events ?? [];
-        const deploys = events.filter((e) => e.type === "deploy");
-        const fresh: typeof deploys = [];
-        for (const e of deploys) {
-          if (!seen.current.deploys.has(e.id)) {
-            seen.current.deploys.add(e.id);
-            if (seen.current.primed) fresh.push(e);
+        const txs: {
+          transaction_id: string;
+          name: string;
+          consensus_timestamp: string;
+        }[] = d.transactions ?? [];
+        const fresh: typeof txs = [];
+        for (const t of txs) {
+          const key = t.transaction_id;
+          if (typeof key !== "string") continue;
+          if (!seen.current.voicescape.has(key)) {
+            seen.current.voicescape.add(key);
+            if (seen.current.primed) fresh.push(t);
           }
         }
-        if (deploys[0]) {
+        if (txs[0]) {
           info.current.voicescape = {
-            headline: deploys[0].summary,
-            lines: deploys.slice(0, 3).map((e) => `${e.summary} · ${ago(e.ts)}`),
+            headline: `${txs[0].name} · treasury 0.0.10424063`,
+            lines: txs
+              .slice(0, 3)
+              .map((t) => `${t.name} · ${mirrorAgo(t.consensus_timestamp)}`),
+            links: [
+              {
+                label: "Latest treasury tx on HashScan",
+                url: hashscanTxUrl(txs[0].transaction_id),
+              },
+              {
+                label: "Treasury account on HashScan",
+                url: "https://hashscan.io/mainnet/account/0.0.10424063",
+              },
+            ],
             active: true,
           };
         }
-        for (const e of fresh) fire("voicescape", TEAL, true);
+        for (const t of fresh) fire("voicescape", TEAL, true);
       } catch {
         /* keep last good state */
       }
@@ -335,6 +377,23 @@ export function DannysVision({
             seen.current.social.add(key);
             if (seen.current.primed) fire(e.platform, e.platform === "x" ? SKY : VIOLET);
           }
+        }
+        // Content-free popup info: counts + recency, never post text.
+        for (const p of ["x", "discord"] as const) {
+          const mine = events.filter((e) => e.platform === p);
+          const latest = mine.reduce<string | null>(
+            (acc, e) => (acc === null || e.ts > acc ? e.ts : acc),
+            null,
+          );
+          info.current[p] = {
+            headline:
+              mine.length === 0
+                ? "Quiet — no posts logged yet"
+                : `${mine.length} post${mine.length === 1 ? "" : "s"} logged`,
+            lines:
+              latest !== null ? [`Latest activity ${ago(latest)}`] : [],
+            active: mine.length > 0,
+          };
         }
       } catch {
         /* keep last good state */
@@ -384,7 +443,7 @@ export function DannysVision({
             parseFloat(blocks[1].timestamp.from);
           if (bt > 0) parts.push(`${bt.toFixed(1)}s blocks`);
         }
-        if (nodes.length > 0) parts.push(`${nodes.length} consensus nodes`);
+        if (nodes.length > 0) parts.push(`${nodes.length} network nodes`);
         if (parts.length > 0 && alive) setVitals(parts.join(" · "));
       } catch {
         /* keep last good vitals */
@@ -396,7 +455,7 @@ export function DannysVision({
         pollBlocks(),
         pollTips(),
         pollRegistry(),
-        pollFeed(),
+        pollVoicescape(),
         pollSocial(),
         pollVitals(),
       ]);
@@ -408,7 +467,7 @@ export function DannysVision({
     const s = setInterval(() => {
       pollTips();
       pollRegistry();
-      pollFeed();
+      pollVoicescape();
       pollSocial();
       pollVitals();
     }, SLOW_POLL_MS);
@@ -655,7 +714,7 @@ export function DannysVision({
             <div
               className="dv-card"
               role="dialog"
-              aria-label={`${popupDef.label ?? popup} status`}
+              aria-label={`${popup === "engine" ? centerLabel : (popupDef.label ?? NODE_TITLES[popup] ?? popup)} status`}
               onPointerDown={(e) => e.stopPropagation()}
             >
               <div className="dv-card-head">
@@ -663,7 +722,7 @@ export function DannysVision({
                   className="dv-card-dot"
                   style={{ background: popupDef.color }}
                 />
-                <b>{popup === "engine" ? centerLabel : (popupDef.label ?? popup)}</b>
+                <b>{popup === "engine" ? centerLabel : (popupDef.label ?? NODE_TITLES[popup] ?? popup)}</b>
                 <button
                   className="dv-card-x"
                   aria-label="Close"

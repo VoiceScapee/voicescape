@@ -2,17 +2,26 @@
  * Social activity log — the real-data source for the X and Discord
  * constellation nodes on Danny's Vision.
  *
- * Bot posting paths call logSocialPost() when they actually send a post;
- * the dapp reads via readSocialActivity(). Backed by the shared KV store
- * (Upstash on Vercel, self-hosted Valkey, or the in-memory fallback), so
- * the API route sees the same data the bots wrote — never the local
- * filesystem, which Vercel serverless functions cannot reach.
+ * Bot posting paths call ~/workspace/ops/social-log/log_social.py when they
+ * actually send a post; the dapp reads via readMergedSocialActivity().
+ * Two sinks, merged newest-first:
+ *   1. The shared KV store (Upstash on Vercel, self-hosted Valkey, or the
+ *      in-memory fallback) — primary; holds a short summary that stays
+ *      server-side.
+ *   2. The public gist `social.json` (same gist as the God's Eye feed) —
+ *      platform + timestamp ONLY, never post text. Written by the VM-side
+ *      logger through the `gh` CLI; the sink the bots can always reach.
+ * Dedupe is on platform+timestamp, so an event logged to both sinks
+ * appears once.
  *
- * One key holds a JSON array of the most recent events, capped at 50,
- * with a 7-day TTL refreshed on every write (the store's mandatory-TTL
- * pattern — nothing here lives forever). Automation is paused, so this
- * is empty until posting resumes; the constellation renders those nodes
- * quiet, which is the honest state. No "not wired yet" teasing.
+ * The public API contract stays CONTENT-FREE (platform + ts only):
+ * Brandon's rule — no X/Discord post text, captions, or previews ever
+ * leave the server.
+ *
+ * The KV list is capped at 50 with a 7-day TTL refreshed on every write
+ * (the store's mandatory-TTL pattern — nothing here lives forever).
+ * Automation is paused, so both sinks are empty until posting resumes;
+ * the constellation renders those nodes quiet, which is the honest state.
  */
 
 import { getKvStore } from "./store";
@@ -28,6 +37,10 @@ export interface SocialEvent {
   /** ISO timestamp of when the post was sent. */
   ts: string;
 }
+
+/** Public gist shared with the God's Eye feed; hosts social.json. */
+export const SOCIAL_GIST_ID = "b588cd71644df34755ac75af42515d27";
+const SOCIAL_GIST_RAW = `https://gist.githubusercontent.com/VoiceScapee/${SOCIAL_GIST_ID}/raw/social.json`;
 
 /** Single key for the capped recent-events list. */
 export const SOCIAL_ACTIVITY_KEY = "social:activity:v1";
@@ -56,6 +69,27 @@ function parse(raw: string | null): SocialEvent[] {
   }
 }
 
+/** Shape check for the gist rows — platform + ts only, never trusted blindly. */
+function parseGistRows(raw: string | null): SocialEvent[] {
+  if (!raw) return [];
+  try {
+    const arr: unknown = JSON.parse(raw);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(
+        (e): e is { platform: SocialPlatform; ts: string } =>
+          !!e &&
+          typeof e === "object" &&
+          ((e as { platform: unknown }).platform === "x" ||
+            (e as { platform: unknown }).platform === "discord") &&
+          typeof (e as { ts: unknown }).ts === "string",
+      )
+      .map((e) => ({ platform: e.platform, summary: "", ts: e.ts }));
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Record that one of our bots actually posted. Called by the real
  * posting paths (Discord bot CLI, X automation) — never by timers or
@@ -80,7 +114,7 @@ export async function logSocialPost(
   );
 }
 
-/** Newest-first recent bot posts, capped. Empty until automation resumes. */
+/** Newest-first recent bot posts from the KV store, capped. */
 export async function readSocialActivity(
   limit = 20,
 ): Promise<SocialEvent[]> {
@@ -88,4 +122,57 @@ export async function readSocialActivity(
   const events = parse(await store.get(SOCIAL_ACTIVITY_KEY));
   const n = Math.max(1, Math.min(limit, SOCIAL_ACTIVITY_MAX));
   return events.slice(0, n);
+}
+
+/**
+ * Recent bot posts from the public gist sink (platform + ts only).
+ * Fail-soft: any fetch or shape problem yields an empty list.
+ */
+export async function readGistSocialActivity(
+  limit = 20,
+): Promise<SocialEvent[]> {
+  try {
+    const ctl = new AbortController();
+    const t = setTimeout(() => ctl.abort(), 5000);
+    const r = await fetch(SOCIAL_GIST_RAW, {
+      cache: "no-store",
+      signal: ctl.signal,
+    });
+    clearTimeout(t);
+    if (!r.ok) return [];
+    const events = parseGistRows(await r.text());
+    const n = Math.max(1, Math.min(limit, SOCIAL_ACTIVITY_MAX));
+    return events.slice(0, n);
+  } catch {
+    return [];
+  }
+}
+
+function eventTimeMs(ts: string): number {
+  const ms = Date.parse(ts);
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/**
+ * Newest-first recent bot posts merged across both sinks, deduped on
+ * platform+timestamp. This is what /api/social/activity serves.
+ */
+export async function readMergedSocialActivity(
+  limit = 20,
+): Promise<SocialEvent[]> {
+  const [kv, gist] = await Promise.all([
+    readSocialActivity(SOCIAL_ACTIVITY_MAX),
+    readGistSocialActivity(SOCIAL_ACTIVITY_MAX),
+  ]);
+  const seen = new Set<string>();
+  const merged: SocialEvent[] = [];
+  for (const e of [...kv, ...gist]) {
+    const key = `${e.platform}:${e.ts}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(e);
+  }
+  merged.sort((a, b) => eventTimeMs(b.ts) - eventTimeMs(a.ts));
+  const n = Math.max(1, Math.min(limit, SOCIAL_ACTIVITY_MAX));
+  return merged.slice(0, n);
 }

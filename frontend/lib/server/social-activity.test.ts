@@ -6,7 +6,7 @@
  * UPSTASH vars set). Tests seed through the same singleton and reset it
  * between tests for isolation.
  */
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   getKvStore,
   resetKvStoreSingleton,
@@ -17,6 +17,8 @@ import {
   SOCIAL_ACTIVITY_TTL_MS,
   logSocialPost,
   readSocialActivity,
+  readGistSocialActivity,
+  readMergedSocialActivity,
 } from "@/lib/server/social-activity";
 
 beforeEach(() => {
@@ -84,5 +86,77 @@ describe("logSocialPost / readSocialActivity", () => {
     await logSocialPost("x", "two");
     await logSocialPost("x", "three");
     expect(await readSocialActivity(2)).toHaveLength(2);
+  });
+});
+
+describe("readGistSocialActivity / readMergedSocialActivity", () => {
+  const realFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  function mockGist(rows: unknown, ok = true) {
+    globalThis.fetch = (async () => ({
+      ok,
+      text: async () => JSON.stringify(rows),
+    })) as unknown as typeof fetch;
+  }
+
+  it("reads platform+ts rows from the gist sink", async () => {
+    mockGist([
+      { platform: "x", ts: "2026-09-27T20:00:00.000Z" },
+      { platform: "discord", ts: "2026-09-27T21:00:00.000Z" },
+    ]);
+    const events = await readGistSocialActivity();
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ platform: "x" });
+    // gist rows are content-free: no summary survives
+    expect(events[0].summary).toBe("");
+  });
+
+  it("drops malformed gist rows instead of crashing", async () => {
+    mockGist([
+      { platform: "telegram", ts: "2026-09-27T20:00:00.000Z" },
+      { platform: "x" },
+      "junk",
+      null,
+      { platform: "x", ts: "2026-09-27T20:00:00.000Z" },
+    ]);
+    const events = await readGistSocialActivity();
+    expect(events).toHaveLength(1);
+    expect(events[0].platform).toBe("x");
+  });
+
+  it("returns [] when the gist fetch fails", async () => {
+    globalThis.fetch = (async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    expect(await readGistSocialActivity()).toEqual([]);
+    mockGist([], false);
+    expect(await readGistSocialActivity()).toEqual([]);
+  });
+
+  it("merges KV + gist newest-first and dedupes on platform+ts", async () => {
+    await logSocialPost("x", "kv post");
+    const kvEvents = await readSocialActivity();
+    const kvTs = kvEvents[0].ts;
+    mockGist([
+      { platform: "x", ts: kvTs }, // duplicate of the KV event
+      { platform: "discord", ts: "2020-01-01T00:00:00.000Z" }, // older
+    ]);
+    const merged = await readMergedSocialActivity();
+    expect(merged).toHaveLength(2);
+    // newest first: the KV x post (now) before the 2020 discord row
+    expect(merged[0].platform).toBe("x");
+    expect(merged[0].summary).toBe("kv post"); // KV copy wins the dedupe
+    expect(merged[1].platform).toBe("discord");
+  });
+
+  it("merge works when one sink is empty", async () => {
+    mockGist([{ platform: "x", ts: "2026-09-27T20:00:00.000Z" }]);
+    const merged = await readMergedSocialActivity();
+    expect(merged).toHaveLength(1);
+    expect(merged[0].platform).toBe("x");
   });
 });

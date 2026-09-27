@@ -8,6 +8,7 @@ import {
   planBlockPulses,
   parseLatestBlock,
   parseLatestBlockInfo,
+  parseMirrorTimestampMs,
   formatBlockAgo,
   formatBlockNumber,
 } from "./network-pulse";
@@ -67,17 +68,22 @@ describe("parseLatestBlock", () => {
     expect(parseLatestBlock({ blocks: [{ number: "100207911" }] })).toBeNull();
     expect(parseLatestBlock({ blocks: [{ number: -1 }] })).toBeNull();
     expect(parseLatestBlock({ blocks: [{ number: 1.5 }] })).toBeNull();
-    // Number without a usable timestamp is malformed — the freshness
-    // readout must never guess.
-    expect(parseLatestBlock({ blocks: [{ number: 100207911 }] })).toBeNull();
+  });
+
+  it("returns the number even when the timestamp is missing/malformed", () => {
+    // The pulse runs on the block number; only the freshness readout
+    // needs the timestamp.
+    expect(parseLatestBlock({ blocks: [{ number: 100207911 }] })).toBe(
+      100207911,
+    );
     expect(
       parseLatestBlock({ blocks: [{ number: 100207911, timestamp: {} }] }),
-    ).toBeNull();
+    ).toBe(100207911);
     expect(
       parseLatestBlock({
         blocks: [{ number: 100207911, timestamp: { from: "not-a-time" } }],
       }),
-    ).toBeNull();
+    ).toBe(100207911);
   });
 });
 
@@ -91,10 +97,10 @@ describe("parseLatestBlockInfo", () => {
     ],
   };
 
-  it("extracts number and consensus timestamp in ms (second precision)", () => {
+  it("extracts number and consensus timestamp in ms (millisecond precision)", () => {
     expect(parseLatestBlockInfo(good)).toEqual({
       number: 100458020,
-      timestampMs: 1727457600000,
+      timestampMs: 1727457600500,
     });
   });
 
@@ -139,5 +145,20 @@ describe("formatBlockNumber", () => {
   it("comma-groups for humans", () => {
     expect(formatBlockNumber(100458020)).toBe("100,458,020");
     expect(formatBlockNumber(42)).toBe("42");
+  });
+});
+
+describe("parseMirrorTimestampMs", () => {
+  it("parses whole seconds plus the first three fractional digits", () => {
+    expect(parseMirrorTimestampMs("1727457600.500000000")).toBe(1727457600500);
+    expect(parseMirrorTimestampMs("1727457600.123456789")).toBe(1727457600123);
+    expect(parseMirrorTimestampMs("1727457600.1")).toBe(1727457600100);
+    expect(parseMirrorTimestampMs("1727457600")).toBe(1727457600000);
+  });
+
+  it("returns NaN for malformed input", () => {
+    expect(parseMirrorTimestampMs("not-a-time")).toBeNaN();
+    expect(parseMirrorTimestampMs("0.0")).toBeNaN();
+    expect(parseMirrorTimestampMs("")).toBeNaN();
   });
 });

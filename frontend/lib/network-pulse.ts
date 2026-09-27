@@ -68,10 +68,13 @@ export function planBlockPulses(
 /**
  * Extract the latest block number from a mirror /api/v1/blocks response.
  * Returns null for any malformed/unexpected shape — the caller treats
- * that as a mirror error and goes silent.
+ * that as a mirror error and goes silent. A missing or malformed
+ * timestamp does NOT fail this: the block number alone is enough to
+ * drive the pulse; only the "Xs ago" freshness readout needs the time.
  */
 export function parseLatestBlock(data: unknown): number | null {
-  return parseLatestBlockInfo(data)?.number ?? null;
+  const first = firstBlock(data);
+  return first === null ? null : parseBlockNumber(first);
 }
 
 /** Latest block number plus its consensus timestamp (ms since epoch). */
@@ -81,36 +84,66 @@ export interface BlockInfo {
   timestampMs: number;
 }
 
+function firstBlock(data: unknown): Record<string, unknown> | null {
+  if (!data || typeof data !== "object") return null;
+  const blocks = (data as { blocks?: unknown }).blocks;
+  if (!Array.isArray(blocks) || blocks.length === 0) return null;
+  const first = blocks[0];
+  return first && typeof first === "object"
+    ? (first as Record<string, unknown>)
+    : null;
+}
+
+function parseBlockNumber(first: Record<string, unknown>): number | null {
+  const number = first["number"];
+  if (typeof number !== "number" || !Number.isInteger(number) || number < 0) {
+    return null;
+  }
+  return number;
+}
+
+/**
+ * Parse a mirror "seconds.nanoseconds" timestamp to whole milliseconds,
+ * exactly: whole seconds plus the first three fractional digits (padded
+ * to three). Never parseFloat on the full string — the float rounds the
+ * trailing digits, which corrupts exact-string pagination cursors.
+ * (Callers must keep the raw string for cursors; this ms value is only
+ * for human freshness readouts.)
+ */
+export function parseMirrorTimestampMs(tsString: string): number {
+  const [secPart, fracPart = ""] = tsString.split(".");
+  const seconds = Number(secPart);
+  if (!Number.isFinite(seconds) || seconds <= 0) return NaN;
+  const millis = Number((fracPart + "000").slice(0, 3));
+  if (!Number.isFinite(millis)) return NaN;
+  return seconds * 1000 + millis;
+}
+
 /**
  * Extract the latest block number AND its consensus timestamp from a
- * mirror /api/v1/blocks response. Returns null for any malformed shape.
+ * mirror /api/v1/blocks response. Returns null for any malformed shape,
+ * INCLUDING a missing or malformed timestamp — the timestamp powers the
+ * human "Xs ago" freshness readout, which must never guess.
  * The timestamp powers the human "Xs ago" freshness readout — a human
  * feels "this is live right now" from recency, not from a raw number.
  */
 export function parseLatestBlockInfo(data: unknown): BlockInfo | null {
-  if (!data || typeof data !== "object") return null;
-  const blocks = (data as { blocks?: unknown }).blocks;
-  if (!Array.isArray(blocks) || blocks.length === 0) return null;
-  const first = blocks[0] as { number?: unknown; timestamp?: unknown };
-  const number = first?.number;
-  if (typeof number !== "number" || !Number.isInteger(number) || number < 0) {
-    return null;
-  }
+  const first = firstBlock(data);
+  if (first === null) return null;
+  const number = parseBlockNumber(first);
+  if (number === null) return null;
   // Mirror /blocks entries carry timestamp as { from, to } where each is
   // "seconds.nanoseconds" (e.g. "1727457600.123456789"). Use `from` —
   // when the block opened — as the human freshness anchor.
-  const rawTs = first?.timestamp;
+  const rawTs = first["timestamp"];
   const tsString =
     typeof rawTs === "string"
       ? rawTs
       : typeof rawTs === "object" && rawTs !== null
         ? (rawTs as { from?: unknown }).from
         : undefined;
-  let timestampMs = NaN;
-  if (typeof tsString === "string") {
-    const seconds = Number(tsString.split(".")[0]);
-    if (Number.isFinite(seconds) && seconds > 0) timestampMs = seconds * 1000;
-  }
+  if (typeof tsString !== "string") return null;
+  const timestampMs = parseMirrorTimestampMs(tsString);
   if (!Number.isFinite(timestampMs)) return null;
   return { number, timestampMs };
 }

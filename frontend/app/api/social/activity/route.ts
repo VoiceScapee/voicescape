@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ipGate } from "@/lib/server/rate-limit";
-import { readSocialActivity } from "@/lib/server/social-activity";
+import { readMergedSocialActivity } from "@/lib/server/social-activity";
 
 export const runtime = "nodejs";
 
@@ -8,9 +8,10 @@ export const runtime = "nodejs";
  * GET /api/social/activity → { ok, events: [{platform, ts}] }
  *
  * Recent X/Discord bot activity signal, newest first — the real-data feed
- * for the X and Discord nodes on Danny's Vision. Returns an empty array
- * (not an error) until automation resumes; the page renders those nodes
- * quiet.
+ * for the X and Discord nodes on Danny's Vision. Merges the KV store and
+ * the public gist sink (see lib/server/social-activity). Returns an empty
+ * array (not an error) until automation resumes; the page renders those
+ * nodes quiet.
  *
  * The public contract is a CONTENT-FREE signal: platform + timestamp only.
  * Summaries stay server-side and are never served — Brandon's rule: no X /
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
   );
   if (gated) return gated;
 
-  const events = await readSocialActivity(20);
+  const events = await readMergedSocialActivity(20);
   // Content-free public signal: platform + timestamp only. The summary
   // stays server-side — it is never part of the public contract.
   const publicEvents = events.map(({ platform, ts }) => ({ platform, ts }));
