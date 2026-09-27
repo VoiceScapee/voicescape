@@ -1258,6 +1258,10 @@ function VibecodeChat({
   const [x402Rail, setX402Rail] = useState<X402Rail | null>(null);
   const [x402Pending, setX402Pending] = useState<string | null>(null);
   const [x402Note, setX402Note] = useState<{ kind: "info" | "err" | "ok"; text: string } | null>(null);
+  // Human-first claim flow (Brandon 2026-09-27): AI pay-per-edit needs the
+  // wallet — to pay, and to make the page theirs. BYOK stays wallet-free
+  // (their key, their spend).
+  const { isAuthenticated } = useSession();
 
   // BYOK key state. The key lives ONLY in this browser's localStorage —
   // it is never sent to our server.
@@ -1362,7 +1366,7 @@ function VibecodeChat({
       setX402Rail(probe.rails[0] ?? null);
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: "The x402 vibecode service charges per edit. Pick a rail below, then pay — your wallet signs one transfer, the service edits, and you review the draft here." },
+        { role: "assistant", text: "Each AI edit costs a small fee. Pick a payment method below, then pay — your wallet signs one transfer, the AI drafts your changes, and you review before anything goes live." },
       ]);
     } catch (e) {
       setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
@@ -1438,6 +1442,15 @@ function VibecodeChat({
   const send = async (override?: string) => {
     const instruction = (override ?? input).trim();
     if (!instruction || loading) return;
+    // Human-first gate: pay-per-edit AI needs the wallet (to pay and to
+    // claim the page). The typed text stays in the box — nothing is lost.
+    if (payMode === "x402" && !isAuthenticated) {
+      setX402Note({
+        kind: "info",
+        text: "Connect your wallet to use AI edits — that's also what makes this blockpage yours.",
+      });
+      return;
+    }
     setInput("");
     setMessages((m) => [...m, { role: "user", text: instruction }]);
     if (payMode === "x402") {
@@ -1459,32 +1472,86 @@ function VibecodeChat({
         Vibecode AI
       </div>
 
-      <div className="vb-paymode" role="group" aria-label="AI edit payment mode">
-        <button
-          type="button"
-          className={`vb-chip-btn${payMode === "x402" ? " is-active" : ""}`}
-          onClick={() => setPayMode("x402")}
-          disabled={loading || !x402Url}
-          title={x402Url ? "Pay the x402 vibecode endpoint per edit from your wallet" : "Set NEXT_PUBLIC_X402_VIBECODE_URL to enable pay-per-edit"}
-        >
-          <IconBolt size={13} /> Pay per edit (x402)
-        </button>
-        <button
-          type="button"
-          className={`vb-chip-btn${payMode === "byok" ? " is-active" : ""}`}
-          onClick={() => setPayMode("byok")}
+      <div className="vb-chat-log">
+        {messages.map((m, i) => (
+          <div
+            key={i}
+            className={`vb-bubble ${
+              m.role === "user" ? "vb-bubble-user" : m.role === "error" ? "vb-bubble-error" : "vb-bubble-assistant"
+            }`}
+          >
+            {m.text}
+          </div>
+        ))}
+        {loading && (
+          <div className="vb-dreaming">
+            <span className="vb-dreaming-orb" />
+            <span className="vb-shimmer-text">dreaming up your blockpage…</span>
+          </div>
+        )}
+        {draft && (
+          <div className="vb-draft-summary">
+            <div className="vb-draft-summary-title">
+              <IconSpark size={14} /> Proposed changes
+            </div>
+            <ul>
+              {draft.summary.map((s, i) => (
+                <li key={i}>
+                  <IconCheck size={14} />
+                  <span>{s}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="vb-draft-summary-actions">
+              <button type="button" className="vs-btn vs-btn-primary" onClick={onApplyDraft}>
+                <IconCheck size={14} /> Apply
+              </button>
+              <button type="button" className="vs-btn vs-btn-ghost" onClick={onDiscardDraft}>
+                <IconClose size={14} /> Discard
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {showSuggestions && (
+        <div className="vb-chips">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              className="vb-chip-btn"
+              onClick={() => send(s)}
+              disabled={loading}
+            >
+              <IconSpark size={13} /> {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="vb-chat-input-row">
+        <input
+          className="vs-input"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Describe a change…"
           disabled={loading}
-          title="Advanced: use your own Anthropic API key — billed by Anthropic to you"
-        >
-          <IconSpark size={13} /> Advanced: My AI key
+        />
+        <button type="button" className="vs-btn vs-btn-primary" onClick={() => send()} disabled={loading || !input.trim()}>
+          <IconArrowRight size={16} />
         </button>
       </div>
 
-      {payMode === "byok" && (
+      {/* Human-first (Brandon 2026-09-27): describe first, pay second. The
+          payment box lives below the input. Pay-per-edit needs the wallet
+          (to pay, and to make the page theirs); BYOK stays wallet-free
+          behind the quiet Advanced link. No jargon: no "x402", no "rail". */}
+      {payMode === "byok" ? (
         <div className="vb-x402-box" aria-live="polite">
           <p className="vb-x402-status">
-            🔑 <strong>Advanced:</strong> AI generation uses your own Anthropic API key — billed
-            by Anthropic to you, key stays in this browser. No key? Use “Pay per edit (x402)” instead.
+            🔒 <strong>Advanced:</strong> AI generation uses your own Anthropic API key — billed
+            by Anthropic to you, key stays in this browser. No key? Use pay-per-edit instead.
             Voicescape never sees your key and never pays for your generations.
           </p>
           <button
@@ -1545,35 +1612,42 @@ function VibecodeChat({
             </div>
           )}
         </div>
-      )}
-
-      {payMode === "x402" && (
+      ) : isAuthenticated ? (
         <div className="vb-x402-box" aria-live="polite">
           {unknownToX402.length > 0 && (
             <p className="vb-x402-status is-err">
-              ⚠️ This blockpage uses block types the x402 service doesn&apos;t know yet (
+              ⚠️ This blockpage uses block types the AI service doesn&apos;t know yet (
               {unknownToX402.join(", ")}) — it would reject the request <em>after</em> you pay.
-              Remove them or use My AI key for this edit.
+              Remove them or use your own AI key for this edit.
             </p>
           )}
+          <p className="vb-x402-status">
+            Each AI edit costs a small fee. You pay from your wallet, then review the draft before anything changes.
+          </p>
           {x402Rails && x402Pending && (
             <>
-              <div className="pv-rail-row" role="group" aria-label="Payment rail">
-                {x402Rails.map((r) => (
-                  <button
-                    key={`${r.network}:${r.asset}`}
-                    type="button"
-                    className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
-                    onClick={() => setX402Rail(r)}
-                    disabled={loading}
-                  >
-                    <span className="pv-rail-name">{r.label}</span>
-                    <span className="pv-rail-amt">
-                      {r.amountDisplay} · {formatUsdCents(r.usdCents)}
-                    </span>
-                  </button>
-                ))}
+              <div className="pv-rail-row" role="group" aria-label="Payment method">
+                {x402Rails.map((r) => {
+                  const cheapestCents = Math.min(...x402Rails.map((x) => x.usdCents ?? Number.POSITIVE_INFINITY));
+                  const isCheapest = x402Rails.length > 1 && r.usdCents === cheapestCents;
+                  return (
+                    <button
+                      key={`${r.network}:${r.asset}`}
+                      type="button"
+                      className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
+                      onClick={() => setX402Rail(r)}
+                      disabled={loading}
+                    >
+                      <span className="pv-rail-name">{r.label}</span>
+                      <span className="pv-rail-amt">
+                        {r.amountDisplay} · {formatUsdCents(r.usdCents)}
+                      </span>
+                      {isCheapest && <span className="pv-rail-tag">cheapest</span>}
+                    </button>
+                  );
+                })}
               </div>
+              <p className="vb-x402-status">Same edit — the price depends on the payment method you pick.</p>
               <button
                 type="button"
                 className="vs-btn vs-btn-primary"
@@ -1582,88 +1656,46 @@ function VibecodeChat({
                 style={{ width: "100%", justifyContent: "center" }}
               >
                 <IconBolt size={16} />
-                {loading ? "Paying…" : `Pay ${x402Rail ? x402Rail.amountDisplay : ""} & edit`}
+                {loading ? "Paying…" : `Pay ${x402Rail ? x402Rail.amountDisplay : ""} & generate draft`}
               </button>
             </>
           )}
-          {x402Note && (
-            <p className={`vb-x402-status is-${x402Note.kind}`}>
-              {x402Note.kind === "err" ? "❌ " : x402Note.kind === "ok" ? "✅ " : "ℹ️ "}
-              {x402Note.text}
-            </p>
-          )}
+        </div>
+      ) : (
+        <div className="vb-x402-box" aria-live="polite">
+          <p className="vb-x402-status">
+            🔒 AI edits cost a small fee each, paid from your wallet. Connect your wallet to
+            unlock them — that&apos;s also what makes this blockpage yours.
+          </p>
+          <SignInButton />
         </div>
       )}
-
-      <div className="vb-chat-log">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`vb-bubble ${
-              m.role === "user" ? "vb-bubble-user" : m.role === "error" ? "vb-bubble-error" : "vb-bubble-assistant"
-            }`}
-          >
-            {m.text}
-          </div>
-        ))}
-        {loading && (
-          <div className="vb-dreaming">
-            <span className="vb-dreaming-orb" />
-            <span className="vb-shimmer-text">dreaming up your blockpage…</span>
-          </div>
-        )}
-        {draft && (
-          <div className="vb-draft-summary">
-            <div className="vb-draft-summary-title">
-              <IconSpark size={14} /> Proposed changes
-            </div>
-            <ul>
-              {draft.summary.map((s, i) => (
-                <li key={i}>
-                  <IconCheck size={14} />
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="vb-draft-summary-actions">
-              <button type="button" className="vs-btn vs-btn-primary" onClick={onApplyDraft}>
-                <IconCheck size={14} /> Apply
-              </button>
-              <button type="button" className="vs-btn vs-btn-ghost" onClick={onDiscardDraft}>
-                <IconClose size={14} /> Discard
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      {showSuggestions && (
-        <div className="vb-chips">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="vb-chip-btn"
-              onClick={() => send(s)}
-              disabled={loading}
-            >
-              <IconSpark size={13} /> {s}
-            </button>
-          ))}
-        </div>
+      {x402Note && (
+        <p className={`vb-x402-status is-${x402Note.kind}`}>
+          {x402Note.kind === "err" ? "❌ " : x402Note.kind === "ok" ? "✅ " : "ℹ️ "}
+          {x402Note.text}
+        </p>
       )}
-      <div className="vb-chat-input-row">
-        <input
-          className="vs-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Describe a change…"
+      {payMode === "x402" ? (
+        <button
+          type="button"
+          className="vb-quiet-link"
+          onClick={() => setPayMode("byok")}
           disabled={loading}
-        />
-        <button type="button" className="vs-btn vs-btn-primary" onClick={() => send()} disabled={loading || !input.trim()}>
-          <IconArrowRight size={16} />
+        >
+          Advanced: use your own AI key instead
         </button>
-      </div>
+      ) : (
+        <button
+          type="button"
+          className="vb-quiet-link"
+          onClick={() => setPayMode("x402")}
+          disabled={loading || !x402Url}
+          title={x402Url ? "Pay per edit from your wallet" : "Pay-per-edit is not configured"}
+        >
+          ← Back to pay-per-edit
+        </button>
+      )}
     </div>
   );
 }
@@ -2174,6 +2206,30 @@ function BuilderInner() {
   const [tab, setTab] = useState<TabId>("customize");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
 
+  // Human-first claim flow (Brandon 2026-09-27): no-wallet visitors get a
+  // 3-step tutorial; the wallet connect is framed as "make it yours".
+  const TUTORIAL_DISMISS_KEY = "vs-builder-tutorial-dismissed";
+  const [tutorialDismissed, setTutorialDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(TUTORIAL_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  // "It's yours now" flash: fires once when an anonymous builder visitor
+  // completes the wallet sign-in (the claim moment).
+  const [claimedFlash, setClaimedFlash] = useState(false);
+  const wasAuthenticated = useRef(isAuthenticated);
+  useEffect(() => {
+    if (isAuthenticated && !wasAuthenticated.current) {
+      setClaimedFlash(true);
+      const t = setTimeout(() => setClaimedFlash(false), 9000);
+      wasAuthenticated.current = true;
+      return () => clearTimeout(t);
+    }
+    wasAuthenticated.current = isAuthenticated;
+  }, [isAuthenticated]);
+
   // Funnel telemetry: the builder was opened. Once per mount — aggregate
   // counter only, never throws, never blocks the builder.
   const builderOpenedFired = useRef(false);
@@ -2538,19 +2594,72 @@ function BuilderInner() {
         <p className="vb-brand-lede">{t("builder.brandLede")}</p>
       </div>
 
-      {/* Preview mode: anyone can design + preview; the wallet is only
-          needed when publishing on-chain. */}
+      {/* Preview mode: anyone can describe + design + preview; the wallet
+          connect is the claim ("make it yours"). Tutorials replace the old
+          sign-in-first wall. */}
+      {!isAuthenticated && !tutorialDismissed && (
+        <div className="vb-tutorial" role="note" aria-label="How this works">
+          <div className="vb-tutorial-steps">
+            <div className="vb-tutorial-step">
+              <span className="vb-tutorial-num">1</span>
+              <div>
+                <strong>Describe it</strong>
+                <span>Say what you want, or start from a template.</span>
+              </div>
+            </div>
+            <div className="vb-tutorial-step">
+              <span className="vb-tutorial-num">2</span>
+              <div>
+                <strong>Preview it</strong>
+                <span>See it live. Nothing publishes until you say so.</span>
+              </div>
+            </div>
+            <div className="vb-tutorial-step">
+              <span className="vb-tutorial-num">3</span>
+              <div>
+                <strong>Make it yours</strong>
+                <span>Connect your wallet to claim it, then publish.</span>
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="vb-quiet-link"
+            onClick={() => {
+              try {
+                localStorage.setItem(TUTORIAL_DISMISS_KEY, "1");
+              } catch {
+                /* storage unavailable — dismiss for this visit only */
+              }
+              setTutorialDismissed(true);
+            }}
+          >
+            Got it
+          </button>
+        </div>
+      )}
       {!isAuthenticated && (
         <div className="vb-preview-banner" role="note">
           <div className="vb-preview-banner-text">
-            <strong>Preview mode.</strong>{" "}
-            <span>Design your blockpage freely — connect your wallet when you're ready to publish it on-chain. New to crypto?{" "}
+            <strong>Preview mode — this blockpage isn&apos;t yours yet.</strong>{" "}
+            <span>Design it freely. Connect your wallet to make it yours, then publish when ready. New to crypto?{" "}
               <a href="/new-to-web3" style={{ color: "var(--vs-accent)", textDecoration: "underline" }}>
                 Start here →
               </a>
             </span>
           </div>
           <SignInButton />
+        </div>
+      )}
+      {claimedFlash && (
+        <div className="vb-claimed-note" role="status">
+          <div className="vb-preview-banner-text">
+            <strong>✅ It&apos;s yours now.</strong>{" "}
+            <span>This blockpage is claimed to your wallet — publish when you&apos;re ready.</span>
+          </div>
+          <button type="button" className="vb-quiet-link" onClick={() => setClaimedFlash(false)}>
+            Dismiss
+          </button>
         </div>
       )}
 
