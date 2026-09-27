@@ -71,12 +71,69 @@ export function planBlockPulses(
  * that as a mirror error and goes silent.
  */
 export function parseLatestBlock(data: unknown): number | null {
+  return parseLatestBlockInfo(data)?.number ?? null;
+}
+
+/** Latest block number plus its consensus timestamp (ms since epoch). */
+export interface BlockInfo {
+  number: number;
+  /** Consensus time of the block, milliseconds since epoch. */
+  timestampMs: number;
+}
+
+/**
+ * Extract the latest block number AND its consensus timestamp from a
+ * mirror /api/v1/blocks response. Returns null for any malformed shape.
+ * The timestamp powers the human "Xs ago" freshness readout — a human
+ * feels "this is live right now" from recency, not from a raw number.
+ */
+export function parseLatestBlockInfo(data: unknown): BlockInfo | null {
   if (!data || typeof data !== "object") return null;
   const blocks = (data as { blocks?: unknown }).blocks;
   if (!Array.isArray(blocks) || blocks.length === 0) return null;
-  const number = (blocks[0] as { number?: unknown })?.number;
+  const first = blocks[0] as { number?: unknown; timestamp?: unknown };
+  const number = first?.number;
   if (typeof number !== "number" || !Number.isInteger(number) || number < 0) {
     return null;
   }
-  return number;
+  // Mirror /blocks entries carry timestamp as { from, to } where each is
+  // "seconds.nanoseconds" (e.g. "1727457600.123456789"). Use `from` —
+  // when the block opened — as the human freshness anchor.
+  const rawTs = first?.timestamp;
+  const tsString =
+    typeof rawTs === "string"
+      ? rawTs
+      : typeof rawTs === "object" && rawTs !== null
+        ? (rawTs as { from?: unknown }).from
+        : undefined;
+  let timestampMs = NaN;
+  if (typeof tsString === "string") {
+    const seconds = Number(tsString.split(".")[0]);
+    if (Number.isFinite(seconds) && seconds > 0) timestampMs = seconds * 1000;
+  }
+  if (!Number.isFinite(timestampMs)) return null;
+  return { number, timestampMs };
+}
+
+/**
+ * Human freshness readout for a block timestamp: "3s", "45s", "2m".
+ * Pure — unit-tested. Never claims the future: a timestamp ahead of now
+ * (clock skew) reads "0s", not a negative.
+ */
+export function formatBlockAgo(timestampMs: number, nowMs: number): string {
+  const elapsed = Math.max(0, nowMs - timestampMs);
+  const seconds = Math.floor(elapsed / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h`;
+}
+
+/**
+ * Comma-grouped block number for humans: 100458020 -> "100,458,020".
+ * Pure — unit-tested.
+ */
+export function formatBlockNumber(n: number): string {
+  return n.toLocaleString("en-US");
 }

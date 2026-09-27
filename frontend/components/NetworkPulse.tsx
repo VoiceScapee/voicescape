@@ -3,11 +3,16 @@
 /**
  * NetworkPulse — the dapp-wide global pulse (heartbeat layer 1).
  *
- * A quiet dot in the site chrome (navbar + public blockpage header) that
+ * A quiet chip in the site chrome (navbar + public blockpage header) that
  * pulses once per newly settled Hedera mainnet block — a radar ring
- * expands and fades on every block, and the live block number shows
- * next to it (including on phones). The whole dapp breathes with the
+ * expands and fades on every block, the live block number ticks next to
+ * it (including on phones), and a small "Xs ago" freshness readout makes
+ * the liveness visceral for humans. The whole dapp breathes with the
  * chain. Mounted everywhere; never intrusive.
+ *
+ * Tapping the chip opens a plain-language explainer card — first-time
+ * visitors learn what the number means instead of staring at a cryptic
+ * "#100458020". No message content, no tracking, just the explainer.
  *
  * Polls the public mirror node directly from the browser
  * (GET /api/v1/blocks, ~8s while visible) — a few hundred bytes per call,
@@ -16,8 +21,9 @@
  *
  * Honesty: one real block = one pulse; catch-up gaps pulse per block
  * (never merged); big gaps resync silently; mirror errors go silent
- * (dim dot, backoff polling) until blocks resume. Reduced-motion users
- * get a static block-number readout with zero animation.
+ * (dim chip, backoff polling) until blocks resume. Reduced-motion users
+ * get a static readout with zero animation. The "ago" readout derives
+ * from the block's real consensus timestamp — never simulated.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -26,15 +32,20 @@ import {
   PULSE_POLL_MS,
   PULSE_POLL_SILENT_MS,
   PULSE_STAGGER_MS,
-  parseLatestBlock,
+  formatBlockAgo,
+  formatBlockNumber,
+  parseLatestBlockInfo,
   planBlockPulses,
+  type BlockInfo,
 } from "@/lib/network-pulse";
 
 export default function NetworkPulse() {
-  const [lastBlock, setLastBlock] = useState<number | null>(null);
+  const [block, setBlock] = useState<BlockInfo | null>(null);
   const [silent, setSilent] = useState(false);
   const [pulseKey, setPulseKey] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const lastBlockRef = useRef<number | null>(null);
   const reducedMotionRef = useRef(false);
@@ -53,6 +64,24 @@ export default function NetworkPulse() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
+
+  // Tick the "Xs ago" freshness readout every 2s while visible.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") setNowMs(Date.now());
+    }, 2000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Close the explainer on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
 
   // Drain the pulse queue: one motion per block, staggered so each is
   // perceptible. Never merged, never simulated.
@@ -102,19 +131,20 @@ export default function NetworkPulse() {
         if (!stopped) setSilent(true);
         return false;
       }
-      const latest = parseLatestBlock(data);
-      if (latest === null) {
+      const info = parseLatestBlockInfo(data);
+      if (info === null) {
         if (!stopped) setSilent(true);
         return false;
       }
-      const plan = planBlockPulses(lastBlockRef.current, latest);
+      const plan = planBlockPulses(lastBlockRef.current, info.number);
       // The cursor only ever moves forward — a mirror rollback must not
       // re-arm pulses for blocks we already saw.
-      if (lastBlockRef.current === null || latest > lastBlockRef.current) {
-        lastBlockRef.current = latest;
+      if (lastBlockRef.current === null || info.number > lastBlockRef.current) {
+        lastBlockRef.current = info.number;
       }
       if (stopped) return true;
-      setLastBlock(latest);
+      setBlock(info);
+      setNowMs(Date.now());
       setSilent(false);
       if (plan.pulses > 0 && !reducedMotionRef.current) {
         queueRef.current += plan.pulses;
@@ -151,33 +181,91 @@ export default function NetworkPulse() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stateLabel = silent
+  const chipLabel = silent
     ? "Hedera mainnet — reconnecting"
-    : lastBlock === null
+    : block === null
       ? "Hedera mainnet — connecting"
-      : `Hedera mainnet · block ${lastBlock}`;
+      : `Hedera mainnet · live · block ${block.number}`;
+
+  const ago = block ? formatBlockAgo(block.timestampMs, nowMs) : null;
 
   return (
-    <span
-      className={`vs-netpulse${silent ? " is-silent" : ""}`}
-      role="img"
-      aria-label={
-        silent
-          ? "Hedera mainnet connection silent, reconnecting"
-          : lastBlock === null
-            ? "Connecting to Hedera mainnet"
-            : `Hedera mainnet live, block ${lastBlock}`
-      }
-      title={stateLabel}
-    >
-      <span
-        key={pulseKey}
-        className={`vs-netpulse-dot${reducedMotion ? " is-static" : ""}`}
-        aria-hidden="true"
-      />
-      <span className="vs-netpulse-label vs-mono" aria-hidden="true">
-        {lastBlock === null ? "mainnet" : `#${lastBlock}`}
-      </span>
+    <span className="vs-netpulse-wrap">
+      <button
+        type="button"
+        className={`vs-netpulse${silent ? " is-silent" : ""}${open ? " is-open" : ""}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={
+          silent
+            ? "Hedera mainnet connection silent, reconnecting. Tap to learn what this is."
+            : block === null
+              ? "Connecting to Hedera mainnet. Tap to learn what this is."
+              : `Hedera mainnet live, block ${block.number}, ${ago} ago. Tap to learn what this is.`
+        }
+        title={chipLabel}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span
+          key={pulseKey}
+          className={`vs-netpulse-dot${reducedMotion ? " is-static" : ""}`}
+          aria-hidden="true"
+        />
+        <span className="vs-netpulse-label vs-mono" aria-hidden="true">
+          {block === null ? (
+            "mainnet"
+          ) : (
+            <>
+              #{formatBlockNumber(block.number)}
+              <span className="vs-netpulse-ago"> · {ago}</span>
+            </>
+          )}
+        </span>
+      </button>
+
+      {open && (
+        <>
+          <span
+            className="vs-netpulse-scrim"
+            aria-hidden="true"
+            onClick={() => setOpen(false)}
+          />
+          <span
+            className="vs-netpulse-card"
+            role="dialog"
+            aria-label="What is the live block number?"
+          >
+            <span className="vs-netpulse-card-head">
+              <span
+                className={`vs-netpulse-dot${reducedMotion ? " is-static" : ""}`}
+                aria-hidden="true"
+              />
+              <strong>Hedera mainnet · live</strong>
+              <button
+                type="button"
+                className="vs-netpulse-card-close"
+                aria-label="Close"
+                onClick={() => setOpen(false)}
+              >
+                ✕
+              </button>
+            </span>
+            <p>
+              That number is the latest block on the Hedera network — it ticks
+              every few seconds because the chain never sleeps.
+            </p>
+            <p>
+              Every tip and blockpage on Voicescape settles here. You&rsquo;re
+              watching the network breathe.
+            </p>
+            {block && (
+              <p className="vs-netpulse-card-block vs-mono">
+                block #{formatBlockNumber(block.number)} · {ago} ago
+              </p>
+            )}
+          </span>
+        </>
+      )}
     </span>
   );
 }
