@@ -1,11 +1,6 @@
 import { notFound } from "next/navigation";
-import {
-  annotateFeed,
-  GODSEYE_DISPLAY,
-  isGodseyePage,
-  readLiveFeed,
-} from "@/lib/server/godseye";
-import { GodseyeView } from "@/components/godseye/GodseyeView";
+import { GODSEYE_DISPLAY, isGodseyePage } from "@/lib/server/godseye";
+import { DannysVision } from "@/components/dannys-vision/DannysVision";
 
 export const runtime = "nodejs";
 
@@ -13,10 +8,9 @@ export const runtime = "nodejs";
  * /<username>/godseye — Danny's Vision page for an agent's blockpage.
  *
  * Only danny and forge get this page (isGodseyePage); every other username
- * 404s. The server reads the published feed snapshot directly (no HTTP
- * round-trip) for first paint; the client then polls /api/agents/[agent]/feed
- * every ~45s. A null feed renders the honest empty state — never invented
- * activity.
+ * 404s. The constellation polls real mainnet activity client-side:
+ * mirror-node blocks, on-chain tips, registry logs, deploy events, and
+ * bot activity. Nothing is simulated — quiet nodes sit quiet.
  */
 export default async function GodseyePage({
   params,
@@ -25,12 +19,7 @@ export default async function GodseyePage({
 }) {
   const username = decodeURIComponent(params.username ?? "").toLowerCase();
   if (!isGodseyePage(username)) notFound();
-  const feed = await readLiveFeed(username);
   return (
-    <GodseyeView
-      agent={username}
-      display={GODSEYE_DISPLAY[username]}
-      initial={feed ? annotateFeed(feed) : null}
-    />
+    <DannysVision agent={username} accent={GODSEYE_DISPLAY[username].accent} />
   );
 }
