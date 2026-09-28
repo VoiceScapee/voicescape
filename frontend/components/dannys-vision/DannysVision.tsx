@@ -74,6 +74,31 @@ const SOCIAL_URL = "/api/social/activity";
 const BLOCK_POLL_MS = 8_000;
 const SLOW_POLL_MS = 60_000;
 
+/**
+ * Fetch JSON with a hard timeout. Every poller on this page hits either our
+ * own API or Hedera's public mirror node; a hung request must never outlive
+ * its poll tick — overlapping polls pile up, saturate the browser's
+ * connection pool (mobile in-app browsers hit this first), and the page
+ * looks dead. Anything slower than the timeout is a miss: callers keep
+ * their last good state and try again next tick.
+ */
+const FETCH_TIMEOUT_MS = 12_000;
+
+async function fetchJson(
+  url: string,
+  timeoutMs = FETCH_TIMEOUT_MS,
+): Promise<unknown> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    if (!r.ok) throw new Error(`http ${r.status}`);
+    return (await r.json()) as unknown;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
 function hexA(hex: string, a: number): string {
   const h = hex.replace("#", "");
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
@@ -138,6 +163,8 @@ export function DannysVision({
   });
   const lastBlock = useRef<number | null>(null);
   const mirrorOk = useRef(true);
+  /** In-flight poll keys — a tick never starts a poll that's still running. */
+  const busy = useRef(new Set<string>());
   const pos = useRef<{ id: string; x: number; y: number; r: number }[]>([]);
   const chimeDone = useRef(false);
   const [, setTick] = useState(0);
@@ -198,12 +225,22 @@ export function DannysVision({
     let alive = true;
     const hidden = () => document.hidden;
 
+    /* Skip a poll tick when the previous run hasn't finished — stacking
+       overlapping mirror requests is what wedges the page on slow links. */
+    const guard = async (key: string, fn: () => Promise<void>): Promise<void> => {
+      if (busy.current.has(key)) return;
+      busy.current.add(key);
+      try {
+        await fn();
+      } finally {
+        busy.current.delete(key);
+      }
+    };
+
     const pollBlocks = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(MIRROR_BLOCKS_URL, { cache: "no-store" });
-        if (!r.ok) throw new Error(`mirror ${r.status}`);
-        const n = parseLatestBlock(await r.json());
+        const n = parseLatestBlock(await fetchJson(MIRROR_BLOCKS_URL));
         if (n === null) throw new Error("bad block shape");
         const plan = planBlockPulses(lastBlock.current, n);
         if (plan.resync) lastBlock.current = n;
@@ -242,11 +279,10 @@ export function DannysVision({
     const pollTips = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(TIPS_URL, { cache: "no-store" });
-        if (!r.ok) return;
-        const d = await r.json();
-        const tips: { txHash: string; amountHbar: string; timestamp: string }[] =
-          d.tips ?? [];
+        const d = (await fetchJson(TIPS_URL)) as {
+          tips?: { txHash: string; amountHbar: string; timestamp: string }[];
+        };
+        const tips = d.tips ?? [];
         const fresh: typeof tips = [];
         for (const t of tips) {
           if (!seen.current.tips.has(t.txHash)) {
@@ -277,11 +313,10 @@ export function DannysVision({
     const pollRegistry = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(REGISTRY_LOGS_URL, { cache: "no-store" });
-        if (!r.ok) return;
-        const d = await r.json();
-        const logs: { transaction_hash: string; timestamp: string }[] =
-          d.logs ?? [];
+        const d = (await fetchJson(REGISTRY_LOGS_URL)) as {
+          logs?: { transaction_hash: string; timestamp: string }[];
+        };
+        const logs = d.logs ?? [];
         let fresh = 0;
         for (const l of logs) {
           const key = `${l.transaction_hash}:${l.timestamp}`;
@@ -320,14 +355,14 @@ export function DannysVision({
     const pollVoicescape = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(TREASURY_TXS_URL, { cache: "no-store" });
-        if (!r.ok) return;
-        const d = await r.json();
-        const txs: {
-          transaction_id: string;
-          name: string;
-          consensus_timestamp: string;
-        }[] = d.transactions ?? [];
+        const d = (await fetchJson(TREASURY_TXS_URL)) as {
+          transactions?: {
+            transaction_id: string;
+            name: string;
+            consensus_timestamp: string;
+          }[];
+        };
+        const txs = d.transactions ?? [];
         const fresh: typeof txs = [];
         for (const t of txs) {
           const key = t.transaction_id;
@@ -365,12 +400,12 @@ export function DannysVision({
     const pollSocial = async () => {
       if (!alive || hidden()) return;
       try {
-        const r = await fetch(SOCIAL_URL, { cache: "no-store" });
-        if (!r.ok) return;
-        const d = await r.json();
+        const d = (await fetchJson(SOCIAL_URL)) as {
+          events?: { platform: string; ts: string }[];
+        };
         // Content-free activity signal: platform + timestamp only. No post
         // text, captions, or previews ever leave the server (Brandon's rule).
-        const events: { platform: string; ts: string }[] = d.events ?? [];
+        const events = d.events ?? [];
         for (const e of events) {
           const key = `${e.platform}:${e.ts}`;
           if (!seen.current.social.has(key)) {
@@ -407,28 +442,30 @@ export function DannysVision({
     const pollVitals = async () => {
       if (!alive || hidden()) return;
       try {
-        const [txR, blkR, nodeR] = await Promise.all([
-          fetch(
+        const [txJ, blkJ, nodeJ] = await Promise.all([
+          fetchJson(
             "https://mainnet.mirrornode.hedera.com/api/v1/transactions?limit=100&order=desc",
-            { cache: "no-store" },
           ),
-          fetch(
+          fetchJson(
             "https://mainnet.mirrornode.hedera.com/api/v1/blocks?limit=2&order=desc",
-            { cache: "no-store" },
           ),
-          fetch(
+          fetchJson(
             "https://mainnet.mirrornode.hedera.com/api/v1/network/nodes?limit=100",
-            { cache: "no-store" },
           ),
         ]);
-        if (!txR.ok || !blkR.ok || !nodeR.ok) return;
-        const txs = ((await txR.json()).transactions ?? []) as {
+        const txs = (
+          (txJ as { transactions?: { consensus_timestamp: string }[] })
+            .transactions ?? []
+        ) as {
           consensus_timestamp: string;
         }[];
-        const blocks = ((await blkR.json()).blocks ?? []) as {
+        const blocks = (
+          (blkJ as { blocks?: { timestamp: { from: string } }[] }).blocks ?? []
+        ) as {
           timestamp: { from: string };
         }[];
-        const nodes = ((await nodeR.json()).nodes ?? []) as unknown[];
+        const nodes = ((nodeJ as { nodes?: unknown[] }).nodes ??
+          []) as unknown[];
         const parts: string[] = [];
         if (txs.length >= 2) {
           const span =
@@ -452,24 +489,26 @@ export function DannysVision({
 
     const prime = async () => {
       await Promise.all([
-        pollBlocks(),
-        pollTips(),
-        pollRegistry(),
-        pollVoicescape(),
-        pollSocial(),
-        pollVitals(),
+        guard("blocks", pollBlocks),
+        guard("tips", pollTips),
+        guard("registry", pollRegistry),
+        guard("voicescape", pollVoicescape),
+        guard("social", pollSocial),
+        guard("vitals", pollVitals),
       ]);
       if (alive) seen.current.primed = true;
     };
     prime();
 
-    const b = setInterval(pollBlocks, BLOCK_POLL_MS);
+    const b = setInterval(() => {
+      void guard("blocks", pollBlocks);
+    }, BLOCK_POLL_MS);
     const s = setInterval(() => {
-      pollTips();
-      pollRegistry();
-      pollVoicescape();
-      pollSocial();
-      pollVitals();
+      void guard("tips", pollTips);
+      void guard("registry", pollRegistry);
+      void guard("voicescape", pollVoicescape);
+      void guard("social", pollSocial);
+      void guard("vitals", pollVitals);
     }, SLOW_POLL_MS);
     return () => {
       alive = false;
