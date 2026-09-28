@@ -919,10 +919,11 @@ export function DannysVision({
     if (!rect) return;
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    // engine hit
+    // engine hit — generous radius: the label sits at cy+38, so taps on
+    // the word ENGINE must land too, not just the glow's center.
     const cx = rect.width / 2;
     const cy = rect.height * 0.46;
-    if (Math.hypot(x - cx, y - cy) < 34) {
+    if (Math.hypot(x - cx, y - cy) < 52) {
       playChime();
       setPopupInfo(
         info.current.engine ?? {
