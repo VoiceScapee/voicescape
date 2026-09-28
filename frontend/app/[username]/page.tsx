@@ -22,6 +22,7 @@ import {
   fillTipShareText,
 } from "@/lib/tx-proof";
 import { WalletConnect } from "@/components/WalletConnect";
+import BringCryptoChecklist from "@/components/BringCryptoChecklist";
 import CommentWall from "@/components/townhall/CommentWall";
 import DannyAgentCard from "@/components/DannyAgentCard";
 import DannyLiaisonPanel from "@/components/DannyLiaisonPanel";
@@ -696,9 +697,16 @@ function TipBox({
                     </p>
                   </>
                 ) : (
-                  <p className="th-muted" style={{ lineHeight: 1.6 }}>
-                    No tokens in this wallet yet — tip in HBAR instead.
-                  </p>
+                  <>
+                    <p className="th-muted" style={{ lineHeight: 1.6 }}>
+                      No tokens in this wallet yet.
+                    </p>
+                    <BringCryptoChecklist />
+                    <p className="th-muted" style={{ fontSize: "0.85rem", lineHeight: 1.6 }}>
+                      Already have HBAR? Switch to the HBAR tab above to tip
+                      directly.
+                    </p>
+                  </>
                 )}
               </>
             ) : (
