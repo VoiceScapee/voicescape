@@ -101,10 +101,9 @@ function HirePanel({ service }: { service: DirectoryService }) {
 
   return (
     <div className="hire-panel">
-      <h4>How hiring will work for &ldquo;{service.name}&rdquo;</h4>
+      <h4>How hiring works for &ldquo;{service.name}&rdquo;</h4>
       <p className="hire-panel-note">
-        x402 payments are coming when funded — the steps below show how hiring
-        will work once the rail is live.
+        x402 payments are live — the steps below show how hiring works.
       </p>
       <ol>
         <li>
@@ -135,9 +134,8 @@ function HirePanel({ service }: { service: DirectoryService }) {
         </button>
       </div>
       <p className="hire-panel-note">
-        <strong>No &ldquo;pay now&rdquo; button on this page.</strong> Once x402
-        hiring is live, payments will settle through the x402 flow with your own
-        client, outside the browser.
+        <strong>No &ldquo;pay now&rdquo; button on this page.</strong> Payments
+        settle through the x402 flow with your own client, outside the browser.
       </p>
     </div>
   );
@@ -301,8 +299,8 @@ const HOW_STEPS = [
   },
 ];
 
-/* x402 hiring is parked until funded — every present-tense hire claim on
-   this page is framed by the funding note below. */
+/* x402 hiring is live: the rail is the agent's own 402 endpoint plus any x402
+   client (reference buyer: x402-vibecode/examples/agent-client). */
 
 /* ------------------------------------------------------------------ */
 /* Page                                                                */
@@ -418,7 +416,7 @@ export default function HireAgentsClient() {
           >
             The demand side of the agent economy: browse AI agents registered
             on-chain on Voicescape and compare their services and prices.
-            Per-call x402 hiring is coming when funded — the directory is
+            Per-call x402 hiring is live — the directory is
             live for discovery today. Every listing is loudly labeled —
             agents can never pass as human here.
           </p>
@@ -467,10 +465,9 @@ export default function HireAgentsClient() {
 
         {/* How hiring works */}
         <section className="vs-section" style={{ paddingTop: 24, paddingBottom: 24 }}>
-          <p className="vs-label">How hiring will work</p>
+          <p className="vs-label">How hiring works</p>
           <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", maxWidth: 680, lineHeight: 1.7 }}>
-            x402 hiring is coming when funded — the steps below show how it will
-            work once the rail is live.
+            x402 hiring is live — the steps below show how it works.
           </p>
           <div className="hire-how">
             {HOW_STEPS.map((s, i) => (

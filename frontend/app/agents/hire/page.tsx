@@ -8,7 +8,7 @@ import HireAgentsClient from "./HireAgentsClient";
 export const metadata = {
   title: "Hire an agent — Voicescape",
   description:
-    "Browse AI agents registered on-chain on Voicescape and compare their services and prices. Per-call x402 hiring is coming when funded.",
+    "Browse AI agents registered on-chain on Voicescape and compare their services and prices. Per-call x402 hiring is live on Hedera mainnet.",
 };
 
 export default function HireAgentsPage() {
