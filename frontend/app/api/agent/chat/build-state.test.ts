@@ -275,10 +275,10 @@ describe("buildStateNote", () => {
     }
   });
 
-  it("states the 5 HBAR price FIRST when no slots are collected yet", () => {
+  it("states the 1 HBAR price FIRST when no slots are collected yet", () => {
     const note = buildStateNote({ active: true })!;
     expect(note).toContain("State the price FIRST");
-    expect(note).toContain("5 HBAR");
+    expect(note).toContain("1 HBAR");
     expect(note).toContain("one-time");
     expect(note).toContain("username");
     expect(note).toContain("one-line bio");

@@ -350,7 +350,7 @@ const PREVIEW_APPROVAL_RE =
 const PREVIEW_NOTE = [
   "[MOCK PREVIEW — the visitor has NOT paid yet: this is a FREE preview, not the build.]",
   "A visual mock of their page is generated for them automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
-  "Reply in one or two short sentences: present their free preview, invite one tweak, and say that saying “go” builds the real page with custom AI artwork for 5 HBAR.",
+  "Reply in one or two short sentences: present their free preview, invite one tweak, and say that saying “go” builds the real page with custom AI artwork for 1 HBAR.",
   "PLACEHOLDER ART ONLY: never call generate_page_image — the image tool is unavailable this turn. " +
   "Never mention image limits — the free mock uses placeholder art by design.",
 ].join("\n");
@@ -363,7 +363,7 @@ function previewReviseNote(tweak: string): string {
     "[MOCK PREVIEW REVISION — the visitor is revising their FREE preview. They have NOT paid.]",
     `The visitor's tweak request: "${tweak.slice(0, 300)}"`,
     "Their preview updates automatically — you do NOT need to output any JSON, code blocks, or a text description of the page.",
-    "Reply in one short sentence acknowledging the tweak, ending with: say “go” any time and the 5 HBAR build makes the real page.",
+    "Reply in one short sentence acknowledging the tweak, ending with: say “go” any time and the 1 HBAR build makes the real page.",
     "Never mention image limits — the free mock uses placeholder art by design.",
   ].join("\n");
 }
@@ -409,7 +409,7 @@ export async function POST(req: NextRequest) {
   // whole handler can reference it.
   let buildNote: string | null = null;
 
-  // Build entitlement (5 HBAR per custom build, Brandon's pricing). The
+  // Build entitlement (1 HBAR per custom build, Brandon's pricing). The
   // state is complete when username + bio + vibe are all collected — that
   // is the turn the model generates the artwork and the draft JSON.
   const prevComplete = !!(prevState?.u && prevState?.b && prevState?.v);
@@ -458,13 +458,13 @@ export async function POST(req: NextRequest) {
   // any paywall. Mocks are pure model output with placeholder art — the
   // image tool is withheld on preview turns (see tools below), so a
   // preview can never burn image generation. After the 2nd mock, or on an
-  // explicit "go", the paywall appears; 5 HBAR then unlocks ONE full
+  // explicit "go", the paywall appears; 1 HBAR then unlocks ONE full
   // production-grade build with real AI artwork.
   //
   // Preview identity follows the chat-metering pattern: the signed-in
   // wallet when present, else the IP. Counted per build username and reset
   // when a build payment is consumed, so a brand-new build repeats the
-  // whole process (2 free previews -> 5 HBAR -> build).
+  // whole process (2 free previews -> 1 HBAR -> build).
   const previewIdentity: ChatIdentity =
     walletEvm != null
       ? { kind: "wallet", evm: walletEvm }

@@ -1,8 +1,8 @@
 /**
- * BuddyPayButton — the in-chat 5-HBAR build payment control.
+ * BuddyPayButton — the in-chat 1-HBAR build payment control.
  *
  * Shown inside the Buddy widget when the build paywall appears. Drives the
- * EXISTING wallet tip flow: tipPage("forge") for exactly 5 HBAR
+ * EXISTING wallet tip flow: tipPage("forge") for exactly 1 HBAR
  * (BUILD_PRICE_TINYBAR), signed by the visitor's own wallet. No new money
  * code — same tipPage / resolvePage / TxSender path as the town-hall tip
  * buttons. Buddy never signs; the visitor approves in their own wallet.
@@ -22,8 +22,8 @@ import { getActiveChain } from "@/lib/chains";
 import { resolvePage, tipPage } from "@/lib/contracts";
 import { WalletTimeoutError } from "@/lib/tx";
 
-/** 5 HBAR in wei (18 decimals) — must match BUILD_PRICE_TINYBAR server-side. */
-export const BUILD_PAYMENT_WEI = 5_000_000_000_000_000_000n;
+/** 1 HBAR in wei (18 decimals) — must match BUILD_PRICE_TINYBAR server-side. */
+export const BUILD_PAYMENT_WEI = 1_000_000_000_000_000_000n;
 
 const BUDDY_PAGE_USERNAME = "forge";
 
@@ -115,7 +115,7 @@ export default function BuddyPayButton({ onPaid }: { onPaid: () => void }) {
         {state === "checking" && "Checking wallet…"}
         {state === "signing" && "Waiting for wallet approval…"}
         {state === "submitted" && "✓ Payment submitted"}
-        {state === "idle" && "Pay 5 HBAR"}
+        {state === "idle" && "Pay 1 HBAR"}
         {typeof state === "object" && "Try again"}
       </button>
       <div style={{ marginTop: 6, fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)", lineHeight: 1.5 }}>

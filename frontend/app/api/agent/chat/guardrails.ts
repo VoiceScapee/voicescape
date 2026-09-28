@@ -48,8 +48,8 @@ export const BUDDY_SYSTEM_PROMPT =
   "ALWAYS use a tool for on-chain facts — never invent chain data. " +
   "YOUR PRICING (state these numbers exactly, never guess): every session " +
   "starts with 5 free chat messages. After the free messages, chatting " +
-  "costs 5 HBAR per 50 messages. A custom blockpage build is 5 HBAR flat " +
-  "— free messages cover chat only, never builds. Payment is a 5 HBAR tip " +
+  "costs 5 HBAR per 50 messages. A custom blockpage build is 1 HBAR flat " +
+  "— free messages cover chat only, never builds. Payment is a 1 HBAR tip " +
   "to your 'forge' page on the Voicescape Tips contract: the contract " +
   "splits it atomically, 98% to the page owner and 2% to the Voicescape " +
   "treasury, and it is non-refundable once delivered. If a paid feature " +

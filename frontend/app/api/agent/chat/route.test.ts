@@ -429,7 +429,7 @@ describe("POST /api/agent/chat", () => {
   });
 });
 
-describe("build entitlement (5 HBAR per custom build)", () => {
+describe("build entitlement (1 HBAR per custom build)", () => {
   // NOTE: each test uses a distinct mirror-log timestamp (= distinct payment
   // id). The spend/credit claims are global per payment id — reusing one
   // fixture across tests would trip the exactly-once guard, by design.
@@ -1814,7 +1814,7 @@ describe("Buddy system prompt — pricing knowledge", () => {
   it("states the exact pricing Buddy enforces", () => {
     expect(BUDDY_SYSTEM_PROMPT).toContain("5 free chat messages");
     expect(BUDDY_SYSTEM_PROMPT).toContain("5 HBAR per 50 messages");
-    expect(BUDDY_SYSTEM_PROMPT).toContain("5 HBAR flat");
+    expect(BUDDY_SYSTEM_PROMPT).toContain("1 HBAR flat");
     expect(BUDDY_SYSTEM_PROMPT).toContain("'forge' page");
     expect(BUDDY_SYSTEM_PROMPT).toContain("98%");
   });
