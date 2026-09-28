@@ -162,3 +162,91 @@ describe("parseMirrorTimestampMs", () => {
     expect(parseMirrorTimestampMs("")).toBeNaN();
   });
 });
+
+describe("vision feed helpers", () => {
+  it("parseBlockAnatomy reads number, tx count, and hash", async () => {
+    const { parseBlockAnatomy } = await import("./network-pulse");
+    expect(
+      parseBlockAnatomy({
+        blocks: [
+          {
+            number: 100493825,
+            count: 6,
+            hash: "0xa37f5d71abebed339bdeda3207f7f9197823d3867731cd364696c94334cf8d99ad25f896dfc835400d7e98e40f99bcda",
+          },
+        ],
+      }),
+    ).toEqual({
+      number: 100493825,
+      txCount: 6,
+      hash: "0xa37f5d71abebed339bdeda3207f7f9197823d3867731cd364696c94334cf8d99ad25f896dfc835400d7e98e40f99bcda",
+    });
+  });
+
+  it("parseBlockAnatomy rejects malformed blocks", async () => {
+    const { parseBlockAnatomy } = await import("./network-pulse");
+    expect(parseBlockAnatomy({ blocks: [] })).toBeNull();
+    expect(parseBlockAnatomy({ blocks: [{ number: 1 }] })).toBeNull();
+    expect(parseBlockAnatomy({ blocks: [{ number: 1, count: -2, hash: "0x1" }] })).toBeNull();
+    expect(parseBlockAnatomy(null)).toBeNull();
+  });
+
+  it("hbarPriceUsd reads the exchange rate", async () => {
+    const { hbarPriceUsd } = await import("./network-pulse");
+    expect(
+      hbarPriceUsd({
+        current_rate: { cent_equivalent: 354176, hbar_equivalent: 30000 },
+      }),
+    ).toBeCloseTo(0.11806, 5);
+    expect(hbarPriceUsd({})).toBeNull();
+    expect(hbarPriceUsd({ current_rate: { cent_equivalent: 1, hbar_equivalent: 0 } })).toBeNull();
+    expect(hbarPriceUsd(null)).toBeNull();
+  });
+
+  it("parseNodeCity takes the part after the pipe", async () => {
+    const { parseNodeCity } = await import("./network-pulse");
+    expect(parseNodeCity("Hosted by LG | Singapore")).toBe("Singapore");
+    expect(parseNodeCity("Hosted by Swirlds | Iowa, USA")).toBe("Iowa, USA");
+    expect(parseNodeCity("no pipe here")).toBe("no pipe here");
+    expect(parseNodeCity("")).toBeNull();
+    expect(parseNodeCity(null)).toBeNull();
+  });
+
+  it("findWhaleLegs keeps only legs above the threshold", async () => {
+    const { findWhaleLegs, WHALE_THRESHOLD_TINYBAR } = await import("./network-pulse");
+    expect(WHALE_THRESHOLD_TINYBAR).toBe(1e13);
+    const legs = findWhaleLegs([
+      { account: "0.0.1", amount: 226 * 1e8 },
+      { account: "0.0.2", amount: 250_000 * 1e8 },
+      { account: "0.0.3", amount: -1_500_000 * 1e8 },
+      { account: "0.0.4", amount: "big" },
+    ]);
+    expect(legs).toEqual([
+      { account: "0.0.2", amount: 250_000 * 1e8 },
+      { account: "0.0.3", amount: -1_500_000 * 1e8 },
+    ]);
+    expect(findWhaleLegs(undefined)).toEqual([]);
+    expect(findWhaleLegs("nope")).toEqual([]);
+  });
+
+  it("decodePurchaseAmountHbar reads the amount word", async () => {
+    const { decodePurchaseAmountHbar } = await import("./network-pulse");
+    // offset=0x60, amount=250 HBAR in tinybar, fee=5 HBAR in tinybar
+    const amountTiny = (250n * 100_000_000n).toString(16).padStart(64, "0");
+    const feeTiny = (5n * 100_000_000n).toString(16).padStart(64, "0");
+    const data = "0x" + "60".padStart(64, "0") + amountTiny + feeTiny + "00".padEnd(64, "0");
+    expect(decodePurchaseAmountHbar(data)).toBe(250);
+    expect(decodePurchaseAmountHbar("0x1234")).toBeNull();
+    expect(decodePurchaseAmountHbar("not hex")).toBeNull();
+    expect(decodePurchaseAmountHbar(null)).toBeNull();
+  });
+
+  it("formatFeedAgo and shortHash behave", async () => {
+    const { formatFeedAgo, shortHash } = await import("./network-pulse");
+    expect(formatFeedAgo(1_000_000, 1_180_000)).toBe("3m ago");
+    expect(formatFeedAgo(2_000_000, 1_000_000)).toBe("0s ago");
+    expect(shortHash("0xa37f5d71abebed339bdeda3207f7f9197823d3867731cd364696c94334cf8d99ad25f896dfc835400d7e98e40f99bcda")).toBe(
+      "0xa37f…bcda",
+    );
+  });
+});
