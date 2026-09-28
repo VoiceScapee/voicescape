@@ -170,3 +170,122 @@ export function formatBlockAgo(timestampMs: number, nowMs: number): string {
 export function formatBlockNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
+
+/* ------------------------------------------------------------------ */
+/* Vision "alive" feed helpers — pure, unit-tested                      */
+/* ------------------------------------------------------------------ */
+
+/** Registry contract event topic0 hashes (canonical Solidity signatures). */
+export const PAGE_REGISTERED_TOPIC0 =
+  "0xa327fd868734b8d16f5a1b2685a76b5cce3891a78c46bc724e7eb68ddd7917eb";
+export const PAGE_UPDATED_TOPIC0 =
+  "0xa4c1ea4f124910234beaa5e008aa404b64055531a6b524c62412b032f35596f3";
+/** VoicescapeTips PurchaseCompleted(address,address,string,uint256,uint256). */
+export const PURCHASE_COMPLETED_TOPIC0 =
+  "0x8555727c6813e10ae0b5a9b0a53a88a93176679845f5a005a248cdb9f1c05f2e";
+
+/**
+ * Whale threshold: a single transfer leg of >= 100,000 HBAR, in tinybar.
+ * Real mainnet traffic in a 100-tx window tops out in the low hundreds of
+ * HBAR, so this fires a few times a day at most — an event, not noise.
+ */
+export const WHALE_THRESHOLD_TINYBAR = 100_000 * 100_000_000;
+
+/** Block number + transaction count + hash for the "what was in this block" popup. */
+export interface BlockAnatomy {
+  number: number;
+  txCount: number;
+  hash: string;
+}
+
+/** Extract block anatomy from a mirror /api/v1/blocks response. Null on
+ *  any malformed shape — the popup stays honest instead of guessing. */
+export function parseBlockAnatomy(data: unknown): BlockAnatomy | null {
+  const first = firstBlock(data);
+  if (first === null) return null;
+  const number = parseBlockNumber(first);
+  const count = first["count"];
+  const hash = first["hash"];
+  if (
+    number === null ||
+    typeof count !== "number" ||
+    !Number.isInteger(count) ||
+    count < 0 ||
+    typeof hash !== "string" ||
+    hash.length === 0
+  ) {
+    return null;
+  }
+  return { number, txCount: count, hash };
+}
+
+/** HBAR/USD from /api/v1/network/exchangerate. Null when malformed. */
+export function hbarPriceUsd(data: unknown): number | null {
+  if (!data || typeof data !== "object") return null;
+  const rate = (data as { current_rate?: unknown }).current_rate;
+  if (!rate || typeof rate !== "object") return null;
+  const cent = (rate as { cent_equivalent?: unknown }).cent_equivalent;
+  const hbar = (rate as { hbar_equivalent?: unknown }).hbar_equivalent;
+  if (typeof cent !== "number" || typeof hbar !== "number" || hbar <= 0) {
+    return null;
+  }
+  const price = cent / hbar / 100;
+  return Number.isFinite(price) && price > 0 ? price : null;
+}
+
+/**
+ * Consensus-node city from the address-book description, e.g.
+ * "Hosted by LG | Singapore" -> "Singapore". Null when no city part.
+ */
+export function parseNodeCity(description: unknown): string | null {
+  if (typeof description !== "string") return null;
+  const parts = description.split("|");
+  const city = parts[parts.length - 1].trim();
+  return city.length > 0 ? city : null;
+}
+
+/** Transfer legs at or above the whale threshold. Never throws. */
+export function findWhaleLegs(
+  transfers: unknown,
+): { account: string; amount: number }[] {
+  if (!Array.isArray(transfers)) return [];
+  const out: { account: string; amount: number }[] = [];
+  for (const t of transfers) {
+    if (!t || typeof t !== "object") continue;
+    const { account, amount } = t as { account?: unknown; amount?: unknown };
+    if (typeof account !== "string" || typeof amount !== "number") continue;
+    if (Math.abs(amount) >= WHALE_THRESHOLD_TINYBAR) {
+      out.push({ account, amount });
+    }
+  }
+  return out;
+}
+
+/**
+ * Decode the whole-HBAR amount from a PurchaseCompleted log's data field.
+ * Layout: offset(32) | amount uint256 | fee uint256 | string bytes.
+ * Null when malformed — the feed row is skipped, never guessed.
+ */
+export function decodePurchaseAmountHbar(dataHex: unknown): number | null {
+  if (typeof dataHex !== "string" || !dataHex.startsWith("0x")) return null;
+  const hex = dataHex.slice(2);
+  if (hex.length < 128 || !/^[0-9a-fA-F]+$/.test(hex)) return null;
+  try {
+    const amountTiny = BigInt("0x" + hex.slice(64, 128));
+    const hbar = Number(amountTiny) / 100_000_000;
+    return Number.isFinite(hbar) && hbar >= 0 ? hbar : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Feed "3m ago" readout from a ms timestamp. Never claims the future. */
+export function formatFeedAgo(tsMs: number, nowMs: number): string {
+  return `${formatBlockAgo(tsMs, nowMs)} ago`;
+}
+
+/** Shorten a 0x hash for display: 0xa37f…9ad2. */
+export function shortHash(hash: string): string {
+  if (typeof hash !== "string" || hash.length < 12) return hash;
+  return `${hash.slice(0, 6)}…${hash.slice(-4)}`;
+}
