@@ -147,12 +147,64 @@ function useTwitchPlayer(channel: string) {
   return { mountRef, live, unmute };
 }
 
+/** YouTube live status is driven by our own /api/youtube-live — the server
+ *  checks the channel's public /live page. The IFrame API is only attached
+ *  to the direct video embed for tap-to-unmute, never for live detection. */
+
+/** One server live-check result. `live` is true only when the server
+ *  affirmatively parsed a live video out of the channel's /live page. */
+export interface YouTubeLiveCheck {
+  live: boolean;
+  videoId: string | null;
+}
+
+interface YouTubeLiveDebounced extends YouTubeLiveCheck {
+  strikes: number;
+}
+
 /**
- * YouTube live player via the undocumented live_stream?channel= embed plus
- * the official IFrame Player API for state inference. `live` flips true only
- * when the player reports PLAYING; onError 100/150 (unavailable / embedding
- * not allowed) confirms offline. Never trust the iframe's own error card.
+ * How many consecutive "not the same live video" checks it takes to flip a
+ * live YouTube block to offline (or swap it to a different live video).
+ * A single bad scrape — YouTube rate-limiting our server IP, a consent-wall
+ * 200, a timed-out fetch — must never kill someone's playback mid-listen:
+ * flipping the iframe src back to the resolver destroys the player and its
+ * audio. So live -> offline (and live video swaps) need a second consecutive
+ * confirmation, while offline -> live stays immediate so viewers join a
+ * started stream without waiting out the debounce.
  */
+export const YOUTUBE_OFFLINE_STRIKES = 2;
+
+/**
+ * Pure transition for the YouTube live state. `check` is null when the
+ * server check failed or came back uncertain: a failed check is no evidence
+ * either way, so it changes nothing — not even the strike count.
+ */
+export function reduceYouTubeLive(
+  prev: YouTubeLiveDebounced,
+  check: YouTubeLiveCheck | null,
+): YouTubeLiveDebounced {
+  if (!check) return prev;
+  if (prev.live) {
+    const agrees =
+      check.live && check.videoId !== null && check.videoId === prev.videoId;
+    if (agrees) return { ...prev, strikes: 0 };
+    const strikes = prev.strikes + 1;
+    if (strikes >= YOUTUBE_OFFLINE_STRIKES) {
+      return {
+        live: check.live && check.videoId !== null,
+        videoId: check.live ? check.videoId : null,
+        strikes: 0,
+      };
+    }
+    return { ...prev, strikes };
+  }
+  // Currently offline: any affirmative live check flips immediately.
+  if (check.live && check.videoId) {
+    return { live: true, videoId: check.videoId, strikes: 0 };
+  }
+  return { ...prev, strikes: 0 };
+}
+
 /**
  * YouTube live status via our own /api/youtube-live — the server checks the
  * channel's public /live page (canonical link -> watch?v=... when live).
@@ -162,17 +214,19 @@ function useTwitchPlayer(channel: string) {
  * live_stream?channel= resolver embed for a PLAYING event proved unreliable
  * (the badge stayed offline on real phones even with a live stream).
  * Offline-first: any check failure keeps the current state, default offline.
+ * And a live player is sticky: one disagreeing check is absorbed (YouTube
+ * scrapes flake), it takes two consecutive to flip it offline — so a bad
+ * 5-minute check can never nuke someone's audio mid-listen.
  */
 function useYouTubeLive(channelId: string) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const playerRef = useRef<any>(null);
-  const [status, setStatus] = useState<{ live: boolean; videoId: string | null }>({
-    live: false,
-    videoId: null,
-  });
+  const [status, setStatus] = useState<YouTubeLiveCheck>({ live: false, videoId: null });
+  const debouncedRef = useRef<YouTubeLiveDebounced>({ live: false, videoId: null, strikes: 0 });
 
   useEffect(() => {
     let cancelled = false;
+    debouncedRef.current = { live: false, videoId: null, strikes: 0 };
     setStatus({ live: false, videoId: null });
     if (channelId === PLACEHOLDER_CHANNEL) return () => {};
     const check = async () => {
@@ -181,8 +235,26 @@ function useYouTubeLive(channelId: string) {
           cache: "no-store",
         });
         const j = await r.json();
-        const videoId = typeof j?.videoId === "string" && j.videoId.length === 11 ? j.videoId : null;
-        if (!cancelled && j?.ok) setStatus({ live: j.live === true && !!videoId, videoId });
+        // ok !== true means the server couldn't tell (scrape failed,
+        // rate-limited, uncertain) — no evidence, keep everything as-is.
+        const result: YouTubeLiveCheck | null =
+          j?.ok === true
+            ? {
+                live:
+                  j.live === true &&
+                  typeof j.videoId === "string" &&
+                  j.videoId.length === 11,
+                videoId:
+                  typeof j.videoId === "string" && j.videoId.length === 11 ? j.videoId : null,
+              }
+            : null;
+        if (cancelled) return;
+        const prev = debouncedRef.current;
+        const next = reduceYouTubeLive(prev, result);
+        debouncedRef.current = next;
+        if (next.live !== prev.live || next.videoId !== prev.videoId) {
+          setStatus({ live: next.live, videoId: next.videoId });
+        }
       } catch {
         /* offline-first: keep current status */
       }

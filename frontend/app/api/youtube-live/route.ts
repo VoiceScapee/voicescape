@@ -6,7 +6,11 @@ import { isYouTubeChannelId, parseYouTubeLiveStatus } from "@/lib/youtube-live";
  * Public, read-only live check for a YouTube channel. Fetches the channel's
  * public /live page server-side and reports whether it resolves to a live
  * video (canonical link -> watch?v=...). 60s per-channel cache; no API key.
- * Offline-first: any failure returns { live: false } — never a raw error.
+ * Honest unknown: a failed check (YouTube rate-limiting our server IP,
+ * consent-wall page, timeout, non-2xx) returns { ok: false } — NOT
+ * "offline". Clients keep their current state on ok:false instead of killing
+ * a live player because one scrape flaked. Only a successful parse that
+ * affirmatively finds no live video returns { ok: true, live: false }.
  * ?debug=1 adds fetch metadata (status, final URL, byte size, canonical
  * href) for diagnosing server-side fetches.
  */
@@ -59,6 +63,9 @@ export async function GET(req: Request) {
     });
     dbg.status = res.status;
     dbg.finalUrl = res.url;
+    // A non-2xx from YouTube (rate-limit, bot-wall, outage) means we
+    // couldn't tell — never report that as "offline".
+    if (!res.ok) throw new Error(`youtube HTTP ${res.status}`);
     const html = await res.text();
     dbg.bytes = html.length;
     dbg.canonical = html.match(/<link rel="canonical" href="([^"]*)"/)?.[1] ?? "";
@@ -77,7 +84,11 @@ export async function GET(req: Request) {
     body = { ok: true, live, videoId };
   } catch (e) {
     dbg.error = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
-    // Offline-first: unknown means not live. Never leak a platform error.
+    // Honest unknown: the check failed, so we report ok:false rather than
+    // claiming "offline". Clients hold their current state on ok:false —
+    // a flaky scrape must never flip a live player to the offline card
+    // (which destroys the iframe and its audio mid-listen).
+    body = { ok: false, error: "live check failed", live: false, videoId: null };
   }
   if (debugMode) {
     body = { ...(body as Record<string, unknown>), debug: dbg };

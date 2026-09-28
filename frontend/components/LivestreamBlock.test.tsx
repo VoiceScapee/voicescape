@@ -12,7 +12,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { youTubeLiveChatSrc } from "./LivestreamBlock";
+import {
+  reduceYouTubeLive,
+  YOUTUBE_OFFLINE_STRIKES,
+  youTubeLiveChatSrc,
+} from "./LivestreamBlock";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(join(here, "LivestreamBlock.tsx"), "utf8");
@@ -196,8 +200,7 @@ describe("LivestreamBlock — responsive layout", () => {
   });
 });
 
-describe("livestream block wiring", () => {
-  it("PageRenderer handles the livestream case with onTip/tipInteractive", () => {
+describe("livestream block wiring", () => {  it("PageRenderer handles the livestream case with onTip/tipInteractive", () => {
     expect(rendererSrc).toMatch(/case "livestream":[\s\S]*?<LivestreamBlock/);
     expect(rendererSrc).toMatch(/<LivestreamBlock[\s\S]*?tipInteractive=\{tipInteractive\}/);
     expect(rendererSrc).toMatch(/<LivestreamBlock[\s\S]*?onTip=\{onTip\}/);
@@ -215,5 +218,70 @@ describe("livestream block wiring", () => {
 
   it("add-block dropdown picks up livestream from BLOCK_TYPES", () => {
     expect(builderSrc).toContain("BLOCK_TYPES.map");
+  });
+});
+
+describe("reduceYouTubeLive — sticky live player (anti-flake debounce)", () => {
+  const LIVE_A = { live: true, videoId: "tLTNkKP2oyw", strikes: 0 };
+  const LIVE_B = { live: true, videoId: "dQw4w9WgXcQ", strikes: 0 };
+  const OFFLINE = { live: false as const, videoId: null, strikes: 0 };
+  const CHECK_OFFLINE = { live: false, videoId: null };
+  const CHECK_LIVE_A = { live: true, videoId: "tLTNkKP2oyw" };
+  const CHECK_LIVE_B = { live: true, videoId: "dQw4w9WgXcQ" };
+
+  it("a failed/uncertain check (null) changes nothing — not even the strike count", () => {
+    const prev = { ...LIVE_A, strikes: 1 };
+    expect(reduceYouTubeLive(prev, null)).toEqual(prev);
+    expect(reduceYouTubeLive(OFFLINE, null)).toEqual(OFFLINE);
+  });
+
+  it("one disagreeing check while live only banks a strike — the player stays live", () => {
+    const next = reduceYouTubeLive(LIVE_A, CHECK_OFFLINE);
+    expect(next.live).toBe(true);
+    expect(next.videoId).toBe("tLTNkKP2oyw");
+    expect(next.strikes).toBe(1);
+  });
+
+  it(`flips to offline only after ${YOUTUBE_OFFLINE_STRIKES} consecutive disagreeing checks`, () => {
+    expect(YOUTUBE_OFFLINE_STRIKES).toBe(2);
+    const afterOne = reduceYouTubeLive(LIVE_A, CHECK_OFFLINE);
+    const afterTwo = reduceYouTubeLive(afterOne, CHECK_OFFLINE);
+    expect(afterTwo.live).toBe(false);
+    expect(afterTwo.videoId).toBeNull();
+    expect(afterTwo.strikes).toBe(0);
+  });
+
+  it("an agreeing check resets the strike count", () => {
+    const struck = reduceYouTubeLive(LIVE_A, CHECK_OFFLINE);
+    expect(struck.strikes).toBe(1);
+    const recovered = reduceYouTubeLive(struck, CHECK_LIVE_A);
+    expect(recovered).toEqual({ ...LIVE_A, strikes: 0 });
+  });
+
+  it("offline -> live flips immediately (no waiting out the debounce)", () => {
+    const next = reduceYouTubeLive(OFFLINE, CHECK_LIVE_A);
+    expect(next.live).toBe(true);
+    expect(next.videoId).toBe("tLTNkKP2oyw");
+  });
+
+  it("stays offline on repeated offline checks", () => {
+    expect(reduceYouTubeLive(OFFLINE, CHECK_OFFLINE)).toEqual(OFFLINE);
+  });
+
+  it("a different live video id does not swap the player until confirmed twice", () => {
+    const afterOne = reduceYouTubeLive(LIVE_A, CHECK_LIVE_B);
+    expect(afterOne.videoId).toBe("tLTNkKP2oyw");
+    expect(afterOne.live).toBe(true);
+    const afterTwo = reduceYouTubeLive(afterOne, CHECK_LIVE_B);
+    expect(afterTwo.live).toBe(true);
+    expect(afterTwo.videoId).toBe("dQw4w9WgXcQ");
+  });
+
+  it("the hook treats ok:false as no-evidence and routes state through the reducer", () => {
+    // Wiring guards: the 5-minute check must not flip state on a failed
+    // server check, and must debounce through reduceYouTubeLive.
+    expect(src).toContain("reduceYouTubeLive");
+    expect(src).toMatch(/j\?\.ok === true/);
+    expect(src).toMatch(/no evidence, keep everything as-is/);
   });
 });
