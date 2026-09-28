@@ -7,7 +7,7 @@ import { useSession } from "@/lib/session";
 import "@/components/renderer.css";
 import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schema";
 import { getActiveChain } from "@/lib/chains";
-import { resolvePage, tipPage } from "@/lib/contracts";
+import { approveTokenSpender, resolvePage, swapTokenForHbar, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
 import { friendlyWalletError, getHederaPairing, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
@@ -49,6 +49,18 @@ import {
   readTipCurrency,
   type TipCurrency,
 } from "@/lib/tip-currency";
+import {
+  SWAP_DEADLINE_SECS,
+  formatTokenAmount,
+  getAccountEvmAddress,
+  getSwapQuote,
+  getWalletTokens,
+  hasTokenAllowance,
+  parseTokenAmount,
+  weiToHbar,
+  type SwapQuote,
+  type WalletToken,
+} from "@/lib/swap";
 import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
 import { canonicalAddress } from "@/lib/session-message";
@@ -85,13 +97,36 @@ function TipBox({
   const { session } = useSession();
   const { t } = useLanguage();
   const [usd, setUsd] = useState("5");
-  // Visitor-chosen tip currency: USD (converted to HBAR at send time) or
-  // HBAR directly (exact amounts, no price feed needed).
-  const [currency, setCurrency] = useState<TipCurrency>(() =>
-    typeof window !== "undefined" ? readTipCurrency() : "usd",
-  );
+  // Visitor-chosen tip mode: USD (converted to HBAR at send time), HBAR
+  // directly (exact amounts, no price feed needed), or TOKEN (swap one of
+  // the visitor's own HTS tokens to HBAR first, then tip). "token" is a
+  // TipBox-local mode — the persisted tip-currency stays usd/hbar so the
+  // town-hall tip never sees it.
+  type TipMode = TipCurrency | "token";
+  const [currency, setCurrency] = useState<TipMode>(() => {
+    if (typeof window === "undefined") return "usd";
+    try {
+      const v = window.localStorage.getItem(TIP_CURRENCY_KEY);
+      return v === "hbar" || v === "token" ? v : "usd";
+    } catch {
+      return "usd";
+    }
+  });
   const [hbarInput, setHbarInput] = useState("5");
   const isHbar = currency === "hbar";
+  const isToken = currency === "token";
+  // Pay-with-token state.
+  const [tokenId, setTokenId] = useState("");
+  const [tokenInput, setTokenInput] = useState("10");
+  const [walletTokens, setWalletTokens] = useState<WalletToken[] | null>(null);
+  const [tokensLoading, setTokensLoading] = useState(false);
+  const [quote, setQuote] = useState<SwapQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  // Plain-words progress for the multi-signature token flow ("Swapping…").
+  const [swapStatus, setSwapStatus] = useState<string | null>(null);
+  // Display label for the sent tip (used by the submitted/timeout view).
+  const [sentLabel, setSentLabel] = useState<string | null>(null);
   useEffect(() => {
     try {
       window.localStorage.setItem(TIP_CURRENCY_KEY, currency);
@@ -153,12 +188,82 @@ function TipBox({
     setFinalizedAt(null);
     setReceiptLines([]);
     setShareHbar(null);
+    setSentLabel(null);
+    setSwapStatus(null);
     setError(null);
   };
 
   useEffect(() => {
     getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
   }, []);
+
+  // Token mode: list the HTS tokens the connected wallet holds. Runs when
+  // the visitor switches to Token mode or (re)connects their wallet.
+  useEffect(() => {
+    if (!isToken || !account) {
+      setWalletTokens(null);
+      return;
+    }
+    let cancelled = false;
+    setTokensLoading(true);
+    getWalletTokens(chain, account)
+      .then((tokens) => {
+        if (cancelled) return;
+        setWalletTokens(tokens);
+        // Default to USDC when they hold it, else their first token.
+        const preferred = tokens.find((t) => t.tokenId === "0.0.456858") ?? tokens[0];
+        if (preferred) setTokenId((prev) => prev || preferred.tokenId);
+      })
+      .catch(() => {
+        if (!cancelled) setWalletTokens([]);
+      })
+      .finally(() => {
+        if (!cancelled) setTokensLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToken, account]);
+
+  // Token mode: live swap quote, debounced while they type.
+  useEffect(() => {
+    if (!isToken || !tokenId) {
+      setQuote(null);
+      setQuoteError(null);
+      return;
+    }
+    const token = walletTokens?.find((t) => t.tokenId === tokenId);
+    const amountIn = token ? parseTokenAmount(tokenInput, token.decimals) : null;
+    if (amountIn === null) {
+      setQuote(null);
+      setQuoteError(null);
+      return;
+    }
+    let cancelled = false;
+    setQuoteLoading(true);
+    setQuoteError(null);
+    const timer = setTimeout(() => {
+      getSwapQuote(chain, tokenId, amountIn)
+        .then((q) => {
+          if (!cancelled) setQuote(q);
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setQuote(null);
+            setQuoteError(e instanceof Error ? e.message : "Couldn't get a swap price.");
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setQuoteLoading(false);
+        });
+    }, 500);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isToken, tokenId, tokenInput, walletTokens]);
 
   const usdNum = Number(usd);
   const usdValid = Number.isFinite(usdNum) && usdNum > 0;
@@ -280,6 +385,107 @@ function TipBox({
     }
   };
 
+  /**
+   * Pay-with-token: swap one of the visitor's own HTS tokens to HBAR, then
+   * tip the HBAR through the normal Tips contract path. Every movement is
+   * signed by the visitor in their own wallet — Voicescape never holds
+   * their tokens. Steps: approve (once per token) -> swap -> tip.
+   */
+  const tipWithToken = async () => {
+    setError(null);
+    setSwapStatus(null);
+    // Same wallet-reconnect kindness as the HBAR path.
+    let activeAccount = account;
+    if (!activeAccount && session?.adapterId) {
+      try {
+        const stored = WALLET_ADAPTERS.find((a) => a.id === session.adapterId);
+        if (stored) activeAccount = await connect(stored.id);
+      } catch {
+        // connect() already sets wallet.error; fall through below.
+      }
+    }
+    if (!activeAccount) {
+      setError("Connect a wallet to tip.");
+      return;
+    }
+    const token = walletTokens?.find((t) => t.tokenId === tokenId);
+    if (!token) {
+      setError("Pick a token first.");
+      return;
+    }
+    const amountIn = parseTokenAmount(tokenInput, token.decimals);
+    if (amountIn === null) {
+      setError(`Enter a valid ${token.symbol} amount.`);
+      return;
+    }
+    if (amountIn > token.balance) {
+      setError(
+        `You only have ${formatTokenAmount(token.balance, token.decimals)} ${token.symbol} in this wallet.`,
+      );
+      return;
+    }
+    setBusy(true);
+    recordConversionEvent("tip_attempt", "blockpage");
+    try {
+      // Guardrail: never prompt a wallet signature for a doomed tip.
+      const registered = await resolvePage(username, getActiveChain());
+      if (!registered) throw new Error(`@${username} isn't registered on-chain — the tip would fail.`);
+      // Fresh quote at execution time — the preview may have moved.
+      setSwapStatus("Getting the latest swap price…");
+      const q = await getSwapQuote(chain, token.tokenId, amountIn);
+      const sender = await getTxSender();
+      // The swap pushes HBAR to the visitor, so the destination must be
+      // their real (alias) EVM address — a contract push never reaches a
+      // long-zero address (proven on mainnet 2026-09-12).
+      const toEvm = await getAccountEvmAddress(chain, activeAccount);
+      if (!toEvm) {
+        throw new Error("Your wallet account can't receive the swap — tip in HBAR instead.");
+      }
+      const allowed = await hasTokenAllowance(chain, activeAccount, token.tokenId, amountIn);
+      if (!allowed) {
+        setSwapStatus(`Approve ${token.symbol} in your wallet (one-time)…`);
+        await approveTokenSpender(token.tokenId, amountIn, sender);
+      }
+      setSwapStatus(`Swapping ${formatTokenAmount(amountIn, token.decimals)} ${token.symbol} → HBAR…`);
+      const deadline = Math.floor(Date.now() / 1000) + SWAP_DEADLINE_SECS;
+      await swapTokenForHbar(amountIn, q.minOutWei, q.path, toEvm, deadline, sender);
+      // Tip the guaranteed minimum from the quote — if the swap delivered
+      // more, the upside stays in the visitor's wallet. Same 98/2 contract
+      // path as every other tip.
+      const tipWei = q.minOutWei;
+      const tipHbar = weiToHbar(tipWei);
+      setSwapStatus("Tipping…");
+      setSentLabel(
+        `≈ ${tipHbar.toFixed(4)} HBAR (swapped from ${formatTokenAmount(amountIn, token.decimals)} ${token.symbol})`,
+      );
+      setReceiptLines([
+        {
+          label: "You swapped",
+          value: `${formatTokenAmount(amountIn, token.decimals)} ${token.symbol} → ≈ ${weiToHbar(q.hbarOutWei).toFixed(4)} HBAR`,
+        },
+        { label: "You sent", value: `≈ ${tipHbar.toFixed(4)} HBAR` },
+        { label: `${username} gets (98%)`, value: `≈ ${(tipHbar * 0.98).toFixed(4)} HBAR` },
+        { label: "Treasury gets (2%)", value: `≈ ${(tipHbar * 0.02).toFixed(4)} HBAR` },
+      ]);
+      setShareHbar(tipHbar.toFixed(4));
+      const hash = await tipPage(username, tipWei, sender);
+      setApprovedAt(Date.now());
+      setConfirmTxId(hash);
+    } catch (e) {
+      if (e instanceof WalletTimeoutError) {
+        // Wallet went silent after approval — don't guess. Confirm on-chain.
+        setApprovedAt(Date.now());
+        setConfirmTxId(e.txId);
+      } else {
+        setError(`Tip failed: ${friendlyWalletError(e)}`);
+        recordConversionEvent("tip_failed", "blockpage");
+      }
+    } finally {
+      setBusy(false);
+      setSwapStatus(null);
+    }
+  };
+
   return (
     <div
       className="pv-tip-overlay"
@@ -310,7 +516,7 @@ function TipBox({
         ) : txHash ? (
           <>
             <TipCelebration
-              usd={isHbar ? `${hbarInput} HBAR` : `$${usdNum.toFixed(2)}`}
+              usd={isToken ? (sentLabel ?? "token tip") : isHbar ? `${hbarInput} HBAR` : `$${usdNum.toFixed(2)}`}
               hbar={isHbar ? null : shareHbar}
               username={username}
             />
@@ -346,8 +552,8 @@ function TipBox({
             </span>
             <h3>Tip submitted</h3>
             <p>
-              Your tip of {tipSentLabel}
-              {!isHbar && <> ({railDisplay})</>} was sent to {username}.
+              Your tip of {isToken && sentLabel ? sentLabel : tipSentLabel}
+              {!isHbar && !isToken && <> ({railDisplay})</>} was sent to {username}.
               It&apos;s still being confirmed on-chain — check the explorer in a minute to see it land.
             </p>
             <span className="pv-tx-hash vs-mono">{submittedHash}</span>
@@ -390,7 +596,7 @@ function TipBox({
             <WalletConnect />
 
             <div className="pv-tip-cur-toggle" role="group" aria-label="Tip currency">
-              {(["usd", "hbar"] as const).map((c) => (
+              {(["usd", "hbar", "token"] as const).map((c) => (
                 <button
                   key={c}
                   type="button"
@@ -398,10 +604,11 @@ function TipBox({
                   aria-pressed={currency === c}
                   onClick={() => setCurrency(c)}
                 >
-                  {c === "usd" ? "USD" : "HBAR"}
+                  {c === "usd" ? "USD" : c === "hbar" ? "HBAR" : "Token"}
                 </button>
               ))}
             </div>
+            {!isToken && (
             <div className="pv-chip-row" role="group" aria-label={isHbar ? "Tip amount presets (HBAR)" : "Tip amount presets (USD)"}>
               {(isHbar ? TIP_PRESETS_HBAR : TIP_PRESETS_USD).map((p) => {
                 const active = isHbar ? hbarInput === p : usd === p;
@@ -418,6 +625,83 @@ function TipBox({
                 );
               })}
             </div>
+            )}
+            {isToken ? (
+              <>
+                {!account ? (
+                  <p className="th-muted" style={{ lineHeight: 1.6 }}>
+                    Connect your wallet above to see the tokens you hold.
+                  </p>
+                ) : tokensLoading ? (
+                  <p className="th-muted" style={{ lineHeight: 1.6 }}>Loading your tokens…</p>
+                ) : walletTokens && walletTokens.length > 0 ? (
+                  <>
+                    <label className="th-muted" htmlFor="vs-tip-token" style={{ fontSize: "0.85rem" }}>
+                      Token to tip with
+                    </label>
+                    <select
+                      id="vs-tip-token"
+                      className="pv-tip-input"
+                      value={tokenId}
+                      onChange={(e) => setTokenId(e.target.value)}
+                      aria-label="Token to tip with"
+                    >
+                      {walletTokens.map((t) => (
+                        <option key={t.tokenId} value={t.tokenId}>
+                          {t.symbol} — {formatTokenAmount(t.balance, t.decimals)} available
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="pv-tip-input"
+                      value={tokenInput}
+                      onChange={(e) => setTokenInput(normalizeTipInput(e.target.value))}
+                      inputMode="decimal"
+                      placeholder="Token amount"
+                      aria-label="Tip amount in tokens"
+                    />
+                    {quoteLoading && (
+                      <p className="th-muted" style={{ fontSize: "0.85rem" }}>Getting the swap price…</p>
+                    )}
+                    {quote && !quoteLoading && (
+                      <div className="pv-tip-break">
+                        <div className="pv-tip-break-row">
+                          <span>You swap</span>
+                          <span>
+                            {formatTokenAmount(quote.amountIn, walletTokens.find((t) => t.tokenId === quote.tokenId)?.decimals ?? 0)}{" "}
+                            {walletTokens.find((t) => t.tokenId === quote.tokenId)?.symbol}
+                          </span>
+                        </div>
+                        <div className="pv-tip-break-row">
+                          <span>You tip</span>
+                          <span>≈ {weiToHbar(quote.hbarOutWei).toFixed(4)} HBAR</span>
+                        </div>
+                        <div className="pv-tip-break-row">
+                          <span>{t("tip.creatorGets").replace("{name}", username)}</span>
+                          <span>≈ {(weiToHbar(quote.hbarOutWei) * 0.98).toFixed(4)} HBAR</span>
+                        </div>
+                        <div className="pv-tip-break-row pv-tip-break-fee">
+                          <span>{t("tip.networkFee").replace("{fee}", NETWORK_FEE_HBAR)}</span>
+                          <span>≈ {NETWORK_FEE_HBAR} HBAR</span>
+                        </div>
+                      </div>
+                    )}
+                    {quoteError && !quoteLoading && (
+                      <p className="pv-tip-error" style={{ marginTop: 8 }}>{quoteError}</p>
+                    )}
+                    <p className="th-muted" style={{ fontSize: "0.85rem", lineHeight: 1.6 }}>
+                      Your token is swapped to HBAR inside your own wallet, then tipped —
+                      two approvals (swap, then tip). Voicescape never holds your tokens,
+                      and the 98/2 split still runs on-chain.
+                    </p>
+                  </>
+                ) : (
+                  <p className="th-muted" style={{ lineHeight: 1.6 }}>
+                    No tokens in this wallet yet — tip in HBAR instead.
+                  </p>
+                )}
+              </>
+            ) : (
             <input
               className="pv-tip-input"
               value={isHbar ? hbarInput : usd}
@@ -430,8 +714,9 @@ function TipBox({
               placeholder={isHbar ? "Custom HBAR amount" : "Custom USD amount"}
               aria-label={isHbar ? "Custom tip amount in HBAR" : "Custom tip amount in USD"}
             />
+            )}
 
-            {hbarAmt != null && (
+            {!isToken && hbarAmt != null && (
               <>
                 <div className="pv-tip-break">
                   <div className="pv-tip-break-row">
@@ -482,13 +767,19 @@ function TipBox({
               </>
             )}
 
-            <button type="button" className="pv-tip-btn pv-tip-confirm-btn" onClick={tip} disabled={busy || confirmStatus === "confirming" || (!isHbar && !hbarPrice)}>
+            <button type="button" className="pv-tip-btn pv-tip-confirm-btn" onClick={() => (isToken ? tipWithToken() : tip())} disabled={busy || confirmStatus === "confirming" || (!isHbar && !isToken && !hbarPrice) || (isToken && (!quote || quoteLoading))}>
               <IconTip size={20} />
               {confirmStatus === "confirming"
                 ? "Confirming on Hedera…"
                 : busy
-                  ? "Tipping…"
-                  : !isHbar && !hbarPrice
+                  ? (swapStatus ?? "Tipping…")
+                  : isToken
+                    ? quoteLoading
+                      ? "Getting swap price…"
+                      : quote
+                        ? `Swap & tip ≈ ${weiToHbar(quote.hbarOutWei).toFixed(4)} HBAR`
+                        : "Enter an amount"
+                    : !isHbar && !hbarPrice
                     ? "Loading price…"
                     : isHbar
                       ? t("tip.confirmCtaHbar").replace("{amount}", hbarValid ? String(hbarNum) : "0")

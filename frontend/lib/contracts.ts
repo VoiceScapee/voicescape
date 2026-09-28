@@ -186,3 +186,50 @@ export async function buyListing(
 ): Promise<string> {
   return sender.sendBuy(requireTipsAddress(), seller, listingRef, valueWei);
 }
+
+/* ------------------------------------------------------------------ */
+/* Pay-with-token: HTS approve + Saucerswap swap (visitor's own wallet) */
+/* ------------------------------------------------------------------ */
+
+import { SAUCER_ROUTER_ID, tokenIdToEvmAddress } from "./swap";
+
+/**
+ * Let the Saucerswap router move exactly `amount` (smallest unit) of the
+ * visitor's HTS token. One-time per token — signed in the visitor's wallet.
+ * Voicescape is never the spender and never touches the tokens.
+ */
+export async function approveTokenSpender(
+  tokenId: string,
+  amount: bigint,
+  sender: TxSender,
+): Promise<string> {
+  return sender.sendTokenApprove(
+    tokenIdToEvmAddress(tokenId),
+    tokenIdToEvmAddress(SAUCER_ROUTER_ID),
+    amount,
+  );
+}
+
+/**
+ * Swap exact HTS tokens for HBAR through the Saucerswap V1 router, sending
+ * the HBAR straight to the visitor's own wallet. `path` comes from
+ * getSwapQuote(); `toEvmAddress` must be the visitor's real (alias) EVM
+ * address from the mirror node. Signed in the visitor's wallet.
+ */
+export async function swapTokenForHbar(
+  amountIn: bigint,
+  amountOutMin: bigint,
+  path: string[],
+  toEvmAddress: string,
+  deadlineSecs: number,
+  sender: TxSender,
+): Promise<string> {
+  return sender.sendTokenSwap(
+    tokenIdToEvmAddress(SAUCER_ROUTER_ID),
+    amountIn,
+    amountOutMin,
+    path,
+    toEvmAddress,
+    deadlineSecs,
+  );
+}

@@ -67,7 +67,7 @@ describe("TipBox wires the celebration into the confirmed state", () => {
     expect(celebration).toBeGreaterThan(-1);
     expect(celebration).toBeLessThan(confirmed);
     expect(pageSrc).toMatch(
-      /<TipCelebration[\s\S]*usd=\{isHbar \?[\s\S]*username=\{username\}/,
+      /<TipCelebration[\s\S]*usd=\{isToken \?[\s\S]*isHbar \?[\s\S]*username=\{username\}/,
     );
   });
 
