@@ -5,7 +5,7 @@
  *
  * Humans connect their wallet, sign in, and can:
  * - buy chat: 5 HBAR → 50 messages with Danny,
- * - buy a build: 5 HBAR → 1 premade blockpage draft, bound to their wallet.
+ * - buy a build: 1 HBAR → 1 premade blockpage draft, bound to their wallet.
  * No bundle, no free tier — each product is bought separately. Prices are
  * env-tunable (LIAISON_CHAT_PRICE_HBAR / LIAISON_BUILD_PRICE_HBAR) and the
  * server refuses to serve below the floor (never loses money).

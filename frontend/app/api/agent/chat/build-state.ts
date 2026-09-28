@@ -262,7 +262,7 @@ export function buildStateNote(
     // comes before any question — never after three answers. One short
     // message, then the username question.
     lines.push(
-      "No slots are collected yet — this is the first build turn. State the price FIRST in one short message: a custom blockpage build is 5 HBAR (one-time). " +
+      "No slots are collected yet — this is the first build turn. State the price FIRST in one short message: a custom blockpage build is 1 HBAR (one-time). " +
         "Say you'll need a username, a one-line bio, and the vibe they're going for, and add one line: they can also build it themselves and publish for just gas fees in the /builder. " +
         "Then ask ONLY for the username — one short question."
     );

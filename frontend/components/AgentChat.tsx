@@ -1236,7 +1236,7 @@ export default function AgentChat() {
                     lineHeight: 1.5,
                   }}
                 >
-                  This mock uses placeholder art. Pay 5 HBAR below and
+                  This mock uses placeholder art. Pay 1 HBAR below and
                   I&apos;ll build the real page with custom AI artwork.
                 </div>
               )}
@@ -1324,7 +1324,7 @@ export default function AgentChat() {
                     lineHeight: 1.5,
                   }}
                 >
-                  A custom blockpage build is 5 HBAR and needs a connected
+                  A custom blockpage build is 1 HBAR and needs a connected
                   wallet. Connect your wallet (top-right), then tap Check
                   again.
                   <div style={{ marginTop: 8 }}>

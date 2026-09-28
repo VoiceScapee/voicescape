@@ -1,11 +1,11 @@
 /**
- * Dapp-side metering for Buddy: chat paywall + 5-HBAR build entitlement.
+ * Dapp-side metering for Buddy: chat paywall + 1-HBAR build entitlement.
  *
- * Brandon's pricing (2026-09-15, refined 2026-09-16):
+ * Brandon's pricing (2026-09-15, refined 2026-09-16; build cut to 1 HBAR 2026-09-28):
  *  - Answering Voicescape / blockchain questions is FREE — always.
  *  - Everything else (general chat): 5 free messages per identity, then
  *    5 HBAR per 50 messages.
- *  - A custom blockpage build is 5 HBAR flat. Free messages cover chat
+ *  - A custom blockpage build is 1 HBAR flat. Free messages cover chat
  *    only; the turn that generates the build is covered by the build
  *    payment itself (no chat check on that turn).
  *
@@ -45,7 +45,7 @@ import { getKvStore, type KvStore } from "@/lib/server/store";
 import { isValidPage, type VoicescapePage } from "@/lib/schema";
 
 export const CHAT_PRICE_TINYBAR = 500_000_000; // 5 HBAR
-export const BUILD_PRICE_TINYBAR = 500_000_000; // 5 HBAR
+export const BUILD_PRICE_TINYBAR = 100_000_000; // 1 HBAR (Brandon's 2026-09-28 pricing)
 export const FREE_MESSAGES = 5;
 export const CHAT_MESSAGES_PER_PAYMENT = 50;
 /**
@@ -61,12 +61,27 @@ export const MAX_FREE_PREVIEWS = 2;
 const BUDDY_USERNAME = "forge";
 const TIPS_CONTRACT_ID = "0.0.10854060";
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
-const WEI_PER_TINYBAR = 10_000_000_000n;
 // TipSent `amount` is denominated in tinybars on Hedera (the EVM value
 // unit is the tinybar: a 5-HBAR tipPage logs amount=500_000_000, verified
 // 2026-09-16 against mainnet). Do NOT scale by WEI_PER_TINYBAR here —
 // doing so sets the bar at 5e18 and no real payment is ever credited.
-const MIN_PAYMENT_TINYBAR = BigInt(CHAT_PRICE_TINYBAR); // 5 HBAR in tinybars
+// Discovery accepts the cheapest product (a 1-HBAR build); the amount is
+// stored per payment and first-use is gated (chat needs 5 HBAR, builds
+// need 1 HBAR), so a 1-HBAR tip can never buy 50 chat messages.
+const MIN_DISCOVERY_TINYBAR = BigInt(BUILD_PRICE_TINYBAR); // 1 HBAR in tinybars
+
+/**
+ * Amount gate for first-use kind assignment. A payment becomes chat credit
+ * only when it covered the chat price (5 HBAR); a build only needs the
+ * build price (1 HBAR). Missing amounts fail closed (treated as 0).
+ */
+function meetsPrice(p: { amountTinybar?: string }, priceTinybar: number): boolean {
+  try {
+    return BigInt(p.amountTinybar ?? "0") >= BigInt(priceTinybar);
+  } catch {
+    return false;
+  }
+}
 
 // Atomic claim keys — identical to the ops agentkit metering.
 const PAY_CLAIM_PREFIX = "buddy:payclaim:"; // credit: one winner records the payment
@@ -143,16 +158,16 @@ export function isOnTopicMessage(message: string): boolean {
 // ---------------------------------------------------------------------------
 
 export const BUILD_PAYWALL_ANON =
-  "A custom blockpage build is 5 HBAR, and builds need a connected wallet. " +
-  "Connect your wallet (top-right), then tip 5 HBAR to my 'forge' page — " +
+  "A custom blockpage build is 1 HBAR, and builds need a connected wallet. " +
+  "Connect your wallet (top-right), then tip 1 HBAR to my 'forge' page — " +
   'then say "go" here and I\'ll start building.';
 
 export const BUILD_PAYWALL_UNPAID =
-  "A custom blockpage build is 5 HBAR. Tip 5 HBAR to my 'forge' page in " +
+  "A custom blockpage build is 1 HBAR. Tip 1 HBAR to my 'forge' page in " +
   'the app, then say "go" here and I\'ll start building.';
 
 export const BUILD_RACE_MESSAGE =
-  "Your 5 HBAR build payment was just used by another request — nothing " +
+  "Your 1 HBAR build payment was just used by another request — nothing " +
   "was charged twice. Please run the build again.";
 
 export const BUILD_FINALIZE_ERROR =
@@ -195,6 +210,14 @@ type Payment = {
   kind: null | "chat" | "build";
   /** Cached paid-message seed; the atomic counter is the source of truth. */
   messagesLeft: number;
+  /**
+   * Tip amount in tinybars (decimal string). TipSent `amount` is
+   * tinybar-denominated on Hedera. First-use is amount-gated: chat credit
+   * needs >= 5 HBAR, a build needs >= 1 HBAR — a 1-HBAR tip must never buy
+   * 50 chat messages. Pre-2026-09-28 records lack this field; they were
+   * discovered under the 5-HBAR threshold, so they default to 500_000_000.
+   */
+  amountTinybar: string;
 };
 
 type Ledger = {
@@ -237,6 +260,10 @@ function normalizeLedger(raw: unknown): Ledger {
             typeof p.messagesLeft === "number" && p.messagesLeft >= 0
               ? Math.floor(p.messagesLeft)
               : 0,
+          // Pre-2026-09-28 records were discovered under the 5-HBAR
+          // threshold, so a missing amount means >= 5 HBAR.
+          amountTinybar:
+            typeof p.amountTinybar === "string" ? p.amountTinybar : "500000000",
         });
       }
     }
@@ -350,16 +377,16 @@ async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
 }
 
 /**
- * Find fresh 5-HBAR tipPage("forge") payments from this wallet by reading
+ * Find fresh tipPage("forge") payments from this wallet by reading
  * the Tips contract's TipSent logs on the official mirror node. Returns
  * payment ids (`<consensusTimestamp>-<txIndex>`, unique per on-chain
- * payment) not already credited. Read-only; a mirror-node hiccup resolves
- * to "no new payments" — never to paid.
+ * payment) with their tipped amounts, not already credited. Read-only;
+ * a mirror-node hiccup resolves to "no new payments" — never to paid.
  */
 async function discoverFreshPayments(
   evmAddress: string,
   knownIds: string[]
-): Promise<string[]> {
+): Promise<Array<{ id: string; amountTinybar: string }>> {
   try {
     const sender = await resolveSenderEvmAddress(evmAddress);
     const topic2 = "0x" + sender.slice(2).toLowerCase().padStart(64, "0");
@@ -392,7 +419,7 @@ async function discoverFreshPayments(
     const want0 = topic0TipSent().toLowerCase();
     const want1 = topic1Forge().toLowerCase();
     const want2 = topic2.toLowerCase();
-    const fresh: string[] = [];
+    const fresh: Array<{ id: string; amountTinybar: string }> = [];
     for (const log of body.logs ?? []) {
       const topics = (log.topics ?? []).map((t) => t.toLowerCase());
       if (topics[0] !== want0 || topics[1] !== want1 || topics[2] !== want2)
@@ -400,7 +427,7 @@ async function discoverFreshPayments(
       const id = `${log.timestamp ?? "?"}-${log.transaction_index ?? "?"}`;
       if (knownIds.includes(id)) continue;
       // data = abi(amount uint256, fee uint256); amount is total tipped
-      // (tinybars on Hedera — see MIN_PAYMENT_TINYBAR above)
+      // (tinybars on Hedera — see MIN_DISCOVERY_TINYBAR above)
       const data = log.data ?? "";
       if (data.length < 66) continue;
       let amount = 0n;
@@ -409,7 +436,8 @@ async function discoverFreshPayments(
       } catch {
         continue;
       }
-      if (amount >= MIN_PAYMENT_TINYBAR) fresh.push(id);
+      if (amount >= MIN_DISCOVERY_TINYBAR)
+        fresh.push({ id, amountTinybar: amount.toString() });
     }
     return fresh;
   } catch {
@@ -424,14 +452,14 @@ async function discoverFreshPayments(
 async function creditPayments(
   store: KvStore,
   identity: ChatIdentity,
-  ids: string[]
+  found: Array<{ id: string; amountTinybar: string }>
 ): Promise<boolean> {
-  if (identity.kind !== "wallet" || ids.length === 0) return false;
+  if (identity.kind !== "wallet" || found.length === 0) return false;
   const evm = identity.evm.toLowerCase();
   return withLedgerLock(store, identity, async () => {
     const ledger = await loadLedger(store, identity);
     let credited = false;
-    for (const id of ids) {
+    for (const { id, amountTinybar } of found) {
       if (
         ledger.consumed.includes(id) ||
         ledger.payments.some((p) => p.id === id)
@@ -460,7 +488,7 @@ async function creditPayments(
       }
       if (claimed) {
         ledger.consumed.push(id);
-        ledger.payments.push({ id, kind: null, messagesLeft: 0 });
+        ledger.payments.push({ id, kind: null, messagesLeft: 0, amountTinybar });
         credited = true;
       }
     }
@@ -551,9 +579,12 @@ export async function checkChatAccess(
         };
       }
       // First use decides the kind: an unused payment becomes chat credit
-      // here — but only the spend-claim winner assigns it, so a build
-      // racing for the same payment can't both win.
-      const unused = ledger.payments.find((p) => p.kind === null);
+      // here — but only when it covered the chat price (a 1-HBAR build tip
+      // must never buy 50 messages), and only the spend-claim winner assigns
+      // it, so a build racing for the same payment can't both win.
+      const unused = ledger.payments.find(
+        (p) => p.kind === null && meetsPrice(p, CHAT_PRICE_TINYBAR)
+      );
       if (unused) {
         const assigned = await withLedgerLock(store, identity, async () => {
           const latest = await loadLedger(store, identity);
@@ -682,7 +713,7 @@ export async function notePreview(
 /**
  * Reset the free-preview counters for this identity (all build usernames).
  * Called when a build payment is consumed: the next brand-new build
- * repeats the whole process (2 free previews -> 5 HBAR -> build).
+ * repeats the whole process (2 free previews -> 1 HBAR -> build).
  */
 export async function resetBuildPreviews(
   identity: ChatIdentity,
@@ -748,8 +779,8 @@ export type BuildAccess =
   | { allowed: false; reason: string };
 
 /**
- * Can this wallet start a custom blockpage build? Builds always cost
- * 5 HBAR — the free chat messages cover chat only. Credits fresh on-chain
+ * Can this wallet start a custom blockpage build? Builds cost 1 HBAR —
+ * the free chat messages cover chat only. Credits fresh on-chain
  * payments (exactly-once via the atomic claim) and reports whether an
  * unspent build payment exists. Throws when the store is unreachable
  * (fail closed — the caller must not treat this as paid).
@@ -761,12 +792,14 @@ export async function checkBuildAccess(
   if (meteringBypass()) return { allowed: true };
   const identity: ChatIdentity = { kind: "wallet", evm: evmAddress };
   const ledger = await loadLedger(store, identity);
-  if (ledger.payments.some((p) => p.kind === null)) return { allowed: true };
+  if (ledger.payments.some((p) => p.kind === null && meetsPrice(p, BUILD_PRICE_TINYBAR)))
+    return { allowed: true };
   const known = [...ledger.payments.map((p) => p.id), ...ledger.consumed];
   const fresh = await discoverFreshPayments(evmAddress.toLowerCase(), known);
   if (await creditPayments(store, identity, fresh)) {
     const latest = await loadLedger(store, identity);
-    if (latest.payments.some((p) => p.kind === null)) return { allowed: true };
+    if (latest.payments.some((p) => p.kind === null && meetsPrice(p, BUILD_PRICE_TINYBAR)))
+      return { allowed: true };
   }
   return { allowed: false, reason: BUILD_PAYWALL_UNPAID };
 }
@@ -790,7 +823,7 @@ export async function hasBuildHistory(
 }
 
 /**
- * Spend one unused 5-HBAR payment on a build. Resolves true when THIS call
+ * Spend one unused build payment on a build. Resolves true when THIS call
  * spent a payment, false when none was available (or a concurrent build
  * won the race for the last one). Call only after the draft validated —
  * failed drafts never reach this, so they never consume the payment.
@@ -805,7 +838,9 @@ export async function consumeBuild(
   return withLedgerLock(store, identity, async () => {
     for (let attempt = 0; attempt < 3; attempt++) {
       const ledger = await loadLedger(store, identity);
-      const p = ledger.payments.find((x) => x.kind === null);
+      const p = ledger.payments.find(
+        (x) => x.kind === null && meetsPrice(x, BUILD_PRICE_TINYBAR)
+      );
       if (!p) return false;
       // Atomic spend claim (global per payment id): the first caller to win
       // assigns this payment to its build. A lost race retries against the
@@ -839,7 +874,7 @@ export async function consumeBuild(
         await saveLedger(store, identity, ledger);
         // A paid build resets the free-preview counters: the visitor's
         // next brand-new build repeats the whole process (2 free previews
-        // -> 5 HBAR -> build) instead of hitting an exhausted allowance.
+        // -> 1 HBAR -> build) instead of hitting an exhausted allowance.
         try {
           await resetBuildPreviews(identity, store);
         } catch {

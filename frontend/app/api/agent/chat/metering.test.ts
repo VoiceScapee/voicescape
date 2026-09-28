@@ -1,6 +1,6 @@
 /**
  * Unit tests for the dapp metering module: topic classification, chat
- * paywall (5 free off-topic, 5 HBAR per 50), and the 5-HBAR build
+ * paywall (5 free off-topic, 5 HBAR per 50), and the 1-HBAR build
  * entitlement. Mirror-node reads are mocked; the store is the in-memory
  * fallback (no Upstash vars in the test env).
  */
@@ -30,11 +30,17 @@ import { getKvStore } from "@/lib/server/store";
 
 const EVM = (n: string) => `0x${n.repeat(40)}`;
 
-/** One mirror-node TipSent log for a 5-HBAR tipPage("forge") tip.
+/** One mirror-node TipSent log for a tipPage("forge") tip.
  *  TipSent `amount` is denominated in tinybars on Hedera (verified
- *  2026-09-16 against mainnet: a 5-HBAR tip logs amount=500_000_000). */
-function tipLog(timestamp: string, index: number, evmLetter = "d") {
-  const amount = (500_000_000n).toString(16).padStart(64, "0");
+ *  2026-09-16 against mainnet: a 5-HBAR tip logs amount=500_000_000).
+ *  Defaults to a 5-HBAR tip; pass amountTinybar for other sizes. */
+function tipLog(
+  timestamp: string,
+  index: number,
+  evmLetter = "d",
+  amountTinybar = 500_000_000n
+) {
+  const amount = amountTinybar.toString(16).padStart(64, "0");
   const fee = (10_000_000n).toString(16).padStart(64, "0");
   // topic2 = sender's EVM address, 32-byte padded (client-side filtered).
   const senderTopic2 = evmLetter.startsWith("0x")
@@ -210,10 +216,20 @@ describe("checkChatAccess — 5 free off-topic messages, then paywall", () => {
   });
 });
 
-describe("build entitlement (5 HBAR per custom build)", () => {
+describe("build entitlement (1 HBAR per custom build)", () => {
   it("discovers a 5-HBAR tip and allows the build exactly once", async () => {
     mockMirror([[tipLog("1789520900.000000003", 3)]]);
     const evm = EVM("d");
+    expect((await checkBuildAccess(evm)).allowed).toBe(true);
+    expect(await consumeBuild(evm)).toBe(true);
+    // Second build needs a second payment.
+    expect(await consumeBuild(evm)).toBe(false);
+    expect((await checkBuildAccess(evm)).allowed).toBe(false);
+  });
+
+  it("discovers a 1-HBAR tip and allows the build exactly once", async () => {
+    mockMirror([[tipLog("1789520910.000000003", 3, "x", 100_000_000n)]]);
+    const evm = EVM("x");
     expect((await checkBuildAccess(evm)).allowed).toBe(true);
     expect(await consumeBuild(evm)).toBe(true);
     // Second build needs a second payment.
@@ -256,13 +272,25 @@ describe("build entitlement (5 HBAR per custom build)", () => {
     expect(logUrl).not.toContain("topic2=");
   });
 
-  it("tips under 5 HBAR do not count", async () => {
-    const amount = (499_999_999n).toString(16).padStart(64, "0");
-    const fee = (0n).toString(16).padStart(64, "0");
-    mockMirror([
-      [{ data: "0x" + amount + fee, timestamp: "1789521000.1", transaction_index: 4 }],
-    ]);
+  it("tips under 1 HBAR do not count", async () => {
+    // Proper topics so the log IS discovered — the amount gate must reject it.
+    mockMirror([[tipLog("1789521000.000000001", 4, "e", 99_999_999n)]]);
     expect((await checkBuildAccess(EVM("e"))).allowed).toBe(false);
+  });
+
+  it("a 1-HBAR tip buys a build but never chat credit", async () => {
+    mockMirror([[tipLog("1789521050.000000001", 1, "y", 100_000_000n)]]);
+    const id = { kind: "wallet", evm: EVM("y") } as const;
+    for (let i = 0; i < FREE_MESSAGES; i++) {
+      const access = await checkChatAccess(id);
+      if (access.allowed) await noteChatMessage(id, "free");
+    }
+    // The 1-HBAR payment is discovered but cannot become 50 chat messages.
+    const denied = await checkChatAccess(id);
+    expect(denied.allowed).toBe(false);
+    if (!denied.allowed) expect(denied.reason).toBe(CHAT_PAYWALL_WALLET);
+    // …but it still pays for a build.
+    expect((await checkBuildAccess(id.evm)).allowed).toBe(true);
   });
 
   it("the same on-chain payment is credited exactly once", async () => {
@@ -323,9 +351,9 @@ describe("build paywall copy", () => {
     expect(BUILD_PAYWALL_UNPAID).not.toContain("the moment it settles");
   });
 
-  it("still states the 5 HBAR price and the forge tip step", () => {
+  it("states the 1 HBAR price and the forge tip step", () => {
     for (const copy of [BUILD_PAYWALL_ANON, BUILD_PAYWALL_UNPAID]) {
-      expect(copy).toContain("5 HBAR");
+      expect(copy).toContain("1 HBAR");
       expect(copy).toContain("forge");
     }
     expect(BUILD_PAYWALL_ANON).toContain("connected wallet");

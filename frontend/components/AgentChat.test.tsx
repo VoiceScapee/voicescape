@@ -98,7 +98,7 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("buildStateRef.current = data.build_state");
   });
 
-  it("shows the in-chat Pay 5 HBAR control on the build paywall", () => {
+  it("shows the in-chat Pay 1 HBAR control on the build paywall", () => {
     expect(widgetSrc).toContain("BuddyPayButton");
     expect(widgetSrc).toContain("build.paywall");
     expect(widgetSrc).toContain('"anon"');
@@ -110,8 +110,8 @@ describe("AgentChat", () => {
 
   it("the pay button reuses the existing forge tip path (no new money code)", () => {
     const paySrc = readFileSync(join(here, "BuddyPayButton.tsx"), "utf8");
-    expect(paySrc).toContain("Pay 5 HBAR");
-    expect(paySrc).toContain("BUILD_PAYMENT_WEI = 5_000_000_000_000_000_000n");
+    expect(paySrc).toContain("Pay 1 HBAR");
+    expect(paySrc).toContain("BUILD_PAYMENT_WEI = 1_000_000_000_000_000_000n");
     expect(paySrc).toContain('tipPage(BUDDY_PAGE_USERNAME, BUILD_PAYMENT_WEI, sender)');
     expect(paySrc).toContain('BUDDY_PAGE_USERNAME = "forge"');
     expect(paySrc).toContain("resolvePage(");
@@ -153,7 +153,7 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain('"tweak"');
     expect(widgetSrc).toContain('"tweaks"');
     expect(widgetSrc).toContain("This mock uses placeholder art.");
-    expect(widgetSrc).toContain("Pay 5 HBAR below and");
+    expect(widgetSrc).toContain("Pay 1 HBAR below and");
   });
 
   it("the free-mock panel has no Open in Builder / Publish page buttons", () => {

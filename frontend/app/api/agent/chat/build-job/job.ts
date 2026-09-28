@@ -706,7 +706,7 @@ async function runImagesStep(
           job,
           store,
           "The art service is taking too long right now — nothing was charged. " +
-            "Your 5 HBAR credit is still available; try \u201cgo\u201d again in a little while."
+            "Your 1 HBAR credit is still available; try \u201cgo\u201d again in a little while."
         );
       }
       return {
@@ -730,7 +730,7 @@ async function runImagesStep(
         job,
         store,
         "The artwork service kept failing — nothing was charged. " +
-          "Your 5 HBAR credit is still available; say \u201cgo\u201d again to retry."
+          "Your 1 HBAR credit is still available; say \u201cgo\u201d again to retry."
       );
     }
     return {
