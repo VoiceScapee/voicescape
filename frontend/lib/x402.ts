@@ -128,19 +128,76 @@ export function formatRailAmount(asset: string, network: string, amount: string)
 /* ------------------------------------------------------------------ */
 /* HBAR/USD price (approximate, display only)                           */
 /* ------------------------------------------------------------------ */
+/* Chainlink HBAR/USD Data Feed (Hedera mainnet — free to read)         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Chainlink HBAR/USD aggregator on Hedera mainnet (8 decimals).
+ * Verified live 2026-09-28 via mirror-node eth_call (round complete,
+ * updated <10 min before read). Reads are sponsored: no LINK, no API
+ * key — just the (free) mirror-node contract-call endpoint.
+ * If Chainlink ever rotates the aggregator, reads fail validation and
+ * callers fall through to CoinGecko — never a wrong price.
+ */
+const CHAINLINK_HBAR_USD_FEED = "0xAF685FB45C12b92b5054ccb9313e135525F9b5d5";
+const LATEST_ROUND_DATA_SELECTOR = "0xfeaf968c";
+/** Outer staleness bound for display pricing (Chainlink heartbeat ~24h). */
+const CHAINLINK_MAX_STALENESS_S = 24 * 60 * 60;
+
+/**
+ * On-chain HBAR/USD price from Chainlink, or null when unusable.
+ * Validates round completeness (answeredInRound >= roundId), a finished
+ * round (updatedAt != 0), a positive answer, and freshness — a bad feed
+ * degrades to null, never to a fabricated price.
+ */
+export async function getChainlinkHbarUsdPrice(): Promise<number | null> {
+  try {
+    const res = await fetch("https://mainnet.mirrornode.hedera.com/api/v1/contracts/call", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        to: CHAINLINK_HBAR_USD_FEED,
+        data: LATEST_ROUND_DATA_SELECTOR,
+        estimate: false,
+      }),
+    });
+    const json = (await res.json()) as { result?: unknown };
+    const hex = typeof json?.result === "string" ? json.result.replace(/^0x/, "") : "";
+    if (hex.length < 320) return null;
+    const word = (i: number) => BigInt("0x" + hex.slice(i * 64, (i + 1) * 64));
+    const roundId = word(0);
+    const answer = word(1);
+    const updatedAt = word(3);
+    const answeredInRound = word(4);
+    if (answeredInRound < roundId || updatedAt === 0n) return null;
+    if (answer <= 0n || answer >= 2n ** 255n) return null; // non-positive or negative (two's complement)
+    const nowS = BigInt(Math.floor(Date.now() / 1000));
+    if (nowS - updatedAt > BigInt(CHAINLINK_MAX_STALENESS_S)) return null;
+    const price = Number(answer) / 1e8; // feed uses 8 decimals
+    return Number.isFinite(price) && price > 0 ? price : null;
+  } catch {
+    return null;
+  }
+}
 
 let hbarPriceCache: { price: number; at: number } | null = null;
 
 /**
  * Approximate HBAR price in USD, for DISPLAY conversion only — never for
- * settlement (the 402's advertised amount is authoritative). Env override
- * NEXT_PUBLIC_HBAR_USD_PRICE wins; otherwise CoinGecko, otherwise 0.20.
+ * settlement (the 402's advertised amount is authoritative). Priority:
+ * env override NEXT_PUBLIC_HBAR_USD_PRICE → Chainlink on-chain feed
+ * (free, no key) → CoinGecko → 0.20 labeled fallback.
  */
 export async function getHbarUsdPrice(): Promise<number> {
   const env = Number(process.env.NEXT_PUBLIC_HBAR_USD_PRICE);
   if (Number.isFinite(env) && env > 0) return env;
   const now = Date.now();
   if (hbarPriceCache && now - hbarPriceCache.at < 5 * 60_000) return hbarPriceCache.price;
+  const chainlink = await getChainlinkHbarUsdPrice();
+  if (chainlink !== null) {
+    hbarPriceCache = { price: chainlink, at: now };
+    return chainlink;
+  }
   try {
     const res = await fetch(
       "https://api.coingecko.com/api/v3/simple/price?ids=hedera-hashgraph&vs_currencies=usd",
