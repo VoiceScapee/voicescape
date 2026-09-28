@@ -26,7 +26,10 @@ import { publishPageJson } from "../../../../lib/server/publish.js";
 export const runtime = "nodejs";
 
 /**
- * POST /api/agents/onboard — plug-and-play agent onboarding (RETURN_BYTES).
+ * POST /api/agents/onboard — plug-and-play agent onboarding. Returns JSON
+ * (never a raw blob): { unsignedTxBytes, username, cid, pageUrl,
+ * description, transactionId, txType, hcs10: { profile, steps, unsignedTxs,
+ * registryTopicId } }.
  *
  * An AI agent with its own Hedera wallet calls this once. The server pins
  * a starter agent page to IPFS, builds the Registry `registerPage` call
