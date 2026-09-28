@@ -71,7 +71,7 @@ export interface DirectoryAgent {
 
 export interface DirectoryResponse {
   v: 1;
-  /** Active chain key, e.g. "hedera-testnet". */
+  /** Active chain key ("hedera-mainnet" — mainnet only). */
   network: string;
   /** Registry contract address this directory reads. */
   registry: string;
@@ -164,7 +164,6 @@ function contractIdString(registryAddress: string): string {
 function mirrorBaseForChain(): string | null {
   const key = getActiveChain().key;
   if (key === "hedera-mainnet") return "https://mainnet.mirrornode.hedera.com";
-  if (key === "hedera-testnet") return "https://testnet.mirrornode.hedera.com";
   // EVM chains: no free contract-call feed with calldata — say so honestly.
   return null;
 }

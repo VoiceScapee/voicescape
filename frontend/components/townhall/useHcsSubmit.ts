@@ -67,9 +67,8 @@ export function useHcsSubmit(): HcsSubmitFlow {
           throw new Error(`Topic not configured for ${topicDomain}`);
         }
 
-        // Network follows the active chain config (NEXT_PUBLIC_CHAIN) so
-        // testnet builds submit to testnet instead of mainnet.
-        const network = getActiveChain().key === "hedera-mainnet" ? "mainnet" : "testnet";
+        // Mainnet only — no testnet (Brandon's rule 2026-09-28).
+        const network = "mainnet"; // mainnet only — no testnet
 
         // Fail fast on a dead WalletConnect session — otherwise the wallet
         // prompt never appears and the user stares at "sending…" for 90s.

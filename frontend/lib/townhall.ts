@@ -251,13 +251,13 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
   // signAndExecuteTransaction.
   const { getActiveChain } = await import("./chains");
   const chain = getActiveChain();
-  const networkClient = chain.key === "hedera-mainnet" ? Client.forMainnet() : Client.forTestnet();
+  const networkClient = Client.forMainnet(); // mainnet only — no testnet
   tx.setTransactionId(TransactionId.generate(payer));
   tx.freezeWith(networkClient);
   const txId = tx.transactionId?.toString() ?? "";
   // DAppConnector signs AND executes via the wallet (HIP-820).
   const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
-  const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+  const network = "mainnet"; // mainnet only — no testnet
   await (hc.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
     signerAccountId: `hedera:${network}:${accountId}`,
     transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),

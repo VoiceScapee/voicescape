@@ -34,9 +34,8 @@ afterEach(() => {
 });
 
 describe("mirrorBaseFor", () => {
-  it("picks mainnet vs testnet", () => {
+  it("uses mainnet (no testnet)", () => {
     expect(mirrorBaseFor("hedera-mainnet")).toContain("mainnet.mirrornode.hedera.com");
-    expect(mirrorBaseFor("hedera-testnet")).toContain("testnet.mirrornode.hedera.com");
   });
 });
 

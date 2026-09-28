@@ -239,7 +239,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const { AccountId, Client, Hbar, TransactionId, TransferTransaction } =
         await import("@hiero-ledger/sdk");
       const chain = (await import("./chains")).getActiveChain();
-      const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+      const network = "mainnet"; // mainnet only — no testnet
       // Secret stays off-chain; only its hash goes in the public memo.
       const secret = generateNonce();
       const commit = (await sha256Hex(secret)).slice(0, 16);
@@ -253,7 +253,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         .addHbarTransfer(accountId, Hbar.fromTinybars(1))
         .setTransactionMemo(memo);
       tx.setTransactionId(TransactionId.generate(AccountId.fromString(accountId)));
-      tx.freezeWith(chain.key === "hedera-mainnet" ? Client.forMainnet() : Client.forTestnet());
+      tx.freezeWith(Client.forMainnet());
       const txId = tx.transactionId?.toString() ?? "";
       const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
 

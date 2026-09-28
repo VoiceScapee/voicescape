@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
-import { getTopicId, townhallNetwork } from "@/lib/server/townhall/topics";
+import { getTopicId } from "@/lib/server/townhall/topics";
 import { getTipsAddress } from "@/lib/contracts";
 import { canonicalAddress } from "@/lib/session-message";
 import {
@@ -142,7 +142,7 @@ export async function POST(req: NextRequest) {
   const op = parsed.op;
 
   // --- Build the unsigned transaction ---
-  const network = townhallNetwork() === "mainnet" ? "mainnet" : "testnet";
+  const network = "mainnet"; // mainnet only — no testnet
   // Session address is a canonical 0x address; derive the 0.0.x payer id.
   // For Hedera sessions the address IS the 0.0.x id in the token; canonical
   // 0x form is used for registry comparisons. We need the 0.0.x form here.

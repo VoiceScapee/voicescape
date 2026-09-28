@@ -36,7 +36,7 @@ import type { TxSender } from "./tx";
  * import (not a static import) so the 2.3MB SDK stays out of the wallet
  * connection chunk that Vercel's CDN must serve on mobile (ChunkLoadError).
  * DAppConnector only calls toString() on the ledger id, and the official
- * class returns "mainnet"/"testnet"/"previewnet" exactly as needed.
+ * class returns "mainnet" exactly as needed (mainnet only — no testnet).
  */
 
 export interface WalletState {
@@ -66,9 +66,9 @@ export interface WalletState {
 export type WalletAdapterId = "hashpack" | "blade" | "walletconnect";
 
 export const WALLET_ADAPTERS: { id: WalletAdapterId; name: string; chains: string[] }[] = [
-  { id: "hashpack", name: "HashPack", chains: ["hedera-testnet", "hedera-mainnet"] },
-  { id: "blade", name: "Blade", chains: ["hedera-testnet", "hedera-mainnet"] },
-  { id: "walletconnect", name: "WalletConnect", chains: ["hedera-testnet", "hedera-mainnet"] },
+  { id: "hashpack", name: "HashPack", chains: ["hedera-mainnet"] },
+  { id: "blade", name: "Blade", chains: ["hedera-mainnet"] },
+  { id: "walletconnect", name: "WalletConnect", chains: ["hedera-mainnet"] },
 ];
 
 /* ------------------------------------------------------------------ */
@@ -397,11 +397,11 @@ function rawSessionAccount(session: {
  * Extract the account ID from a WalletConnect session.
  * Session accounts look like "hedera:mainnet:0.0.12345" (HIP-30 format).
  *
- * When `expectedNetwork` is given ("mainnet" | "testnet"), the session's
- * network is validated against it and a mismatch throws a user-actionable
- * error. Without this check a wallet sitting on testnet would pair as if
- * it were on mainnet — every subsequent transaction would be built for the
- * wrong network.
+ * When `expectedNetwork` is given ("mainnet"), the session's network is
+ * validated against it and a mismatch throws a user-actionable error.
+ * Without this check a wallet sitting on the wrong network would pair as
+ * if it were on mainnet — every subsequent transaction would be built for
+ * the wrong network.
  */
 export function accountIdFromSession(
   session: { namespaces?: Record<string, { accounts?: string[] }> },
@@ -512,13 +512,13 @@ async function buildConnector(): Promise<DAppConnector> {
     "Wallet library failed to load. Check your connection and try again.",
   );
 
-  const chain = getActiveChain();
-  const isMainnet = chain.key === "hedera-mainnet";
+  // Mainnet only — no testnet (Brandon's rule 2026-09-28). The wallet can
+  // only pair on Hedera mainnet.
   // Official SDK LedgerId via dynamic import: keeps the SDK out of the
   // wallet connection chunk (see NOTE above). DAppConnector only calls
   // toString() on the ledger id.
   const { LedgerId } = await import("@hiero-ledger/sdk");
-  const ledgerId = (isMainnet ? LedgerId.MAINNET : LedgerId.TESTNET) as unknown as never;
+  const ledgerId = LedgerId.MAINNET as unknown as never;
 
   return new DAppConnectorClass(
     {
@@ -531,7 +531,7 @@ async function buildConnector(): Promise<DAppConnector> {
     getPairingProjectId(),
     Object.values(HederaJsonRpcMethod),
     [HederaSessionEvent.ChainChanged, HederaSessionEvent.AccountsChanged],
-    [isMainnet ? HederaChainId.Mainnet : HederaChainId.Testnet],
+    [HederaChainId.Mainnet],
   );
 }
 

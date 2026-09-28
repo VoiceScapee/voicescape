@@ -21,6 +21,7 @@ import {
   ContractFunctionParameters,
   ContractId,
   Hbar,
+  Long,
   TransactionId,
 } from "@hiero-ledger/sdk";
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
@@ -110,6 +111,27 @@ export interface TxSender {
    * it never holds buyer funds (no escrow). Delivery is off-chain.
    */
   sendBuy(tipsAddress: string, seller: string, listingRef: string, valueWei: bigint): Promise<string>;
+  /**
+   * Approve an HTS token spender (EVM addresses) for exactly `amount`
+   * (smallest unit). Used once per token before the first Saucerswap swap —
+   * the visitor signs it in their own wallet; Voicescape is never a spender.
+   */
+  sendTokenApprove(tokenEvmAddress: string, spenderEvmAddress: string, amount: bigint): Promise<string>;
+  /**
+   * Swap exact HTS tokens for HBAR through the Saucerswap V1 router
+   * (`swapExactTokensForETH` — Uniswap name, HBAR on Hedera). `path` is the
+   * EVM swap path, `toEvmAddress` must be the visitor's real (alias) EVM
+   * address — a contract HBAR push never reaches a long-zero address.
+   * `deadlineSecs` is a unix timestamp. The visitor signs in their wallet.
+   */
+  sendTokenSwap(
+    routerEvmAddress: string,
+    amountIn: bigint,
+    amountOutMin: bigint,
+    path: string[],
+    toEvmAddress: string,
+    deadlineSecs: number,
+  ): Promise<string>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -125,6 +147,13 @@ const TIPS_IFACE = new ethers.Interface(TIPS_ABI);
 
 const HEDERA_WRITE_GAS = 600_000;
 const HEDERA_QUERY_GAS = 200_000;
+/**
+ * Gas limit for Saucerswap router swaps (HTS precompiles are thirsty).
+ * Unused gas is refunded on Hedera, so headroom never costs the visitor more.
+ */
+export const SWAP_GAS = 1_500_000;
+/** Gas limit for the one-time HTS token approval. */
+export const APPROVE_GAS = 400_000;
 /** On the Hedera EVM, 1 tinybar = 10^10 wei (1 HBAR = 10^8 tinybar = 10^18 wei). */
 const WEI_PER_TINYBAR = 10_000_000_000n;
 
@@ -157,11 +186,10 @@ export function createHederaTxSender(
   accountIdStr: string | null,
   chain: ChainConfig,
 ): TxSender {
-  const isMainnet = chain.key === "hedera-mainnet";
   // Public client — no operator needed. Used for ContractCallQuery and for
   // freezing write transactions (fills in node account ids) before the
-  // wallet signs them via HIP-820.
-  const networkClient = isMainnet ? Client.forMainnet() : Client.forTestnet();
+  // wallet signs them via HIP-820. Mainnet only — no testnet.
+  const networkClient = Client.forMainnet();
 
   function requireWallet(): { dAppConnector: DAppConnector; accountId: AccountId } {
     if (!dAppConnector || !accountIdStr) throw new Error("Connect a Hedera wallet to send transactions.");
@@ -223,6 +251,7 @@ export function createHederaTxSender(
     fn: string,
     params: ContractFunctionParameters,
     valueWei?: bigint,
+    gas?: number,
   ): Promise<string> {
     const { dAppConnector: liveConnector, accountId } = requireWallet();
     // Fail fast on a dead session — otherwise the wallet prompt never
@@ -234,7 +263,9 @@ export function createHederaTxSender(
     }
     const tx = new ContractExecuteTransaction()
       .setContractId(hederaContractId(evmAddress))
-      .setGas(HEDERA_WRITE_GAS)
+      // Swaps run HTS precompiles and need headroom; unused gas is refunded,
+      // so a higher limit never costs the visitor more.
+      .setGas(gas ?? HEDERA_WRITE_GAS)
       .setFunction(fn, params);
     if (valueWei !== undefined) {
       if (valueWei <= 0n) throw new Error("Payment amount must be greater than zero.");
@@ -258,7 +289,7 @@ export function createHederaTxSender(
     // The transactionList param is a base64-encoded single Transaction
     // (the name is misleading — the official DAppSigner uses
     // transactionToBase64String(transaction) for this param).
-    const network = chain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+    const network = "mainnet"; // mainnet only — no testnet
     const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
     // The wallet response sometimes never arrives even though the user
     // approved in HashPack and the transaction executed on-chain. Without a
@@ -369,6 +400,42 @@ export function createHederaTxSender(
         valueWei,
       );
     },
+    async sendTokenApprove(tokenEvmAddress, spenderEvmAddress, amount) {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(tokenEvmAddress) || !/^0x[0-9a-fA-F]{40}$/.test(spenderEvmAddress)) {
+        throw new Error("Token approval address is invalid.");
+      }
+      if (amount <= 0n) throw new Error("Approval amount must be greater than zero.");
+      // HTS tokens expose the standard ERC20 approve on their EVM interface.
+      // The SDK takes Long (not bigint) for uint256 — convert exactly.
+      return executeWrite(
+        tokenEvmAddress,
+        "approve",
+        new ContractFunctionParameters()
+          .addAddress(spenderEvmAddress)
+          .addUint256(Long.fromString(amount.toString())),
+        undefined,
+        APPROVE_GAS,
+      );
+    },
+    async sendTokenSwap(routerEvmAddress, amountIn, amountOutMin, path, toEvmAddress, deadlineSecs) {
+      for (const a of [routerEvmAddress, toEvmAddress, ...path]) {
+        if (!/^0x[0-9a-fA-F]{40}$/.test(a)) throw new Error("Swap address is invalid.");
+      }
+      if (amountIn <= 0n) throw new Error("Swap amount must be greater than zero.");
+      if (path.length < 2) throw new Error("Swap path needs at least a token and WHBAR.");
+      return executeWrite(
+        routerEvmAddress,
+        "swapExactTokensForETH",
+        new ContractFunctionParameters()
+          .addUint256(Long.fromString(amountIn.toString()))
+          .addUint256(Long.fromString(amountOutMin.toString()))
+          .addAddressArray(path)
+          .addAddress(toEvmAddress)
+          .addUint256(Long.fromString(BigInt(Math.floor(deadlineSecs)).toString())),
+        undefined,
+        SWAP_GAS,
+      );
+    },
   };
 }
 
@@ -381,9 +448,7 @@ export function createHederaTxSender(
  * contract calls — no JSON-RPC provider, no ethers connectivity.
  */
 function mirrorNodeBase(chain: ChainConfig): string {
-  return chain.key === "hedera-testnet"
-    ? "https://testnet.mirrornode.hedera.com"
-    : "https://mainnet.mirrornode.hedera.com";
+  return "https://mainnet.mirrornode.hedera.com";
 }
 
 /**
@@ -461,6 +526,12 @@ export function createReadOnlySender(chain: ChainConfig): TxSender {
       throw new Error("Connect a wallet to send transactions.");
     },
     async sendBuy() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+    async sendTokenApprove() {
+      throw new Error("Connect a wallet to send transactions.");
+    },
+    async sendTokenSwap() {
       throw new Error("Connect a wallet to send transactions.");
     },
   };

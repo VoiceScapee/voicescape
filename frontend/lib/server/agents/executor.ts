@@ -152,8 +152,8 @@ export interface BuildContext {
   topicId?: string;
   /** Tips contract EVM address (0x...). */
   tipsContractAddress?: string;
-  /** Hedera network for the client. */
-  network: "mainnet" | "testnet";
+  /** Hedera network for the client (mainnet only). */
+  network: "mainnet";
 }
 
 export interface BuiltTransaction {
@@ -167,8 +167,8 @@ export interface BuiltTransaction {
   txType: string;
 }
 
-function buildClient(network: "mainnet" | "testnet"): Client {
-  return network === "mainnet" ? Client.forMainnet() : Client.forTestnet();
+function buildClient(network: "mainnet"): Client {
+  return Client.forMainnet();
 }
 
 function freezeForPayer(

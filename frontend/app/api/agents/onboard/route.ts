@@ -3,7 +3,7 @@ import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
 import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
-import { mirrorBaseUrl, townhallNetwork } from "@/lib/server/townhall/topics";
+import { mirrorBaseUrl } from "@/lib/server/townhall/topics";
 import { getRegistryAddress } from "@/lib/contracts";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { deriveUsername, isValidUsername } from "@/lib/identity";
@@ -229,7 +229,7 @@ export async function POST(req: NextRequest) {
   if (!registryAddress || !/^0x[0-9a-fA-F]{40}$/.test(registryAddress)) {
     return NextResponse.json({ error: "registry contract not configured" }, { status: 503 });
   }
-  const network = townhallNetwork() === "mainnet" ? "mainnet" : "testnet";
+  const network = "mainnet"; // mainnet only — no testnet
   let built;
   try {
     built = buildRegisterTransaction(
@@ -287,7 +287,7 @@ export async function POST(req: NextRequest) {
       profile: hcs10Profile,
       steps: hcs10RegistrationSteps({ agentName: name, accountId: payerAccountId, network }),
       unsignedTxs: hcs10Txs,
-      registryTopicId: getHcs10RegistryTopic(network),
+      registryTopicId: getHcs10RegistryTopic(),
     },
     next: "Deserialize unsignedTxBytes with Transaction.fromBytes(), sign with your Hedera key, and submit. Then sign + submit the hcs10.unsignedTxs topic creations and register via the official SDK's buildHcs10RegistryRegisterTx.",
   });

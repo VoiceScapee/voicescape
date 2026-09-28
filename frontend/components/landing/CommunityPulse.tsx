@@ -3,7 +3,7 @@
 /**
  * Community pulse — the reason to come back.
  *
- * Leads with FREE (McLaren collectibles + testnet faucet, verified), then
+ * Leads with FREE (McLaren collectibles, verified), then
  * featured video clips (curated official Hedera videos) and auto-updating
  * Hedera headlines from /api/pulse. Expired drops never show as claimable.
  */

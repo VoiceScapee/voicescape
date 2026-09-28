@@ -12,7 +12,6 @@
  *   Hedera; 2026 ESP GP featured drop, "Claim Price FREE", countdown showed
  *   ~2d 3h remaining → drop ends ~midday Sep 15, 2026 ET. `endsAt` matches
  *   that observed window; the card flips to "see current drops" after.
- * - Hedera testnet faucet (portal.hedera.com) — free testnet HBAR, ongoing.
  */
 
 import type { I18nKey } from "@/lib/i18n/dictionaries";
@@ -40,16 +39,6 @@ export const FREEBIES: Freebie[] = [
     url: "https://collectibles.mclaren.com/",
     endsAt: "2026-09-15T12:00:00-04:00",
     tag: "nft",
-  },
-  {
-    id: "hedera-faucet",
-    name: "Hedera Testnet Faucet",
-    descKey: "landing.freeFaucetDesc",
-    ctaKey: "landing.freeFaucetCta",
-    expiredCtaKey: "landing.freeFaucetCta",
-    url: "https://portal.hedera.com/",
-    endsAt: null,
-    tag: "builder",
   },
 ];
 
