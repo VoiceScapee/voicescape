@@ -46,12 +46,32 @@ describe("saveOnboardDraft / consumeOnboardDraft", () => {
     bio: "Cable tech by day.",
     heroTitle: "Welcome!",
     ownerType: 0,
+    socials: ["https://x.com/Brandon", "https://github.com/Brandon"],
   };
 
   it("round-trips a draft", () => {
     saveOnboardDraft(draft);
     const back = consumeOnboardDraft();
     expect(back).toEqual(draft);
+  });
+
+  it("defaults socials to [] for legacy drafts without the field", () => {
+    const { socials, ...legacy } = draft;
+    store.set(ONBOARD_DRAFT_KEY, JSON.stringify(legacy));
+    const back = consumeOnboardDraft();
+    expect(back!.socials).toEqual([]);
+  });
+
+  it("drops non-string socials entries and caps at 12", () => {
+    const urls = Array.from({ length: 15 }, (_, i) => `https://example.com/${i}`);
+    store.set(
+      ONBOARD_DRAFT_KEY,
+      JSON.stringify({ ...draft, socials: ["https://x.com/a", 42, null, ...urls] }),
+    );
+    const back = consumeOnboardDraft();
+    expect(back!.socials).toHaveLength(12);
+    expect(back!.socials[0]).toBe("https://x.com/a");
+    expect(back!.socials.every((s) => typeof s === "string")).toBe(true);
   });
 
   it("consume clears the draft (one-shot)", () => {

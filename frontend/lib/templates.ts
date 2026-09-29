@@ -36,7 +36,9 @@ function base(username: string): Omit<VoicescapePage, "theme"> {
     blocks: [
       { type: "hero", title: username || "Your Name", subtitle: "Welcome to my corner of the internet", avatarEmoji: "🌐" },
       { type: "bio", text: "This is my Voicescape blockpage. Customize me!" },
-      { type: "links", items: [{ label: "My Website", url: "https://example.com" }] },
+      // Quick-build (2026-09-29): every template ships a socials block — one
+      // smart "links & socials" entry instead of the legacy links block.
+      { type: "socials", items: [] },
       { type: "tipJar", message: "Enjoying my content? Drop a tip — it goes straight on-chain." },
     ],
   };
@@ -60,11 +62,12 @@ export const TEMPLATES: Template[] = [
         { type: "hero", title: "Alex Rivera", subtitle: "Full-stack developer & Web3 builder", avatarEmoji: "💼" },
         { type: "bio", text: "Building decentralized apps. Open to collabs." },
         {
-          type: "links",
+          // Quick-build (2026-09-29): profile links live in the socials block now.
+          type: "socials",
           items: [
-            { label: "GitHub", url: "https://github.com" },
-            { label: "LinkedIn", url: "https://linkedin.com" },
-            { label: "Twitter", url: "https://x.com" },
+            { platform: "github", url: "https://github.com" },
+            { platform: "linkedin", url: "https://linkedin.com" },
+            { platform: "x", url: "https://x.com" },
           ],
         },
         {
@@ -99,6 +102,8 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "NEXUS-7", subtitle: "Autonomous research agent", avatarEmoji: "🤖" },
         { type: "bio", text: "I read docs so you don't have to. I run 24/7 and report on-chain." },
+        // Quick-build (2026-09-29): every template ships a socials block.
+        { type: "socials", items: [] },
         { type: "operator", wallet: "0x0000000000000000000000000000000000000000", name: "Operator name", url: "https://example.com" },
         { type: "capabilities", items: ["web-research", "summarization", "price-alerts"] },
         {
@@ -138,6 +143,8 @@ export const TEMPLATES: Template[] = [
       blocks: [
         { type: "hero", title: "API-BOT", subtitle: "Pay-per-call AI services", avatarEmoji: "🏪" },
         { type: "bio", text: "No API keys, no accounts — just pay per call in HBAR or USDC via x402." },
+        // Quick-build (2026-09-29): every template ships a socials block.
+        { type: "socials", items: [] },
         { type: "operator", wallet: "0x0000000000000000000000000000000000000000", name: "Operator name", url: "https://example.com" },
         {
           type: "services",
@@ -242,12 +249,19 @@ export const TEMPLATES: Template[] = [
         },
         { type: "services", items: [] },
         {
-          type: "links",
+          // Quick-build (2026-09-29): profile link → socials; the badge
+          // marketplace link stays a functional links block.
+          type: "socials",
           items: [
             {
-              label: "Adventure with Bacon the Dino on Facebook",
+              platform: "facebook",
               url: "https://www.facebook.com/people/Adventure-with-Bacon-the-Dino/61569234205302/",
             },
+          ],
+        },
+        {
+          type: "links",
+          items: [
             {
               label: "🦕 Get the official Bacon Badge — buy it, wear it on your page",
               url: "https://voicescape.vercel.app/marketplace/bacon-badge",
@@ -285,6 +299,9 @@ export const TEMPLATES: Template[] = [
         { type: "hero", title: "Bella Cucina", subtitle: "Authentic Italian · Est. 1998", avatarEmoji: "🍽️" },
         { type: "bio", text: "Family-owned Italian restaurant serving handmade pasta, wood-fired pizza, and old-world hospitality. Every dish made fresh daily." },
         { type: "bio", text: "🕐 Mon–Thu 11am–10pm · Fri–Sat 11am–11pm · Sun 12pm–9pm\n📍 123 Main Street — walk-ins welcome" },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // menu/order links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -339,6 +356,9 @@ export const TEMPLATES: Template[] = [
             { label: "Group bookings", url: "https://example.com/groups", note: "10+ tickets · 15% off" },
           ],
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // schedule/concessions links below are functional, so they stay.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -378,6 +398,9 @@ export const TEMPLATES: Template[] = [
           type: "gallery",
           images: ["👗", "👜", "🕯️", "🎁"],
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // shop links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -420,6 +443,8 @@ export const TEMPLATES: Template[] = [
         { type: "hero", title: "Luxe Cuts", subtitle: "Salon & Barbershop · Walk-ins welcome", avatarEmoji: "💈" },
         { type: "bio", text: "Precision cuts, color, and grooming from master stylists. Hot-towel shaves, beard trims, and full color services in a relaxed studio." },
         { type: "bio", text: "✂️ Cuts from $35 · Color from $85 · Beard trim $20\n🕐 Tue–Sat 9am–7pm" },
+        // Quick-build (2026-09-29): every template ships a socials block.
+        { type: "socials", items: [] },
         {
           type: "booking",
           title: "Book an appointment",
@@ -477,6 +502,9 @@ export const TEMPLATES: Template[] = [
           type: "gallery",
           images: ["🏋️", "🧘", "🚴", "🥊"],
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // membership links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -512,6 +540,9 @@ export const TEMPLATES: Template[] = [
         { type: "bio", text: "Your third place. Locally roasted beans, homemade pastries, and free Wi-Fi. Come for the coffee, stay for the community." },
         { type: "bio", text: "☕ Espresso $3.50 · Pour-over $5 · Pastries from $3\n🕐 Mon–Fri 6am–6pm · Sat–Sun 7am–4pm" },
         { type: "music", title: "Shop vibes", tracks: [] },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // menu/order links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -557,6 +588,9 @@ export const TEMPLATES: Template[] = [
             { label: "Free home valuation", url: "https://example.com/valuation", note: "Sellers · 15 min call" },
           ],
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // listing links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -599,6 +633,9 @@ export const TEMPLATES: Template[] = [
             { label: "Request a quote", url: "https://example.com/quote", note: "Response within 2 hours" },
           ],
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // service/coupon links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [
@@ -656,8 +693,10 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
-          items: [{ label: "my latest drop", url: "https://example.com" }],
+          // Quick-build (2026-09-29): single content link → socials (generic
+          // websites accepted), so the legacy links block goes away.
+          type: "socials",
+          items: [{ platform: "website", url: "https://example.com" }],
         },
         { type: "tipJar", message: "fuel the next project — tips land on-chain, straight to the source ✨" },
       ],
@@ -701,10 +740,11 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
+          // Quick-build (2026-09-29): profile-ish links → socials.
+          type: "socials",
           items: [
-            { label: "my contracts", url: "https://example.com" },
-            { label: "github", url: "https://example.com" },
+            { platform: "github", url: "https://example.com" },
+            { platform: "website", url: "https://example.com" },
           ],
         },
         { type: "tipJar", message: "tips settle on-chain, obviously. 98/2, verifiable by anyone ⛓️" },
@@ -749,8 +789,10 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
-          items: [{ label: "all my tapes", url: "https://example.com" }],
+          // Quick-build (2026-09-29): single content link → socials (generic
+          // websites accepted), so the legacy links block goes away.
+          type: "socials",
+          items: [{ platform: "website", url: "https://example.com" }],
         },
         { type: "tipJar", message: "buy me a coffee? tips go straight on-chain ☕" },
       ],
@@ -794,8 +836,10 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
-          items: [{ label: "community seed swap", url: "https://example.com" }],
+          // Quick-build (2026-09-29): single content link → socials (generic
+          // websites accepted), so the legacy links block goes away.
+          type: "socials",
+          items: [{ platform: "website", url: "https://example.com" }],
         },
         { type: "tipJar", message: "water the garden — tips go straight on-chain 🌱" },
       ],
@@ -839,8 +883,10 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
-          items: [{ label: "listen to the archive", url: "https://example.com" }],
+          // Quick-build (2026-09-29): single content link → socials (generic
+          // websites accepted), so the legacy links block goes away.
+          type: "socials",
+          items: [{ platform: "website", url: "https://example.com" }],
         },
         { type: "tipJar", message: "keep the signal alive — tips go straight on-chain 📡" },
       ],
@@ -884,8 +930,10 @@ export const TEMPLATES: Template[] = [
           ],
         },
         {
-          type: "links",
-          items: [{ label: "the full journal", url: "https://example.com" }],
+          // Quick-build (2026-09-29): single content link → socials (generic
+          // websites accepted), so the legacy links block goes away.
+          type: "socials",
+          items: [{ platform: "website", url: "https://example.com" }],
         },
         { type: "tipJar", message: "fuel the next mile — tips go straight on-chain 🧭" },
       ],
@@ -914,6 +962,9 @@ export const TEMPLATES: Template[] = [
           type: "bio",
           text: "From homeless to web3 to dapp founder \u2014 this is my journey. I started building Voicescape on a phone with nothing else. If it changes one person's life, we succeeded.",
         },
+        // Quick-build (2026-09-29): every template ships a socials block. The
+        // proof links below are functional, so they stay as links.
+        { type: "socials", items: [] },
         {
           type: "links",
           items: [

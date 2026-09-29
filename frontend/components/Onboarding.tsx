@@ -20,6 +20,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { isValidPage, type VoicescapePage } from "@/lib/schema";
+import {
+  PLATFORMS,
+  detectPlatform,
+  isPlatformId,
+  normalizeSocialUrl,
+} from "@/lib/socials";
+import { PlatformIcon } from "@/components/icons";
 
 export interface OnboardDraft {
   templateId: string;
@@ -27,6 +34,8 @@ export interface OnboardDraft {
   bio: string;
   heroTitle: string;
   ownerType: 0 | 1; // 0 = human, 1 = agent
+  /** Pasted social profile URLs (normalized, deduped, capped at 12). */
+  socials: string[];
 }
 
 export const ONBOARDED_KEY = "vs_onboarded";
@@ -119,6 +128,10 @@ export function consumeOnboardDraft(): OnboardDraft | null {
       bio: typeof d.bio === "string" ? d.bio.slice(0, 500) : "",
       heroTitle: typeof d.heroTitle === "string" ? d.heroTitle.slice(0, 80) : "",
       ownerType: d.ownerType === 1 ? 1 : 0,
+      // Older drafts predate the socials field — default to empty.
+      socials: Array.isArray(d.socials)
+        ? d.socials.filter((s): s is string => typeof s === "string" && !!s).slice(0, 12)
+        : [],
     };
   } catch {
     return null;
@@ -132,6 +145,31 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [heroTitle, setHeroTitle] = useState("");
+  // Quick-build (2026-09-29): pasted socials — the builder pre-fills the
+  // socials block from these so first-timers start with links, not blanks.
+  const [socials, setSocials] = useState<string[]>([]);
+  const [socialInput, setSocialInput] = useState("");
+  const [socialError, setSocialError] = useState<string | null>(null);
+
+  function addSocial() {
+    const raw = socialInput.trim();
+    const url = normalizeSocialUrl(raw);
+    if (!url) {
+      setSocialError("That doesn't look like a link — paste a full profile URL.");
+      return;
+    }
+    setSocialError(null);
+    setSocialInput("");
+    setSocials((prev) =>
+      prev.some((s) => s.toLowerCase() === url.toLowerCase())
+        ? prev
+        : [...prev, url].slice(0, 12),
+    );
+  }
+
+  function removeSocial(url: string) {
+    setSocials((prev) => prev.filter((s) => s !== url));
+  }
   // Enter-to-next: the keyboard stays up, Enter jumps down the form.
   const displayNameRef = useRef<HTMLInputElement>(null);
   const heroTitleRef = useRef<HTMLInputElement>(null);
@@ -146,7 +184,7 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
   }
 
   function finish() {
-    saveOnboardDraft({ templateId, displayName: displayName.trim(), bio: bio.trim(), heroTitle: heroTitle.trim(), ownerType });
+    saveOnboardDraft({ templateId, displayName: displayName.trim(), bio: bio.trim(), heroTitle: heroTitle.trim(), ownerType, socials });
     markOnboarded();
     onDone();
     router.push("/builder");
@@ -350,6 +388,89 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 enterKeyHint="done"
               />
             </label>
+        </section>
+
+        {/* Quick-build (2026-09-29): paste socials up front — they pre-fill the
+            socials block in the builder. Platform icon shows live as you type. */}
+        <section aria-label="Where can people find you" style={{ marginTop: 26 }}>
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>Where can people find you?</h3>
+          <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 12px", lineHeight: 1.6 }}>
+            Paste your profile links — the platform is detected automatically.
+          </p>
+          {socials.length > 0 && (
+            <ul style={{ listStyle: "none", padding: 0, margin: "0 0 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+              {socials.map((url) => {
+                const platform = detectPlatform(url);
+                const label = isPlatformId(platform) ? PLATFORMS[platform].name : platform;
+                return (
+                  <li
+                    key={url}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      border: "1px solid var(--vs-border)",
+                      background: "var(--vs-glass)",
+                    }}
+                  >
+                    <span style={{ width: 22, height: 22, display: "inline-flex", flexShrink: 0 }}>
+                      <PlatformIcon platform={platform} size={22} />
+                    </span>
+                    <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 13 }}>
+                      {label} · {url}
+                    </span>
+                    <button
+                      type="button"
+                      className="vb-quiet-link"
+                      onClick={() => removeSocial(url)}
+                      aria-label={`Remove ${url}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <span
+              aria-hidden="true"
+              style={{
+                width: 22,
+                height: 22,
+                display: "inline-flex",
+                flexShrink: 0,
+                opacity: socialInput.trim() ? 1 : 0.35,
+              }}
+            >
+              <PlatformIcon platform={detectPlatform(socialInput)} size={22} />
+            </span>
+            <input
+              value={socialInput}
+              onChange={(e) => setSocialInput(e.target.value)}
+              placeholder="https://x.com/you"
+              inputMode="url"
+              enterKeyHint="go"
+              aria-label="Paste a profile link"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  addSocial();
+                }
+              }}
+              style={{ ...inputStyle, marginBottom: 0, flex: 1 }}
+            />
+            <button type="button" className="vs-btn vs-btn-secondary" onClick={addSocial}>
+              Add
+            </button>
+          </div>
+          {socialError && (
+            <p className="vs-hint" role="alert" style={{ color: "var(--vs-danger, #f87171)" }}>
+              {socialError}
+            </p>
+          )}
         </section>
 
         {/* Section 3: what publish does — plain words, no surprises later. */}
