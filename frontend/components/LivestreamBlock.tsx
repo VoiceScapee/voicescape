@@ -230,9 +230,15 @@ function useYouTubeLive(channelId: string) {
     setStatus({ live: false, videoId: null });
     if (channelId === PLACEHOLDER_CHANNEL) return () => {};
     const check = async () => {
+      // Bound the live-status check: a stalled /api/youtube-live request
+      // must never pile up open connections (seen on /ash-rook 2026-09-29).
+      // On timeout we keep the current badge state — offline-first.
+      const ctrl = new AbortController();
+      const abortTimer = setTimeout(() => ctrl.abort(), 15_000);
       try {
         const r = await fetch(`/api/youtube-live?channel=${encodeURIComponent(channelId)}`, {
           cache: "no-store",
+          signal: ctrl.signal,
         });
         const j = await r.json();
         // ok !== true means the server couldn't tell (scrape failed,
@@ -257,6 +263,8 @@ function useYouTubeLive(channelId: string) {
         }
       } catch {
         /* offline-first: keep current status */
+      } finally {
+        clearTimeout(abortTimer);
       }
     };
     check();

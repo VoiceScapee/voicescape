@@ -1256,11 +1256,19 @@ function PublicPageInner({ username }: { username: string }) {
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      // The resolve request must never hang the page: on a stalled mobile
+      // connection the browser can wait forever, leaving the visitor stuck
+      // on "Resolving … on-chain" with no error (seen on /ash-rook
+      // 2026-09-29). Abort after 20s — matching the mirror-node timeout
+      // underneath — and show a real error with a retry instead.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20_000);
       try {
         // Use server-side API to avoid browser CORS issues with Hedera RPC
         // no-store: never serve a cached 404 after the API is fixed
         const res = await fetch(`/api/resolve?username=${encodeURIComponent(username)}`, {
           cache: "no-store",
+          signal: ctrl.signal,
         });
         if (!res.ok) {
           if (!cancelled) setState({ status: "not-found" });
@@ -1278,7 +1286,19 @@ function PublicPageInner({ username }: { username: string }) {
         };
         if (!cancelled) setState({ status: "ready", page: parsed, meta });
       } catch (e) {
-        if (!cancelled) setState({ status: "error", message: e instanceof Error ? e.message : String(e) });
+        if (!cancelled) {
+          const timedOut = e instanceof DOMException && e.name === "AbortError";
+          setState({
+            status: "error",
+            message: timedOut
+              ? "The page took too long to load — check your connection and try again."
+              : e instanceof Error
+                ? e.message
+                : String(e),
+          });
+        }
+      } finally {
+        clearTimeout(timer);
       }
     }
     load();
@@ -1318,9 +1338,14 @@ function PublicPageInner({ username }: { username: string }) {
         <div className="pv-state-code">!</div>
         <h1>Couldn&apos;t load this page</h1>
         <p>{state.message}</p>
-        <a className="pv-state-link" href="/builder">
-          Go to the builder
-        </a>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button type="button" className="pv-state-link" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          <a className="pv-state-link" href="/builder">
+            Go to the builder
+          </a>
+        </div>
       </div>
     );
   }

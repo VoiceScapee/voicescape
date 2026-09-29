@@ -95,6 +95,26 @@ export function findLatestRegisteredUsername(results: ContractResultShape[]): st
 }
 
 /**
+ * Mirror-node fetch with a hard timeout. A stalled mirror node must never
+ * hang the /api/resolve ?owner= lookup forever (same stall class as the
+ * /ash-rook report 2026-09-29) — callers treat failure as "unknown".
+ */
+const MIRROR_TIMEOUT_MS = 15_000;
+
+async function mirrorFetch(url: string): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), MIRROR_TIMEOUT_MS);
+  try {
+    return await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Mirror-node EVM address for an account id ("0.0.x"); a "0x…" address is
  * used as-is. Null when the input isn't an account or address, or the
  * lookup fails.
@@ -103,9 +123,7 @@ async function evmAddressFor(owner: string): Promise<string | null> {
   const v = owner.trim();
   if (/^0x[0-9a-fA-F]{40}$/.test(v)) return v.toLowerCase();
   if (!/^\d+\.\d+\.\d+$/.test(v)) return null;
-  const res = await fetch(`${MIRROR_NODE}/accounts/${v}`, {
-    headers: { Accept: "application/json" },
-  });
+  const res = await mirrorFetch(`${MIRROR_NODE}/accounts/${v}`);
   if (!res.ok) return null;
   const json = (await res.json().catch(() => null)) as { evm_address?: unknown } | null;
   const evm = json?.evm_address;
@@ -125,7 +143,7 @@ export async function resolvePageForOwner(owner: string): Promise<RegisteredPage
     const url =
       `${MIRROR_NODE}/contracts/${REGISTRY_ID}/results` +
       `?from=${evm}&order=desc&limit=50`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await mirrorFetch(url);
     if (!res.ok) return null;
     const json = (await res.json().catch(() => null)) as { results?: unknown } | null;
     const results = Array.isArray(json?.results) ? (json.results as ContractResultShape[]) : [];
