@@ -281,20 +281,15 @@ describe("buildVoicescapeAgentProfileWithUaid", () => {
 });
 
 describe("getHcs10RegistryTopic", () => {
-  it("returns the known testnet registry", () => {
-    expect(getHcs10RegistryTopic("testnet")).toBe("0.0.7311321");
+  it("returns null rather than guessing (mainnet only — no testnet)", () => {
+    expect(getHcs10RegistryTopic()).toBeNull();
   });
 
-  it("returns null for mainnet rather than guessing", () => {
-    expect(getHcs10RegistryTopic("mainnet")).toBeNull();
-  });
-
-  it("HCS10_REGISTRY_TOPIC env override wins on both networks", () => {
+  it("HCS10_REGISTRY_TOPIC env override wins", () => {
     const prev = process.env.HCS10_REGISTRY_TOPIC;
     process.env.HCS10_REGISTRY_TOPIC = "0.0.999999";
     try {
-      expect(getHcs10RegistryTopic("mainnet")).toBe("0.0.999999");
-      expect(getHcs10RegistryTopic("testnet")).toBe("0.0.999999");
+      expect(getHcs10RegistryTopic()).toBe("0.0.999999");
     } finally {
       if (prev === undefined) delete process.env.HCS10_REGISTRY_TOPIC;
       else process.env.HCS10_REGISTRY_TOPIC = prev;
@@ -305,7 +300,7 @@ describe("getHcs10RegistryTopic", () => {
     const prev = process.env.HCS10_REGISTRY_TOPIC;
     process.env.HCS10_REGISTRY_TOPIC = "not-a-topic";
     try {
-      expect(getHcs10RegistryTopic("mainnet")).toBeNull();
+      expect(getHcs10RegistryTopic()).toBeNull();
     } finally {
       if (prev === undefined) delete process.env.HCS10_REGISTRY_TOPIC;
       else process.env.HCS10_REGISTRY_TOPIC = prev;
@@ -318,11 +313,11 @@ describe("hcs10RegistrationSteps", () => {
     const steps = hcs10RegistrationSteps({
       agentName: "Helper Bot",
       accountId: "0.0.222",
-      network: "testnet",
+      network: "mainnet",
     });
     expect(steps).toHaveLength(5);
     expect(steps.join("\n")).toContain("Helper Bot");
-    expect(steps.join("\n")).toContain("0.0.7311321");
+    expect(steps.join("\n")).toContain("@hashgraphonline/standards-sdk");
   });
 
   it("tells mainnet users to resolve the registry via the SDK", () => {
@@ -341,7 +336,7 @@ describe("hcs10RegistrationSteps", () => {
     const steps = hcs10RegistrationSteps({
       agentName: "Helper Bot",
       accountId: "0.0.222",
-      network: "testnet",
+      network: "mainnet",
     });
     expect(steps[0]).toContain("hcs-10:0:0:0:0.0.222");
     expect(steps[0]).not.toContain("hcs-10:0:1:0:0.0.222");

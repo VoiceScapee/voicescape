@@ -49,7 +49,7 @@ export function assertHcsMessageFits(message: object): string {
 interface WalletSigner {
   signAndExecuteTransaction(params: object): Promise<unknown>;
   accountId: string;
-  network: "mainnet" | "testnet" | "previewnet";
+  network: "mainnet"; // mainnet only — no testnet
 }
 
 /**
@@ -59,15 +59,10 @@ interface WalletSigner {
  */
 async function checkHcsTxLanded(
   txId: string,
-  network: "mainnet" | "testnet" | "previewnet",
+  network: "mainnet",
 ): Promise<"success" | "failed" | "unknown"> {
   try {
-    const base =
-      network === "mainnet"
-        ? "https://mainnet.mirrornode.hedera.com/api/v1"
-        : network === "testnet"
-          ? "https://testnet.mirrornode.hedera.com/api/v1"
-          : "https://previewnet.mirrornode.hedera.com/api/v1";
+    const base = "https://mainnet.mirrornode.hedera.com/api/v1";
     // txId is the SDK @ form (0.0.x@seconds.nanos); the mirror only
     // answers the dash form, so normalize before querying.
     const res = await fetch(`${base}/transactions/${encodeURIComponent(toMirrorTxId(txId))}`);
@@ -103,12 +98,7 @@ export async function submitHcsViaWallet(
     TransactionId,
   } = await import("@hiero-ledger/sdk");
 
-  const networkClient =
-    signer.network === "mainnet"
-      ? Client.forMainnet()
-      : signer.network === "previewnet"
-        ? Client.forPreviewnet()
-        : Client.forTestnet();
+  const networkClient = Client.forMainnet(); // mainnet only — no testnet
 
   try {
     const accountId = AccountId.fromString(signer.accountId);

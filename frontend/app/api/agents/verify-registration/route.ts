@@ -8,7 +8,8 @@ import {
 } from "@/lib/server/agents/verify-registration";
 
 /**
- * GET /api/agents/verify-registration?username=<name> | ?accountId=0.0.x [&network=testnet]
+ * GET /api/agents/verify-registration?username=<name> | ?accountId=0.0.x
+ * Mainnet only.
  *
  * Read-only HCS-10 registration check. Verifies the three on-chain
  * artifacts every HCS-10 agent needs — inbound topic, outbound topic,
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams;
   const username = (q.get("username") ?? "").trim() || undefined;
   const accountId = (q.get("accountId") ?? "").trim() || undefined;
-  const network: VerifyNetwork = q.get("network") === "testnet" ? "testnet" : "mainnet";
+  const network: VerifyNetwork = "mainnet"; // mainnet only — no testnet
 
   if (!username && !accountId) {
     return NextResponse.json(

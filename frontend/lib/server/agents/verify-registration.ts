@@ -26,7 +26,7 @@ import {
   parseHcs10TopicMemo,
 } from "@/lib/hcs10";
 
-export type VerifyNetwork = "mainnet" | "testnet";
+export type VerifyNetwork = "mainnet"; // mainnet only — no testnet
 
 export interface TopicCheck {
   ok: boolean;
@@ -66,9 +66,7 @@ export class VerifierError extends Error {
 }
 
 function mirrorBase(network: VerifyNetwork): string {
-  return network === "mainnet"
-    ? "https://mainnet.mirrornode.hedera.com"
-    : "https://testnet.mirrornode.hedera.com";
+  return "https://mainnet.mirrornode.hedera.com";
 }
 
 async function fetchJson(url: string): Promise<any> {
@@ -183,7 +181,7 @@ async function checkRegistryRegistration(args: {
   accountId: string;
   network: VerifyNetwork;
 }): Promise<RegistryCheck> {
-  const registryTopicId = getHcs10RegistryTopic(args.network);
+  const registryTopicId = getHcs10RegistryTopic();
   if (!registryTopicId) {
     return {
       status: "unconfigured",
@@ -290,7 +288,7 @@ export async function verifyAgentRegistration(args: {
   /** Origin of this app, e.g. https://voicescape.vercel.app — used to read our own directory for username → account resolution. */
   origin: string;
 }): Promise<VerificationResult> {
-  const network: VerifyNetwork = args.network === "testnet" ? "testnet" : "mainnet";
+  const network: VerifyNetwork = "mainnet"; // mainnet only — no testnet
   let username: string | null = null;
   let accountId = (args.accountId ?? "").trim();
   if (args.username && args.username.trim()) {

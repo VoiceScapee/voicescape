@@ -19,7 +19,7 @@ import {
 
 const TEST_CTX: BuildContext = {
   payerAccountId: "0.0.12345",
-  network: "testnet",
+  network: "mainnet",
 };
 
 describe("parseInstruction — tips", () => {

@@ -18,11 +18,9 @@
 
 import { longZeroToAccountId } from "./session-message";
 
-/** Mirror-node REST base for a chain key. */
+/** Mirror-node REST base (mainnet only — no testnet). */
 export function mirrorBaseFor(chainKey: string): string {
-  return chainKey === "hedera-mainnet"
-    ? "https://mainnet.mirrornode.hedera.com/api/v1"
-    : "https://testnet.mirrornode.hedera.com/api/v1";
+  return "https://mainnet.mirrornode.hedera.com/api/v1";
 }
 
 /**

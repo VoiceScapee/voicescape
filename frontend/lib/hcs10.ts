@@ -171,8 +171,8 @@ export interface VoicescapeAgentProfile {
   model?: string;
   /** The agent's Hedera account id, e.g. "0.0.1234". Enables the HCS-14 `uaid`. */
   accountId?: string;
-  /** Network for the HCS-14 `nativeId`. Defaults to "mainnet" when accountId is given. */
-  network?: "mainnet" | "testnet";
+  /** Network for the HCS-14 `nativeId` (mainnet only). */
+  network?: "mainnet";
   /** Filled in after the agent creates its HCS-10 topics. */
   inboundTopicId?: string;
   /** Filled in after the agent creates its HCS-10 topics. */
@@ -276,7 +276,7 @@ export function mapCapabilitiesToSkills(capabilities: string[]): number[] {
 export async function buildHcs14Uaid(args: {
   name: string;
   accountId: string;
-  network: "mainnet" | "testnet";
+  network: "mainnet"; // mainnet only — no testnet
   capabilities?: string[];
 }): Promise<string> {
   const { createHash } = await import("node:crypto");
@@ -350,7 +350,7 @@ export function buildVoicescapeAgentProfile(
 export async function buildVoicescapeAgentProfileWithUaid(
   p: VoicescapeAgentProfile & {
     accountId: string;
-    network: "mainnet" | "testnet";
+    network: "mainnet"; // mainnet only — no testnet
   },
 ): Promise<string> {
   const uaid = await buildHcs14Uaid({
@@ -364,32 +364,18 @@ export async function buildVoicescapeAgentProfileWithUaid(
 }
 
 /**
- * HCS-10 registry topic per network.
- *
- * Testnet value is the OpenConvAI default used by community tooling.
- * Mainnet: resolve via the official standards SDK
- * (`@hashgraphonline/standards-sdk`) or the hashgraphonline docs — this
- * returns null rather than guessing an id.
- */
-/**
- * The HCS-10 registry topic agents register on.
+ * The HCS-10 registry topic agents register on (mainnet only — no testnet).
  *
  * There is NO canonical mainnet registry topic published in the (Draft)
  * HCS-10 spec — registries are HCS-2 topics and anyone can run one. So:
  * - `HCS10_REGISTRY_TOPIC` env var wins when set (operator's choice of
  *   registry — e.g. the Hashgraph Online registry once identified).
- * - Testnet falls back to the widely-referenced OpenConvAI registry
- *   `0.0.7311321`. NOTE (2026-09-15): the testnet mirror currently
- *   returns "Topic not found" for it — verify before relying on it.
- * - Mainnet returns null (unconfigured) rather than a guessed topic id.
+ * - Otherwise returns null (unconfigured) rather than a guessed topic id.
  *   Callers must treat null as "registry check unavailable", not as a pass.
  */
-export function getHcs10RegistryTopic(
-  network: "mainnet" | "testnet",
-): string | null {
+export function getHcs10RegistryTopic(): string | null {
   const override = (process.env.HCS10_REGISTRY_TOPIC ?? "").trim();
   if (/^0\.0\.\d+$/.test(override)) return override;
-  if (network === "testnet") return "0.0.7311321";
   return null;
 }
 
@@ -401,20 +387,20 @@ export function getHcs10RegistryTopic(
 export function hcs10RegistrationSteps(args: {
   agentName: string;
   accountId: string;
-  network: "mainnet" | "testnet";
+  network: "mainnet"; // mainnet only — no testnet
 }): string[] {
   // NOTE: indexed=0 here ("all messages should be read") to match both the
   // HCS-10 spec examples and the actual unsigned transactions emitted by
   // buildHcs10TopicTransactions. A previous revision of this checklist said
   // indexed=1, contradicting the bytes we hand the agent — fixed 2026-09-15.
-  const registry = getHcs10RegistryTopic(args.network);
+  const registry = getHcs10RegistryTopic();
   return [
     `1. Create an inbound topic with memo "${buildHcs10TopicMemo({ indexed: 0, ttl: 0, type: HCS10_TOPIC_TYPE.INBOUND, params: args.accountId })}" (public; add a fee config to monetize connections).`,
     `2. Create an outbound topic with memo "${buildHcs10TopicMemo({ indexed: 1, ttl: 0, type: HCS10_TOPIC_TYPE.OUTBOUND })}" (submit key = your agent key).`,
     `3. Build your agent profile with buildVoicescapeAgentProfile() and serialize it as the register message data.`,
     registry
       ? `4. Submit buildHcs10RegisterMessage() to registry topic ${registry}.`
-      : `4. Resolve the ${args.network} HCS-10 registry topic via @hashgraphonline/standards-sdk, then submit buildHcs10RegisterMessage() to it.`,
+      : `4. Resolve the mainnet HCS-10 registry topic via @hashgraphonline/standards-sdk, then submit buildHcs10RegisterMessage() to it.`,
     `5. Your agent "${args.agentName}" is now discoverable by every HCS-10 agent on Hedera.`,
   ];
 }

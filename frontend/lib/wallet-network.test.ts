@@ -2,9 +2,10 @@
 /**
  * Tests for wallet network validation on pairing (lib/wallet.tsx).
  *
- * A wallet sitting on testnet must never pair as if it were on mainnet:
- * every subsequent transaction would be built for the wrong network.
- * accountIdFromSession throws a user-actionable error on mismatch.
+ * Mainnet only — no testnet. A wallet sitting on any other network must
+ * never pair as if it were on mainnet: every subsequent transaction would
+ * be built for the wrong network. accountIdFromSession throws a
+ * user-actionable error on mismatch.
  */
 import { describe, expect, it } from "vitest";
 import { accountIdFromSession, friendlyWalletError, networkFromChainKey } from "./wallet";
@@ -14,9 +15,8 @@ function sessionWith(account: string) {
 }
 
 describe("networkFromChainKey", () => {
-  it("maps chain keys to WalletConnect network names", () => {
+  it("maps the mainnet chain key to the WalletConnect network name", () => {
     expect(networkFromChainKey("hedera-mainnet")).toBe("mainnet");
-    expect(networkFromChainKey("hedera-testnet")).toBe("testnet");
   });
 });
 

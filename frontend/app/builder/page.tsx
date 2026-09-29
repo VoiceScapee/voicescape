@@ -1733,7 +1733,7 @@ function VibecodeChat({
       if (!pairing) throw new Error("Connect a Hedera wallet (HashPack / Blade / WalletConnect) to pay.");
       const { getActiveChain } = await import("@/lib/chains");
       const activeChain = getActiveChain();
-      const network = activeChain.key === "hedera-mainnet" ? "mainnet" : "testnet";
+      const network = "mainnet"; // mainnet only — no testnet
       const signer = createWalletHederaSigner(pairing.accountId, async (tx) => {
         // Serialize to base64 — avoids hiero-sdk/hashgraph-sdk type friction.
         const txBytes = tx.toBytes();

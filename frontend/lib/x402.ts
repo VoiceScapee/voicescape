@@ -27,9 +27,7 @@ import { ExactHederaScheme } from "@x402/hedera/exact/client";
 import type { ClientHederaSigner } from "@x402/hedera";
 import {
   HEDERA_MAINNET_CAIP2,
-  HEDERA_TESTNET_CAIP2,
   HEDERA_MAINNET_USDC,
-  HEDERA_TESTNET_USDC,
   HEDERA_USDC_DECIMALS,
   isHbarAsset,
 } from "@x402/hedera";
@@ -66,16 +64,15 @@ function base64ToJson<T>(b64: string): T {
 /* Rails                                                               */
 /* ------------------------------------------------------------------ */
 
-/** Canonical USDC token id per Hedera network (from @x402/hedera). */
+/** Canonical USDC token id for Hedera mainnet (from @x402/hedera). No testnet. */
 export const USDC_ASSET_BY_NETWORK: Record<string, string> = {
-  [HEDERA_TESTNET_CAIP2]: HEDERA_TESTNET_USDC,
   [HEDERA_MAINNET_CAIP2]: HEDERA_MAINNET_USDC,
 };
 
 export type RailKind = "HBAR" | "USDC" | "TOKEN";
 
 export interface X402Rail {
-  /** CAIP-2 network id, e.g. "hedera:testnet". */
+  /** CAIP-2 network id, e.g. "hedera:mainnet". */
   network: `${string}:${string}`;
   asset: string;
   kind: RailKind;
@@ -344,8 +341,7 @@ export function createWalletHederaSigner(accountId: string, signTx: WalletSignTx
       // facilitator's fee-payer account as the payer.
       tx.setTransactionId(TransactionId.generate(AccountId.fromString(feePayer)));
 
-      const client =
-        requirements.network === HEDERA_MAINNET_CAIP2 ? Client.forMainnet() : Client.forTestnet();
+      const client = Client.forMainnet(); // mainnet only — no testnet
       try {
         tx.freezeWith(client);
         const signed = await signTx(tx);

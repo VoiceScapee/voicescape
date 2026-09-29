@@ -279,7 +279,7 @@ describe("RealMirrorPort sender resolution", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_TREASURY_ADDRESS = "0.0.999";
     process.env.DUST_FEE_TINYBARS = "1000";
-    process.env.TOWNHALL_HCS_NETWORK = "testnet";
+    process.env.TOWNHALL_HCS_NETWORK = "mainnet";
   });
   afterEach(() => {
     for (const [k, v] of [

@@ -11,7 +11,7 @@
  */
 import { getTreasuryId } from "@/lib/contracts";
 
-export type TownhallNetwork = "testnet" | "mainnet" | "previewnet";
+export type TownhallNetwork = "mainnet";
 
 export type TopicDomain = "forum" | "chat" | "votes" | "governance" | "market";
 
@@ -23,45 +23,14 @@ const TOPIC_ENV: Record<TopicDomain, string> = {
   market: "TOWNHALL_TOPIC_MARKET",
 };
 
+/** Town Hall network — mainnet only, no testnet (Brandon's rule 2026-09-28). */
 export function townhallNetwork(): TownhallNetwork {
-  const raw = (process.env.TOWNHALL_HCS_NETWORK ?? "testnet").toLowerCase();
-  if (raw === "mainnet" || raw === "previewnet" || raw === "testnet") return raw;
-  return "testnet";
+  return "mainnet";
 }
 
-/**
- * Fail-loud boot check: TOWNHALL_HCS_NETWORK silently defaults to testnet
- * when unset or invalid, which breaks every Town Hall write in production.
- * The default is unchanged — this just makes the misconfiguration loud in
- * server logs at startup so it can't go unnoticed.
- */
-if (typeof process !== "undefined" && process.env.TOWNHALL_HCS_NETWORK === undefined) {
-  // eslint-disable-next-line no-console
-  console.error(
-    "[townhall] TOWNHALL_HCS_NETWORK is not set — defaulting to testnet. " +
-      "Set TOWNHALL_HCS_NETWORK=mainnet in production or all Town Hall writes will target testnet.",
-  );
-} else if (typeof process !== "undefined") {
-  const rawCheck = String(process.env.TOWNHALL_HCS_NETWORK).toLowerCase();
-  if (rawCheck !== "mainnet" && rawCheck !== "testnet" && rawCheck !== "previewnet") {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[townhall] TOWNHALL_HCS_NETWORK="${process.env.TOWNHALL_HCS_NETWORK}" is invalid — ` +
-        "defaulting to testnet. Use mainnet, testnet, or previewnet.",
-    );
-  }
-}
-
-/** Hedera mirror node REST base URL for the Town Hall network. */
+/** Hedera mirror node REST base URL for the Town Hall network (mainnet). */
 export function mirrorBaseUrl(): string {
-  switch (townhallNetwork()) {
-    case "mainnet":
-      return "https://mainnet.mirrornode.hedera.com";
-    case "previewnet":
-      return "https://previewnet.mirrornode.hedera.com";
-    default:
-      return "https://testnet.mirrornode.hedera.com";
-  }
+  return "https://mainnet.mirrornode.hedera.com";
 }
 
 /** Topic id for a domain, or null when not configured. */
