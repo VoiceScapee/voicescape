@@ -1005,20 +1005,20 @@ export function DannysVision({
           </section>
         )}
 
-        {popup && popupDef && (
+        {popup && (popup === "engine" || popupDef) && (
           <div className="dv-backdrop" onPointerDown={() => setPopup(null)}>
             <div
               className="dv-card"
               role="dialog"
-              aria-label={`${popup === "engine" ? centerLabel : (popupDef.label ?? NODE_TITLES[popup] ?? popup)} status`}
+              aria-label={`${popup === "engine" ? centerLabel : (popupDef?.label ?? NODE_TITLES[popup] ?? popup)} status`}
               onPointerDown={(e) => e.stopPropagation()}
             >
               <div className="dv-card-head">
                 <span
                   className="dv-card-dot"
-                  style={{ background: popupDef.color }}
+                  style={{ background: popup === "engine" ? TEAL : (popupDef?.color ?? TEAL) }}
                 />
-                <b>{popup === "engine" ? centerLabel : (popupDef.label ?? NODE_TITLES[popup] ?? popup)}</b>
+                <b>{popup === "engine" ? centerLabel : (popupDef?.label ?? NODE_TITLES[popup] ?? popup)}</b>
                 <button
                   className="dv-card-x"
                   aria-label="Close"
@@ -1029,7 +1029,7 @@ export function DannysVision({
               </div>
               <div className="dv-card-headline">
                 {popupInfo?.headline ??
-                  popupDef.quietNote ??
+                  popupDef?.quietNote ??
                   "Listening for activity."}
               </div>
               {(popupInfo?.lines ?? []).map((l, i) => (
