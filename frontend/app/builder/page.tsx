@@ -1261,6 +1261,10 @@ function VibecodeChat({
   const [x402Rails, setX402Rails] = useState<X402Rail[] | null>(null);
   const [x402Rail, setX402Rail] = useState<X402Rail | null>(null);
   const [x402Pending, setX402Pending] = useState<string | null>(null);
+  // Round-2 simplify (2026-09-28): the rail picker is collapsed by default —
+  // the cheapest rail is auto-selected, humans never choose between payment
+  // methods for the same edit.
+  const [showRails, setShowRails] = useState(false);
   const [x402Note, setX402Note] = useState<{ kind: "info" | "err" | "ok"; text: string } | null>(null);
   // Human-first claim flow (Brandon 2026-09-27): AI pay-per-edit needs the
   // wallet — to pay, and to make the page theirs. BYOK stays wallet-free
@@ -1362,15 +1366,22 @@ function VibecodeChat({
     setX402Note(null);
     setX402Rails(null);
     setX402Rail(null);
+    setShowRails(false);
     setX402Pending(instruction);
     setLoading(true);
     try {
       const probe = await probeX402(x402Url);
       setX402Rails(probe.rails);
-      setX402Rail(probe.rails[0] ?? null);
+      // Round-2 simplify: default to the cheapest rail so a human never has
+      // to choose between payment methods for the same edit.
+      const cheapest =
+        [...probe.rails].sort(
+          (a, b) => (a.usdCents ?? Number.POSITIVE_INFINITY) - (b.usdCents ?? Number.POSITIVE_INFINITY),
+        )[0] ?? null;
+      setX402Rail(cheapest);
       setMessages((m) => [
         ...m,
-        { role: "assistant", text: "Each AI edit costs a small fee. Pick a payment method below, then pay — your wallet signs one transfer, the AI drafts your changes, and you review before anything goes live." },
+        { role: "assistant", text: "Each AI edit costs a small fee. Your wallet signs one transfer, the AI drafts your changes, and you review before anything goes live." },
       ]);
     } catch (e) {
       setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
@@ -1630,28 +1641,51 @@ function VibecodeChat({
           </p>
           {x402Rails && x402Pending && (
             <>
-              <div className="pv-rail-row" role="group" aria-label="Payment method">
-                {x402Rails.map((r) => {
-                  const cheapestCents = Math.min(...x402Rails.map((x) => x.usdCents ?? Number.POSITIVE_INFINITY));
-                  const isCheapest = x402Rails.length > 1 && r.usdCents === cheapestCents;
-                  return (
-                    <button
-                      key={`${r.network}:${r.asset}`}
-                      type="button"
-                      className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
-                      onClick={() => setX402Rail(r)}
-                      disabled={loading}
-                    >
-                      <span className="pv-rail-name">{r.label}</span>
-                      <span className="pv-rail-amt">
-                        {r.amountDisplay} · {formatUsdCents(r.usdCents)}
-                      </span>
-                      {isCheapest && <span className="pv-rail-tag">cheapest</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="vb-x402-status">Same edit — the price depends on the payment method you pick.</p>
+              {/* Round-2 simplify: the selected (cheapest) rail is shown as a
+                  quiet line; the full picker hides behind "change payment
+                  method" instead of confronting every first-timer. */}
+              {x402Rail && (
+                <p className="vb-x402-status">
+                  Paying with <strong>{x402Rail.label}</strong> · {x402Rail.amountDisplay}
+                  {x402Rails.length > 1 && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className="vb-quiet-link"
+                        onClick={() => setShowRails((s) => !s)}
+                        disabled={loading}
+                        style={{ fontSize: "inherit" }}
+                      >
+                        {showRails ? "hide options" : "change payment method"}
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
+              {showRails && x402Rails.length > 1 && (
+                <div className="pv-rail-row" role="group" aria-label="Payment method">
+                  {x402Rails.map((r) => {
+                    const cheapestCents = Math.min(...x402Rails.map((x) => x.usdCents ?? Number.POSITIVE_INFINITY));
+                    const isCheapest = x402Rails.length > 1 && r.usdCents === cheapestCents;
+                    return (
+                      <button
+                        key={`${r.network}:${r.asset}`}
+                        type="button"
+                        className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
+                        onClick={() => setX402Rail(r)}
+                        disabled={loading}
+                      >
+                        <span className="pv-rail-name">{r.label}</span>
+                        <span className="pv-rail-amt">
+                          {r.amountDisplay} · {formatUsdCents(r.usdCents)}
+                        </span>
+                        {isCheapest && <span className="pv-rail-tag">cheapest</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               <button
                 type="button"
                 className="vs-btn vs-btn-primary"
@@ -2266,9 +2300,11 @@ function PublishPanel({
 /* ---------------------------------------------------------------- */
 
 const TABS = [
-  { id: "customize", label: "Customize", icon: <IconGrid size={16} /> },
-  { id: "ai", label: "AI", icon: <IconSpark size={16} /> },
-  { id: "publish", label: "Publish", icon: <IconBolt size={16} /> },
+  // Round-2 simplify (2026-09-28): numbered so a first-timer sees the order
+  // — design, then AI polish, then publish.
+  { id: "customize", label: "1 · Customize", icon: <IconGrid size={16} /> },
+  { id: "ai", label: "2 · AI edit", icon: <IconSpark size={16} /> },
+  { id: "publish", label: "3 · Publish", icon: <IconBolt size={16} /> },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -2702,7 +2738,7 @@ function BuilderInner() {
           <button
             type="button"
             className="vs-btn vs-btn-primary vb-buddy-banner-cta"
-            onClick={() => window.dispatchEvent(new CustomEvent("vs-open-buddy"))}
+            onClick={() => window.dispatchEvent(new CustomEvent("vs-open-buddy", { detail: { intent: "build" } }))}
           >
             Ask Buddy to build it
           </button>
@@ -2875,17 +2911,37 @@ function BuilderInner() {
                   </button>
                 </div>
               </div>
+              {/* Round-2 simplify: guided next-step nudge for first-timers. */}
+              <button
+                type="button"
+                className="vs-btn vs-btn-ghost"
+                onClick={() => setTab("ai")}
+                style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
+              >
+                Next: polish with AI →
+              </button>
             </>
           )}
 
           {tab === "ai" && (
-            <VibecodeChat
-              page={page}
-              draft={aiDraft}
-              onDraftChange={setAiDraft}
-              onApplyDraft={applyDraft}
-              onDiscardDraft={discardDraft}
-            />
+            <>
+              <VibecodeChat
+                page={page}
+                draft={aiDraft}
+                onDraftChange={setAiDraft}
+                onApplyDraft={applyDraft}
+                onDiscardDraft={discardDraft}
+              />
+              {/* Round-2 simplify: guided next-step nudge for first-timers. */}
+              <button
+                type="button"
+                className="vs-btn vs-btn-ghost"
+                onClick={() => setTab("publish")}
+                style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
+              >
+                Next: publish your page →
+              </button>
+            </>
           )}
 
           {tab === "publish" && (

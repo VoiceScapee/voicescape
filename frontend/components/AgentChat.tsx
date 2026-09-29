@@ -327,13 +327,25 @@ export default function AgentChat() {
   }, []);
 
   // Builder banner handoff (2026-09-28): the builder's "Ask Buddy to build
-  // it" banner dispatches this to open the chat. Plain CustomEvent, no
-  // payload — opening is all it does.
+  // it" banner dispatches this to open the chat. With { intent: "build" }
+  // the banner jumps straight into build mode — same as tapping the
+  // "🛠️ Build with me" chip — instead of leaving the user to find it.
+  const buildIntentRef = useRef(false);
   useEffect(() => {
-    const onOpenBuddy = () => setOpen(true);
+    const onOpenBuddy = (e: Event) => {
+      buildIntentRef.current =
+        (e as CustomEvent<{ intent?: string }>).detail?.intent === "build";
+      setOpen(true);
+    };
     window.addEventListener("vs-open-buddy", onOpenBuddy);
     return () => window.removeEventListener("vs-open-buddy", onOpenBuddy);
   }, []);
+  useEffect(() => {
+    if (open && buildIntentRef.current && !busy) {
+      buildIntentRef.current = false;
+      void sendMessage("🛠️ Build with me");
+    }
+  });
 
   // Keep a saved position on-screen across rotation/resize.
   useEffect(() => {
