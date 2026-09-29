@@ -29,7 +29,8 @@ import {
   PlatformIcon,
 } from "@/components/icons";
 import {
-  BLOCK_TYPES,
+  PICKER_BLOCK_TYPES,
+  PICKER_LABELS,
   createDefaultBlock,
   isValidPage,
   type Block,
@@ -46,6 +47,11 @@ import {
   normalizeSocialUrl,
 } from "@/lib/socials";
 import { pinAudioFile } from "@/lib/ipfs";
+import {
+  applyOnboardSocials,
+  buildDesignFromLinksInstruction,
+  socialsUrls,
+} from "@/lib/quickbuild";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -1413,10 +1419,11 @@ function ChecklistCard({
     }
   }, []);
   if (dismissed) return null;
+  // Quick-build (2026-09-29): 3 real items. The old "Pick a template" and
+  // "See it live in the preview" entries were hardcoded done:true — a padded
+  // checklist is noise, not progress.
   const items = [
-    { label: "Pick a template", done: true },
     { label: "Name your page", done: nameDone },
-    { label: "See it live in the preview", done: true },
     { label: "Connect your wallet to claim it", done: walletDone },
     { label: "Publish & share your link", done: publishedDone },
   ];
@@ -1936,6 +1943,9 @@ function VibecodeChat({
 
 
   const showSuggestions = messages.length <= 1 && !loading && !draft;
+  // Quick-build one-tap: the AI designs from the pasted socials. Always
+  // visible; disabled with a hint until there's at least one link.
+  const designLinkCount = socialsUrls(page).length;
 
   return (
     <div className="vb-chat vs-card">
@@ -1944,6 +1954,28 @@ function VibecodeChat({
           <IconSpark size={16} />
         </span>
         Vibecode AI
+      </div>
+
+      <div style={{ padding: "10px 12px 0" }}>
+        <button
+          type="button"
+          className="vs-btn vs-btn-primary"
+          style={{ width: "100%", justifyContent: "center" }}
+          onClick={() => send(buildDesignFromLinksInstruction(page))}
+          disabled={loading || designLinkCount === 0}
+          title={
+            designLinkCount > 0
+              ? "The AI designs a full page from your pasted links — same price as a typed edit"
+              : "Paste some links into your socials block first (Customize tab)"
+          }
+        >
+          ✨ Design my page from my links
+        </button>
+        {designLinkCount === 0 && (
+          <p className="vs-hint" style={{ marginTop: 6 }}>
+            Paste your social links into the socials block first — the AI designs from those.
+          </p>
+        )}
       </div>
 
       <div className="vb-chat-log">
@@ -3043,7 +3075,10 @@ function BuilderInner() {
       if (/^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/.test(slug)) {
         fresh.username = slug;
       }
-      setPage(fresh);
+      // Quick-build (2026-09-29): pre-fill the socials block from the
+      // onboarding sheet's pasted links (pure helper — see lib/quickbuild).
+      const withSocials = applyOnboardSocials(fresh, draft.socials);
+      setPage(withSocials);
     }
     setDraftOwnerType(draft.ownerType === 1 ? "agent" : "human");
   }, []);
@@ -3400,7 +3435,6 @@ function BuilderInner() {
                 walletDone={!!account}
                 publishedDone={!!publishedUsername}
               />
-              <ThemeEditor theme={page.theme} onChange={updateTheme} />
 
               <div>
                 <div className="vb-panel-title">Blocks</div>
@@ -3439,11 +3473,9 @@ function BuilderInner() {
                     onChange={(e) => setAddType(e.target.value as BlockType)}
                     aria-label="Block type to add"
                   >
-                    {BLOCK_TYPES.map((bt) => (
+                    {PICKER_BLOCK_TYPES.map((bt) => (
                       <option key={bt} value={bt}>
-                        {/* Socials shows its translated friendly name; the other
-                            types keep their legacy raw display for now. */}
-                        {bt === "socials" ? t("builder.socialsTitle") : bt}
+                        {PICKER_LABELS[bt] ?? bt}
                       </option>
                     ))}
                   </select>
@@ -3455,16 +3487,16 @@ function BuilderInner() {
                     <IconPlus size={16} /> Add block
                   </button>
                 </div>
+                {addType === "socials" && (
+                  <p className="vs-hint" style={{ marginTop: 6 }}>
+                    Paste any link — social profiles get their platform icon automatically.
+                  </p>
+                )}
               </div>
-              {/* Round-2 simplify: guided next-step nudge for first-timers. */}
-              <button
-                type="button"
-                className="vs-btn vs-btn-ghost"
-                onClick={() => setTab("ai")}
-                style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
-              >
-                Next: polish with AI →
-              </button>
+
+              {/* Quick-build audit (2026-09-29): theme sits below content —
+                  first-timers style a page that exists, not a blank canvas. */}
+              <ThemeEditor theme={page.theme} onChange={updateTheme} />
             </>
           )}
 
@@ -3477,15 +3509,9 @@ function BuilderInner() {
                 onApplyDraft={applyDraft}
                 onDiscardDraft={discardDraft}
               />
-              {/* Round-2 simplify: guided next-step nudge for first-timers. */}
-              <button
-                type="button"
-                className="vs-btn vs-btn-ghost"
-                onClick={() => setTab("publish")}
-                style={{ width: "100%", justifyContent: "center", marginTop: 12 }}
-              >
-                Next: publish your page →
-              </button>
+              {/* Quick-build audit (2026-09-29): the "Next: publish" nudge is
+                  gone — the numbered tabs (1·Customize 2·AI edit 3·Publish)
+                  already do this job. One navigation mechanism. */}
             </>
           )}
 

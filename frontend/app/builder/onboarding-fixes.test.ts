@@ -98,9 +98,13 @@ describe("dismissable checklist", () => {
     expect(builderSrc).toContain("Your blockpage");
   });
 
-  it("everything on it is honest state, nothing decorative", () => {
-    expect(builderSrc).toContain('label: "Pick a template", done: true');
+  it("lists only the three real jobs — name, wallet, publish (n/3)", () => {
+    expect(builderSrc).toContain('label: "Name your page"');
     expect(builderSrc).toContain('label: "Connect your wallet to claim it"');
+    expect(builderSrc).toContain('label: "Publish & share your link"');
+    // The old padded items were hardcoded done:true — gone.
+    expect(builderSrc).not.toContain('label: "Pick a template"');
+    expect(builderSrc).not.toContain('label: "See it live in the preview"');
   });
 });
 
@@ -121,5 +125,23 @@ describe("seeded templates", () => {
   it("templates ship with editable example content, not blank pages", () => {
     expect(templatesSrc).toContain("Alex Rivera");
     expect(templatesSrc).toContain("Building decentralized apps. Open to collabs.");
+  });
+});
+
+describe("quick-build redundancy audit (2026-09-29)", () => {
+  it("removes the duplicate next-step nudge buttons — the numbered tabs already navigate", () => {
+    expect(builderSrc).not.toContain("Next: polish with AI");
+    expect(builderSrc).not.toContain("Next: publish your page");
+  });
+
+  it("adds a one-tap design button that reuses the existing AI send path", () => {
+    expect(builderSrc).toContain("Design my page from my links");
+    expect(builderSrc).toContain("buildDesignFromLinksInstruction(page)");
+    // It goes through send(), not a new payment path.
+    expect(builderSrc).toContain("onClick={() => send(buildDesignFromLinksInstruction(page))}");
+  });
+
+  it("applies the onboarding draft's socials through the pure helper", () => {
+    expect(builderSrc).toContain("applyOnboardSocials(fresh, draft.socials)");
   });
 });

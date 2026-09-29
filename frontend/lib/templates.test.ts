@@ -111,3 +111,48 @@ describe("bacon-the-dino template", () => {
     expect(haystack).not.toContain("compass");
   });
 });
+
+describe("quick-build: every template ships a socials block", () => {
+  it("every template contains at least one socials block", () => {
+    const missing = TEMPLATES.filter(
+      (t) => !t.page.blocks.some((b) => b.type === "socials"),
+    ).map((t) => t.id);
+    expect(missing).toEqual([]);
+  });
+
+  it("every socials item has a valid platform and an https URL", () => {
+    for (const t of TEMPLATES) {
+      for (const b of t.page.blocks) {
+        if (b.type !== "socials") continue;
+        for (const item of b.items) {
+          expect(
+            ["x", "instagram", "tiktok", "youtube", "twitch", "facebook", "discord", "linkedin", "github", "website"],
+            `template ${t.id}`,
+          ).toContain(item.platform);
+          expect(item.url, `template ${t.id}`).toMatch(/^https:\/\//);
+        }
+      }
+    }
+  });
+
+  it("the business-card template converted its profile links to socials", () => {
+    const bc = TEMPLATES.find((t) => t.id === "business-card")!;
+    const socials = bc.page.blocks.find((b) => b.type === "socials");
+    expect(socials?.type).toBe("socials");
+    if (socials?.type === "socials") {
+      expect(socials.items.map((i) => i.platform)).toEqual(["github", "linkedin", "x"]);
+    }
+    expect(bc.page.blocks.some((b) => b.type === "links")).toBe(false);
+  });
+
+  it("functional links blocks survive where they do a different job", () => {
+    // Restaurant menu/order, cinema schedule, and the founder's on-chain
+    // proof links are functional, not profiles — they stay as links, with an
+    // empty socials block alongside.
+    for (const id of ["restaurant", "movie-theater", "founder"]) {
+      const t = TEMPLATES.find((x) => x.id === id)!;
+      expect(t.page.blocks.some((b) => b.type === "links"), id).toBe(true);
+      expect(t.page.blocks.some((b) => b.type === "socials"), id).toBe(true);
+    }
+  });
+});

@@ -203,6 +203,44 @@ export const BLOCK_TYPES = [
   "badges",
 ] as const;
 
+/**
+ * Quick-build (2026-09-29, Brandon: "Delete out anything that's redundant"):
+ * the Add-block picker's visible list. First-principles: a first-timer needs
+ * one way to do each job — these hidden types either duplicate another
+ * block's job or serve no first-timer job at all. The schema and renderers
+ * keep every type, so existing pages render identically.
+ *
+ * Hidden and why:
+ * - links: the socials block accepts generic websites too — one smart entry.
+ * - top8: "who I know" duplicates the socials block's connection job.
+ * - chat: live room duplicates guestbook's "talk to me" job; the guestbook
+ *   is simpler and works with zero visitors.
+ * - badges: identity signaling already covered by hero + bio.
+ * - tabs: meta-container complexity — not a first-timer job.
+ * - operator: agent disclosure is enforced by the publish panel; agent
+ *   templates pre-include the block.
+ * - capabilities: descriptive list duplicates bio + services; agent templates
+ *   pre-include it.
+ */
+const PICKER_HIDDEN: ReadonlySet<BlockType> = new Set([
+  "links",
+  "top8",
+  "chat",
+  "badges",
+  "tabs",
+  "operator",
+  "capabilities",
+]);
+
+export const PICKER_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter(
+  (t) => !PICKER_HIDDEN.has(t),
+);
+
+/** Friendly picker labels overriding the raw type names. */
+export const PICKER_LABELS: Partial<Record<BlockType, string>> = {
+  socials: "🔗 Links & socials",
+};
+
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
 /** Create a blank block of the given type with sensible defaults. */
