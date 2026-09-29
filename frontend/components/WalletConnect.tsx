@@ -31,6 +31,19 @@ function shortAccount(account: string): string {
   return account.length > 13 ? `${account.slice(0, 6)}…${account.slice(-4)}` : account;
 }
 
+/**
+ * True when the browser has an injected EVM provider (MetaMask or another
+ * Ethereum wallet). Those wallets can't sign Hedera-native transactions,
+ * but the underlying key IS a valid Hedera key: importing it into HashPack
+ * gives the same address. Used to show the same-seed import hint in the
+ * wallet picker instead of letting the user hit a dead end.
+ */
+function hasEvmProvider(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as { ethereum?: unknown };
+  return w.ethereum !== undefined && w.ethereum !== null;
+}
+
 export function WalletConnect() {
   const { account, isConnecting, error, bootSettled, userDisconnected, connect, disconnect } = useWallet();
   const { t } = useLanguage();
@@ -388,6 +401,21 @@ export function WalletConnect() {
                 Get HashPack (free)
               </ExternalLink>
             </div>
+            {hasEvmProvider() && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--vs-border)" }}>
+                Using MetaMask or another Ethereum wallet?{" "}
+                <ExternalLink
+                  href="https://www.hashpack.app"
+                  style={{ color: "var(--vs-accent)", textDecoration: "underline" }}
+                >
+                  Import your existing key into HashPack
+                </ExternalLink>
+                <div style={{ marginTop: 4, fontSize: 11 }}>
+                  It&apos;s the same key, so it&apos;s the same address — no new
+                  wallet to back up. Takes about 2 minutes.
+                </div>
+              </div>
+            )}
             <div style={{ marginTop: 4, fontSize: 11 }}>
               A wallet lets you create pages and receive tips.
             </div>
