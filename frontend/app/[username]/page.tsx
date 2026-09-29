@@ -793,6 +793,78 @@ function ClaimCongratsCard({ routeUsername }: { routeUsername: string }) {
   );
 }
 
+const JUST_PUBLISHED_KEY = "vs-just-published";
+
+/**
+ * One-time "it's live — share it" card. The builder sets the
+ * sessionStorage flag right before redirecting here on a confirmed publish;
+ * read-once here so the card never reappears on later visits.
+ */
+function JustPublishedBanner({ username }: { username: string }) {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    try {
+      if (
+        (sessionStorage.getItem(JUST_PUBLISHED_KEY) ?? "").toLowerCase() ===
+        username.toLowerCase()
+      ) {
+        sessionStorage.removeItem(JUST_PUBLISHED_KEY);
+        setShow(true);
+      }
+    } catch {
+      /* storage unavailable — no banner */
+    }
+  }, [username]);
+  if (!show) return null;
+  const url =
+    typeof window !== "undefined" ? window.location.href.split("?")[0] : `/${username}`;
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = url;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+  const share = async () => {
+    if (typeof navigator !== "undefined" && "share" in navigator) {
+      try {
+        await navigator.share({ title: `/${username} on Voicescape`, url });
+        return;
+      } catch {
+        /* user cancelled — fall through to copy */
+      }
+    }
+    await copyLink();
+  };
+  return (
+    <div role="status" className="vs-congrats">
+      <div className="vs-congrats-big" aria-hidden="true">
+        🎉
+      </div>
+      <h2>Your page is live!</h2>
+      <p>
+        <span className="vs-mono">/{username}</span> is on-chain — share it everywhere.
+      </p>
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
+        <button type="button" className="vs-btn vs-btn-primary" onClick={copyLink}>
+          {copied ? "✅ Copied!" : "🔗 Copy link"}
+        </button>
+        <button type="button" className="vs-btn vs-btn-ghost" onClick={share}>
+          📤 Share
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Public page                                                         */
 /* ------------------------------------------------------------------ */
@@ -960,6 +1032,7 @@ function PublicPageInner({ username }: { username: string }) {
   return (
     <>
       <ClaimCongratsCard routeUsername={username} />
+      <JustPublishedBanner username={username} />
       <OnChainLiveBadge owner={state.meta.owner} />
       <PageRenderer
         page={state.page}

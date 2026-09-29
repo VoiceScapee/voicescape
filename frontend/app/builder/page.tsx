@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import PageRenderer from "@/components/PageRenderer";
@@ -1111,6 +1111,339 @@ function ThemeEditor({
 }
 
 /* ---------------------------------------------------------------- */
+/* Name-first claim (2026-09-28): pick the blockpage name BEFORE the     */
+/* wallet connects. Inline availability via /api/resolve, debounced.    */
+/* ---------------------------------------------------------------- */
+
+type NameAvailability = "idle" | "checking" | "available" | "taken" | "mine" | "error";
+
+/** True when an on-chain owner address and a wallet account id are the same. */
+function sameOnchainOwner(ownerAddr: string, account: string): boolean {
+  const o = ownerAddr.trim().toLowerCase();
+  const a = account.trim().toLowerCase();
+  if (!o || !a) return false;
+  if (o === a) return true;
+  if (/^0\.0\.\d+$/.test(a)) {
+    try {
+      const asEvm = "0x" + BigInt(a.slice(4)).toString(16).padStart(40, "0");
+      if (o === asEvm) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+/**
+ * Debounced on-chain availability for a candidate blockpage name.
+ * "mine" = taken, but the connected wallet owns it (publish will update).
+ */
+function useUsernameAvailability(name: string, account: string | null): NameAvailability {
+  const [state, setState] = useState<NameAvailability>("idle");
+  useEffect(() => {
+    const candidate = name.trim().toLowerCase();
+    if (!isValidUsername(candidate)) {
+      setState("idle");
+      return;
+    }
+    setState("checking");
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/resolve?username=${encodeURIComponent(candidate)}`, {
+          cache: "no-store",
+        });
+        if (cancelled) return;
+        // 404 = name not registered = available. Any other non-OK is a
+        // failed check, never "available".
+        if (res.status === 404) {
+          setState("available");
+          return;
+        }
+        if (!res.ok) {
+          setState("error");
+          return;
+        }
+        if (account) {
+          try {
+            const data = (await res.json()) as { owner?: string };
+            if (data.owner && sameOnchainOwner(data.owner, account)) {
+              setState("mine");
+              return;
+            }
+          } catch {
+            /* fall through to taken */
+          }
+        }
+        setState("taken");
+      } catch {
+        if (!cancelled) setState("error");
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [name, account]);
+  return state;
+}
+
+/** Shared blockpage-name field: sanitized input + inline availability. */
+function UsernameField({
+  username,
+  onChange,
+  account,
+  availability,
+  label,
+  hint,
+}: {
+  username: string;
+  onChange: (v: string) => void;
+  account: string | null;
+  availability: NameAvailability;
+  label: string;
+  hint?: string;
+}) {
+  const trimmed = username.trim().toLowerCase();
+  const valid = isValidUsername(trimmed);
+  return (
+    <div className="vb-field">
+      <span className="vs-label">{label}</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+        <span className="vs-mono" style={{ fontSize: 15, color: "var(--vs-muted)" }}>
+          /
+        </span>
+        <input
+          className="vs-input vs-mono"
+          value={username}
+          onChange={(e) =>
+            onChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
+          }
+          placeholder="your-name"
+          style={{ fontSize: 15 }}
+          aria-label="Blockpage name"
+          autoComplete="off"
+          spellCheck={false}
+        />
+        <span style={{ marginLeft: 8, fontSize: 16 }} aria-hidden="true">
+          {availability === "checking"
+            ? "…"
+            : availability === "available" || availability === "mine"
+              ? "✅"
+              : availability === "taken"
+                ? "❌"
+                : ""}
+        </span>
+      </div>
+      {hint && <div className="vb-info-hint">{hint}</div>}
+      {!valid && username.length > 0 && (
+        <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
+      )}
+      {valid && availability === "available" && (
+        <div className="vb-username-hint" style={{ color: "var(--vs-ok, #4ade80)" }}>
+          ✅ <span className="vs-mono">/{trimmed}</span> is available — it&apos;s yours when you publish.
+        </div>
+      )}
+      {valid && availability === "mine" && (
+        <div className="vb-username-hint" style={{ color: "var(--vs-ok, #4ade80)" }}>
+          ✅ <span className="vs-mono">/{trimmed}</span> is already yours — publishing updates it.
+        </div>
+      )}
+      {valid && availability === "taken" && (
+        <div className="vb-username-hint" style={{ color: "var(--vs-err, #f87171)" }}>
+          That name is taken — try another.
+        </div>
+      )}
+      {valid && availability === "error" && (
+        <div className="vb-username-hint">
+          Couldn&apos;t check availability — the network decides at publish.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* Dismissable progress checklist (2026-09-28): endowed progress —   */
+/* template + preview start checked; everything is skippable.        */
+/* ---------------------------------------------------------------- */
+
+const CHECKLIST_DISMISS_KEY = "vs-builder-checklist-dismissed";
+
+function ChecklistCard({
+  nameDone,
+  walletDone,
+  publishedDone,
+}: {
+  nameDone: boolean;
+  walletDone: boolean;
+  publishedDone: boolean;
+}) {
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(CHECKLIST_DISMISS_KEY) === "1");
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  if (dismissed) return null;
+  const items = [
+    { label: "Pick a template", done: true },
+    { label: "Name your page", done: nameDone },
+    { label: "See it live in the preview", done: true },
+    { label: "Connect your wallet to claim it", done: walletDone },
+    { label: "Publish & share your link", done: publishedDone },
+  ];
+  const doneCount = items.filter((i) => i.done).length;
+  return (
+    <div className="vs-card" role="note" aria-label="Your progress" style={{ marginBottom: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <strong style={{ fontSize: 14 }}>
+          Your blockpage {doneCount}/{items.length}
+        </strong>
+        <button
+          type="button"
+          className="vb-quiet-link"
+          aria-label="Dismiss checklist"
+          onClick={() => {
+            try {
+              localStorage.setItem(CHECKLIST_DISMISS_KEY, "1");
+            } catch {
+              /* ignore */
+            }
+            setDismissed(true);
+          }}
+        >
+          ✕
+        </button>
+      </div>
+      <ul style={{ listStyle: "none", margin: "8px 0 0", padding: 0, fontSize: 13 }}>
+        {items.map((item) => (
+          <li
+            key={item.label}
+            style={{
+              padding: "3px 0",
+              color: item.done ? "var(--vs-muted)" : "var(--vs-text)",
+            }}
+          >
+            {item.done ? "✅" : "⬜"} {item.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
+/* HashPack profile import (2026-09-28): one-tap pre-fill from the    */
+/* free HashPack Profile API (HNS name, bio, X handle). Skippable.    */
+/* ---------------------------------------------------------------- */
+
+interface HashpackProfile {
+  username: string | null;
+  bio: string | null;
+  twitterHandle: string | null;
+}
+
+function HashpackProfileImport({
+  account,
+  onUseName,
+  onUseDisplayName,
+}: {
+  account: string;
+  onUseName: (name: string) => void;
+  onUseDisplayName: (displayName: string) => void;
+}) {
+  const [state, setState] = useState<"idle" | "loading" | "done" | "empty" | "error" | "dismissed">(
+    "idle",
+  );
+  const [profile, setProfile] = useState<HashpackProfile | null>(null);
+
+  if (state === "dismissed") return null;
+
+  const load = async () => {
+    setState("loading");
+    try {
+      const res = await fetch(`/api/hashpack-profile?account=${encodeURIComponent(account)}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("lookup failed");
+      const data = (await res.json()) as HashpackProfile;
+      if (!data.username && !data.bio && !data.twitterHandle) {
+        setState("empty");
+        return;
+      }
+      setProfile(data);
+      setState("done");
+    } catch {
+      setState("error");
+    }
+  };
+
+  // HNS names look like "brandon.hbar" — the registry wants the bare label.
+  const bareName =
+    profile?.username?.split(".")[0]?.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24) ?? "";
+  const nameUsable = bareName.length > 0 && isValidUsername(bareName);
+
+  return (
+    <div className="vb-info-hint" style={{ marginTop: 8 }}>
+      {state === "idle" && (
+        <button type="button" className="vb-quiet-link" onClick={load}>
+          ✨ Import my HashPack profile
+        </button>
+      )}
+      {state === "loading" && <span>Looking up your HashPack profile…</span>}
+      {state === "empty" && <span>No HashPack profile found for this wallet — no problem.</span>}
+      {state === "error" && <span>Couldn&apos;t reach the profile service — you can type everything manually.</span>}
+      {state === "done" && profile && (
+        <span>
+          Found{profile.username ? <strong> @{profile.username}</strong> : " your profile"}
+          {nameUsable && (
+            <>
+              {" — "}
+              <button
+                type="button"
+                className="vb-quiet-link"
+                onClick={() => {
+                  onUseName(bareName);
+                  setState("dismissed");
+                }}
+              >
+                use “{bareName}” as my page name
+              </button>
+            </>
+          )}
+          {profile.username && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                className="vb-quiet-link"
+                onClick={() => {
+                  onUseDisplayName(profile.username as string);
+                  setState("dismissed");
+                }}
+              >
+                use as display name
+              </button>
+            </>
+          )}{" "}
+          <button
+            type="button"
+            className="vb-quiet-link"
+            aria-label="Dismiss profile import"
+            onClick={() => setState("dismissed")}
+          >
+            ✕
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------- */
 /* Template picker                                                   */
 /* ---------------------------------------------------------------- */
 
@@ -1746,14 +2079,19 @@ function PublishPanel({
   page,
   onPageChange,
   initialOwnerType,
-  initialVanity,
+  username,
+  onUsernameChange,
+  availability,
   liaisonAssisted,
 }: {
   page: VoicescapePage;
   onPageChange: (p: VoicescapePage) => void;
   initialOwnerType?: "human" | "agent";
-  /** A custom name suggested by a loaded draft (e.g. the ?draft= link). */
-  initialVanity?: string | null;
+  /** The blockpage name — owned by the builder so step 1 can edit it pre-wallet. */
+  username: string;
+  onUsernameChange: (v: string) => void;
+  /** On-chain availability of the name (shared with the step-1 field). */
+  availability: NameAvailability;
   /**
    * True when the canvas holds the liaison's wallet-bound draft. Code
    * assertion (never convention): liaison-assisted pages ALWAYS publish as
@@ -1795,29 +2133,8 @@ function PublishPanel({
   const chain = getActiveChain();
   const registry = getRegistryAddress() ?? "(not set)";
 
-  // KISS identity: the wallet address IS the page name. The derived name
-  // (user-10424063) is the default; a custom name is an optional claim.
-  // Falls back to EVM-derived name when only an EVM address is available.
-  const derivedUsername = account
-    ? (deriveUsername(account) ?? deriveUsernameFromEvm(account))
-    : null;
-  // KISS: single editable username. Defaults to the wallet-derived name,
-  // user can change it to anything (e.g. 0xcreator). One name, one publish.
-  const [username, setUsername] = useState("");
-  useEffect(() => {
-    if (!account) return;
-    if (initialVanity && isValidUsername(initialVanity)) {
-      setUsername(initialVanity);
-      return;
-    }
-    const stored = getVanityName(account);
-    if (stored) {
-      setUsername(stored);
-      return;
-    }
-    if (derivedUsername) setUsername(derivedUsername);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [account]);
+  // The name is owned by the builder (name-first: picked before the wallet
+  // connects). Publish just trims + validates the shared value.
   const usernameTrimmed = username.trim().toLowerCase();
   const usernameValid = isValidUsername(usernameTrimmed);
 
@@ -1867,6 +2184,10 @@ function PublishPanel({
     }
     if (!usernameValid) {
       setStatus({ kind: "err", text: "Username must be 3–24 chars: lowercase letters, numbers, hyphens." });
+      return;
+    }
+    if (availability === "taken") {
+      setStatus({ kind: "err", text: "That name is taken — pick another one." });
       return;
     }
     // Validate agent disclosure BEFORE pinning/paying anything.
@@ -2070,7 +2391,13 @@ function PublishPanel({
         setStatus({ kind: "ok", text: "Published!" });
       }
       if (confirmed) {
-        // Redirect to the live page only once it provably resolves.
+        // Redirect to the live page only once it provably resolves. Stash a
+        // one-time flag so the page can show the "it's live — share it" card.
+        try {
+          sessionStorage.setItem("vs-just-published", target);
+        } catch {
+          /* ignore */
+        }
         window.location.href = `/${target}`;
       } else {
         // Don't send the user to a 404 — confirmation card (#5) with a
@@ -2121,48 +2448,57 @@ function PublishPanel({
         Publish
       </div>
 
-      <div className="vb-field">
-        <span className="vs-label">Your blockpage URL</span>
-        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
-          <span className="vs-mono" style={{ fontSize: 15, color: "var(--vs-muted)" }}>/</span>
-          <input
-            className="vs-input vs-mono"
-            value={username}
-            onChange={(e) =>
-              setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
-            }
-            placeholder={derivedUsername ?? "connect your wallet…"}
-            style={{ fontSize: 15 }}
-            aria-label="Page username"
-          />
-        </div>
-        <div className="vb-info-hint">
-          Your wallet is your identity — no sign-up needed. Pick any name, like 0xcreator.
-        </div>
-        {!usernameValid && username.length > 0 && (
-          <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
-        )}
-      </div>
+      <UsernameField
+        username={username}
+        onChange={onUsernameChange}
+        account={account}
+        availability={availability}
+        label="Your blockpage URL"
+        hint="Your wallet is your identity — no sign-up needed. The name is yours when you publish."
+      />
+      {account && (
+        <HashpackProfileImport
+          account={account}
+          onUseName={(name) => onUsernameChange(name)}
+          onUseDisplayName={(displayName) => {
+            onPageChange({
+              ...page,
+              blocks: page.blocks.map((b) =>
+                b.type === "hero" ? { ...b, title: displayName } : b,
+              ),
+            });
+          }}
+        />
+      )}
 
+      {/* Human is the default for everyone; the agent path (with its
+          on-chain disclosure requirements) sits behind a quiet toggle so
+          humans never have to parse agent compliance copy. */}
       <span className="vs-label">Page owner</span>
-      <div className="pv-rail-row" role="group" aria-label="Page owner type" style={{ marginBottom: 4 }}>
-        <button
-          type="button"
-          className={`pv-rail-btn${ownerType === "human" ? " is-active" : ""}`}
-          onClick={() => setOwnerType("human")}
-        >
-          <span className="pv-rail-name">🧑 Human</span>
-          <span className="pv-rail-amt">a person&apos;s page</span>
-        </button>
-        <button
-          type="button"
-          className={`pv-rail-btn${ownerType === "agent" ? " is-active" : ""}`}
-          onClick={() => setOwnerType("agent")}
-        >
-          <span className="pv-rail-name">🤖 Agent</span>
-          <span className="pv-rail-amt">AI-operated · disclosure required</span>
-        </button>
-      </div>
+      {ownerType === "human" ? (
+        <div style={{ marginBottom: 4 }}>
+          <span className="vs-chip">🧑 Human page</span>
+          {!liaisonAssisted && (
+            <>
+              {" "}
+              <button
+                type="button"
+                className="vb-quiet-link"
+                onClick={() => setOwnerType("agent")}
+              >
+                Making this for an AI agent? Add disclosure →
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        <div style={{ marginBottom: 4 }}>
+          <span className="vs-chip">🤖 Agent page</span>{" "}
+          <button type="button" className="vb-quiet-link" onClick={() => setOwnerType("human")}>
+            ← back to human
+          </button>
+        </div>
+      )}
 
       {ownerType === "agent" && (
         <div className="vb-agent-fields">
@@ -2222,13 +2558,23 @@ function PublishPanel({
       </div>
 
       <WalletConnect />
+      {!account && (
+        <div className="vb-info-hint" style={{ marginTop: 8 }}>
+          New to crypto? In HashPack you can create an account with just an email — no seed
+          phrase to write down — then come back and publish.
+        </div>
+      )}
 
       <div className="vb-pub-actions">
+        <p className="vb-info-hint" style={{ marginBottom: 8 }}>
+          Publishing registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
+          Hedera. Your wallet will ask you to approve one transaction — nothing else happens.
+        </p>
         <button
           type="button"
           className="vs-btn vs-btn-primary"
           onClick={() => publish()}
-          disabled={busy || !account || !usernameValid}
+          disabled={busy || !account || !usernameValid || availability === "taken"}
         >
           {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish page</>)}
         </button>
@@ -2324,6 +2670,20 @@ function BuilderInner() {
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
+
+  // Name-first claim (2026-09-28): the blockpage name is picked in step 1,
+  // before any wallet connects. The wallet-derived name (or a remembered
+  // vanity name) only auto-fills while the visitor hasn't typed their own —
+  // connecting a wallet never clobbers a chosen name.
+  const [username, setUsernameRaw] = useState("");
+  const nameTouchedRef = useRef(false);
+  const setUsername = useCallback((v: string) => {
+    nameTouchedRef.current = true;
+    setUsernameRaw(v);
+  }, []);
+  const usernameTrimmed = username.trim().toLowerCase();
+  const usernameValid = isValidUsername(usernameTrimmed);
+  const nameAvailability = useUsernameAvailability(usernameTrimmed, account);
 
   // Human-first claim flow (Brandon 2026-09-27): no-wallet visitors get a
   // 3-step tutorial; the wallet connect is framed as "make it yours".
@@ -2663,6 +3023,31 @@ function BuilderInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account]);
 
+  // Name auto-fill (name-first, 2026-09-28): draft suggestions (?draft=
+  // link, Buddy handoff, or this wallet's already-published name) win until
+  // the visitor types their own name; then the remembered vanity name or
+  // the wallet-derived name fills in. A typed name is never clobbered.
+  useEffect(() => {
+    if (nameTouchedRef.current) return;
+    if (draftVanity && isValidUsername(draftVanity)) {
+      setUsernameRaw(draftVanity);
+      return;
+    }
+    if (publishedUsername && isValidUsername(publishedUsername)) {
+      setUsernameRaw(publishedUsername);
+      return;
+    }
+    if (!account) return;
+    const stored = getVanityName(account);
+    if (stored) {
+      setUsernameRaw(stored);
+      return;
+    }
+    const derived = deriveUsername(account) ?? deriveUsernameFromEvm(account);
+    if (derived) setUsernameRaw(derived);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, draftVanity, publishedUsername]);
+
   const updateTheme = (key: keyof VoicescapePage["theme"], value: string) =>
     editPage((p) => ({ ...p, theme: { ...p.theme, [key]: value } }));
 
@@ -2769,8 +3154,8 @@ function BuilderInner() {
             <div className="vb-tutorial-step">
               <span className="vb-tutorial-num">1</span>
               <div>
-                <strong>Describe it</strong>
-                <span>Say what you want, or start from a template.</span>
+                <strong>Name it</strong>
+                <span>Pick your blockpage name — see instantly if it&apos;s free.</span>
               </div>
             </div>
             <div className="vb-tutorial-step">
@@ -2857,6 +3242,21 @@ function BuilderInner() {
 
           {tab === "customize" && (
             <>
+              {/* Name-first (2026-09-28): the blockpage name is picked here in
+                  step 1 — no wallet needed. Same shared state as publish. */}
+              <UsernameField
+                username={username}
+                onChange={setUsername}
+                account={account}
+                availability={nameAvailability}
+                label="Your blockpage name"
+                hint="Pick it now — claim it on-chain when you publish. No wallet needed yet."
+              />
+              <ChecklistCard
+                nameDone={usernameValid && nameAvailability !== "taken"}
+                walletDone={!!account}
+                publishedDone={!!publishedUsername}
+              />
               <ThemeEditor theme={page.theme} onChange={updateTheme} />
 
               <div>
@@ -2949,10 +3349,12 @@ function BuilderInner() {
               page={page}
               onPageChange={(p) => editPage(p)}
               initialOwnerType={draftOwnerType ?? undefined}
-              // The wallet's published username (loaded from the network)
-              // defaults the name field so republishing updates the page
-              // on-chain instead of registering a second one.
-              initialVanity={draftVanity ?? publishedUsername}
+              // Name-first: the shared name state (picked in step 1) flows
+              // into publish; the wallet-derived default is applied in the
+              // builder's auto-fill effect, not here.
+              username={username}
+              onUsernameChange={setUsername}
+              availability={nameAvailability}
               liaisonAssisted={liaisonDraftId !== null}
             />
           )}

@@ -35,7 +35,8 @@ describe("builder published-page load", () => {
 
   it("syncs the published username so republish updates, not re-registers", () => {
     expect(src).toContain("setPublishedUsername");
-    expect(src).toContain("draftVanity ?? publishedUsername");
+    // Name-first auto-fill: the published name feeds the shared name state.
+    expect(src).toContain("setUsernameRaw(publishedUsername)");
   });
 
   it("shows a loaded-published notice in the builder header", () => {
