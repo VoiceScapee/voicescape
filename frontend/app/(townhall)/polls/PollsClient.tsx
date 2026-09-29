@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import Link from "next/link";
 import { PresenceDot } from "@/components/townhall/Presence";
 import { useWriteGate } from "@/components/townhall/useTownhall";
@@ -70,9 +71,18 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
   // Reactive finality: after the wallet approves, poll the mirror node
   // until the vote reaches consensus — the UI reacts to the real outcome.
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
-  const confirmStatus = useConfirmedTransaction(confirmTxId);
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  // The receipt shows the network-assigned consensus timestamp, not the
+  // device clock — first-principles fair timing.
+  const confirmOpts = useMemo(
+    () => ({
+      onConsensus: (ts: string | null) =>
+        setFinalizedAt(consensusTimestampToDate(ts ?? "") ?? new Date()),
+    }),
+    [],
+  );
+  const confirmStatus = useConfirmedTransaction(confirmTxId, confirmOpts);
   const [confirmedChoice, setConfirmedChoice] = useState<string | null>(null);
   // Submitted but the mirror node hasn't shown it yet — honest delayed state.
   const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
@@ -123,7 +133,9 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
-      setFinalizedAt(new Date());
+      // onConsensus already set the network timestamp; keep it — only fall
+      // back to the device clock if it somehow didn't fire.
+      setFinalizedAt((prev) => prev ?? new Date());
       setBusy(null);
       recordConversionEvent("vote_submitted");
       onVoted();
@@ -246,9 +258,18 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   // Reactive finality for the proposal HCS transaction.
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
-  const confirmStatus = useConfirmedTransaction(confirmTxId);
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  // The receipt shows the network-assigned consensus timestamp, not the
+  // device clock — first-principles fair timing.
+  const confirmOpts = useMemo(
+    () => ({
+      onConsensus: (ts: string | null) =>
+        setFinalizedAt(consensusTimestampToDate(ts ?? "") ?? new Date()),
+    }),
+    [],
+  );
+  const confirmStatus = useConfirmedTransaction(confirmTxId, confirmOpts);
   const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
   const chain = getActiveChain();
 
@@ -310,7 +331,9 @@ function NewProposalForm({ onCreated }: { onCreated: () => void }) {
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
-      setFinalizedAt(new Date());
+      // onConsensus already set the network timestamp; keep it — only fall
+      // back to the device clock if it somehow didn't fire.
+      setFinalizedAt((prev) => prev ?? new Date());
       recordConversionEvent("proposal_submitted");
       onCreated();
     } else if (confirmStatus === "failed") {

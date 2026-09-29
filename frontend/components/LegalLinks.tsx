@@ -22,6 +22,9 @@ export default function LegalLinks() {
       <Link href="/privacy" style={{ color: "var(--vs-muted)", textDecoration: "underline" }}>
         Privacy
       </Link>
+      <Link href="/trust" style={{ color: "var(--vs-muted)", textDecoration: "underline" }}>
+        Trust
+      </Link>
     </nav>
   );
 }

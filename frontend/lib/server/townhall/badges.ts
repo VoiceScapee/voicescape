@@ -163,6 +163,13 @@ function touch(s: UserStats, tsMs: number): void {
 }
 
 function msgTs(m: StoredMessage): number {
+  // First principles (fair ordering): the network-assigned HCS consensus
+  // timestamp is the provably-fair clock — it reflects when the whole
+  // network received the message, not when the author's device claimed to
+  // send it. A self-reported contents.ts is only a legacy fallback for
+  // messages that predate consensus-timestamp capture.
+  const consensus = Date.parse(m.consensusTimestamp ?? "");
+  if (Number.isFinite(consensus)) return consensus;
   const t = Date.parse((m.contents as { ts?: string }).ts ?? "");
   return Number.isFinite(t) ? t : Date.now();
 }
@@ -961,13 +968,38 @@ export interface LeaderEntry {
   topBadge: Badge | null;
 }
 
+/** Finite first-activity timestamp; non-finite values sort last. */
+function firstTsOf(u: { firstTs: number }): number {
+  return Number.isFinite(u.firstTs) ? u.firstTs : Number.MAX_SAFE_INTEGER;
+}
+
+export interface RankedUser {
+  u: UserStatsEntry;
+  score: number;
+}
+
+/**
+ * Pure leaderboard ranking (testable, no IO).
+ *
+ * Score wins; ties break on earliest HCS consensus activity — provably
+ * non-rigged, since the network (not us) assigned the order. Username is
+ * only the final deterministic fallback.
+ */
+export function rankLeaderboard(entries: RankedUser[]): RankedUser[] {
+  return [...entries].sort(
+    (a, b) =>
+      b.score - a.score ||
+      firstTsOf(a.u) - firstTsOf(b.u) ||
+      a.u.username.localeCompare(b.u.username),
+  );
+}
+
 /** Top 20 users by activity score. Public, session-less, 5-min cached. */
 export async function computeLeaderboard(hcs: HcsPort = defaultHcsPort()): Promise<LeaderEntry[]> {
   const blob = await getTownhallStats(hcs);
-  const ranked = Object.values(blob.users)
-    .map((u) => ({ u, score: scoreFromEntry(u) }))
-    .sort((a, b) => b.score - a.score || a.u.username.localeCompare(b.u.username))
-    .slice(0, 20);
+  const ranked = rankLeaderboard(
+    Object.values(blob.users).map((u) => ({ u, score: scoreFromEntry(u) })),
+  ).slice(0, 20);
 
   return Promise.all(
     ranked.map(async ({ u, score }) => {
