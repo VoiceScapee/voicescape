@@ -3,10 +3,11 @@
 /**
  * Guided onboarding for new users: wallet-connected but no page yet.
  *
- * Three steps:
- *   1. Choose your vibe — template picker + human/agent identity toggle.
- *   2. Make it yours — display name, bio, hero title.
- *   3. Publish — summary, what IPFS + on-chain registration means, CTA.
+ * Builder-simplify (2026-09-28, Brandon: "Do all" #3): the old 3-step
+ * wizard (template → identity → review) is now ONE scrolling sheet — every
+ * section appears in order, the keyboard stays up, Enter jumps to the next
+ * field, and a sticky "Start building →" button is always visible. Fewer
+ * taps, no lost place on mobile.
  *
  * The draft is persisted to localStorage (`vs_onboard_draft`) so the
  * builder can pre-fill on arrival. Completing or skipping sets
@@ -14,7 +15,7 @@
  *
  * Mobile-first: full-screen sheet on small screens, centered card on desktop.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
@@ -124,16 +125,17 @@ export function consumeOnboardDraft(): OnboardDraft | null {
   }
 }
 
-const STEPS = ["Choose your vibe", "Make it yours", "Publish"] as const;
-
 export function Onboarding({ onDone, account }: { onDone: () => void; account?: string | null }) {
   const router = useRouter();
-  const [step, setStep] = useState(0);
   const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
   const [ownerType, setOwnerType] = useState<0 | 1>(0);
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
   const [heroTitle, setHeroTitle] = useState("");
+  // Enter-to-next: the keyboard stays up, Enter jumps down the form.
+  const displayNameRef = useRef<HTMLInputElement>(null);
+  const heroTitleRef = useRef<HTMLInputElement>(null);
+  const bioRef = useRef<HTMLTextAreaElement>(null);
 
   const isAgent = ownerType === 1;
   const template: Template = TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0];
@@ -182,32 +184,16 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
           background: "#0d0d1c",
         }}
       >
-        {/* Progress */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          {STEPS.map((label, i) => (
-            <div key={label} style={{ flex: 1 }}>
-              <div
-                style={{
-                  height: 4,
-                  borderRadius: 2,
-                  background: i <= step ? "var(--vs-cyan, #22d3ee)" : "rgba(255,255,255,0.12)",
-                  transition: "background 0.2s",
-                }}
-              />
-            </div>
-          ))}
-        </div>
+        {/* Single-scroll header — no step chrome anymore. */}
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            marginBottom: 16,
+            marginBottom: 18,
           }}
         >
-          <span className="vs-mono" style={{ fontSize: 12, color: "var(--vs-muted)" }}>
-            Step {step + 1} of 3 — {STEPS[step]}
-          </span>
+          <h2 style={{ fontSize: 22, margin: 0 }}>Make your blockpage</h2>
           <button
             onClick={skip}
             className="vs-btn vs-btn-ghost"
@@ -217,14 +203,13 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
           </button>
         </div>
 
-        {/* Step 1: template + identity */}
-        {step === 0 && (
-          <div>
-            <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Choose your vibe</h2>
+        {/* Section 1: template + identity */}
+        <section aria-label="Choose your vibe">
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>Choose your vibe</h3>
             <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", lineHeight: 1.6 }}>
               {isAgent
                 ? "Pick a starting look for your agent's blockpage. You can restyle everything later — or via the API."
-                : "Pick a starting look. You'll make it yours in the next step — nothing is final."}
+                : "Pick a starting look. Make it yours below — nothing is final."}
             </p>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 20 }}>
@@ -302,13 +287,11 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 </p>
               )}
             </div>
-          </div>
-        )}
+        </section>
 
-        {/* Step 2: identity fields */}
-        {step === 1 && (
-          <div>
-            <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Make it yours</h2>
+        {/* Section 2: identity fields — Enter jumps to the next field. */}
+        <section aria-label="Make it yours" style={{ marginTop: 26 }}>
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>Make it yours</h3>
             <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", lineHeight: 1.6 }}>
               {isAgent
                 ? "How should the world know your agent? You can add links and API details later."
@@ -319,11 +302,16 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 Display name
               </span>
               <input
+                ref={displayNameRef}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder={isAgent ? "e.g. Scout-7" : "e.g. Alex"}
                 maxLength={60}
                 style={inputStyle}
+                enterKeyHint="next"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") heroTitleRef.current?.focus();
+                }}
               />
             </label>
             <label style={{ display: "block", marginBottom: 14 }}>
@@ -331,11 +319,16 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 Hero title
               </span>
               <input
+                ref={heroTitleRef}
                 value={heroTitle}
                 onChange={(e) => setHeroTitle(e.target.value)}
                 placeholder={isAgent ? "e.g. I find the best deals on-chain" : "e.g. Welcome to my blockpage"}
                 maxLength={80}
                 style={inputStyle}
+                enterKeyHint="next"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") bioRef.current?.focus();
+                }}
               />
             </label>
             <label style={{ display: "block", marginBottom: 8 }}>
@@ -343,6 +336,7 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 Bio
               </span>
               <textarea
+                ref={bioRef}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 placeholder={
@@ -353,15 +347,14 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 maxLength={500}
                 rows={4}
                 style={{ ...inputStyle, resize: "vertical" }}
+                enterKeyHint="done"
               />
             </label>
-          </div>
-        )}
+        </section>
 
-        {/* Step 3: publish summary */}
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontSize: 22, margin: "0 0 4px" }}>Publish your blockpage</h2>
+        {/* Section 3: what publish does — plain words, no surprises later. */}
+        <section aria-label="What happens when you publish" style={{ marginTop: 26 }}>
+          <h3 style={{ fontSize: 16, margin: "0 0 4px" }}>What happens when you publish</h3>
             <p style={{ color: "var(--vs-muted)", fontSize: 14, margin: "0 0 16px", lineHeight: 1.6 }}>
               Here's what happens when you hit publish in the builder:
             </p>
@@ -406,37 +399,26 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
                 Start here →
               </Link>
             </p>
-          </div>
-        )}
+        </section>
 
-        {/* Nav */}
-        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
-          {step > 0 && (
-            <button
-              onClick={() => setStep((s) => s - 1)}
-              className="vs-btn vs-btn-ghost"
-              style={{ padding: "12px 18px", fontSize: 14 }}
-            >
-              Back
-            </button>
-          )}
-          {step < 2 ? (
-            <button
-              onClick={() => setStep((s) => s + 1)}
-              className="vs-btn vs-btn-primary"
-              style={{ flex: 1, padding: "12px 18px", fontSize: 15, fontWeight: 600 }}
-            >
-              Continue
-            </button>
-          ) : (
-            <button
-              onClick={finish}
-              className="vs-btn vs-btn-primary"
-              style={{ flex: 1, padding: "12px 18px", fontSize: 15, fontWeight: 600 }}
-            >
-              Start building →
-            </button>
-          )}
+        {/* Sticky CTA — always visible while scrolling the sheet. */}
+        <div
+          style={{
+            position: "sticky",
+            bottom: 0,
+            marginTop: 22,
+            paddingTop: 12,
+            paddingBottom: 4,
+            background: "#0d0d1c",
+          }}
+        >
+          <button
+            onClick={finish}
+            className="vs-btn vs-btn-primary"
+            style={{ width: "100%", padding: "14px 18px", fontSize: 16, fontWeight: 700 }}
+          >
+            Start building →
+          </button>
         </div>
       </div>
     </div>

@@ -1174,3 +1174,124 @@ select.vs-input option {
     gap: 12px;
   }
 }
+
+/* Builder-simplify (2026-09-28, Brandon: "Do all") — Buddy build banner. */
+.vb-buddy-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(34, 211, 238, 0.07);
+  border: 1px solid rgba(34, 211, 238, 0.28);
+}
+.vb-buddy-banner-icon {
+  font-size: 26px;
+  flex-shrink: 0;
+}
+.vb-buddy-banner-text {
+  flex: 1;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--vs-text);
+}
+.vb-buddy-banner-cta {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.vb-buddy-banner-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--vs-muted);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 6px;
+  line-height: 1;
+}
+@media (max-width: 640px) {
+  .vb-buddy-banner {
+    flex-wrap: wrap;
+  }
+  .vb-buddy-banner-cta {
+    width: 100%;
+  }
+}
+
+/* Builder-simplify — publish progress overlay. */
+.vb-publish-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(4, 4, 12, 0.82);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.vb-publish-overlay-card {
+  background: #0d0d1c;
+  border: 1px solid var(--vs-border);
+  border-radius: 16px;
+  padding: 28px 26px;
+  max-width: 340px;
+  width: 100%;
+  text-align: center;
+}
+.vb-spinner {
+  width: 42px;
+  height: 42px;
+  margin: 0 auto 16px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: var(--vs-cyan, #22d3ee);
+  animation: vb-spin 0.9s linear infinite;
+}
+@keyframes vb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.vb-publish-overlay-title {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--vs-text);
+}
+.vb-publish-overlay-sub {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--vs-muted);
+  margin: 0;
+}
+
+/* Builder-simplify — post-publish confirmation card (unconfirmed path). */
+.vb-published-card {
+  margin-top: 14px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  text-align: center;
+}
+.vb-published-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 4px;
+  color: var(--vs-text);
+}
+.vb-published-card-sub {
+  font-size: 13px;
+  color: var(--vs-muted);
+  line-height: 1.55;
+  margin: 0 0 12px;
+}
+.vb-published-card-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+}

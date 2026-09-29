@@ -484,6 +484,10 @@ function BlockEditor({
             placeholder="Tip jar message (optional)"
             onChange={(e) => onChange({ ...block, message: e.target.value })}
           />
+          <span className="vs-hint">
+            💸 You keep 98% of every tip — 2% keeps Voicescape running. The split is
+            enforced on-chain, no middleman.
+          </span>
         </label>
       )}
 
@@ -1732,6 +1736,14 @@ function PublishPanel({
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  // Builder-simplify (2026-09-28): staged publish progress for the overlay
+  // (#4) — pinning -> wallet signature -> on-chain confirmation.
+  const [publishStage, setPublishStage] = useState<"pinning" | "wallet" | "confirming" | null>(null);
+  // Builder-simplify (#5): unconfirmed-path confirmation card — the tx is
+  // sent but the name doesn't resolve yet, so give the user a copy-link
+  // card instead of a vague status line.
+  const [pendingPage, setPendingPage] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
   // Phase B: who owns this page — human or agent. Agents MUST disclose an
   // operator wallet + purpose (the registry contract reverts otherwise).
   const [ownerType, setOwnerType] = useState<"human" | "agent">(
@@ -1795,6 +1807,8 @@ function PublishPanel({
   const publish = async () => {
     setStatus(null);
     setTxHash(null);
+    setPendingPage(null);
+    setLinkCopied(false);
     // Session: use the stored one; if the user dismissed the auto-prompt at
     // connect time, request the signature once here (graceful).
     try {
@@ -1854,6 +1868,7 @@ function PublishPanel({
       purposeText = "";
     }
     setBusy(true);
+    setPublishStage("pinning");
     try {
       // Stamp the page JSON with the derived username plus the informational
       // owner type / purpose, and sync the operator block (if present) with
@@ -1918,6 +1933,8 @@ function PublishPanel({
       }, 15000);
       let hash: string;
       try {
+        // Wallet step starts here: the prompt fires inside publishName.
+        setPublishStage("wallet");
         hash = await publishName(target);
       } finally {
         clearTimeout(waitingNote);
@@ -1926,6 +1943,7 @@ function PublishPanel({
       setVanityName(account, target);
       // KISS: verify the name actually resolves on-chain before redirecting.
       // A wallet "success" + blind redirect is what produced the 404s.
+      setPublishStage("confirming");
       setStatus({ kind: "info", text: "Confirming on-chain… (waiting for the network)" });
       let confirmed = false;
       for (let i = 0; i < 10; i++) {
@@ -2021,21 +2039,47 @@ function PublishPanel({
         // Redirect to the live page only once it provably resolves.
         window.location.href = `/${target}`;
       } else {
-        // Don't send the user to a 404 — show the tx and a manual link.
+        // Don't send the user to a 404 — confirmation card (#5) with a
+        // copy-link next action instead of a vague status line.
+        setPendingPage(target);
         setStatus({
-          kind: "info",
-          text: `Transaction sent (${hash.slice(0, 10)}…). The page will appear at /${target} once the network confirms it — give it a minute, then tap below.`,
+          kind: "ok",
+          text: `Transaction sent (${hash.slice(0, 10)}…).`,
         });
       }
     } catch (e) {
       setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setBusy(false);
+      setPublishStage(null);
     }
   };
 
   return (
     <div className="vb-pub vs-card">
+      {/* Builder-simplify (#4): staged progress overlay so the pin → wallet
+          → confirm sequence never looks like a dead screen. */}
+      {busy && publishStage && (
+        <div className="vb-publish-overlay" role="alert" aria-live="assertive">
+          <div className="vb-publish-overlay-card">
+            <div className="vb-spinner" aria-hidden="true" />
+            <div className="vb-publish-overlay-title">
+              {publishStage === "pinning"
+                ? "Saving your page…"
+                : publishStage === "wallet"
+                  ? "Approve in your wallet…"
+                  : "Confirming on-chain…"}
+            </div>
+            <p className="vb-publish-overlay-sub">
+              {publishStage === "pinning"
+                ? "Storing your blockpage on IPFS — keep this tab open."
+                : publishStage === "wallet"
+                  ? "Check your wallet app and approve the transaction."
+                  : "Waiting for Hedera to confirm — usually under a minute."}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="vb-pub-head">
         <span className="vb-pub-icon">
           <IconBolt size={17} />
@@ -2161,6 +2205,45 @@ function PublishPanel({
 
       {status && <div className={`vb-status is-${status.kind}`}>{status.text}</div>}
 
+      {/* Builder-simplify (#5): post-publish confirmation card for the
+          unconfirmed path — big copy-link next action, no dead end. */}
+      {pendingPage && (
+        <div className="vb-published-card" role="status">
+          <p className="vb-published-card-title">🎉 Your page is on its way!</p>
+          <p className="vb-published-card-sub">
+            It will appear at <span className="vs-mono">/{pendingPage}</span> once
+            the network confirms — usually under a minute.
+          </p>
+          <div className="vb-published-card-actions">
+            <button
+              type="button"
+              className="vs-btn vs-btn-primary"
+              onClick={async () => {
+                const url = `${window.location.origin}/${pendingPage}`;
+                try {
+                  await navigator.clipboard.writeText(url);
+                } catch {
+                  // Clipboard unavailable (older webviews) — select fallback.
+                  const ta = document.createElement("textarea");
+                  ta.value = url;
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(ta);
+                }
+                setLinkCopied(true);
+                setTimeout(() => setLinkCopied(false), 2500);
+              }}
+            >
+              {linkCopied ? "✅ Copied!" : "🔗 Copy link"}
+            </button>
+            <a className="vs-btn vs-btn-ghost" href={`/${pendingPage}`}>
+              View page →
+            </a>
+          </div>
+        </div>
+      )}
+
       {txHash && (
         <div className="vb-tx">
           <span className="vs-label">Transaction</span>
@@ -2219,6 +2302,17 @@ function BuilderInner() {
   // "It's yours now" flash: fires once when an anonymous builder visitor
   // completes the wallet sign-in (the claim moment).
   const [claimedFlash, setClaimedFlash] = useState(false);
+  // Builder-simplify (2026-09-28, Brandon: "Do all"): slim "have Buddy build
+  // it" banner under the header — 1 HBAR, human reviews before publish.
+  // Dismissable; the choice persists per browser.
+  const BUDDY_BANNER_DISMISS_KEY = "vs-buddy-banner-dismissed";
+  const [buddyBannerDismissed, setBuddyBannerDismissed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(BUDDY_BANNER_DISMISS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const wasAuthenticated = useRef(isAuthenticated);
   useEffect(() => {
     if (isAuthenticated && !wasAuthenticated.current) {
@@ -2593,6 +2687,42 @@ function BuilderInner() {
         <h1 className="vb-brand-title">{t("builder.brandTitle")}</h1>
         <p className="vb-brand-lede">{t("builder.brandLede")}</p>
       </div>
+
+      {/* Builder-simplify (2026-09-28): don't want to DIY? Buddy builds the
+          whole page for 1 HBAR — the human reviews before anything publishes.
+          Opens the Buddy chat widget (tap "Build with me" there). */}
+      {!buddyBannerDismissed && (
+        <div className="vb-buddy-banner" role="note" aria-label="Have Buddy build it">
+          <span className="vb-buddy-banner-icon" aria-hidden="true">🦎</span>
+          <p className="vb-buddy-banner-text">
+            <strong>Don&apos;t want to DIY?</strong> Describe your page to Buddy and
+            he&apos;ll build it for <strong>1 HBAR</strong> — you review before anything
+            publishes.
+          </p>
+          <button
+            type="button"
+            className="vs-btn vs-btn-primary vb-buddy-banner-cta"
+            onClick={() => window.dispatchEvent(new CustomEvent("vs-open-buddy"))}
+          >
+            Ask Buddy to build it
+          </button>
+          <button
+            type="button"
+            className="vb-buddy-banner-dismiss"
+            aria-label="Dismiss"
+            onClick={() => {
+              try {
+                localStorage.setItem(BUDDY_BANNER_DISMISS_KEY, "1");
+              } catch {
+                /* storage unavailable — dismiss for this visit only */
+              }
+              setBuddyBannerDismissed(true);
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Preview mode: anyone can describe + design + preview; the wallet
           connect is the claim ("make it yours"). Tutorials replace the old
