@@ -30,7 +30,7 @@
     "@x402/hedera": "^2.27.0",
     "ethers": "^6.17.0",
     "ioredis": "^5.11.1",
-    "next": "14.2.13",
+    "next": "14.2.25",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
@@ -45,5 +45,14 @@
     "@types/react-dom": "^18.3.0",
     "typescript": "^5.5.0",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.12.7",
+    "axios": "1.18.0",
+    "ws": "8.21.0",
+    "postcss": "8.5.18",
+    "@x402/hedera": {
+      "protobufjs": "8.6.6"
+    }
   }
 }
