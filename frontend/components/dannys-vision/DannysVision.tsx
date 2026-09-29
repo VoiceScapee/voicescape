@@ -47,6 +47,14 @@ const NODES: NodeDef[] = [
     quietNote: "Quiet — no messages logged yet." },
 ];
 
+/** Consensus-city satellites: real cities from the Hedera node address book,
+ *  drawn as a dim outer ring so the constellation shows the network's live
+ *  geography. Capped — the footer counts any overflow. */
+const CITY_NODE_CAP = 10;
+const CITY = "#99f6e0"; // consensus-city satellites
+const cityId = (city: string) =>
+  `city:${city.toLowerCase().replace(/\s+/g, "-")}`;
+
 /* Simplified brand marks, drawn small on canvas via Path2D. */
 const X_PATH =
   "M17.5 3h3.1l-6.8 7.8L21.8 21h-6.3l-4.9-6.4L4.9 21H1.8l7.3-8.4L2.2 3h6.4l4.4 5.9 4.5-5.9z";
@@ -201,6 +209,9 @@ export function DannysVision({
   /** In-flight poll keys — a tick never starts a poll that's still running. */
   const busy = useRef(new Set<string>());
   const pos = useRef<{ id: string; x: number; y: number; r: number }[]>([]);
+  /** Live consensus cities (address book) + their outer-ring positions. */
+  const citiesRef = useRef<string[]>([]);
+  const cityPos = useRef<{ id: string; x: number; y: number; r: number }[]>([]);
   const chimeDone = useRef(false);
   const [, setTick] = useState(0);
   const [popup, setPopup] = useState<string | null>(null);
@@ -690,17 +701,17 @@ export function DannysVision({
         }
 
         // Consensus geography: real cities from the node address book.
+        // The first CITY_NODE_CAP become constellation satellites; the
+        // footer only counts any overflow beyond the ring.
         const cities: string[] = [];
         for (const n of nodes) {
           const c = parseNodeCity(n.description);
           if (c && !cities.includes(c)) cities.push(c);
         }
         if (alive && cities.length > 0) {
-          const shown = cities.slice(0, 3).join(" · ");
-          const rest = cities.length - 3;
-          setCitiesLine(
-            `Consensus · ${shown}${rest > 0 ? ` + ${rest} more` : ""}`,
-          );
+          citiesRef.current = cities.slice(0, CITY_NODE_CAP);
+          const rest = cities.length - citiesRef.current.length;
+          setCitiesLine(rest > 0 ? `Consensus · +${rest} more cities` : null);
         }
       } catch {
         /* keep last good vitals */
@@ -771,6 +782,15 @@ export function DannysVision({
         const a = -Math.PI / 2 + (i / NODES.length) * Math.PI * 2;
         return { id: n.id, x: cx + rx * Math.cos(a), y: cy + ry * Math.sin(a), r: 16 };
       });
+      // consensus-city satellites on a wider outer ring (kept on-screen)
+      const orx = Math.min(W * 0.46, 360);
+      const ory = Math.min(H * 0.4, 280);
+      cityPos.current = citiesRef.current.map((c, i) => {
+        const a =
+          -Math.PI / 2 +
+          ((i + 0.5) / citiesRef.current.length) * Math.PI * 2;
+        return { id: cityId(c), x: cx + orx * Math.cos(a), y: cy + ory * Math.sin(a), r: 10 };
+      });
       return { cx, cy };
     };
 
@@ -778,13 +798,25 @@ export function DannysVision({
       const t = (performance.now() - t0) / 1000;
       const { cx, cy } = layout();
       ctx.clearRect(0, 0, W, H);
-      const byId = new Map(pos.current.map((p) => [p.id, p]));
+      const byId = new Map(
+        [...pos.current, ...cityPos.current].map((p) => [p.id, p]),
+      );
       const intro = Math.min(1, t / 2.2);
 
       // links
       for (const p of pos.current) {
         const def = NODES.find((n) => n.id === p.id)!;
         ctx.strokeStyle = hexA(def.color, 0.16 * intro);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+      }
+
+      // city links — fainter, outer ring
+      for (const p of cityPos.current) {
+        ctx.strokeStyle = hexA(CITY, 0.1 * intro);
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(cx, cy);
@@ -902,6 +934,25 @@ export function DannysVision({
         }
       }
 
+      // consensus-city satellites — dim outer ring, real address-book cities
+      citiesRef.current.forEach((c, i) => {
+        const p = cityPos.current[i];
+        if (!p) return;
+        ctx.fillStyle = hexA(CITY, 0.5 * intro);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, 7);
+        ctx.fill();
+        ctx.strokeStyle = hexA(CITY, 0.35 * intro);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 9, 0, 7);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(232,244,241,${0.75 * intro})`;
+        ctx.font = "600 8px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(c.toUpperCase(), p.x, p.y + 22);
+      });
+
       if (!reduced) raf = requestAnimationFrame(draw);
     };
 
@@ -939,10 +990,41 @@ export function DannysVision({
         return;
       }
     }
+    // consensus-city satellites — honest popup: the city is real (address
+    // book), no per-city activity is claimed.
+    for (let i = 0; i < cityPos.current.length; i++) {
+      const p = cityPos.current[i];
+      if (Math.hypot(x - p.x, y - p.y) < p.r + 10) {
+        playChime();
+        fire(p.id, CITY);
+        setPopupInfo({
+          headline: "Hedera consensus node city",
+          lines: ["Live from the mainnet address book"],
+          links: [
+            {
+              label: "Consensus nodes on HashScan",
+              url: "https://hashscan.io/mainnet/nodes",
+            },
+          ],
+          active: true,
+        });
+        setPopup(p.id);
+        return;
+      }
+    }
     setPopup(null);
   };
 
   const popupDef = popup ? NODES.find((n) => n.id === popup) : null;
+  const popupTitle = (() => {
+    if (!popup) return "";
+    if (popup === "engine") return centerLabel;
+    if (popup.startsWith("city:")) {
+      const i = cityPos.current.findIndex((p) => p.id === popup);
+      return (citiesRef.current[i] ?? popup).toUpperCase();
+    }
+    return popupDef?.label ?? NODE_TITLES[popup] ?? popup;
+  })();
 
   return (
     <div className="dv-scope" style={{ "--accent": accent } as CSSProperties}>
@@ -1008,15 +1090,15 @@ export function DannysVision({
             <div
               className="dv-card"
               role="dialog"
-              aria-label={`${popup === "engine" ? centerLabel : (popupDef?.label ?? NODE_TITLES[popup] ?? popup)} status`}
+              aria-label={`${popupTitle} status`}
               onPointerDown={(e) => e.stopPropagation()}
             >
               <div className="dv-card-head">
                 <span
                   className="dv-card-dot"
-                  style={{ background: popup === "engine" ? TEAL : (popupDef?.color ?? TEAL) }}
+                  style={{ background: popup === "engine" ? TEAL : (popupDef?.color ?? CITY) }}
                 />
-                <b>{popup === "engine" ? centerLabel : (popupDef?.label ?? NODE_TITLES[popup] ?? popup)}</b>
+                <b>{popupTitle}</b>
                 <button
                   className="dv-card-x"
                   aria-label="Close"
