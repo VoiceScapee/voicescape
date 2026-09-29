@@ -53,7 +53,7 @@ describe("builder preview mode", () => {
 describe("human-first claim flow", () => {
   it("shows a 3-step tutorial to unsigned users, dismissible per browser", () => {
     expect(builderSrc).toContain("vb-tutorial");
-    expect(builderSrc).toContain("Describe it");
+    expect(builderSrc).toContain("Name it");
     expect(builderSrc).toContain("Preview it");
     expect(builderSrc).toContain("Make it yours");
     expect(builderSrc).toContain("vs-builder-tutorial-dismissed");
@@ -88,7 +88,9 @@ describe("AI panel human-first", () => {
     expect(builderSrc).toContain("review the draft before anything changes");
     expect(builderSrc).toContain("generate draft");
     expect(builderSrc).toContain("cheapest");
-    expect(builderSrc).toMatch(/the price depends on the payment method/i);
+    // Plain-language payment box: the current copy explains the fee without
+    // rail/price-method jargon.
+    expect(builderSrc).toContain("You pay from your wallet, then review the draft");
   });
 
   it("no jargon in user-facing copy", () => {
