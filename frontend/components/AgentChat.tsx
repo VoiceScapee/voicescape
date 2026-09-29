@@ -52,7 +52,7 @@ function clampFabPos(x: number, y: number): FabPos {
   };
 }
 
-type Msg = { role: "user" | "assistant"; content: string; failed?: boolean };
+type Msg = { role: "user" | "assistant"; content: string; failed?: boolean; fallback?: boolean };
 
 /**
  * Onboarding: two short sequenced messages instead of one long monologue
@@ -180,7 +180,8 @@ function celebrationMsg(username: string | null): Msg {
 const HEADER_TAGLINE = "Ask me anything — I check the chain";
 const INPUT_PLACEHOLDER = "Ask Buddy…";
 
-const UNAVAILABLE = "Chat is unavailable right now — try again later.";
+const UNAVAILABLE =
+  "Buddy's taking a nap right now — but you don't need him. The builder works fine on its own.";
 const RATE_LIMITED = "Slow down a little — try again in a bit.";
 const FAILED = "Something went wrong — tap to retry.";
 const TIMED_OUT = "That took too long — tap to retry.";
@@ -649,12 +650,13 @@ export default function AgentChat() {
     if (busy) return;
     const lastUser = [...msgs].reverse().find((m) => m.role === "user");
     if (!lastUser) return;
-    // Drop the failed bubble(s) and the user message being re-sent, then
-    // re-send against the trimmed list (sendMessage appends one copy).
+    // Drop the failed/fallback bubble(s) and the user message being re-sent,
+    // then re-send against the trimmed list (sendMessage appends one copy).
     const trimmed = [...msgs];
     while (trimmed.length > 0) {
       const tail = trimmed[trimmed.length - 1];
-      if (tail.role === "assistant" && tail.failed) trimmed.pop();
+      if (tail.role === "assistant" && (tail.failed || tail.fallback))
+        trimmed.pop();
       else break;
     }
     if (
@@ -706,11 +708,17 @@ export default function AgentChat() {
       });
       let reply: string;
       let failed = false;
-      if (res.status === 503) reply = UNAVAILABLE;
-      else if (res.status === 429) reply = RATE_LIMITED;
-      else if (!res.ok) {
+      let fallback = false;
+      if (res.status === 503) {
+        reply = UNAVAILABLE;
+        fallback = true;
+      } else if (res.status === 429) {
+        reply = RATE_LIMITED;
+        fallback = true;
+      } else if (!res.ok) {
         reply = FAILED;
         failed = true;
+        fallback = true;
       } else {
         const data = await res.json().catch(() => null);
         reply =
@@ -718,6 +726,7 @@ export default function AgentChat() {
             ? data.reply
             : FAILED;
         failed = reply === FAILED;
+        fallback = failed;
         // Keep the signed build token for the next turn (opaque string),
         // persisted so the build survives chat close/reload.
         if (data && typeof data.build_state === "string") {
@@ -801,7 +810,12 @@ export default function AgentChat() {
       }
       setMsgs((prev) => [
         ...prev,
-        { role: "assistant", content: reply, failed: failed || undefined },
+        {
+          role: "assistant",
+          content: reply,
+          failed: failed || undefined,
+          fallback: fallback || undefined,
+        },
       ]);
     } catch {
       const timedOut = ctrl.signal.aborted;
@@ -811,6 +825,7 @@ export default function AgentChat() {
           role: "assistant",
           content: timedOut ? TIMED_OUT : FAILED,
           failed: true,
+          fallback: true,
         },
       ]);
     } finally {
@@ -1086,6 +1101,56 @@ export default function AgentChat() {
                             Keep editing in chat
                           </button>
                         </>
+                      )}
+                      {m.fallback === true && draft == null && (
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            marginTop: 8,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              retryLast();
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "1px solid rgba(130, 89, 239, 0.4)",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              color: "#fff",
+                              background: "rgba(130, 89, 239, 0.18)",
+                            }}
+                          >
+                            Try again
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.location.href = "/builder";
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              border: "1px solid rgba(255, 255, 255, 0.18)",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                              fontSize: 13,
+                              color: "#fff",
+                              background: "rgba(255, 255, 255, 0.07)",
+                            }}
+                          >
+                            Open the builder →
+                          </button>
+                        </div>
                       )}
                     </>
                   ) : (
