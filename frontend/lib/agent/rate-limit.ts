@@ -6,6 +6,7 @@
  * hold across instances and deploys.
  */
 import type { NextRequest } from "next/server";
+import { clientIpFromHeaders } from "../server/rate-limit";
 
 export const AGENT_CHAT_RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 60 * 60 * 1000;
@@ -18,9 +19,11 @@ export function resetAgentChatRateLimit(): void {
 }
 
 export function agentChatClientIp(req: NextRequest): string {
-  const fwd = req.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim() || "unknown";
-  return "unknown";
+  // Trust order: x-vercel-forwarded-for, then the LAST x-forwarded-for
+  // entry (appended by the edge), then x-real-ip. Never the FIRST entry:
+  // it is attacker-controlled and spoofing it used to mint a fresh
+  // 20/hour budget per request.
+  return clientIpFromHeaders(req.headers);
 }
 
 /** Returns true when the IP has exceeded its hourly budget. */

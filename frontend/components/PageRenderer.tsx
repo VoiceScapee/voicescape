@@ -136,7 +136,7 @@ function MusicBlock({
             loading="lazy"
             allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
-            sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+            sandbox="allow-scripts allow-popups allow-presentation"
           />
         </div>
       );
