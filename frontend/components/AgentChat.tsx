@@ -326,6 +326,15 @@ export default function AgentChat() {
     return () => window.removeEventListener(TIP_PANEL_EVENT, onTip);
   }, []);
 
+  // Builder banner handoff (2026-09-28): the builder's "Ask Buddy to build
+  // it" banner dispatches this to open the chat. Plain CustomEvent, no
+  // payload — opening is all it does.
+  useEffect(() => {
+    const onOpenBuddy = () => setOpen(true);
+    window.addEventListener("vs-open-buddy", onOpenBuddy);
+    return () => window.removeEventListener("vs-open-buddy", onOpenBuddy);
+  }, []);
+
   // Keep a saved position on-screen across rotation/resize.
   useEffect(() => {
     const onResize = () => setFabPos((p) => (p ? clampFabPos(p.x, p.y) : p));
