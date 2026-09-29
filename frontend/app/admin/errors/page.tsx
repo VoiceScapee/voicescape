@@ -256,12 +256,14 @@ function FunnelSummary({ days }: { days: MetricsDay[] }) {
   const total = (name: string) => days.reduce((n, d) => n + (d.events[name] ?? 0), 0);
   const ctxTotal = (key: string) => days.reduce((n, d) => n + (d.contexts?.[key] ?? 0), 0);
   const tipSurfaceDetail = `blockpage ${ctxTotal("tip_attempt:blockpage")} · post ${ctxTotal("tip_attempt:post")}`;
+  const builderDetail = `edited ${total("builder_edited")} · publish started ${total("publish_started")}`;
   const rows: { label: string; attempts: number; confirmed: number; detail?: string }[] = [
     { label: "Tips", attempts: total("tip_attempt"), confirmed: total("tip_confirmed"), detail: tipSurfaceDetail },
     { label: "Purchases", attempts: total("purchase_attempt"), confirmed: total("purchase_confirmed") },
     { label: "Votes", attempts: total("vote_submitted") + total("vote_failed"), confirmed: total("vote_submitted") },
     { label: "Proposals", attempts: total("proposal_submitted") + total("proposal_failed"), confirmed: total("proposal_submitted") },
     { label: "Chat", attempts: total("chat_sent") + total("chat_failed"), confirmed: total("chat_sent") },
+    { label: "Blockpages", attempts: total("builder_opened"), confirmed: total("page_published"), detail: builderDetail },
   ];
   return (
     <div className="vs-card" style={{ padding: 12 }}>
