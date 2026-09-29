@@ -39,9 +39,13 @@ export const CONVERSION_EVENTS = [
   "chat_sent",
   "chat_failed",
   // Onboarding funnel (aggregate only — same privacy rules as everything
-  // above: no wallet, IP, page, or tx stored, ever).
+  // above: no wallet, IP, page, or tx stored, ever). builder_opened →
+  // builder_edited → publish_started → page_published shows exactly where
+  // the builder funnel leaks.
   "wallet_connected",
   "builder_opened",
+  "builder_edited",
+  "publish_started",
   "buddy_preview_shown",
   "page_published",
 ] as const;

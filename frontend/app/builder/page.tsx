@@ -2111,6 +2111,9 @@ function PublishPanel({
   // Builder-simplify (2026-09-28): staged publish progress for the overlay
   // (#4) — pinning -> wallet signature -> on-chain confirmation.
   const [publishStage, setPublishStage] = useState<"pinning" | "wallet" | "confirming" | null>(null);
+  // Funnel telemetry guard: "publish_started" fires once per mount, consumed
+  // inside publish() below. Declared here (before publish) so TS resolves it.
+  const publishStartedFired = useRef(false);
   // Builder-simplify (#5): unconfirmed-path confirmation card — the tx is
   // sent but the name doesn't resolve yet, so give the user a copy-link
   // card instead of a vague status line.
@@ -2224,6 +2227,13 @@ function PublishPanel({
     }
     setBusy(true);
     setPublishStage("pinning");
+    // Funnel telemetry: a publish was attempted (validation passed, pinning
+    // started). Once per mount so retries don't inflate the funnel.
+    // Aggregate counter only — never throws, never affects publish.
+    if (!publishStartedFired.current) {
+      publishStartedFired.current = true;
+      recordConversionEvent("publish_started");
+    }
     try {
       // Stamp the page JSON with the derived username plus the informational
       // owner type / purpose, and sync the operator block (if present) with
@@ -2810,7 +2820,14 @@ function BuilderInner() {
   );
 
   // Any manual edit invalidates a pending AI draft so the preview never lies.
+  // Funnel telemetry: the first manual edit per mount — "they didn't just
+  // look, they built something." Aggregate counter only, never throws.
+  const builderEditedFired = useRef(false);
   const editPage = (next: VoicescapePage | ((p: VoicescapePage) => VoicescapePage)) => {
+    if (!builderEditedFired.current) {
+      builderEditedFired.current = true;
+      recordConversionEvent("builder_edited");
+    }
     setAiDraft(null);
     setPage(next);
   };

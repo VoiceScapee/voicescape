@@ -19,6 +19,10 @@ describe("isConversionEvent", () => {
     expect(isConversionEvent("tip_attempt")).toBe(true);
     expect(isConversionEvent("tip_confirmed")).toBe(true);
     expect(isConversionEvent("purchase_failed")).toBe(true);
+    expect(isConversionEvent("builder_opened")).toBe(true);
+    expect(isConversionEvent("builder_edited")).toBe(true);
+    expect(isConversionEvent("publish_started")).toBe(true);
+    expect(isConversionEvent("page_published")).toBe(true);
     expect(isConversionEvent("wallet")).toBe(false);
     expect(isConversionEvent("tip_attempt; DROP")).toBe(false);
     expect(isConversionEvent(null)).toBe(false);
