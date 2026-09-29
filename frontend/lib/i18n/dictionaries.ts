@@ -364,7 +364,7 @@ const en = {
   "landing.chatCta": "Join the chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "For creators, streamers & AI agents",
+  "brand.eyebrow": "For everyone — human or AI",
   "landing.brandH1a": "A page on the internet that pays you.",
   "landing.brandH1b": "Keep 98% of every tip.",
   "landing.brandSub": "Voicescape is your own corner of the internet — a personal page for your streams, music, and merch that can take payments. Fans tip you directly in crypto and 98% lands straight in your wallet. No middleman. Buddy, our AI, helps you build it in minutes.",
@@ -800,7 +800,7 @@ const es: Record<I18nKey, string> = {
   "landing.chatCta": "\u00danete al chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Para creadores, streamers y agentes de IA",
+  "brand.eyebrow": "Para todos — humanos o IA",
   "landing.brandH1a": "Una página de internet que te paga.",
   "landing.brandH1b": "Quédate con el 98% de cada propina.",
   "landing.brandSub": "Voicescape es tu base para streams, música y merch. Tus fans te dan propinas directamente en cripto y el 98% llega directo a tu billetera. Sin intermediarios, sin recorte de la plataforma. Buddy, nuestra IA, te ayuda a crearlo en minutos.",
@@ -1231,7 +1231,7 @@ const zh: Record<I18nKey, string> = {
   "landing.chatCta": "\u52a0\u5165\u804a\u5929",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "面向创作者、主播和 AI 智能体",
+  "brand.eyebrow": "面向所有人 — 人类或 AI",
   "landing.brandH1a": "互联网上一个为你赚钱的页面。",
   "landing.brandH1b": "每笔打赏，98% 归你。",
   "landing.brandSub": "Voicescape 是你直播、音乐和周边的家。粉丝用加密货币直接打赏你，98% 直接进入你的钱包。没有中间商，没有平台抽成。我们的 AI Buddy 帮你几分钟搞定。",
@@ -1662,7 +1662,7 @@ const hi: Record<I18nKey, string> = {
   "landing.chatCta": "\u091a\u0948\u091f \u0938\u0947 \u091c\u0941\u0921\u093c\u0947\u0902",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "क्रिएटर्स, स्ट्रीमर्स और AI एजेंट्स के लिए",
+  "brand.eyebrow": "सबके लिए — इंसान या AI",
   "landing.brandH1a": "इंटरनेट पर एक ऐसा पेज जो आपको भुगतान करता है।",
   "landing.brandH1b": "हर टिप का 98% आपका रहता है।",
   "landing.brandSub": "Voicescape आपके स्ट्रीम, संगीत और मर्च के लिए होम बेस है। प्रशंसक आपको सीधे क्रिप्टो में टिप देते हैं और 98% सीधे आपके वॉलेट में आता है। कोई बिचौलिया नहीं, कोई प्लेटफॉर्म कट नहीं। हमारा AI Buddy इसे मिनटों में बनाने में आपकी मदद करता है।",
@@ -2093,7 +2093,7 @@ const ar: Record<I18nKey, string> = {
   "landing.chatCta": "\u0627\u0646\u0636\u0645 \u0625\u0644\u0649 \u0627\u0644\u062f\u0631\u062f\u0634\u0629",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "للمبدعين وصنّاع البث المباشر ووكلاء الذكاء الاصطناعي",
+  "brand.eyebrow": "للجميع — للبشر والذكاء الاصطناعي",
   "landing.brandH1a": "صفحة على الإنترنت تدفع لك.",
   "landing.brandH1b": "احتفظ بـ 98% من كل بقشيش.",
   "landing.brandSub": "Voicescape هو مقرّك للبث والموسيقى والمنتجات. معجبوك يرسلون لك البقشيش مباشرة بالعملات الرقمية، و98% منه يصل إلى محفظتك مباشرة. لا وسيط، ولا عمولة منصة. Buddy، مساعدنا الذكي، يساعدك على بنائه في دقائق.",
@@ -2525,7 +2525,7 @@ const pt: Record<I18nKey, string> = {
   "landing.chatCta": "Entrar no chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Para criadores, streamers e agentes de IA",
+  "brand.eyebrow": "Para todos — humanos ou IA",
   "landing.brandH1a": "Uma página da internet que te paga.",
   "landing.brandH1b": "Fique com 98% de cada gorjeta.",
   "landing.brandSub": "A Voicescape é a sua base para streams, música e merch. Os fãs dão gorjetas diretamente em cripto e 98% cai direto na sua carteira. Sem intermediários. Buddy, a nossa IA, ajuda você a criar tudo em minutos.",
@@ -2957,7 +2957,7 @@ const fr: Record<I18nKey, string> = {
   "landing.chatCta": "Rejoindre le chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Pour les créateurs, streamers et agents IA",
+  "brand.eyebrow": "Pour tout le monde — humains ou IA",
   "landing.brandH1a": "Une page sur internet qui vous paie.",
   "landing.brandH1b": "Gardez 98 % de chaque pourboire.",
   "landing.brandSub": "Voicescape est votre base pour les streams, la musique et le merch. Les fans vous donnent des pourboires directement en crypto et 98 % arrivent droit dans votre portefeuille. Sans intermédiaire, sans commission de la plateforme. Buddy, notre IA, vous aide à tout construire en quelques minutes.",
@@ -3349,7 +3349,7 @@ const ja: Record<I18nKey, string> = {
   "landing.chatCta": "チャットに参加",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "クリエイター、配信者、AIエージェントのために",
+  "brand.eyebrow": "すべての人のために — 人間も AI も",
   "landing.brandH1a": "あなたに報酬をくれる、インターネット上のページ。",
   "landing.brandH1b": "投げ銭の98%は、あなたのもの。",
   "landing.brandSub": "Voicescapeは配信・音楽・グッズのホームベースだ。ファンが暗号資産で直接投げ銭してくれて、98%がそのままあなたのウォレットに入る。仲介なし、プラットフォームの取り分なし。私たちのAI Buddyが、数分で作れるよう手伝ってくれる。",
@@ -3741,7 +3741,7 @@ const ko: Record<I18nKey, string> = {
   "landing.chatCta": "채팅 참여",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "크리에이터, 스트리머, AI 에이전트를 위해",
+  "brand.eyebrow": "모두를 위해 — 인간도 AI도",
   "landing.brandH1a": "너에게 돈을 벌어다 주는 인터넷 페이지.",
   "landing.brandH1b": "팁마다 98%는 네 몫.",
   "landing.brandSub": "Voicescape는 스트리밍, 음악, 굿즈의 홈베이스야. 팬들이 크립토로 직접 팁을 주면 98%가 바로 네 지갑으로 들어와. 중간상인도 없고 플랫폼이 떼가는 것도 없어. 우리 AI Buddy가 몇 분 만에 만들어줄게.",
@@ -4133,7 +4133,7 @@ const vi: Record<I18nKey, string> = {
   "landing.chatCta": "Tham gia chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Dành cho nhà sáng tạo, streamer và AI agent",
+  "brand.eyebrow": "Dành cho mọi người — con người hay AI",
   "landing.brandH1a": "Một trang internet trả tiền cho bạn.",
   "landing.brandH1b": "Bạn giữ 98% mỗi lượt tip.",
   "landing.brandSub": "Voicescape là căn cứ của bạn cho stream, nhạc và merch. Fan tip trực tiếp bằng crypto và 98% vào thẳng ví của bạn. Không trung gian, không bị nền tảng cắt phế. Buddy, AI của chúng tôi, giúp bạn dựng xong trong vài phút.",
@@ -4525,7 +4525,7 @@ const id: Record<I18nKey, string> = {
   "landing.chatCta": "Gabung chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Untuk kreator, streamer, dan agen AI",
+  "brand.eyebrow": "Untuk semua orang — manusia atau AI",
   "landing.brandH1a": "Sebuah halaman di internet yang membayarimu.",
   "landing.brandH1b": "Simpan 98% dari setiap tip.",
   "landing.brandSub": "Voicescape adalah markasmu untuk stream, musik, dan merch. Fans memberimu tip langsung dalam kripto dan 98% langsung masuk ke dompetmu. Tanpa perantara, tanpa potongan platform. Buddy, AI kami, membantumu membangunnya dalam hitungan menit.",
@@ -4917,7 +4917,7 @@ const th: Record<I18nKey, string> = {
   "landing.chatCta": "เข้าร่วมแชท",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "สำหรับครีเอเตอร์ สตรีมเมอร์ และ AI เอเจนต์",
+  "brand.eyebrow": "สำหรับทุกคน — มนุษย์หรือ AI",
   "landing.brandH1a": "หน้าเพจบนอินเทอร์เน็ตที่จ่ายเงินให้คุณ",
   "landing.brandH1b": "คุณเก็บ 98% ของทุกทิป",
   "landing.brandSub": "Voicescape คือฐานของคุณสำหรับสตรีม เพลง และสินค้า แฟน ๆ ให้ทิปคุณโดยตรงเป็นคริปโต และ 98% เข้ากระเป๋าเงินคุณตรง ๆ ไม่มีคนกลาง ไม่มีการหักของแพลตฟอร์ม Buddy AI ของเราช่วยคุณสร้างได้ในไม่กี่นาที",
@@ -5309,7 +5309,7 @@ const tl: Record<I18nKey, string> = {
   "landing.chatCta": "Sumali sa chat",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "Para sa mga creator, streamer, at AI agent",
+  "brand.eyebrow": "Para sa lahat — tao o AI",
   "landing.brandH1a": "Isang page sa internet na nagbabayad sa iyo.",
   "landing.brandH1b": "Sa iyo ang 98% ng bawat tip.",
   "landing.brandSub": "Ang Voicescape ang home base mo para sa streams, music, at merch. Direktang nagti-tip sa iyo ang mga fan sa crypto at 98% diretso sa wallet mo. Walang middleman, walang kaltas ang platform. Si Buddy, ang AI namin, tutulungan kang buuin ito sa loob ng ilang minuto.",
@@ -5701,7 +5701,7 @@ const tr: Record<I18nKey, string> = {
   "landing.chatCta": "Sohbete katıl",
 
   // Brand pass (2026-09-15, Brandon-approved mockup)
-  "brand.eyebrow": "İçerik üreticileri, yayıncılar ve yapay zekâ ajanları için",
+  "brand.eyebrow": "Herkes için — insan veya yapay zekâ",
   "landing.brandH1a": "Sana ödeme yapan bir internet sayfası.",
   "landing.brandH1b": "Her bahşişin %98'i sende kalır.",
   "landing.brandSub": "Voicescape; yayınların, müziğin ve ürünlerin için ana üssün. Hayranların sana doğrudan kriptoyla bahşiş verir ve %98'i dosdoğru cüzdanına gelir. Aracı yok, platform kesintisi yok. Yapay zekâmız Buddy, dakikalar içinde kurmana yardım eder.",
