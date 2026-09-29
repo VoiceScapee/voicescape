@@ -501,10 +501,12 @@ export function DannysVision({
       }
     };
 
-    /* VOICESCAPE node — the platform treasury account on Hedera mainnet.
-       Every 98/2 split settles into 0.0.10424063, so this account's real
-       transaction history IS the platform's on-chain heartbeat: one ribbon
-       per new treasury transaction, HashScan proof on the latest. */
+    /* VOICESCAPE node — the platform treasury's on-chain heartbeat.
+       Every 98/2 split settles into the treasury account, so its real
+       transaction history IS the platform's pulse: one ribbon per new
+       treasury transaction, HashScan proof on the latest. The popup
+       deliberately never names the treasury account or links to its
+       account page (Brandon's rule) — per-transaction proof only. */
     const pollVoicescape = async () => {
       if (!alive || hidden()) return;
       try {
@@ -527,7 +529,7 @@ export function DannysVision({
         }
         if (txs[0]) {
           info.current.voicescape = {
-            headline: `${txs[0].name} · treasury 0.0.10424063`,
+            headline: `Treasury heartbeat · ${mirrorAgo(txs[0].consensus_timestamp)}`,
             lines: txs
               .slice(0, 3)
               .map((t) => `${t.name} · ${mirrorAgo(t.consensus_timestamp)}`),
@@ -535,10 +537,6 @@ export function DannysVision({
               {
                 label: "Latest treasury tx on HashScan",
                 url: hashscanTxUrl(txs[0].transaction_id),
-              },
-              {
-                label: "Treasury account on HashScan",
-                url: "https://hashscan.io/mainnet/account/0.0.10424063",
               },
             ],
             active: true,
