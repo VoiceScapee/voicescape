@@ -35,10 +35,21 @@ describe("AgentChat", () => {
   });
 
   it("degrades gracefully when the backend is unavailable or rate-limited", () => {
-    expect(widgetSrc).toContain("Chat is unavailable right now — try again later.");
+    expect(widgetSrc).toContain("Buddy's taking a nap right now");
+    expect(widgetSrc).toContain("The builder works fine on its own.");
     expect(widgetSrc).toContain("Slow down a little — try again in a bit.");
     expect(widgetSrc).toContain("503");
     expect(widgetSrc).toContain("429");
+  });
+
+  it("offers non-AI fallback actions when Buddy can't answer", () => {
+    // Failure bubbles carry a fallback flag and render one-tap actions that
+    // don't need the LLM: retry, or continue in the manual builder.
+    expect(widgetSrc).toContain("fallback?: boolean");
+    expect(widgetSrc).toContain("fallback = true");
+    expect(widgetSrc).toContain("Try again");
+    expect(widgetSrc).toContain("Open the builder →");
+    expect(widgetSrc).toContain('window.location.href = "/builder"');
   });
 
   it("sends at most 6 history items with each message", () => {
