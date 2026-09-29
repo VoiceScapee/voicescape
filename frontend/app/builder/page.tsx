@@ -17,6 +17,7 @@ import {
   IconChevronDown,
   IconClose,
   IconExternal,
+  IconGlobe,
   IconGrid,
   IconLink,
   IconMusic,
@@ -25,6 +26,7 @@ import {
   IconTip,
   IconTrash,
   IconUsers,
+  PlatformIcon,
 } from "@/components/icons";
 import {
   BLOCK_TYPES,
@@ -37,6 +39,12 @@ import {
   type VoicescapePage,
 } from "@/lib/schema";
 import { MUSIC_SOURCE_LABELS, parseMusicUrl } from "@/lib/music";
+import {
+  PLATFORMS,
+  detectPlatform,
+  isPlatformId,
+  normalizeSocialUrl,
+} from "@/lib/socials";
 import { pinAudioFile } from "@/lib/ipfs";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
 import { getHederaPairing, useWallet } from "@/lib/wallet";
@@ -104,6 +112,8 @@ function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) 
       return <IconBook size={size} />;
     case "links":
       return <IconLink size={size} />;
+    case "socials":
+      return <IconGlobe size={size} />;
     case "music":
       return <IconMusic size={size} />;
     case "gallery":
@@ -343,6 +353,117 @@ function MusicTrackEditor({
   );
 }
 
+/**
+ * Editor for the socials block: paste profile links (platform auto-detected
+ * live as you type), per-link remove. Mirrors the music block's paste-to-add
+ * pattern — no platform picker needed.
+ */
+function SocialsEditor({
+  block,
+  onChange,
+}: {
+  block: Extract<Block, { type: "socials" }>;
+  onChange: (next: Block) => void;
+}) {
+  const { t } = useLanguage();
+  const items = Array.isArray(block.items) ? block.items : [];
+  const [input, setInput] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const trimmed = input.trim();
+  const detected = trimmed ? detectPlatform(trimmed) : null;
+
+  const addSocial = () => {
+    const url = normalizeSocialUrl(input);
+    if (!url) {
+      setError(t("builder.socialsInvalid"));
+      return;
+    }
+    setError(null);
+    setInput("");
+    // Already listed — skip the duplicate silently.
+    if (items.some((s) => s.url === url)) return;
+    onChange({ ...block, items: [...items, { platform: detectPlatform(url), url }] });
+  };
+
+  const updateUrl = (i: number, raw: string) => {
+    onChange({
+      ...block,
+      items: items.map((s, j) =>
+        j === i ? { ...s, url: raw, platform: detectPlatform(raw) } : s
+      ),
+    });
+  };
+
+  return (
+    <>
+      <span className="vs-label">{t("builder.socialsTitle")}</span>
+      <p className="vs-hint" style={{ marginTop: 0 }}>
+        {t("builder.socialsDesc")}
+      </p>
+      {items.map((s, i) => {
+        const pid = isPlatformId(s.platform) ? s.platform : "website";
+        return (
+          <div className="vb-row" key={i}>
+            <span className="vb-social-icon" title={PLATFORMS[pid].name}>
+              <PlatformIcon platform={pid} size={18} />
+            </span>
+            <input
+              className="vs-input"
+              style={{ flex: 1 }}
+              value={s.url}
+              placeholder={t("builder.socialsPlaceholder")}
+              aria-label={`${PLATFORMS[pid].name} URL`}
+              onChange={(e) => updateUrl(i, e.target.value)}
+            />
+            <button
+              type="button"
+              className="vb-icon-btn vb-icon-btn-danger"
+              title={t("builder.socialsRemove")}
+              aria-label={`${t("builder.socialsRemove")} ${PLATFORMS[pid].name}`}
+              onClick={() =>
+                onChange({ ...block, items: items.filter((_, j) => j !== i) })
+              }
+            >
+              <IconClose size={14} />
+            </button>
+          </div>
+        );
+      })}
+      <div className="vb-row">
+        <input
+          className="vs-input"
+          style={{ flex: 1 }}
+          value={input}
+          placeholder={t("builder.socialsPlaceholder")}
+          aria-label={t("builder.socialsPlaceholder")}
+          onChange={(e) => {
+            setInput(e.target.value);
+            setError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addSocial();
+            }
+          }}
+        />
+        <button type="button" className="vs-btn vs-btn-ghost" onClick={addSocial}>
+          <IconPlus size={16} /> {t("builder.socialsAdd")}
+        </button>
+      </div>
+      {detected && (
+        <p className="vs-hint" style={{ marginTop: 4 }}>
+          {t("builder.socialsDetected")}: <strong>{PLATFORMS[detected].name}</strong>
+        </p>
+      )}
+      {error && <p className="vb-error">{error}</p>}
+      {items.length === 0 && !trimmed && (
+        <p className="vs-hint">{t("builder.socialsEmpty")}</p>
+      )}
+    </>
+  );
+}
+
 function BlockEditor({
   block,
   index,
@@ -473,6 +594,10 @@ function BlockEditor({
             <IconPlus size={16} /> Add link
           </button>
         </>
+      )}
+
+      {block.type === "socials" && (
+        <SocialsEditor block={block} onChange={onChange} />
       )}
 
       {block.type === "tipJar" && (
@@ -1619,6 +1744,7 @@ function VibecodeChat({
     "hero",
     "bio",
     "links",
+    "socials",
     "tipJar",
     "guestbook",
     "music",
@@ -3296,9 +3422,11 @@ function BuilderInner() {
                     onChange={(e) => setAddType(e.target.value as BlockType)}
                     aria-label="Block type to add"
                   >
-                    {BLOCK_TYPES.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
+                    {BLOCK_TYPES.map((bt) => (
+                      <option key={bt} value={bt}>
+                        {/* Socials shows its translated friendly name; the other
+                            types keep their legacy raw display for now. */}
+                        {bt === "socials" ? t("builder.socialsTitle") : bt}
                       </option>
                     ))}
                   </select>

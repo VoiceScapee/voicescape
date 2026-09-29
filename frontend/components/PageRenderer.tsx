@@ -10,6 +10,7 @@ import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
 import { safeExternalUrl, safeImageUrl, openExternalUrl } from "@/lib/url";
+import { PLATFORMS, isPlatformId } from "@/lib/socials";
 import { canonicalAddress } from "@/lib/session-message";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import {
@@ -30,6 +31,7 @@ import {
   IconPlay,
   IconTip,
   IconUsers,
+  PlatformIcon,
 } from "@/components/icons";
 import LivestreamBlock from "@/components/LivestreamBlock";
 import ChatBox from "@/components/ChatBox";
@@ -535,6 +537,41 @@ function BlockView({
           tipPaused={tipPaused}
         />
       );
+    case "socials": {
+      // Socials row: platform icon buttons. Malformed items were already
+      // dropped by normalizeBlockForRender; safeExternalUrl is the final
+      // choke point before any href is rendered.
+      const socials = Array.isArray(block.items) ? block.items : [];
+      if (socials.length === 0) return null;
+      return (
+        <section className="pv-block pv-socials" aria-label="Social links">
+          {socials.map((s, i) => {
+            const url = safeExternalUrl(s.url);
+            if (!url) return null;
+            const info = PLATFORMS[isPlatformId(s.platform) ? s.platform : "website"];
+            return (
+              <a
+                key={i}
+                className="pv-social-btn"
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title={info.name}
+                aria-label={info.name}
+                onClick={(e) => {
+                  // Same wallet-WebView handling as the links block: a
+                  // blocked popup falls back to same-tab navigation.
+                  e.preventDefault();
+                  openExternalUrl(url);
+                }}
+              >
+                <PlatformIcon platform={info.id} size={20} />
+              </a>
+            );
+          })}
+        </section>
+      );
+    }
     case "guestbook":
       return (
         <section className="pv-block" aria-label="Guestbook">

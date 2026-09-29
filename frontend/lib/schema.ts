@@ -4,6 +4,8 @@
  * Define types ONCE here and import everywhere: templates, editor,
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
+import { isPlatformId, type PlatformId } from "./socials";
+
 export type Block =
   | {
     type: "hero";
@@ -20,6 +22,13 @@ export type Block =
   }
   | { type: "bio"; text: string }
   | { type: "links"; items: { label: string; url: string }[] }
+  /**
+   * Socials row: the owner's profiles elsewhere on the internet, rendered
+   * as platform icon buttons. `platform` is auto-detected from the URL
+   * when the block is edited; "website" is the fallback for anything
+   * unrecognized. Renderers must ignore items with empty URLs.
+   */
+  | { type: "socials"; items: { platform: PlatformId; url: string }[] }
   | { type: "tipJar"; message?: string }
   | { type: "guestbook"; entries: { name: string; message: string; date: string }[] }
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
@@ -176,6 +185,7 @@ export const BLOCK_TYPES = [
   "hero",
   "bio",
   "links",
+  "socials",
   "tipJar",
   "guestbook",
   "music",
@@ -204,6 +214,8 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
       return { type: "bio", text: "A short bio about you." };
     case "links":
       return { type: "links", items: [{ label: "My link", url: "https://example.com" }] };
+    case "socials":
+      return { type: "socials", items: [] };
     case "tipJar":
       return { type: "tipJar", message: "Support my work with a tip!" };
     case "guestbook":
@@ -288,6 +300,22 @@ export function isValidPage(input: unknown): input is VoicescapePage {
     if (type === "chat") {
       const cb = b as Record<string, unknown>;
       if (cb.title !== undefined && typeof cb.title !== "string") return false;
+    }
+    // Socials blocks: items must be {platform, url} pairs when present.
+    if (type === "socials") {
+      const sb = b as Record<string, unknown>;
+      if (
+        sb.items !== undefined &&
+        (!Array.isArray(sb.items) ||
+          !sb.items.every(
+            (e) =>
+              typeof e === "object" &&
+              e !== null &&
+              typeof (e as Record<string, unknown>).platform === "string" &&
+              typeof (e as Record<string, unknown>).url === "string"
+          ))
+      )
+        return false;
     }
     return true;
   });
@@ -419,6 +447,19 @@ export function normalizeBlockForRender(input: unknown): Block | null {
             }))
           : [],
       } as unknown as Block;
+    case "socials": {
+      // Unknown platforms fall back to "website"; empty URLs are dropped
+      // so the renderer never shows a dead icon.
+      const items = (Array.isArray(b.items) ? b.items : [])
+        .filter(isObj)
+        .map((e) => ({
+          platform: isPlatformId(e.platform) ? e.platform : ("website" as const),
+          url: str(e.url) ?? "",
+        }))
+        .filter((e) => e.url.length > 0)
+        .slice(0, 12);
+      return { type: "socials", items } as unknown as Block;
+    }
     case "guestbook":
     case "reviews": {
       const entries = Array.isArray(b.entries)
