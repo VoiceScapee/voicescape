@@ -5,7 +5,8 @@
  * timestamp, reply button, and a TIP button that runs the standard
  * tipPage(username) flow (98% creator / 2% treasury, enforced on-chain).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import Link from "next/link";
 import { tipPage, resolvePage } from "@/lib/contracts";
 import { friendlyWalletError, useWallet } from "@/lib/wallet";
@@ -62,10 +63,19 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
   // Set once the wallet approves: the hook polls the mirror node until the
   // transaction reaches consensus, so the UI reacts to the real outcome.
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
-  const confirmStatus = useConfirmedTransaction(confirmTxId);
   // Finality clock: wallet approval → consensus, shown on the receipt.
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  // The receipt shows the network-assigned consensus timestamp, not the
+  // device clock — first-principles fair timing.
+  const confirmOpts = useMemo(
+    () => ({
+      onConsensus: (ts: string | null) =>
+        setFinalizedAt(consensusTimestampToDate(ts ?? "") ?? new Date()),
+    }),
+    [],
+  );
+  const confirmStatus = useConfirmedTransaction(confirmTxId, confirmOpts);
   const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
   const chain = getActiveChain();
 
@@ -77,7 +87,9 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
-      setFinalizedAt(new Date());
+      // onConsensus already set the network timestamp; keep it — only fall
+      // back to the device clock if it somehow didn't fire.
+      setFinalizedAt((prev) => prev ?? new Date());
       setTxId(confirmTxId);
       recordConversionEvent("tip_confirmed", "post");
     } else if (confirmStatus === "failed") {

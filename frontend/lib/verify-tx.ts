@@ -21,12 +21,14 @@ export const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e
 const PURCHASE_COMPLETED_TOPIC = "0x8555727c6813e10ae0b5a9b0a53a88a93176679845f5a005a248cdb9f1c05f2e";
 
 export type VerificationResult =
-  | { status: "confirmed" }
+  | { status: "confirmed"; consensusTimestamp: string | null }
   | { status: "failed" }
   | { status: "unknown" }; // submitted but not yet visible (mirror lag, timeout)
 
 interface ContractResult {
   status?: string;
+  /** Mirror-node record timestamp = network consensus time, "seconds.nanos". */
+  timestamp?: string;
   amount?: string;
   logs?: Array<{ topics?: string[] }>;
   results?: ContractResult[];
@@ -64,7 +66,9 @@ export async function verifyContractResult(
           (log.topics ?? []).some((t) => t.toLowerCase() === topic.toLowerCase()),
         );
         if (r.status === "0x1" && amount > 0n && hasEvent) {
-          return { status: "confirmed" };
+          // The record timestamp is the network-assigned consensus time —
+          // receipts should show it, not the device clock.
+          return { status: "confirmed", consensusTimestamp: r.timestamp ?? null };
         }
         // Result exists but the transaction failed on-chain — stop polling.
         if (r.status && r.status !== "0x1") {

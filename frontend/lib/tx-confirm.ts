@@ -43,6 +43,13 @@ export interface TxPollOptions {
   mirrorBase?: string;
   /** Abort polling early (e.g. component unmount). */
   signal?: AbortSignal;
+  /**
+   * Called with the mirror node's `consensus_timestamp` (seconds.nanos)
+   * when the transaction confirms — the network-assigned settlement time,
+   * not the device clock. Receipts should display this as the finality
+   * time; it is the provably-fair timestamp for the transaction.
+   */
+  onConsensus?: (consensusTimestamp: string | null) => void;
 }
 
 const DEFAULT_MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
@@ -66,6 +73,22 @@ export function toMirrorTxId(txId: string): string {
 
 interface MirrorTransaction {
   result?: string;
+  /** Network-assigned settlement time, "seconds.nanos" (e.g. "1789520539.844492534"). */
+  consensus_timestamp?: string;
+}
+
+/**
+ * Parse a Hedera mirror-node consensus timestamp ("seconds.nanos") into a
+ * Date. String-split on the decimal point — never parseFloat the whole
+ * value, which loses nanosecond precision and can shift the second.
+ */
+export function consensusTimestampToDate(ts: string): Date | null {
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(ts.trim());
+  if (!m) return null;
+  const secs = Number(m[1]);
+  const nanos = m[2] ? Number(`0.${m[2]}`) : 0;
+  const ms = secs * 1000 + Math.floor(nanos * 1000);
+  return Number.isFinite(ms) ? new Date(ms) : null;
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -110,17 +133,28 @@ export async function pollTransactionStatus(
   for (;;) {
     if (signal?.aborted) throw new Error("aborted");
     let result: string | undefined;
+    let consensusTs: string | null = null;
     try {
       const res = await fetch(url, { cache: "no-store" });
       if (res.ok) {
         const data = (await res.json()) as { transactions?: MirrorTransaction[] };
         result = data.transactions?.[0]?.result;
+        consensusTs = data.transactions?.[0]?.consensus_timestamp ?? null;
       }
       // Not ok (404 while the tx propagates) or no result yet — keep polling.
     } catch {
       // Network blip — keep polling.
     }
-    if (result === "SUCCESS") return "confirmed";
+    if (result === "SUCCESS") {
+      // Surface the network-assigned settlement time so receipts can show
+      // the true consensus timestamp instead of the device clock.
+      try {
+        opts.onConsensus?.(consensusTs);
+      } catch {
+        // A throwing callback must not fail confirmation.
+      }
+      return "confirmed";
+    }
     // A terminal result that isn't SUCCESS (e.g. CONTRACT_REVERT_EXECUTED)
     // means the transaction definitively failed on-chain — stop polling.
     if (result) return "failed";

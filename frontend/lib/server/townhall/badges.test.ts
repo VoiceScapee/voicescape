@@ -14,10 +14,13 @@ import {
   badgesForUser,
   gatherUserStats,
   hasBaconBadge,
+  rankLeaderboard,
   scoreFromEntry,
   totalActions,
+  type RankedUser,
   type TipsLog,
   type UserStats,
+  type UserStatsEntry,
 } from "./badges";
 import type { StoredMessage, TownhallMessage } from "./types";
 
@@ -552,5 +555,52 @@ describe("walletTopicForms", () => {
     );
     const topics = await walletTopicForms("0.0.10425049");
     expect(topics).toEqual(new Set([pad(LONG_ZERO)]));
+  });
+});
+
+describe("fair ordering (first principles)", () => {
+  function entry(username: string, firstTs: number): UserStatsEntry {
+    return {
+      username,
+      chat: 0,
+      posts: 0,
+      rooms: 0,
+      listings: 0,
+      positiveVotes: 0,
+      referrals: 0,
+      firstTs,
+      lastTs: firstTs,
+      activeDays: 1,
+    };
+  }
+
+  it("breaks score ties by earliest consensus activity, not alphabet", () => {
+    const ranked = rankLeaderboard([
+      { u: entry("zed", Date.parse("2026-09-10T12:00:00Z")), score: 10 },
+      { u: entry("amy", Date.parse("2026-09-10T13:00:00Z")), score: 10 },
+    ]);
+    // amy is alphabetically first, but zed's activity reached consensus first.
+    expect(ranked.map((r) => r.u.username)).toEqual(["zed", "amy"]);
+  });
+
+  it("falls back to username only when consensus activity also ties", () => {
+    const ranked = rankLeaderboard([
+      { u: entry("zed", 1000), score: 10 },
+      { u: entry("amy", 1000), score: 10 },
+    ]);
+    expect(ranked.map((r) => r.u.username)).toEqual(["amy", "zed"]);
+  });
+
+  it("prefers the HCS consensus timestamp over self-reported message time", () => {
+    // A message whose device clock claims an early send but reached
+    // consensus later must count at consensus time (anti-gaming).
+    const early: StoredMessage<TownhallMessage> = {
+      seq: 1,
+      topic: "0.0.1",
+      consensusTimestamp: "2026-09-10T12:00:00Z",
+      contents: { v: 1, kind: "chat", author: "gamer", ts: "2026-09-01T00:00:00Z" } as unknown as TownhallMessage,
+    };
+    const stats = gatherUserStats({ forum: [], chat: [early], votes: [], market: [] });
+    expect(stats.get("gamer")?.firstTs).toBe(Date.parse("2026-09-10T12:00:00Z"));
   });
 });

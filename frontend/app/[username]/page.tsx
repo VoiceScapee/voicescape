@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
 import { useSession } from "@/lib/session";
@@ -151,10 +152,20 @@ function TipBox({
   // transaction reaches consensus, so the UI reacts to the real outcome
   // instead of sitting frozen on "Tipping…".
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
-  const confirmStatus = useConfirmedTransaction(confirmTxId);
   // Finality clock: wallet approval → consensus, shown on the receipt.
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
+  // The receipt shows the network-assigned consensus timestamp (via
+  // onConsensus), not the device clock — first-principles fair timing.
+  // (Declared after the state so the callback never hits a TDZ.)
+  const confirmOpts = useMemo(
+    () => ({
+      onConsensus: (ts: string | null) =>
+        setFinalizedAt(consensusTimestampToDate(ts ?? "") ?? new Date()),
+    }),
+    [],
+  );
+  const confirmStatus = useConfirmedTransaction(confirmTxId, confirmOpts);
   const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
   // HBAR string for the shareable receipt card (snapshotted with the lines).
   const [shareHbar, setShareHbar] = useState<string | null>(null);
@@ -164,7 +175,9 @@ function TipBox({
   useEffect(() => {
     if (!confirmTxId) return;
     if (confirmStatus === "confirmed") {
-      setFinalizedAt(new Date());
+      // onConsensus already set the network timestamp; keep it — only fall
+      // back to the device clock if it somehow didn't fire.
+      setFinalizedAt((prev) => prev ?? new Date());
       setTxHash(confirmTxId);
       recordConversionEvent("tip_confirmed", "blockpage");
       // Nudge every funding-goal display on this page to refetch now.

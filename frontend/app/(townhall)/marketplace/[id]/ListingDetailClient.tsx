@@ -9,6 +9,7 @@ import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { buyListing, resolvePage } from "@/lib/contracts";
 import { verifyPurchaseOnChain } from "@/lib/verify-tx";
+import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import PurchaseCelebration from "@/components/PurchaseCelebration";
 import { recordConversionEvent } from "@/lib/metrics";
@@ -279,7 +280,9 @@ export default function ListingDetailClient({ id }: { id: string }) {
       setBuy({ kind: "confirming", tx });
       const result = await verifyPurchaseOnChain(tx);
       if (result.status === "confirmed") {
-        setBuyFinalizedAt(new Date());
+        // Network-assigned consensus timestamp from the mirror node — not
+        // the device clock — so the receipt shows true settlement time.
+        setBuyFinalizedAt(consensusTimestampToDate(result.consensusTimestamp ?? "") ?? new Date());
         recordPurchase({
           listingId: listing.id,
           note: listing.title,

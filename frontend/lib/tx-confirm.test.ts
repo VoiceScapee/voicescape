@@ -6,7 +6,7 @@
  * elapses (timeout — never misreported as failure).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { pollTransactionStatus } from "./tx-confirm";
+import { pollTransactionStatus, consensusTimestampToDate } from "./tx-confirm";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -150,5 +150,55 @@ describe("pollTransactionStatus wallet txId regression", () => {
     const url = String(vi.mocked(fetch).mock.calls[0][0]);
     expect(url).toContain("0.0.10857409-1789339017-871111290");
     expect(url).not.toContain("@");
+  });
+});
+
+describe("consensusTimestampToDate", () => {
+  it("parses a mirror-node seconds.nanos timestamp without float rounding", () => {
+    // parseFloat("1789520539.844492534") rounds the nanos; string-splitting
+    // must not shift the second.
+    const d = consensusTimestampToDate("1789520539.844492534");
+    expect(d).not.toBeNull();
+    expect(d!.getTime()).toBe(1789520539 * 1000 + 844);
+  });
+
+  it("handles whole-second timestamps", () => {
+    expect(consensusTimestampToDate("1789520539")!.getTime()).toBe(1789520539 * 1000);
+  });
+
+  it("returns null for garbage", () => {
+    expect(consensusTimestampToDate("")).toBeNull();
+    expect(consensusTimestampToDate("not-a-time")).toBeNull();
+  });
+});
+
+describe("pollTransactionStatus onConsensus", () => {
+  it("passes the mirror consensus_timestamp to the callback on confirm", async () => {
+    mockFetchSequence([
+      { ok: true, body: { transactions: [{ result: "SUCCESS", consensus_timestamp: "1789520539.844492534" }] } },
+    ]);
+    let seen: string | null = "unset";
+    const outcome = await pollTransactionStatus("0.0.1-1789520539-844492534", {
+      timeoutMs: 1000,
+      baseDelayMs: 5,
+      onConsensus: (ts) => {
+        seen = ts;
+      },
+    });
+    expect(outcome).toBe("confirmed");
+    expect(seen).toBe("1789520539.844492534");
+  });
+
+  it("passes null when the mirror omits the timestamp", async () => {
+    mockFetchSequence([{ ok: true, body: { transactions: [{ result: "SUCCESS" }] } }]);
+    let seen: string | null = "unset";
+    await pollTransactionStatus("0.0.1-1789520539-844492534", {
+      timeoutMs: 1000,
+      baseDelayMs: 5,
+      onConsensus: (ts) => {
+        seen = ts;
+      },
+    });
+    expect(seen).toBeNull();
   });
 });
