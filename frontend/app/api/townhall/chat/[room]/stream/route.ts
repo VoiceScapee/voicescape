@@ -20,8 +20,8 @@ export const runtime = "nodejs";
  * whose address holds the Builder badge. 401 → no/invalid session,
  * 403 → session valid but no badge.
  */
-export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
-  const room = params.room;
+export async function GET(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
+  const room = (await params).room;
   if (room === BUILDERS_ROOM_ID) {
     const cred = sessionCredentialFrom(req);
     const verified = typeof cred === "string" ? verifySessionToken(cred) : null;

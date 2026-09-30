@@ -15,9 +15,9 @@ export const runtime = "nodejs";
  * the polling fallback (it aborts after 4.5s and loses the data). This
  * endpoint returns immediately with JSON.
  */
-export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   try {
-    const room = params.room;
+    const room = (await params).room;
     // Builders room gating (same as stream endpoint).
     if (room === BUILDERS_ROOM_ID) {
       const cred = sessionCredentialFrom(req);
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
  * POST /api/townhall/chat/[room] {author,body,dustFeeTxId}
  * Dust fee required. 201 → {seq}.
  */
-export async function POST(req: NextRequest, { params }: { params: { room: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   // Per-IP flood bound in front of the per-wallet quotas and dust fees.
   const gated = await ipGate(
     req,
@@ -87,6 +87,6 @@ export async function POST(req: NextRequest, { params }: { params: { room: strin
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { status, json } = await postChat(defaultDeps(), params.room, withAuth((body ?? {}) as PostChatBody, req));
+  const { status, json } = await postChat(defaultDeps(), (await params).room, withAuth((body ?? {}) as PostChatBody, req));
   return NextResponse.json(json, { status });
 }

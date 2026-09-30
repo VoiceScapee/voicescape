@@ -48,10 +48,10 @@
     "vitest": "^4.1.11"
   },
   "overrides": {
-    "@grpc/grpc-js": "1.12.7",
-    "axios": "1.18.0",
+    "@grpc/grpc-js": "1.13.6",
+    "axios": "1.20.0",
     "ws": "8.21.0",
-    "postcss": "8.5.18",
+    "postcss": "8.5.23",
     "@x402/hedera": {
       "protobufjs": "8.6.6"
     }

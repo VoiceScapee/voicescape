@@ -14,7 +14,7 @@ export const runtime = "nodejs";
  * the buyer must pay `sellerAddress` (the registry-resolved owner in
  * canonical alias form) — never the raw long-zero form from the listing.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Per-IP flood bound — this does mirror/registry reads per call.
   const gated = await ipGate(
     req,
@@ -24,6 +24,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     "too many verification requests — try again later",
   );
   if (gated) return gated;
-  const { status, json } = await verifyBuySeller(defaultDeps(), params.id);
+  const { status, json } = await verifyBuySeller(defaultDeps(), (await params).id);
   return NextResponse.json(json, { status });
 }

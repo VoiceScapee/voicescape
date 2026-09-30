@@ -15,9 +15,10 @@ export const runtime = "nodejs";
 export default async function GodseyePage({
   params,
 }: {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }) {
-  const username = decodeURIComponent(params.username ?? "").toLowerCase();
+  const { username: rawUsername } = await params;
+  const username = decodeURIComponent(rawUsername ?? "").toLowerCase();
   if (!isGodseyePage(username)) notFound();
   return (
     <DannysVision agent={username} accent={GODSEYE_DISPLAY[username].accent} />

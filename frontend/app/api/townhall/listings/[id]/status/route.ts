@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  * POST /api/townhall/listings/[id]/status {seller,status}
  * Seller-only (403 otherwise); status "sold" | "cancelled". → {}.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Per-IP flood bound in front of the per-wallet free-write quota.
   const gated = await ipGate(
     req,
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   const { status, json } = await setListingStatus(
     defaultDeps(),
-    params.id,
+    (await params).id,
     withAuth((body ?? {}) as SetListingStatusBody, req),
   );
   return NextResponse.json(json, { status });

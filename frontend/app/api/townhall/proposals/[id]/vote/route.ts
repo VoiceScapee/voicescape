@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  * POST /api/townhall/proposals/[id]/vote {voter,choice}
  * Latest vote per voter wins. → {yes,no,abstain}.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // Per-IP flood bound in front of the per-wallet free-write quota.
   const gated = await ipGate(
     req,
@@ -29,6 +29,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  const { status, json } = await voteProposal(defaultDeps(), params.id, withAuth((body ?? {}) as VoteProposalBody, req));
+  const { status, json } = await voteProposal(defaultDeps(), (await params).id, withAuth((body ?? {}) as VoteProposalBody, req));
   return NextResponse.json(json, { status });
 }

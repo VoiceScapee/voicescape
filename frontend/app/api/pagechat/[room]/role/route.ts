@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  * (owner / mod / viewer). Needs the wallet session; mods and owners also
  * get the current mods/mutes/bans/filters for the mod panel.
  */
-export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   const gated = await ipGate(
     req,
     "pagechat-role",
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
   if (gated) return gated;
   const { status, json } = await pageChatRole(
     defaultPageChatDeps(),
-    params.room,
+    (await params).room,
     sessionCredentialFrom(req),
   );
   return NextResponse.json(json, { status });
