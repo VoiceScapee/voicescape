@@ -25,7 +25,9 @@ function getReq(wallet: string): NextRequest {
 }
 
 beforeEach(() => {
-  vi.restoreAllMocks();
+  // Vitest 4: restoreAllMocks no longer clears call history — resetAllMocks
+  // preserves the old full-reset semantics this file relies on.
+  vi.resetAllMocks();
   mockIpGate.mockResolvedValue(null);
 });
 
