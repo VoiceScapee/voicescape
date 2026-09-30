@@ -80,7 +80,20 @@ const EVM_HASH_RE = /^0x[0-9a-fA-F]{64}$/;
  * lowercased for EVM hashes.
  */
 export function normalizeTxId(raw: string): NormalizedId {
-  const t = raw.trim();
+  let t = raw.trim();
+  // The proof URL carries the id percent-encoded (/tx/<encodeURIComponent(id)>),
+  // and the still-encoded form (%40 for @) can reach this validator. Decode
+  // (repeatedly, to also cover double-encoding) before validating.
+  for (let i = 0; i < 3; i++) {
+    if (!/%[0-9a-fA-F]{2}/.test(t)) break;
+    try {
+      const decoded = decodeURIComponent(t);
+      if (decoded === t) break;
+      t = decoded;
+    } catch {
+      break;
+    }
+  }
   const sdk = SDK_AT_RE.exec(t) ?? SDK_DASH_RE.exec(t);
   if (sdk) {
     return { ok: true, txId: `0.0.${sdk[1]}-${sdk[2]}-${sdk[3]}`, kind: "sdk" };

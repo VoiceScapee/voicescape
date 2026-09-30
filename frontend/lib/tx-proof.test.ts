@@ -109,6 +109,16 @@ describe("normalizeTxId", () => {
     expect(r).toEqual({ ok: true, txId: EVM_HASH, kind: "evm" });
   });
 
+  it("accepts percent-encoded @-form SDK ids (%40 as sent by the proof URL)", () => {
+    const r = normalizeTxId("0.0.10424063%401789255464.614991104");
+    expect(r).toEqual({ ok: true, txId: "0.0.10424063-1789255464-614991104", kind: "sdk" });
+  });
+
+  it("accepts double-encoded SDK ids (%2540)", () => {
+    const r = normalizeTxId("0.0.10424063%25401789255464.614991104");
+    expect(r).toEqual({ ok: true, txId: "0.0.10424063-1789255464-614991104", kind: "sdk" });
+  });
+
   it.each([
     "garbage",
     "0.0.1234",
