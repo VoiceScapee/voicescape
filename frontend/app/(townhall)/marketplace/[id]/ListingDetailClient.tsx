@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ReviewNote, SellerLine, formatUsd } from "@/components/townhall/ListingCard";
-import { useWallet } from "@/lib/wallet";
+import { friendlyWalletError, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
@@ -13,6 +13,7 @@ import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import PurchaseCelebration from "@/components/PurchaseCelebration";
 import { recordConversionEvent } from "@/lib/metrics";
+import { reportError } from "@/lib/report-error";
 import { getActiveChain } from "@/lib/chains";
 import { checkPayoutBelongsToOwner, isBuyBlocked, mirrorBaseFor } from "@/lib/marketplace-verify";
 import { longZeroToAccountId } from "@/lib/session-message";
@@ -65,9 +66,27 @@ const BADGE_LISTING_META: Record<string, { icon: string; name: string }> = {
 };
 
 export default function ListingDetailClient({ id }: { id: string }) {
-  const { account, getTxSender } = useWallet();
+  const { account, connect, getTxSender } = useWallet();
   const { username: me, canWrite } = useWriteGate();
   const hcs = useHcsSubmit();
+  const { session, signOut } = useSession();
+  const [repairing, setRepairing] = useState(false);
+  // One-tap fix for a stale WalletConnect session — same pattern as the tip
+  // modals. Deliberately does NOT re-send the purchase.
+  const repairConnection = async () => {
+    // Capture the adapter BEFORE signOut() clears the session.
+    const stored = WALLET_ADAPTERS.find((a) => a.id === (session?.adapterId ?? "hashpack"));
+    const adapterId = stored ? stored.id : "hashpack";
+    setRepairing(true);
+    try {
+      await repairStaleConnection({ signOut, connect, adapterId });
+      setBuy({ kind: "idle" });
+    } catch (e) {
+      setBuy({ kind: "error", message: `Couldn't reconnect — ${friendlyWalletError(e)}` });
+    } finally {
+      setRepairing(false);
+    }
+  };
   let viewerAddress: string | undefined;
   try {
     viewerAddress = useSession().session?.address ?? undefined;
@@ -308,7 +327,11 @@ export default function ListingDetailClient({ id }: { id: string }) {
         setBuy({ kind: "submitted", tx });
       }
     } catch (e) {
-      setBuy({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      // Report the reason (not just the count) and use plain-words copy —
+      // this is a money path; raw wallet-library text erodes trust.
+      reportError(e, "marketplace-buy");
+      recordConversionEvent("purchase_failed");
+      setBuy({ kind: "error", message: friendlyWalletError(e) });
     }
   };
 
@@ -494,6 +517,17 @@ export default function ListingDetailClient({ id }: { id: string }) {
             <div className="th-dust is-error" role="alert">
               <div className="th-dust-title">Purchase failed</div>
               <p>{buy.message}</p>
+              {isStaleConnectionError(buy.message) && (
+                <button
+                  type="button"
+                  className="vs-btn vs-btn-ghost th-btn-sm"
+                  onClick={repairConnection}
+                  disabled={repairing}
+                  style={{ marginRight: 8 }}
+                >
+                  {repairing ? "Repairing…" : "🔧 Repair connection"}
+                </button>
+              )}
               <button type="button" className="vs-btn vs-btn-ghost th-btn-sm" onClick={() => setBuy({ kind: "idle" })}>
                 Try again
               </button>

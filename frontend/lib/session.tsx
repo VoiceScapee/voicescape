@@ -35,9 +35,11 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getHederaPairing, isStaleConnectionError, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
+import { friendlyWalletError, getHederaPairing, isStaleConnectionError, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
 import { getActiveChain } from "./chains";
 import { setAuthHeaderProvider } from "./auth-client";
+import { reportError } from "./report-error";
+import { recordConversionEvent } from "./metrics";
 import {
   SESSION_HEADER,
   SESSION_TTL_MS,
@@ -475,6 +477,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return created;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Sign-in failed.";
+        // Report the reason (not just a failed attempt) so the founder
+        // dashboard can show WHY sign-ins fail; fail-silent by design.
+        reportError(e, "sign-in");
+        recordConversionEvent("signin_failed");
         // User rejection shouldn't look like an app error.
         const rejected = /user (rejected|denied)|rejected the request/i.test(msg);
         // Stale WalletConnect session: the wallet never responded. Auto-
@@ -489,7 +495,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
             // Best effort — the error message below is what matters.
           }
         }
-        setError(rejected ? "Signature request was dismissed in the wallet." : msg);
+        setError(rejected ? "Signature request was dismissed in the wallet." : friendlyWalletError(msg));
         setSessionBoth(null);
         writeStored(null);
         setStatus(account && !staleSession ? "connected" : "anonymous");

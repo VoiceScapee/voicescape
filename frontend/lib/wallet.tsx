@@ -24,6 +24,8 @@ import React, {
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import { getActiveChain, type ChainConfig } from "./chains";
 import type { TxSender } from "./tx";
+import { reportError } from "./report-error";
+import { recordConversionEvent } from "./metrics";
 // NOTE: ./tx is intentionally NOT statically imported here. It pulls in the
 // entire @hiero-ledger/sdk (~2.3MB) which Vercel's CDN fails to serve reliably
 // on mobile ("Loading chunk 3322 failed"). The tx senders are dynamically
@@ -967,6 +969,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return result.account;
     } catch (e) {
       senderGetter.current = null;
+      // Report the reason (not just a failed attempt) so the founder
+      // dashboard can show WHY connections fail; fail-silent by design.
+      reportError(e, "wallet-connect");
+      recordConversionEvent("wallet_connect_failed");
       // Map known transient wallet-library TypeErrors (e.g. the
       // hedera-wallet-connect "reading 'call'" init race) to actionable
       // copy; everything else passes through unchanged.

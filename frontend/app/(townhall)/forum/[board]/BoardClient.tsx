@@ -8,6 +8,7 @@ import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useStreamEvents } from "@/components/townhall/useStream";
 import { pollTransactionStatus } from "@/lib/tx-confirm";
 import { getJson, postJson, type TownhallPost } from "@/lib/townhall";
+import { reportError } from "@/lib/report-error";
 import { IconClose } from "@/components/icons";
 
 /**
@@ -107,6 +108,7 @@ export default function BoardClient({ board }: { board: string }) {
       );
       setPosts(Array.isArray(data.posts) ? data.posts.map(normalizePost) : []);
     } catch (e) {
+      reportError(e, "forum-board");
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);

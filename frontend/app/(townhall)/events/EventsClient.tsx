@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { getJson, postJson, timeAgo, makeTownhallId, type TownhallEvent } from "@/lib/townhall";
+import { reportError } from "@/lib/report-error";
 
 function formatStart(ts: number): string {
   return new Date(ts).toLocaleString(undefined, {
@@ -83,6 +84,7 @@ function NewEventForm({ onCreated }: { onCreated: () => void }) {
       setOpen(false);
       onCreated();
     } catch (e) {
+      reportError(e, "events-create");
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -168,6 +170,7 @@ export default function EventsClient() {
       list.sort((a, b) => a.startsAt - b.startsAt);
       setEvents(list);
     } catch (e) {
+      reportError(e, "events-list");
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
