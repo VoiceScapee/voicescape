@@ -213,6 +213,32 @@ export function friendlyWalletError(e: unknown): string {
 }
 
 /**
+ * True when a wallet error message means the WalletConnect session went
+ * stale — the wallet never responded, so the fix is a fresh pairing, not
+ * retrying the same action. Single source of truth for the tip modal's
+ * repair button and the session sign-in handler.
+ */
+export function isStaleConnectionError(message: string | null | undefined): boolean {
+  return /stale|didn't respond/i.test(message ?? "");
+}
+
+/**
+ * One-tap stale-session repair: clear the dead session (which also
+ * disconnects the wallet) and start a fresh pairing with the given
+ * adapter. Resolves on success; throws the friendly connect() error on
+ * failure. Callers show the error and must NOT auto-retry the payment —
+ * the user re-taps deliberately once the connection is healthy.
+ */
+export async function repairStaleConnection(deps: {
+  signOut: () => void;
+  connect: (adapterId: WalletAdapterId) => Promise<unknown>;
+  adapterId: WalletAdapterId;
+}): Promise<void> {
+  deps.signOut();
+  await deps.connect(deps.adapterId);
+}
+
+/**
  * Reliable in-app browser detection, including iOS. Synchronous signals
  * first (fast path); on mobile, falls back to a brief iframe-channel
  * probe, which is the only signal HashPack's iOS in-app browser provides.
