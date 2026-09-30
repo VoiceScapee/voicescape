@@ -15,6 +15,7 @@ import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { useFundingGoal, TIP_CONFIRMED_EVENT } from "@/hooks/useFundingGoal";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
+import { reportError } from "@/lib/report-error";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { markClaimCongratsSeen, readClaimCongrats } from "@/lib/claim-congrats";
 import {
@@ -418,7 +419,9 @@ function TipBox({
         // Wallet-side failure (rejection, wallet-library error, validation
         // guardrail): record the outcome so the funnel never shows a bare
         // attempt, and map known wallet-library TypeErrors to actionable
-        // copy instead of the cryptic raw message.
+        // copy instead of the cryptic raw message. Report the reason so the
+        // founder dashboard can show WHY tips fail, not just that they did.
+        reportError(e, "tip-modal");
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "blockpage");
       }
@@ -519,6 +522,7 @@ function TipBox({
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
       } else {
+        reportError(e, "tip-modal");
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "blockpage");
       }

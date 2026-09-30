@@ -9,7 +9,8 @@ import { useEffect, useMemo, useState } from "react";
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import Link from "next/link";
 import { tipPage, resolvePage } from "@/lib/contracts";
-import { friendlyWalletError, useWallet } from "@/lib/wallet";
+import { friendlyWalletError, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
+import { useSession } from "@/lib/session";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei, hbarToWei } from "@/lib/tokens";
@@ -24,6 +25,7 @@ import { IconTip, IconClose, IconCheck } from "@/components/icons";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
+import { reportError } from "@/lib/report-error";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import TipCelebration from "@/components/TipCelebration";
 import ReputationBadge from "./Reputation";
@@ -35,7 +37,8 @@ const TIP_PRESETS = [1, 5, 10];
 const TIP_PRESETS_HBAR = [1, 5, 10, 25, 50];
 
 function TipModal({ author, onClose }: { author: string; onClose: () => void }) {
-  const { account, getTxSender } = useWallet();
+  const { account, connect, getTxSender } = useWallet();
+  const { session, signOut } = useSession();
   const [usd, setUsd] = useState(5);
   // Visitor-chosen tip currency, shared with the blockpage tip panel.
   const [currency, setCurrency] = useState<TipCurrency>(() => readTipCurrency());
@@ -57,9 +60,28 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
   }, []);
   const [price, setPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [repairing, setRepairing] = useState(false);
   const [txId, setTxId] = useState<string | null>(null);
   const [submittedTxId, setSubmittedTxId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // One-tap fix for a stale WalletConnect session — same pattern as the
+  // blockpage tip modal: only shown when the error means the pairing died.
+  const staleConnection = isStaleConnectionError(error);
+  const repairConnection = async () => {
+    // Capture the adapter BEFORE signOut() clears the session.
+    const stored = WALLET_ADAPTERS.find((a) => a.id === (session?.adapterId ?? "hashpack"));
+    const adapterId = stored ? stored.id : "hashpack";
+    setRepairing(true);
+    setError(null);
+    try {
+      await repairStaleConnection({ signOut, connect, adapterId });
+      // Success: error stays cleared; the user taps Tip again deliberately.
+    } catch (e) {
+      setError(`Couldn't reconnect — ${friendlyWalletError(e)}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
   // Set once the wallet approves: the hook polls the mirror node until the
   // transaction reaches consensus, so the UI reacts to the real outcome.
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
@@ -154,8 +176,9 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
         setConfirmTxId(e.txId);
       } else {
         // Wallet-side failure (rejection, wallet-library error): record the
-        // outcome so the funnel never shows a bare attempt, and map known
-        // wallet-library TypeErrors to actionable copy.
+        // outcome so the funnel never shows a bare attempt, report the
+        // reason, and map known wallet-library TypeErrors to actionable copy.
+        reportError(e, "post-tip");
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "post");
       }
@@ -304,6 +327,18 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
             {error && (
               <p className="th-error">
                 {error}{" "}
+                {staleConnection && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={repairConnection}
+                      disabled={repairing}
+                      style={{ marginLeft: 8 }}
+                    >
+                      {repairing ? "Repairing…" : "🔧 Repair connection"}
+                    </button>{" "}
+                  </>
+                )}
                 <a
                   href="https://discord.gg/2KGzPduUN5"
                   target="_blank"

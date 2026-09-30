@@ -43,9 +43,12 @@ export const CONVERSION_EVENTS = [
   // builder_edited → publish_started → page_published shows exactly where
   // the builder funnel leaks.
   "wallet_connected",
+  "wallet_connect_failed",
+  "signin_failed",
   "builder_opened",
   "builder_edited",
   "publish_started",
+  "publish_failed",
   "buddy_preview_shown",
   "page_published",
 ] as const;

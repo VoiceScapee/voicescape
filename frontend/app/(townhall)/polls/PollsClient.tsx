@@ -10,6 +10,7 @@ import { useStreamEvents } from "@/components/townhall/useStream";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { TxConfirming, TxReceipt } from "@/components/TxConfirm";
 import { recordConversionEvent } from "@/lib/metrics";
+import { reportError } from "@/lib/report-error";
 import { getActiveChain } from "@/lib/chains";
 import { getJson, postJson, makeTownhallId, type Proposal } from "@/lib/townhall";
 
@@ -123,6 +124,7 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
       });
       // Tally refresh happens on "confirmed" below.
     } catch (e) {
+      reportError(e, "polls-vote");
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);
       setConfirmTxId(null);
@@ -475,6 +477,7 @@ export default function PollsClient() {
       list.sort((a, b) => b.closesAt - a.closesAt);
       setProposals(list);
     } catch (e) {
+      reportError(e, "polls-list");
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);

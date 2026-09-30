@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getJson, postJson, type TownhallEvent } from "@/lib/townhall";
+import { reportError } from "@/lib/report-error";
 import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 
@@ -117,6 +118,7 @@ export default function ChatRoomsClient() {
     } catch (e) {
       // Server verification failed — the HCS tx is still on-chain, but the
       // server didn't accept it (e.g., content filter). Show the error.
+      reportError(e, "chat-create-room");
       setFormError(e instanceof Error ? e.message : String(e));
       return;
     }

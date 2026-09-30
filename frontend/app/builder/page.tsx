@@ -53,7 +53,7 @@ import {
   socialsUrls,
 } from "@/lib/quickbuild";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
-import { getHederaPairing, useWallet } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -71,6 +71,7 @@ import {
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
 import { recordConversionEvent } from "@/lib/metrics";
+import { reportError } from "@/lib/report-error";
 import { registerPage, updatePage, ZERO_ADDRESS, getRegistryAddress } from "@/lib/contracts";
 import {
   deriveUsername,
@@ -2258,14 +2259,34 @@ function PublishPanel({
    */
   liaisonAssisted?: boolean;
 }) {
-  const { account, getTxSender } = useWallet();
+  const { account, connect, getTxSender } = useWallet();
   // Brand pass PORT-B: the only i18n in this file — the publish-helper line.
   const { t } = useLanguage();
-  const { requireSession, signIn, token } = useSession();
+  const { requireSession, session, signIn, signOut, token } = useSession();
   const hcs = useHcsSubmit();
   const [status, setStatus] = useState<{ kind: "info" | "ok" | "err"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [txHash, setTxHash] = useState<string | null>(null);
+  // One-tap fix for a stale WalletConnect session on the publish path —
+  // same pattern as the tip modals. Set in the publish catch; cleared when
+  // a new publish starts.
+  const [publishStale, setPublishStale] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const repairConnection = async () => {
+    // Capture the adapter BEFORE signOut() clears the session.
+    const stored = WALLET_ADAPTERS.find((a) => a.id === (session?.adapterId ?? "hashpack"));
+    const adapterId = stored ? stored.id : "hashpack";
+    setRepairing(true);
+    setPublishStale(false);
+    try {
+      await repairStaleConnection({ signOut, connect, adapterId });
+      setStatus({ kind: "info", text: "Reconnected — tap Publish to try again." });
+    } catch (e) {
+      setStatus({ kind: "err", text: `Couldn't reconnect — ${friendlyWalletError(e)}` });
+    } finally {
+      setRepairing(false);
+    }
+  };
   // Builder-simplify (2026-09-28): staged publish progress for the overlay
   // (#4) — pinning -> wallet signature -> on-chain confirmation.
   const [publishStage, setPublishStage] = useState<"pinning" | "wallet" | "confirming" | null>(null);
@@ -2385,6 +2406,7 @@ function PublishPanel({
     }
     setBusy(true);
     setPublishStage("pinning");
+    setPublishStale(false);
     // Funnel telemetry: a publish was attempted (validation passed, pinning
     // started). Once per mount so retries don't inflate the funnel.
     // Aggregate counter only — never throws, never affects publish.
@@ -2577,7 +2599,13 @@ function PublishPanel({
         });
       }
     } catch (e) {
-      setStatus({ kind: "err", text: `Publish failed: ${e instanceof Error ? e.message : String(e)}` });
+      // Report the reason (not just the count) so the founder dashboard can
+      // show WHY publishes fail; plain-words copy for the phone user.
+      reportError(e, "builder-publish");
+      recordConversionEvent("publish_failed");
+      const stale = isStaleConnectionError(e instanceof Error ? e.message : String(e));
+      setPublishStale(stale);
+      setStatus({ kind: "err", text: `Publish failed: ${friendlyWalletError(e)}` });
     } finally {
       setBusy(false);
       setPublishStage(null);
@@ -2751,7 +2779,18 @@ function PublishPanel({
       {/* Brand pass PORT-B: plain-words publish promise from the approved mock. */}
       <p className="vb-pub-helper">{t("builder.publishHelper")}</p>
 
-      {status && <div className={`vb-status is-${status.kind}`}>{status.text}</div>}
+      {status && (
+        <div className={`vb-status is-${status.kind}`}>
+          {status.text}
+          {status.kind === "err" && publishStale && (
+            <div style={{ marginTop: 8 }}>
+              <button type="button" onClick={repairConnection} disabled={repairing}>
+                {repairing ? "Repairing…" : "🔧 Repair connection"}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Builder-simplify (#5): post-publish confirmation card for the
           unconfirmed path — big copy-link next action, no dead end. */}
