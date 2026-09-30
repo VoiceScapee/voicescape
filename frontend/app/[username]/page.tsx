@@ -10,7 +10,7 @@ import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schem
 import { getActiveChain } from "@/lib/chains";
 import { approveTokenSpender, resolvePage, swapTokenForHbar, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
-import { friendlyWalletError, getHederaPairing, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { useFundingGoal, TIP_CONFIRMED_EVENT } from "@/hooks/useFundingGoal";
 import { WalletTimeoutError } from "@/lib/tx";
@@ -96,7 +96,7 @@ function TipBox({
   onClose: () => void;
 }) {
   const { account, connect, getTxSender } = useWallet();
-  const { session } = useSession();
+  const { session, signOut } = useSession();
   const { t } = useLanguage();
   const [usd, setUsd] = useState("5");
   // Visitor-chosen tip mode: USD (converted to HBAR at send time), HBAR
@@ -145,6 +145,13 @@ function TipBox({
   }, []);
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // One-tap stale-session repair: while true the "Repair connection" button
+  // shows "Repairing…" and stays disabled.
+  const [repairing, setRepairing] = useState(false);
+  // Matches the stale-session detector in lib/session.tsx — the tip modal
+  // only offers the repair button for wallet-connection failures, never for
+  // amount/registration/price errors.
+  const staleConnection = isStaleConnectionError(error);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [submittedHash, setSubmittedHash] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -313,6 +320,27 @@ function TipBox({
   // Hedera-side network fee (existing display value), passed through the
   // i18n placeholder rather than hard-coded into JSX copy.
   const NETWORK_FEE_HBAR = "0.08";
+
+  // One-tap fix for a stale WalletConnect session: clears the dead session
+  // (signOut also disconnects the wallet) and starts a fresh pairing with
+  // the same adapter. Deliberately does NOT re-send the tip — the user taps
+  // Tip again themselves once the connection is healthy.
+  const repairConnection = async () => {
+    // Capture the adapter BEFORE signOut() clears the session.
+    const stored = WALLET_ADAPTERS.find((a) => a.id === (session?.adapterId ?? "hashpack"));
+    const adapterId = stored ? stored.id : "hashpack";
+    setRepairing(true);
+    setError(null);
+    try {
+      await repairStaleConnection({ signOut, connect, adapterId });
+      // Success: error stays cleared; the modal is ready for another tip tap.
+    } catch (e) {
+      // connect() throws a friendly message on failure.
+      setError(`Couldn't reconnect — ${friendlyWalletError(e)}`);
+    } finally {
+      setRepairing(false);
+    }
+  };
 
   const tip = async () => {
     setError(null);
@@ -834,6 +862,18 @@ function TipBox({
             {error && (
               <div className="pv-tip-error">
                 {error}
+                {staleConnection && (
+                  <div style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="pv-tip-btn"
+                      onClick={repairConnection}
+                      disabled={repairing}
+                    >
+                      {repairing ? "Repairing…" : "🔧 Repair connection"}
+                    </button>
+                  </div>
+                )}
                 <div style={{ marginTop: 8 }}>
                   <a
                     href="https://discord.gg/2KGzPduUN5"

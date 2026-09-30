@@ -35,7 +35,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { getHederaPairing, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
+import { getHederaPairing, isStaleConnectionError, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
 import { getActiveChain } from "./chains";
 import { setAuthHeaderProvider } from "./auth-client";
 import {
@@ -481,7 +481,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         // disconnect so the next attempt starts with a clean pairing instead
         // of reusing the broken one — the user shouldn't have to manually
         // nuke both apps.
-        const staleSession = /stale|didn't respond/i.test(msg);
+        const staleSession = isStaleConnectionError(msg);
         if (staleSession) {
           try {
             await wallet.disconnect();
