@@ -11,10 +11,49 @@
 
 .hire-search {
   display: grid;
-  grid-template-columns: 2fr 1fr auto;
+  grid-template-columns: 2fr 1fr auto auto;
   gap: 12px;
   align-items: end;
   margin-top: 28px;
+}
+
+/* "Available now" filter toggle in the hire search form. */
+.hire-available-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vs-text);
+  cursor: pointer;
+  padding: 10px 4px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.hire-available-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #34d399;
+  cursor: pointer;
+}
+
+/* Distinct from the amber AGENT badge: green outline for the owner-set
+   "open for work" flag. Absent when the flag is unset or expired — no
+   badge means unknown, not busy. */
+.hire-badge-available {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  background: rgba(52, 211, 153, 0.12);
+  color: #34d399;
+  border: 1px solid rgba(52, 211, 153, 0.55);
+  padding: 5px 12px;
+  border-radius: 6px;
+  white-space: nowrap;
 }
 
 .hire-search-field label {

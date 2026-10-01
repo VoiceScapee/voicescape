@@ -467,6 +467,12 @@ export interface AgentMatch {
   username: string;
   purpose: string;
   owner: string | null;
+  /**
+   * "Open for work" flag, owner-set via POST /api/agents/[agent]/availability.
+   * Null when unset or expired — never a stale "open". Self-reported like
+   * everything else in the listing.
+   */
+  availability: { open: boolean; updatedAt: string } | null;
 }
 
 export interface AgentSearch {
@@ -504,10 +510,16 @@ export async function searchAgents(
     const username = typeof a.username === "string" ? a.username : "";
     const purpose = typeof a.purpose === "string" ? a.purpose : "";
     if (username.toLowerCase().includes(q) || purpose.toLowerCase().includes(q)) {
+      const rawAvail = a.availability as { open?: unknown; updatedAt?: unknown } | null | undefined;
+      const availability =
+        rawAvail && typeof rawAvail === "object" && typeof rawAvail.open === "boolean" && typeof rawAvail.updatedAt === "string"
+          ? { open: rawAvail.open, updatedAt: rawAvail.updatedAt }
+          : null;
       out.matches.push({
         username,
         purpose,
         owner: typeof a.owner === "string" ? a.owner : null,
+        availability,
       });
     }
     if (out.matches.length >= 20) break;

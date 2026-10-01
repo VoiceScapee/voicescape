@@ -31,6 +31,8 @@ import { defaultHcsPort } from "./townhall/hcs";
 import { aggregateRepVotes } from "./townhall/votes";
 import { getTopicId } from "./townhall/topics";
 import { getRegistryAddress } from "@/lib/contracts";
+import { readAvailability, type AgentAvailability } from "./agent-availability";
+import type { KvStore } from "./store";
 import type { StoredMessage, TownhallMessage } from "./townhall/types";
 
 /* ------------------------------------------------------------------ */
@@ -65,6 +67,12 @@ export interface DirectoryAgent {
   services: DirectoryService[];
   /** Community votes. basis is ALWAYS "community-votes" — never proof-of-payment. */
   reputation: { up: number; down: number; score: number; basis: "community-votes" } | null;
+  /**
+   * "Open for work" flag set by the page owner's wallet via
+   * POST /api/agents/[agent]/availability. Null when unset, expired, or
+   * unreadable — the directory never renders a stale "open".
+   */
+  availability: AgentAvailability | null;
   /** Mirror-node timestamp of the registerPage call. */
   registeredAt: string | null;
 }
@@ -92,6 +100,8 @@ export interface DirectoryFilters {
   /** Keep agents with at least one service at or under this USD-cents price. */
   maxPriceUsdCents?: number;
   limit?: number;
+  /** When true, keep only agents whose availability flag is currently open. */
+  available?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -354,11 +364,30 @@ async function resolveAgent(
     capabilities,
     services,
     reputation,
+    // Availability is attached fresh per buildAgentDirectory() call (below),
+    // never baked into the 5-minute mirror-node cache.
+    availability: null,
     registeredAt,
   };
 }
 
-function applyFilters(agents: DirectoryAgent[], filters: DirectoryFilters): DirectoryAgent[] {
+/**
+ * Attach each agent's current availability flag. Runs on every
+ * buildAgentDirectory() call — AFTER the 5-minute mirror-node/IPFS cache —
+ * so a toggled flag shows up immediately instead of lagging the cache.
+ * A missing/expired/unreadable flag attaches as null (no badge), never a
+ * stale "open".
+ */
+export async function attachAvailability(
+  agents: DirectoryAgent[],
+  store?: KvStore,
+): Promise<DirectoryAgent[]> {
+  return Promise.all(
+    agents.map(async (a) => ({ ...a, availability: await readAvailability(a.username, store) })),
+  );
+}
+
+export function applyFilters(agents: DirectoryAgent[], filters: DirectoryFilters): DirectoryAgent[] {
   let out = agents;
   const cap = filters.capability?.trim().toLowerCase();
   if (cap) {
@@ -374,6 +403,9 @@ function applyFilters(agents: DirectoryAgent[], filters: DirectoryFilters): Dire
   if (filters.maxPriceUsdCents !== undefined) {
     const max = filters.maxPriceUsdCents;
     out = out.filter((a) => a.services.some((s) => s.priceUsdCents <= max));
+  }
+  if (filters.available === true) {
+    out = out.filter((a) => a.availability?.open === true);
   }
   const limit = filters.limit;
   if (limit !== undefined && Number.isFinite(limit) && limit >= 0) {
@@ -407,10 +439,14 @@ export async function buildAgentDirectory(
   if (!cached || now - cached.at >= DIR_CACHE_TTL_MS) {
     dirCache.set(cacheKey, { at: now, response: full });
   }
+  // Availability is owner-set and changes faster than the on-chain data, so
+  // it attaches fresh on every call, after the cache.
+  const withAvailability = await attachAvailability(full.agents);
+  const filtered = applyFilters(withAvailability, filters);
   return {
     ...full,
-    agents: applyFilters(full.agents, filters),
-    count: applyFilters(full.agents, filters).length,
+    agents: filtered,
+    count: filtered.length,
     updatedAt: full.updatedAt,
   };
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ipGate } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
+import { readAvailability } from "@/lib/server/agent-availability";
 import { PAGEREGISTERED_TOPIC } from "@/lib/registry-topics";
 
 /**
@@ -73,6 +74,22 @@ function decodePurpose(data: string): string {
   }
 }
 
+/**
+ * Attach each agent's current "open for work" flag. Runs per request, AFTER
+ * the 15-minute KV cache — the cache stores the raw on-chain listing and the
+ * owner-set flag stays fresh. Missing/expired/unreadable → null (no badge),
+ * never a stale "open".
+ */
+async function withAvailability(agents: Array<{ username?: unknown } & Record<string, unknown>>) {
+  return Promise.all(
+    agents.map(async (a) => ({
+      ...a,
+      availability:
+        typeof a.username === "string" ? await readAvailability(a.username) : null,
+    })),
+  );
+}
+
 export async function GET(req: NextRequest) {
   // Per-IP gate: one polling agent must not turn this endpoint into an
   // unauthenticated mirror-node amplification vector.
@@ -91,7 +108,9 @@ export async function GET(req: NextRequest) {
   try {
     const cached = await getKvStore().get(DIRECTORY_CACHE_KEY);
     if (cached) {
-      return NextResponse.json(JSON.parse(cached));
+      const parsed = JSON.parse(cached) as { agents?: Array<Record<string, unknown>>; count?: number };
+      const agents = Array.isArray(parsed.agents) ? parsed.agents : [];
+      return NextResponse.json({ agents: await withAvailability(agents), count: agents.length });
     }
   } catch {
     /* fall through to a live fetch */
@@ -160,13 +179,14 @@ export async function GET(req: NextRequest) {
     const result = { agents, count: agents.length };
 
     // Best-effort cache write — directory freshness is bounded by the TTL.
+    // The RAW listing is cached; availability attaches fresh per request.
     try {
       await getKvStore().set(DIRECTORY_CACHE_KEY, JSON.stringify(result), DIRECTORY_CACHE_TTL_MS);
     } catch {
       /* a missed cache write is not an error */
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({ agents: await withAvailability(agents), count: agents.length });
   } catch (err) {
     console.error("[agents] Error:", err);
     return NextResponse.json({ agents: [], count: 0 });

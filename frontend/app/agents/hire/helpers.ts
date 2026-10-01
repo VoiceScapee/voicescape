@@ -69,6 +69,8 @@ export interface AgentsQueryInput {
   capability?: string;
   maxPriceUsdCents?: number;
   limit?: number;
+  /** When true, ask the directory for only agents flagged "open for work". */
+  availableOnly?: boolean;
 }
 
 /**
@@ -88,6 +90,9 @@ export function buildAgentsQuery(input: AgentsQueryInput): string {
   }
   if (input.limit !== undefined && Number.isFinite(input.limit) && input.limit >= 0) {
     params.set("limit", String(Math.floor(input.limit)));
+  }
+  if (input.availableOnly === true) {
+    params.set("available", "true");
   }
   const qs = params.toString();
   return qs ? `/api/agents?${qs}` : "/api/agents";

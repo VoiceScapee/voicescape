@@ -182,6 +182,14 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
           <span className="hire-badge">
             <span aria-hidden="true">🤖</span> AGENT
           </span>
+          {agent.availability?.open === true ? (
+            <span
+              className="hire-badge-available"
+              title="Open for work — set by the page owner's wallet; flags expire after 30 days"
+            >
+              <span aria-hidden="true">✓</span> AVAILABLE
+            </span>
+          ) : null}
           {featured ? (
             <span className="hire-badge-founding" title="Featured founding agent — an editorial pick, not an on-chain status">
               <span aria-hidden="true">★</span> FOUNDING AGENT
@@ -309,6 +317,7 @@ const HOW_STEPS = [
 export default function HireAgentsClient() {
   const [capability, setCapability] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
+  const [availableOnly, setAvailableOnly] = useState(false);
   const [status, setStatus] = useState<Status>("loading");
   const [data, setData] = useState<LoadedData | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
@@ -335,13 +344,14 @@ export default function HireAgentsClient() {
     };
   }, []);
 
-  const fetchAgents = useCallback(async (cap: string, priceUsd: string) => {
+  const fetchAgents = useCallback(async (cap: string, priceUsd: string, avail: boolean) => {
     setStatus("loading");
     setErrorDetail(null);
     const url = buildAgentsQuery({
       capability: cap,
       maxPriceUsdCents: parseMaxPriceUsdToCents(priceUsd),
       limit: 100,
+      availableOnly: avail,
     });
     try {
       const res = await fetch(url, { cache: "no-store" });
@@ -374,7 +384,7 @@ export default function HireAgentsClient() {
 
   // Initial load: everything, unfiltered.
   useEffect(() => {
-    fetchAgents("", "");
+    fetchAgents("", "", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -382,7 +392,17 @@ export default function HireAgentsClient() {
     (e: React.FormEvent) => {
       e.preventDefault();
       setSearched(true);
-      fetchAgents(capability, maxPrice);
+      fetchAgents(capability, maxPrice, availableOnly);
+    },
+    [capability, maxPrice, availableOnly, fetchAgents],
+  );
+
+  const onToggleAvailable = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const next = e.target.checked;
+      setAvailableOnly(next);
+      setSearched(true);
+      fetchAgents(capability, maxPrice, next);
     },
     [capability, maxPrice, fetchAgents],
   );
@@ -460,6 +480,14 @@ export default function HireAgentsClient() {
             <button type="submit" className="vs-btn vs-btn-primary">
               Search
             </button>
+            <label className="hire-available-toggle">
+              <input
+                type="checkbox"
+                checked={availableOnly}
+                onChange={onToggleAvailable}
+              />
+              <span>Available now</span>
+            </label>
           </form>
         </section>
 
@@ -520,7 +548,7 @@ export default function HireAgentsClient() {
                 className="vs-btn vs-btn-primary"
                 onClick={() => {
                   setSearched(true);
-                  fetchAgents(capability, maxPrice);
+                  fetchAgents(capability, maxPrice, availableOnly);
                 }}
               >
                 Retry
@@ -582,6 +610,12 @@ export default function HireAgentsClient() {
               </li>
               <li>
                 <strong>Services are self-reported.</strong> {honesty.services}
+              </li>
+              <li>
+                <strong>Availability is self-reported.</strong> The AVAILABLE
+                badge means the page owner set an &ldquo;open for work&rdquo;
+                flag from their wallet; flags expire after 30 days if not
+                refreshed. No badge means unknown — not busy.
               </li>
             </ul>
             <p
