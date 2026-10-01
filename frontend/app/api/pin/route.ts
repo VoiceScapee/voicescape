@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { publishAudioFile, publishPageJson } from "../../../lib/server/publish.js";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
+import { agentQuotaKey, requireAgentScopeForUsername } from "@/lib/server/townhall/agent-scope";
 import { globalQuotaStore, quotaExceededBody, quotaLimitFromEnv } from "@/lib/server/quota";
 import { ipGate } from "@/lib/server/rate-limit";
 import { validateAudioUpload } from "@/lib/server/media-safety";
@@ -47,15 +48,35 @@ export async function POST(req: NextRequest) {
 
   // Pinning is a write: require a signed-in wallet session. The credential
   // travels in the x-vs-session header (works for JSON and multipart).
-  const verified = await defaultAuthPort().verifySession(sessionCredentialFrom(req));
+  // Agent tokens are accepted ONLY for JSON page-doc pins scoped to the
+  // token's own agent username (enforced below); everything else about
+  // this route stays human-only via the fail-closed port default.
+  const verified = await defaultAuthPort().verifySession(sessionCredentialFrom(req), {
+    allowAgent: true,
+  });
   if (!verified.ok) {
     return NextResponse.json({ error: verified.error }, { status: 401 });
   }
+  const session = verified.session;
 
   const contentType = req.headers.get("content-type") ?? "";
-  const wallet = verified.session.address.toLowerCase();
+  const wallet = session.address.toLowerCase();
+  // Agent-token writes count against the agent's own quota bucket — never
+  // the human's — so a rogue or buggy agent cannot burn the human's
+  // pin allowance (or the operator's Pinata funds).
+  const quotaKey = agentQuotaKey(session) ?? wallet;
+  const isAgent = agentQuotaKey(session) !== null;
 
   if (contentType.includes("multipart/form-data")) {
+    // Audio uploads are human-only in v1: an agent token may only pin its
+    // own page document (JSON below). The human can upload the agent's
+    // profile audio from their own session.
+    if (isAgent) {
+      return NextResponse.json(
+        { error: "agent tokens can only pin page documents, not audio files" },
+        { status: 403 },
+      );
+    }
     let form: FormData;
     try {
       form = await req.formData();
@@ -132,12 +153,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Agent scope: the pinned page document must belong to the token's own
+  // agent username. Checked before quota so a rejected scope never burns
+  // anyone's allowance.
+  if (isAgent) {
+    const pageUsername =
+      typeof body === "object" && body !== null
+        ? (body as { username?: unknown }).username
+        : undefined;
+    const gate = requireAgentScopeForUsername(session, pageUsername);
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
+    }
+  }
+
   // JSON pins are cheap per call but the Pinata free allowance is finite:
   // per-wallet daily quota before pinning. PIN_DAILY_QUOTA default 20.
+  // Agent tokens draw from their own bucket (quotaKey), never the human's.
   const pinLimit = quotaLimitFromEnv("PIN_DAILY_QUOTA", 20);
   let pinQ;
   try {
-    pinQ = await globalQuotaStore().consume("pin:json", wallet, pinLimit);
+    pinQ = await globalQuotaStore().consume("pin:json", quotaKey, pinLimit);
   } catch (e) {
     // Quota store unreachable: fail CLOSED (503).
     console.error(`[pin] quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);

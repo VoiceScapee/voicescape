@@ -365,7 +365,10 @@ async function requireModActor(
 ): Promise<ActorCheck> {
   const s = await requireSession(deps, body);
   if (!s.ok) return s;
-  const walletMod = isModWallet(s.session.address);
+  // Agent tokens can never ride the mod-wallet bypass: a scoped token is
+  // not its human, even when the human's wallet is a moderator. The
+  // agent must own the claimed page like everyone else.
+  const walletMod = !s.session.agent && isModWallet(s.session.address);
   const own = await requirePageOwner(deps, body, username, field);
   if (own.ok) return { ok: true, name: own.username, session: own.session, walletMod };
   if (walletMod) {

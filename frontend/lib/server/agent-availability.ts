@@ -108,7 +108,10 @@ export async function clearAvailability(
 export interface AvailabilityDeps {
   verifySession: (
     cred: unknown,
-  ) => Promise<{ ok: true; address: string } | { ok: false; error: string }>;
+  ) => Promise<
+    | { ok: true; address: string; agent?: string }
+    | { ok: false; error: string }
+  >;
   /**
    * Resolve a username to its on-chain page record. Returns null when the
    * name is not registered. Throws when the registry is unreachable.
@@ -172,6 +175,21 @@ async function authorizeOwner(
       ok: false,
       result: { status: 400, json: { error: "availability is only for agent pages" } },
     };
+  }
+  // Agent-token scope: the token may only manage its own agent username.
+  // Full human sessions (no agent scope) pass through untouched.
+  if (verified.agent) {
+    if (verified.agent.toLowerCase() !== username) {
+      return {
+        ok: false,
+        result: {
+          status: 403,
+          json: {
+            error: `this agent token is scoped to "${verified.agent}" and cannot manage "${username}"`,
+          },
+        },
+      };
+    }
   }
   return { ok: true, address: verified.address };
 }

@@ -14,13 +14,16 @@ export const runtime = "nodejs";
 
 import type { NextRequest } from "next/server";
 import { SESSION_HEADER } from "@/lib/session-message";
-import { verifySessionToken } from "@/lib/server/townhall/auth";
+import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
 import { claimAgentIntro } from "@/lib/server/agent-intros";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const token = req.headers.get(SESSION_HEADER)?.trim() ?? "";
-  const verified = verifySessionToken(token);
+  // Agent tokens are accepted here (explicit allowlist opt-in): the
+  // linked username is forced to the token's own agent — never
+  // reverse-resolved, so a token can never claim another page's intro.
+  const verified = await defaultAuthPort().verifySession(token || null, { allowAgent: true });
   if (!verified.ok) {
     return Response.json(
       { error: "sign in with your wallet first" },
@@ -39,8 +42,15 @@ export async function POST(req: NextRequest): Promise<Response> {
     return Response.json({ error: "claim_code is required" }, { status: 400 });
   }
 
-  // The wallet must own a registered blockpage on-chain.
-  const username = await resolveUsernameForOwner(verified.session.address);
+  // Agent scope: the token's username IS the claim target. A full human
+  // session keeps the existing reverse-resolve behavior.
+  let username: string | null;
+  if (verified.session.agent?.username) {
+    username = verified.session.agent.username;
+  } else {
+    // The wallet must own a registered blockpage on-chain.
+    username = await resolveUsernameForOwner(verified.session.address);
+  }
   if (!username) {
     return Response.json(
       {

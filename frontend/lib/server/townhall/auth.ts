@@ -53,7 +53,7 @@ import { ethers } from "ethers";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { keccak_256 } from "@noble/hashes/sha3";
 import { getActiveChain } from "../../chains";
-import { getKvStore } from "../store";
+import { getKvStore, type KvStore } from "../store";
 import { mirrorBaseUrl } from "./topics";
 import { toMirrorTxId } from "../../tx-confirm";
 import {
@@ -74,6 +74,25 @@ export interface VerifiedSession {
   chainId: number;
   nonce: string;
   expiresAtMs: number;
+  /**
+   * Present ONLY when the credential was a scoped agent token (v2).
+   * The agent may act solely as this username — never as the wallet's
+   * human page, never as a mod, never on admin paths. Absent for full
+   * human sessions. Routes must treat a missing `agent` as "full access"
+   * and a present one as "scoped" — never the reverse.
+   */
+  agent?: { username: string };
+}
+
+/** Options for AuthPort.verifySession. */
+export interface VerifyOptions {
+  /**
+   * When true, scoped agent tokens (v2) are accepted and returned with
+   * `session.agent` set. When false/omitted (the default), agent tokens
+   * are REJECTED — this is the fail-closed default every existing route
+   * gets without changes. Only explicitly allowlisted routes opt in.
+   */
+  allowAgent?: boolean;
 }
 
 export type VerifyResult =
@@ -86,7 +105,7 @@ export interface AccountKey {
 }
 
 export interface AuthPort {
-  verifySession(cred: unknown): Promise<VerifyResult>;
+  verifySession(cred: unknown, opts?: VerifyOptions): Promise<VerifyResult>;
 }
 
 export interface AuthPortOpts {
@@ -279,6 +298,216 @@ export function verifySessionToken(token: string, nowMs: number = Date.now()): V
 }
 
 /* ------------------------------------------------------------------ */
+/* Scoped agent tokens (v2) — the human's agent, not the human         */
+/* ------------------------------------------------------------------ */
+/**
+ * An agent token lets a human's AI agent operate the dapp as ONE agent
+ * page — never as the human, never as anyone else. The human mints it
+ * from their full session ("Agent access" screen) and pastes it to the
+ * agent; the agent can then call explicitly allowlisted endpoints scoped
+ * to its own username.
+ *
+ * Security properties:
+ *  - Same HMAC secret as sessions (SESSION_SECRET) — unforgeable.
+ *  - The token is NOT a private key: it cannot sign chain transactions,
+ *    move funds, or change on-chain state. Money still needs the wallet.
+ *  - Revocable: the token carries a version `ver`; the server keeps the
+ *    current version per (wallet, agent) in KV. Bumping it instantly
+ *    kills outstanding tokens. Missing version key = invalid (fail closed).
+ *  - 7-day max lifetime, chain-bound like sessions.
+ *  - Fail-closed default: AuthPort.verifySession REJECTS agent tokens
+ *    unless the caller passes { allowAgent: true }.
+ */
+
+export interface AgentTokenClaims {
+  /** Token format version — 2 marks an agent token. */
+  v: 2;
+  /** Canonical wallet address (0x lowercase) — the human's wallet. */
+  addr: string;
+  /** The ONE agent username this token may act as (lowercase). */
+  agent: string;
+  /** Literal "agent" — unknown scope values are rejected. */
+  scope: "agent";
+  /** Revocation version; must match the KV-stored current version. */
+  ver: number;
+  chainId: number;
+  /** Issued-at, ms epoch. */
+  iat: number;
+  /** Expiry, ms epoch. */
+  exp: number;
+}
+
+/** Agent token lifetime: 7 days, matching human sessions. */
+export const AGENT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Version keys outlive the longest token they can invalidate. */
+export const AGENT_TOKEN_VERSION_TTL_MS = 8 * 24 * 60 * 60 * 1000;
+/** Agent usernames: 3-24 chars, lowercase letters/digits/hyphens. */
+export const AGENT_USERNAME_RE = /^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/;
+
+/** KV key holding the current revocation version for (wallet, agent). */
+export function agentTokenVersionKey(address: string, agentUsername: string): string {
+  return `agent-token-ver:${address.toLowerCase()}:${agentUsername.toLowerCase()}`;
+}
+
+/** KV key for the per-wallet index of agents that have token versions. */
+export function agentTokenIndexKey(address: string): string {
+  return `agent-token-idx:${address.toLowerCase()}`;
+}
+
+/**
+ * Peek at a token's format version without verifying anything.
+ * Returns 0 for garbage (which then takes the v1/malformed path).
+ * Peeking is safe: the version only routes to a verifier that
+ * re-checks the HMAC before trusting anything.
+ */
+export function peekTokenVersion(token: string): number {
+  if (typeof token !== "string") return 0;
+  const dot = token.indexOf(".");
+  if (dot <= 0) return 0;
+  try {
+    const claims = JSON.parse(b64urlDecode(token.slice(0, dot))) as { v?: unknown };
+    return typeof claims?.v === "number" && Number.isInteger(claims.v) ? claims.v : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Mint a scoped agent token. Everything verification needs is inside the
+ * token plus the KV-stored version — no other server state.
+ */
+export function issueAgentToken(
+  args: {
+    address: string;
+    agentUsername: string;
+    chainId: number;
+    expiresAtMs: number;
+    version: number;
+  },
+  nowMs: number = Date.now(),
+): string {
+  const address = args.address.toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(address)) throw new Error("issueAgentToken: bad address");
+  const agent = args.agentUsername.toLowerCase();
+  if (!AGENT_USERNAME_RE.test(agent)) throw new Error("issueAgentToken: bad agent username");
+  if (!Number.isInteger(args.chainId) || args.chainId <= 0) throw new Error("issueAgentToken: bad chainId");
+  if (!Number.isSafeInteger(args.version) || args.version < 1) throw new Error("issueAgentToken: bad version");
+  if (!Number.isSafeInteger(args.expiresAtMs) || args.expiresAtMs <= nowMs) {
+    throw new Error("issueAgentToken: bad expiry");
+  }
+  if (args.expiresAtMs - nowMs > AGENT_TOKEN_TTL_MS + CLOCK_SKEW_MS) {
+    throw new Error("issueAgentToken: lifetime exceeds 7 days");
+  }
+  const claims: AgentTokenClaims = {
+    v: 2,
+    addr: address,
+    agent,
+    scope: "agent",
+    ver: args.version,
+    chainId: args.chainId,
+    iat: nowMs,
+    exp: args.expiresAtMs,
+  };
+  const body = b64urlEncode(JSON.stringify(claims));
+  const sig = createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  return `${body}.${sig}`;
+}
+
+export interface AgentTokenVerifyDeps {
+  store?: Pick<KvStore, "get">;
+  nowMs?: number;
+  chainId?: number;
+}
+
+/**
+ * Verify a scoped agent token: HMAC + structure + expiry + chain binding
+ * + KV revocation-version check. Async because of the version lookup.
+ * Any failure — including a missing version key — is a rejection.
+ */
+export async function verifyAgentToken(
+  token: string,
+  deps: AgentTokenVerifyDeps = {},
+): Promise<VerifyResult> {
+  const nowMs = deps.nowMs ?? Date.now();
+  if (typeof token !== "string" || !token) {
+    return { ok: false, error: "missing session: sign in with your wallet" };
+  }
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return { ok: false, error: "malformed agent token" };
+  const body = token.slice(0, dot);
+  const sig = token.slice(dot + 1);
+  let expected: string;
+  try {
+    expected = createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "session configuration error" };
+  }
+  const a = Buffer.from(sig, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return { ok: false, error: "invalid agent token" };
+  }
+  let claims: AgentTokenClaims;
+  try {
+    claims = JSON.parse(b64urlDecode(body)) as AgentTokenClaims;
+  } catch {
+    return { ok: false, error: "malformed agent token" };
+  }
+  // Fail closed on every structural surprise — including scope.
+  if (!claims || claims.v !== 2 || claims.scope !== "agent") {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (typeof claims.addr !== "string" || !/^0x[0-9a-f]{40}$/.test(claims.addr)) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (typeof claims.agent !== "string" || !AGENT_USERNAME_RE.test(claims.agent)) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (!Number.isSafeInteger(claims.ver) || claims.ver < 1) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (!Number.isInteger(claims.chainId) || claims.chainId <= 0) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (deps.chainId !== undefined && claims.chainId !== deps.chainId) {
+    return { ok: false, error: `wrong chain (token chain ${claims.chainId})` };
+  }
+  if (!Number.isSafeInteger(claims.exp) || claims.exp <= nowMs) {
+    return { ok: false, error: "agent token expired — ask the page owner for a new one" };
+  }
+  if (!Number.isSafeInteger(claims.iat) || claims.iat > nowMs + CLOCK_SKEW_MS) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  if (claims.exp - claims.iat > AGENT_TOKEN_TTL_MS + CLOCK_SKEW_MS) {
+    return { ok: false, error: "malformed agent token" };
+  }
+  // Revocation check: the stored version must exactly match the token's.
+  // Missing key = never issued (or fully expired) = invalid. Fail closed
+  // when the store is unreachable — an agent token must never verify on
+  // HMAC alone.
+  const store = deps.store ?? getKvStore();
+  let current: string | null;
+  try {
+    current = await store.get(agentTokenVersionKey(claims.addr, claims.agent));
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "agent token verification unavailable" };
+  }
+  if (current !== String(claims.ver)) {
+    return { ok: false, error: "agent token revoked — ask the page owner for a new one" };
+  }
+  return {
+    ok: true,
+    session: {
+      address: claims.addr,
+      chainId: claims.chainId,
+      nonce: `agent:${claims.agent}`,
+      expiresAtMs: claims.exp,
+      agent: { username: claims.agent },
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
 /* Nonce claims (single-use-ish, shared store)                         */
 /* ------------------------------------------------------------------ */
 
@@ -465,15 +694,25 @@ export class RealAuthPort implements AuthPort {
   }
 
   /**
-   * Verify a session credential. Two shapes:
-   *  - string: a stateless session token (the per-request path) — pure
+   * Verify a session credential. Three shapes:
+   *  - string, v1: a stateless session token (the per-request path) — pure
    *    HMAC + expiry, no I/O.
+   *  - string, v2: a scoped agent token — accepted ONLY when
+   *    opts.allowAgent is true (fail-closed default: every existing route
+   *    rejects agent tokens without changes). Verified via HMAC + expiry
+   *    + KV revocation-version check.
    *  - { message, signature }: a fresh wallet signature (the /api/auth/login
    *    path) — full cryptographic verification + nonce claim.
    */
-  async verifySession(cred: unknown): Promise<VerifyResult> {
+  async verifySession(cred: unknown, opts: VerifyOptions = {}): Promise<VerifyResult> {
     const nowMs = this.nowFn();
     if (typeof cred === "string") {
+      if (peekTokenVersion(cred) === 2) {
+        if (!opts.allowAgent) {
+          return { ok: false, error: "agent tokens are not accepted here" };
+        }
+        return verifyAgentToken(cred, { nowMs, chainId: this.chainIdFn() });
+      }
       const r = verifySessionToken(cred, nowMs);
       if (!r.ok) return r;
       // Bind the token to the active chain: a token minted for one chain

@@ -28,6 +28,7 @@ import {
   searchAgents,
   checkProfilePin,
   postAgentIntro,
+  prepareAgentClaim,
 } from "@/lib/server/mcp-tools";
 
 const READONLY = {
@@ -158,6 +159,42 @@ function registerTools(server: McpServer): void {
     },
     async ({ handle, text }) => {
       const res = await postAgentIntro(handle, text);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    },
+  );
+
+  /* ----------------- public claim-package tool (write) ----------------- */
+  server.registerTool(
+    "prepare_agent_claim",
+    {
+      description:
+        "Build a complete UNSIGNED agent-blockpage claim package for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain, confirms the owner account exists and is funded, pins a starter agent page to IPFS, and returns the frozen registerPage transaction bytes plus a plain-words summary of what the human is signing. Pure preparation — no keys, no signing, no submission, no spending. The human opens voicescape.vercel.app/agents/claim, connects the owner wallet, reviews, and signs once.",
+      inputSchema: z.object({
+        username: z
+          .string()
+          .describe("Desired agent username, 3-32 lowercase letters/numbers/_/- (e.g. thechomps)"),
+        owner_account_id: z
+          .string()
+          .describe("The human's EXISTING Hedera account, e.g. 0.0.10424063 — it will own the agent page and pay the registration gas"),
+        operator: z
+          .string()
+          .optional()
+          .describe("0x EVM address disclosed as operator on-chain; defaults to the owner account"),
+        purpose: z
+          .string()
+          .max(500)
+          .describe("One-or-two-sentence purpose disclosure — public and permanent on-chain"),
+        display_name: z.string().max(60).optional().describe("Display name for the agent page"),
+        capabilities: z
+          .array(z.string().max(40))
+          .max(20)
+          .optional()
+          .describe("Capability tags for the agent page"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) => {
+      const res = await prepareAgentClaim(args);
       return "error" in res ? toolError(res.error) : toolResult(res);
     },
   );

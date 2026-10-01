@@ -38,9 +38,11 @@ const WALLET_RATE_WINDOW_MS = 3600_000;
 function realDeps(): AvailabilityDeps {
   return {
     verifySession: async (cred: unknown) => {
-      const res = await defaultAuthPort().verifySession(cred);
+      // Agent tokens are accepted here and scoped to their own username
+      // inside authorizeOwner — this is an explicit allowlist opt-in.
+      const res = await defaultAuthPort().verifySession(cred, { allowAgent: true });
       return res.ok
-        ? { ok: true as const, address: res.session.address }
+        ? { ok: true as const, address: res.session.address, agent: res.session.agent?.username }
         : { ok: false as const, error: res.error };
     },
     resolvePage: async (username: string) => {
@@ -63,7 +65,7 @@ function realDeps(): AvailabilityDeps {
  */
 async function preflight(
   req: NextRequest,
-): Promise<{ address: string; cred: unknown } | { response: NextResponse }> {
+): Promise<{ address: string; agent?: string; cred: unknown } | { response: NextResponse }> {
   const gated = await ipGate(
     req,
     "agent-availability",
@@ -87,9 +89,14 @@ async function preflight(
     return { response: NextResponse.json({ error: verified.error }, { status: 401 }) };
   }
 
+  // Agent-token writes count against the agent's own bucket — never the
+  // human's — so a rogue or buggy agent cannot burn the human's quota.
+  const quotaKey = verified.agent
+    ? `agent-availability:agent:${verified.address}:${verified.agent.toLowerCase()}`
+    : `agent-availability:${verified.address}`;
   let used: number;
   try {
-    used = await getKvStore().incr(`agent-availability:${verified.address}`, WALLET_RATE_WINDOW_MS);
+    used = await getKvStore().incr(quotaKey, WALLET_RATE_WINDOW_MS);
   } catch {
     return {
       response: NextResponse.json(
@@ -106,7 +113,7 @@ async function preflight(
       ),
     };
   }
-  return { address: verified.address, cred };
+  return { address: verified.address, agent: verified.agent, cred };
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ agent: string }> }) {
