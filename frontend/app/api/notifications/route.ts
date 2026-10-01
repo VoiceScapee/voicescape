@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
+import { getKvStore } from "@/lib/server/store";
+import { defaultHcsPort } from "@/lib/server/townhall/hcs";
+import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
+import { siteUrl } from "@/lib/seo";
+import { maybeBackfillSocial, readInbox } from "@/lib/server/notify";
 
 /**
  * GET /api/notifications?address=0x...
  *
- * Returns recent tip notifications for a wallet address.
- * Queries Hedera Mirror Node for TipSent events where the
- * recipient (toOwner) matches the given address.
+ * Returns recent notifications for a wallet address:
+ *   - type "tip": TipSent events from the official Hedera mirror node
+ *     (existing behavior — { txId, from, amountHbar, timestamp }).
+ *   - type "reply" | "mention" | "follow" | "sale": social events from the
+ *     wallet's KV inbox, written by the social sweep (POST /api/notify/check
+ *     or the read-path backfill below).
  *
- * Response: { notifications: [{ txId, from, amountHbar, timestamp }] }
+ * Response: { notifications: [...] } newest first, capped at 30.
  */
 
 const TIPSENT_TOPIC = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
@@ -76,11 +84,38 @@ export async function GET(req: Request) {
         // fallback to hash
       }
 
-      notifications.push({ txId, from, amountHbar, timestamp: log.timestamp });
+      notifications.push({ type: "tip", txId, from, amountHbar, timestamp: log.timestamp });
       if (notifications.length >= 10) break;
     }
 
-    return NextResponse.json({ notifications });
+    // Social events (reply / mention / follow / sale) from the wallet's
+    // KV inbox. Backfill detection when the sweep is stale — no push.
+    try {
+      const kv = getKvStore();
+      await maybeBackfillSocial(kv, defaultHcsPort(), defaultRegistryPort(), siteUrl());
+      const social = await readInbox(kv, address);
+      for (const n of social.slice(0, 20)) {
+        notifications.push({
+          type: n.type,
+          id: n.id,
+          tsMs: n.tsMs,
+          actor: n.actor,
+          title: n.title,
+          body: n.body,
+          url: n.url,
+        });
+      }
+    } catch {
+      // Social inbox is best-effort — tips still return honestly.
+    }
+
+    // Newest first across both sources; tips carry mirror-node timestamp
+    // strings ("1234567890.123456789"), social items carry epoch ms.
+    const tsOf = (n: { timestamp?: string; tsMs?: number }) =>
+      typeof n.tsMs === "number" ? n.tsMs : Math.round(parseFloat(n.timestamp ?? "0") * 1000);
+    notifications.sort((a, b) => tsOf(b) - tsOf(a));
+
+    return NextResponse.json({ notifications: notifications.slice(0, 30) });
   } catch (err) {
     console.error("[notifications] Error:", err);
     return NextResponse.json({ notifications: [], error: "Failed to fetch" });
