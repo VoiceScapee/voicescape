@@ -5,7 +5,7 @@
  *
  * Usage: pass the transaction id once the wallet has approved/signed it.
  * The hook reports "confirming" while the mirror node is polled, then a
- * terminal "confirmed" | "failed" | "timeout". Pass null (or unmount) to
+ * terminal "confirmed" | "failed" | "expired" | "timeout". Pass null (or unmount) to
  * reset to "idle".
  *
  * (For list UIs that track several pending transactions at once — comment
@@ -15,7 +15,13 @@
 import { useEffect, useState } from "react";
 import { pollTransactionStatus, type TxPollOptions } from "@/lib/tx-confirm";
 
-export type TxConfirmStatus = "idle" | "confirming" | "confirmed" | "failed" | "timeout";
+export type TxConfirmStatus =
+  | "idle"
+  | "confirming"
+  | "confirmed"
+  | "failed"
+  | "timeout"
+  | "expired";
 
 export function useConfirmedTransaction(
   txId: string | null,

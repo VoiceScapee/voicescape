@@ -6,8 +6,16 @@
  * user approved, not that the transaction reached consensus. This module
  * polls the Hedera mirror node until the transaction resolves, with backoff
  * and a hard cap, so every write flow can show a live "Confirming on
- * Hedera…" state followed by a definitive confirmed / failed / timeout
- * outcome. Nobody is ever left on an endless spinner.
+ * Hedera…" state followed by a definitive confirmed / failed / expired /
+ * timeout outcome. Nobody is ever left on an endless spinner.
+ *
+ * On the "unknown" state: a missing transaction is NEVER treated as proof
+ * of anything on its own. The poll consults the mirror node's own index
+ * frontier (the newest block's consensus timestamp) and only interprets
+ * "still not found" as "expired" once the mirror has indexed past the
+ * transaction's validity window (valid start + margin). Before that signal,
+ * a missing transaction stays "unknown" — still pending, never permission
+ * to re-submit a duplicate semantic action.
  *
  * (The older lib/verify-tx.ts helpers do a stricter contract-event check;
  * they remain for flows that need event-level proof. This module is the
@@ -26,7 +34,7 @@
  * response in this environment while the mirror REST answered in ~1s.
  */
 
-export type TxPollOutcome = "confirmed" | "failed" | "timeout";
+export type TxPollOutcome = "confirmed" | "failed" | "timeout" | "expired";
 
 export interface TxPollOptions {
   /**
@@ -43,6 +51,15 @@ export interface TxPollOptions {
   mirrorBase?: string;
   /** Abort polling early (e.g. component unmount). */
   signal?: AbortSignal;
+  /**
+   * Mirror catch-up margin (ms) used before a still-missing transaction may
+   * be called "expired". Defaults to 5 minutes: Hedera transaction validity
+   * is 120s, so once the mirror's index frontier has passed
+   * validStart + margin, a transaction that still isn't there can never
+   * land. Set to 0 to disable the catch-up check (missing transactions then
+   * only ever resolve as "timeout").
+   */
+  catchUpMarginMs?: number;
   /**
    * Called with the mirror node's `consensus_timestamp` (seconds.nanos)
    * when the transaction confirms — the network-assigned settlement time,
@@ -91,6 +108,78 @@ export function consensusTimestampToDate(ts: string): Date | null {
   return Number.isFinite(ms) ? new Date(ms) : null;
 }
 
+/**
+ * Mirror catch-up margin: how far past a transaction's valid start the
+ * mirror node's index frontier must be before "still not found" is treated
+ * as "expired" (never landed). Hedera transactions are valid for 120s after
+ * their valid start; the remaining 180s covers mirror indexing lag.
+ */
+export const MIRROR_CATCHUP_MARGIN_MS = 300_000;
+
+/**
+ * Parse a Hedera transaction id's valid start ("0.0.x@seconds.nanos") into
+ * milliseconds since the epoch. Returns null when the id carries no
+ * parseable valid start (EVM hashes, malformed ids) — callers treat null as
+ * "no catch-up signal available" and must NOT declare finality.
+ */
+export function parseTxValidStartMs(txId: string): number | null {
+  const at = txId.indexOf("@");
+  if (at === -1) return null;
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(txId.slice(at + 1).trim());
+  if (!m) return null;
+  const secs = Number(m[1]);
+  const nanos = m[2] ? Number(`0.${m[2]}`) : 0;
+  const ms = secs * 1000 + Math.floor(nanos * 1000);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+interface MirrorBlock {
+  timestamp?: { from?: string; to?: string };
+}
+
+/**
+ * Read the mirror node's index frontier: the consensus timestamp of the
+ * newest block it has indexed. This is THE signal for whether the mirror
+ * has "caught up" — a transaction whose validity window closed before this
+ * frontier and still isn't indexed can never land.
+ *
+ * Returns null on any failure (fail-safe: no signal means no finality
+ * verdict, never a default of "caught up").
+ */
+export async function getMirrorHeadTimestampMs(
+  mirrorBase: string = DEFAULT_MIRROR_BASE,
+): Promise<number | null> {
+  try {
+    const res = await fetch(`${mirrorBase}/blocks?limit=1&order=desc`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { blocks?: MirrorBlock[] };
+    const to = data.blocks?.[0]?.timestamp?.to;
+    if (!to) return null;
+    return consensusTimestampToDate(to)?.getTime() ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Has the mirror node's index frontier moved past this transaction's
+ * validity window (valid start + margin)? Only then is "still not found"
+ * meaningful. Returns false whenever the signal is unavailable — unknown
+ * stays unknown.
+ */
+export function isMirrorBeyondTxWindow(
+  txId: string,
+  headTimestampMs: number | null,
+  marginMs: number = MIRROR_CATCHUP_MARGIN_MS,
+): boolean {
+  if (headTimestampMs == null) return false;
+  const validStartMs = parseTxValidStartMs(txId);
+  if (validStartMs == null) return false;
+  return headTimestampMs >= validStartMs + marginMs;
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) return reject(new Error("aborted"));
@@ -112,7 +201,14 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  * @param txId SDK-format transaction id ("0.0.x-…") or EVM hash ("0x…").
  * @returns "confirmed" when the mirror node reports result SUCCESS,
  *          "failed" when it reports any other terminal result (e.g. a
- *          contract revert), "timeout" when nothing resolved before the cap.
+ *          contract revert), "expired" when the mirror node's index frontier
+ *          has moved past the transaction's validity window (valid start +
+ *          catchUpMarginMs) and the transaction still isn't there — it can
+ *          never land, and nothing was submitted, so retrying with a fresh
+ *          transaction id is safe. "timeout" when nothing resolved before
+ *          the cap and the mirror may still be behind — the outcome is
+ *          genuinely unknown, and a retry must reuse the SAME transaction id
+ *          (the network dedupes it) or wait.
  *          Rejects only when aborted via `signal`.
  */
 export async function pollTransactionStatus(
@@ -125,6 +221,7 @@ export async function pollTransactionStatus(
     maxDelayMs = 8000,
     mirrorBase = DEFAULT_MIRROR_BASE,
     signal,
+    catchUpMarginMs = MIRROR_CATCHUP_MARGIN_MS,
   } = opts;
   const deadline = Date.now() + timeoutMs;
   const url = `${mirrorBase}/transactions/${encodeURIComponent(toMirrorTxId(txId))}`;
@@ -159,7 +256,16 @@ export async function pollTransactionStatus(
     // means the transaction definitively failed on-chain — stop polling.
     if (result) return "failed";
 
+    // Still missing: consult the mirror's index frontier before deciding
+    // this is just lag. Checked every 4th attempt (the frontier moves
+    // slowly; no need to hammer the blocks endpoint). A null head means no
+    // signal — keep polling, never declare finality without it.
     attempt += 1;
+    if (catchUpMarginMs > 0 && attempt % 4 === 0) {
+      const headMs = await getMirrorHeadTimestampMs(mirrorBase);
+      if (isMirrorBeyondTxWindow(txId, headMs, catchUpMarginMs)) return "expired";
+    }
+
     const delay = Math.min(maxDelayMs, baseDelayMs + (attempt - 1) * 1000);
     const waitMs = Math.min(delay, deadline - Date.now());
     if (waitMs <= 0) return "timeout";

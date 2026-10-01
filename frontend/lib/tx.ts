@@ -27,6 +27,16 @@ import {
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
 import { toMirrorTxId } from "./tx-confirm";
+import {
+  reconcilePendingIntents,
+  removePendingIntent,
+  savePendingIntent,
+} from "./pending-intents";
+import {
+  MIRROR_CATCHUP_MARGIN_MS,
+  getMirrorHeadTimestampMs,
+  isMirrorBeyondTxWindow,
+} from "./tx-confirm";
 
 /* ------------------------------------------------------------------ */
 /* ABIs (human-readable; verified against                            */
@@ -203,13 +213,36 @@ export function createHederaTxSender(
    * look it up directly.
    * Returns "success" | "failed" | "unknown" (not visible yet).
    */
-  async function checkTxLanded(txId: string): Promise<"success" | "failed" | "unknown"> {
+  /**
+   * Check whether a wallet-approved transaction id actually reached
+   * consensus.
+   *
+   * A missing transaction is NEVER treated as proof of failure on its own:
+   * the mirror node may simply be behind. "unknown" is returned until the
+   * mirror's index frontier (newest block consensus timestamp) has moved
+   * past the transaction's validity window (valid start + 5 min margin);
+   * only then does "still not found" become "expired" — the transaction can
+   * never land, nothing was submitted, and a retry with a fresh transaction
+   * id is safe.
+   */
+  async function checkTxLanded(
+    txId: string,
+  ): Promise<"success" | "failed" | "unknown" | "expired"> {
     try {
       // txId is the SDK @ form; the mirror only answers the dash form.
       const res = await fetch(
         `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${encodeURIComponent(toMirrorTxId(txId))}`,
       );
-      if (!res.ok) return "unknown";
+      if (!res.ok) {
+        // Not indexed (yet). Ask the mirror how far it has indexed before
+        // interpreting the absence: without the catch-up signal this stays
+        // "unknown" — never permission to re-submit.
+        const headMs = await getMirrorHeadTimestampMs();
+        if (isMirrorBeyondTxWindow(txId, headMs, MIRROR_CATCHUP_MARGIN_MS)) {
+          return "expired";
+        }
+        return "unknown";
+      }
       const data = (await res.json()) as { status?: string; results?: Array<{ status?: string }> };
       const status = data.results?.[0]?.status ?? data.status;
       if (status === "0x1") return "success";
@@ -252,8 +285,14 @@ export function createHederaTxSender(
     params: ContractFunctionParameters,
     valueWei?: bigint,
     gas?: number,
+    intentLabel?: string,
   ): Promise<string> {
     const { dAppConnector: liveConnector, accountId } = requireWallet();
+    // Reconcile first, write second: any intent left behind by an
+    // interrupted earlier session gets re-asked (never replayed) before
+    // we broadcast a new one. Fire-and-forget — reconciliation must never
+    // block or break the write.
+    void reconcilePendingIntents(checkTxLanded);
     // Fail fast on a dead session — otherwise the wallet prompt never
     // appears and the user stares at "Publishing…" for 90 seconds.
     if (!isSessionAlive()) {
@@ -285,6 +324,18 @@ export function createHederaTxSender(
     tx.setTransactionId(TransactionId.generate(accountId));
     tx.freezeWith(networkClient);
     const txId = tx.transactionId?.toString() ?? "";
+    // The tx ID is born client-side, before the wallet signs. Persist the
+    // intent NOW — if the tab closes or the wallet goes silent, the next
+    // session can still re-ask the mirror node instead of losing the
+    // question. Cleared below on definitive outcomes; unknown outcomes
+    // stay stored for reconciliation.
+    savePendingIntent({
+      txId,
+      kind: fn,
+      label: intentLabel ?? fn,
+      account: accountId.toString(),
+      createdAt: Date.now(),
+    });
     // DAppConnector signs AND executes via the wallet (HIP-820).
     // The transactionList param is a base64-encoded single Transaction
     // (the name is misleading — the official DAppSigner uses
@@ -321,9 +372,22 @@ export function createHederaTxSender(
         // Wallet went silent — check whether the transaction actually
         // executed on-chain before giving up.
         const landed = await checkTxLanded(txId);
-        if (landed === "success") return txId;
+        if (landed === "success") {
+          removePendingIntent(txId);
+          return txId;
+        }
         if (landed === "failed") {
+          removePendingIntent(txId);
           throw new Error("The transaction failed on-chain. No payment was sent.");
+        }
+        if (landed === "expired") {
+          // The mirror has indexed past this transaction's validity window
+          // and it never appeared: it can never land. Nothing was submitted,
+          // so a retry with a fresh transaction id is safe.
+          removePendingIntent(txId);
+          throw new Error(
+            "The transaction never reached the Hedera network — nothing was sent and it's safe to retry.",
+          );
         }
         // Not on-chain after 30s of wallet silence: the prompt never appeared
         // (stale WalletConnect session, HashPack #291). Don't leave the user
@@ -337,6 +401,10 @@ export function createHederaTxSender(
       throw e;
     }
     // HashScan deep link format: <network>/transaction/<txId>
+    // The intent stays stored: the wallet responded, but on-chain outcome
+    // is now owned by the tx-confirm polling flow. The next write's
+    // reconciliation re-asks the mirror node and clears it on a definitive
+    // outcome — so even a post-response tab close keeps the question alive.
     return txId;
   }
 
@@ -372,6 +440,9 @@ export function createHederaTxSender(
           .addUint8(ownerType)
           .addAddress(operator)
           .addString(purpose),
+        undefined,
+        undefined,
+        `Page registration: ${username}`,
       );
     },
     async sendUpdate(registryAddress, username, ipfsHash) {
@@ -379,6 +450,9 @@ export function createHederaTxSender(
         registryAddress,
         "updatePage",
         new ContractFunctionParameters().addString(username).addString(ipfsHash),
+        undefined,
+        undefined,
+        `Page update: ${username}`,
       );
     },
     async sendTip(tipsAddress, username, valueWei) {
@@ -387,6 +461,8 @@ export function createHederaTxSender(
         "tipPage",
         new ContractFunctionParameters().addString(username),
         valueWei,
+        undefined,
+        `Tip to ${username}`,
       );
     },
     async sendBuy(tipsAddress, seller, listingRef, valueWei) {
@@ -398,6 +474,8 @@ export function createHederaTxSender(
         "buyListing",
         new ContractFunctionParameters().addAddress(seller).addString(listingRef),
         valueWei,
+        undefined,
+        `Purchase: ${listingRef}`,
       );
     },
     async sendTokenApprove(tokenEvmAddress, spenderEvmAddress, amount) {
@@ -415,6 +493,7 @@ export function createHederaTxSender(
           .addUint256(Long.fromString(amount.toString())),
         undefined,
         APPROVE_GAS,
+        "Token approval",
       );
     },
     async sendTokenSwap(routerEvmAddress, amountIn, amountOutMin, path, toEvmAddress, deadlineSecs) {
@@ -434,6 +513,7 @@ export function createHederaTxSender(
           .addUint256(Long.fromString(BigInt(Math.floor(deadlineSecs)).toString())),
         undefined,
         SWAP_GAS,
+        "Token swap",
       );
     },
   };

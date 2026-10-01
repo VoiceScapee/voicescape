@@ -144,6 +144,18 @@ export default function ChatRoomClient({ room }: { room: string }) {
                 : m,
             ),
           );
+        } else if (outcome === "expired") {
+          // Mirror indexed past the tx's validity window without seeing it:
+          // never landed — same resend treatment as a failed tx, and the
+          // resend submits a fresh transaction (no duplicate possible).
+          recordConversionEvent("chat_failed");
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.seq === tempSeq
+                ? ({ ...m, pending: false, failedTx: true } as ChatMessage)
+                : m,
+            ),
+          );
         }
         // "timeout" (mirror lag): the delayed-confirmation notice below
         // already covers it — never claim failure.
