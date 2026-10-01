@@ -431,7 +431,7 @@ export async function verifyX402Forward(
       `${MIRROR_BASE}/transactions?account.id=${agentWallet}` +
       `&timestamp=${encodeURIComponent(cursor)}` +
       `&timestamp=lt:${encodeURIComponent(scannedTo)}` +
-      `&type=CRYPTOTRANSFER&order=asc&limit=${SCAN_PAGE_LIMIT}`;
+      `&transactiontype=cryptotransfer&order=asc&limit=${SCAN_PAGE_LIMIT}`;
     const pageJson = await mirrorGetJson(url, fetchImpl);
     const list = (pageJson as { transactions?: unknown } | null)?.transactions;
     if (!Array.isArray(list)) {

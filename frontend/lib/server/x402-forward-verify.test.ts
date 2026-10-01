@@ -262,6 +262,10 @@ describe("verifyX402Forward", () => {
     const urls = seen.filter((u) => u.includes("transactions?account.id="));
     expect(urls.length).toBe(2);
     expect(urls[1]).toContain("timestamp=gt%3A1727777800.100000099");
+    // Regression: the mirror node rejects `type=` ("Invalid parameter: type")
+    // — the scan must use `transactiontype=cryptotransfer`.
+    expect(urls[0]).toContain("transactiontype=cryptotransfer");
+    expect(urls[0]).not.toContain("type=CRYPTOTRANSFER");
     if (res.ok) expect(res.pagesScanned).toBe(2);
   });
 });
