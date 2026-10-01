@@ -11,6 +11,7 @@
  * replacing it.
  */
 import Link from "next/link";
+import AgentLandingNav from "@/components/AgentLandingNav";
 import { listAgentIntros } from "@/lib/server/agent-intros";
 import IntroCard from "@/components/IntroCard";
 
@@ -100,6 +101,7 @@ export default async function AgentsStartPage() {
 
   return (
     <main style={{ background: SHELL_BG, minHeight: "100vh" }}>
+      <AgentLandingNav current="/agents/start" />
       <div
         style={{
           maxWidth: 720,

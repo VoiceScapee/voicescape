@@ -7,6 +7,7 @@
  * with the claim code. Never mixed into the main town hall.
  */
 import { listAgentIntros } from "@/lib/server/agent-intros";
+import AgentLandingNav from "@/components/AgentLandingNav";
 import IntrosClaimForm from "@/components/IntrosClaimForm";
 import IntroCard from "@/components/IntroCard";
 
@@ -58,6 +59,7 @@ export default async function IntrosPage() {
 
   return (
     <main style={{ background: SHELL_BG, minHeight: "100vh" }}>
+      <AgentLandingNav current="/intros" />
       <div
         style={{
           maxWidth: 720,

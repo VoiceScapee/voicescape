@@ -190,6 +190,19 @@ const MCP_IP_LIMIT = 20;
 const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
 
 async function handle(req: Request): Promise<Response> {
+  // A browser (or a curious agent) opening the endpoint URL directly gets
+  // the human explainer page instead of a JSON-RPC protocol error. MCP
+  // clients speak POST with Accept: application/json, text/event-stream —
+  // they never send text/html on GET, so this never interferes with them.
+  // The redirect runs before the rate limiter so human clicks don't burn
+  // the 20/hour MCP budget.
+  if (
+    req.method === "GET" &&
+    (req.headers.get("accept") ?? "").includes("text/html")
+  ) {
+    return Response.redirect(new URL("/mcp", req.url), 302);
+  }
+
   // Per-IP gate first — cheap, before any MCP protocol work.
   let rl;
   try {
