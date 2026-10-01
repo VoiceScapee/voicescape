@@ -3,12 +3,20 @@
  *
  * Mounted in the root layout so it appears on every page. Talks to
  * POST /api/agent/chat. Degrades gracefully when the backend is unavailable
- * (503) or rate-limited (429). Read-only: the buddy can look things up but
- * never signs, spends, or publishes.
+ * (503) or rate-limited (429).
+ *
+ * For owners of an AI agent blockpage the chat doubles as mission control:
+ * a compact dashboard (live registration status, recent on-chain tips,
+ * pending proposals) pinned above the thread. Agent proposals also arrive
+ * as inline one-tap approval cards in the thread itself — the human never
+ * leaves the chat. The human's ONLY action is the Approve tap: the tap
+ * fires a signature request through their own wallet's DAppConnector
+ * pairing, and the agent does everything after. Buddy itself never signs,
+ * spends, or publishes — and no keys are ever handled here.
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
@@ -17,6 +25,11 @@ import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
 import BuddyDraftPreview from "./BuddyDraftPreview";
 import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import BuddyPayButton from "./BuddyPayButton";
+import BuddyActionCard from "./BuddyActionCard";
+import BuddyDashboard from "./BuddyDashboard";
+import { submitPreparedTx, type PreparedTxPayload, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
+import type { AgentOverview } from "@/lib/server/agent-overview";
+import type { PendingAction } from "@/lib/server/pending-actions";
 import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
@@ -52,7 +65,14 @@ function clampFabPos(x: number, y: number): FabPos {
   };
 }
 
-type Msg = { role: "user" | "assistant"; content: string; failed?: boolean; fallback?: boolean };
+type Msg = {
+  role: "user" | "assistant";
+  content: string;
+  failed?: boolean;
+  fallback?: boolean;
+  /** Set on the agent's proposal message: renders the inline one-tap approval card. */
+  actionCard?: PendingAction;
+};
 
 /**
  * Onboarding: two short sequenced messages instead of one long monologue
@@ -255,6 +275,16 @@ export default function AgentChat() {
   const [freeLeft, setFreeLeft] = useState<number | null>(() =>
     Object.keys(sessionHeader()).length === 0 ? 5 : null
   );
+  // Mission control: for wallets that own an AI agent blockpage, the chat
+  // doubles as the agent's dashboard. overview = live registration status
+  // + profile pin status + recent on-chain tips (polled ~60s, heavier
+  // mirror-node reads); proposals = the pending-approval inbox (polled
+  // ~15s, cheap KV read). Both are session-gated and strictly per-owner.
+  const [overview, setOverview] = useState<AgentOverview | null>(null);
+  const [proposals, setProposals] = useState<PendingAction[]>([]);
+  // Proposal ids already rendered as inline cards — the inbox poll is
+  // idempotent, the thread must not duplicate.
+  const seenProposalIds = useRef<Set<string>>(new Set());
   // Build-paywall state (from the server's machine-readable `build.paywall`
   // field): "anon" = builds need a connected wallet, "unpaid" = signed-in
   // wallet has no 5-HBAR credit yet. null = no paywall on this turn.
@@ -325,6 +355,95 @@ export default function AgentChat() {
     const onTip = (e: Event) => setTipOpen((e as CustomEvent<boolean>).detail === true);
     window.addEventListener(TIP_PANEL_EVENT, onTip);
     return () => window.removeEventListener(TIP_PANEL_EVENT, onTip);
+  }, []);
+
+  // Mission-control + approval-inbox polling. Anonymous visitors have no
+  // session, so both polls stay silent for them — the chat is unchanged.
+  // proposals (~15s, cheap KV read): each unseen proposal is appended to
+  // the thread as the agent's proposal message with its inline one-tap
+  // approval card — the approval lives where the proposal lives, the human
+  // never leaves the chat. overview (~60s, mirror-node reads): live
+  // registration status, profile pin status, recent on-chain tips for the
+  // dashboard. Both degrade silently; the inbox and the panel are a
+  // courtesy — chat must never break because of them.
+  useEffect(() => {
+    let stop = false;
+    const authed = (): Record<string, string> | null => {
+      const h = sessionHeader();
+      return h[SESSION_HEADER] ? h : null;
+    };
+    const pollProposals = async () => {
+      const headers = authed();
+      if (!headers) return;
+      try {
+        const res = await fetch("/api/agents/proposals", { headers });
+        if (!res.ok || stop) return;
+        const data = (await res.json()) as { proposals?: PendingAction[] };
+        const list = Array.isArray(data.proposals) ? data.proposals : [];
+        setProposals(list);
+        for (const p of list) {
+          if (!p || typeof p.id !== "string" || seenProposalIds.current.has(p.id)) continue;
+          seenProposalIds.current.add(p.id);
+          setMsgs((cur) => [
+            ...cur,
+            {
+              role: "assistant",
+              content: "Your agent has a proposal for you — one tap to approve:",
+              actionCard: p,
+            },
+          ]);
+        }
+      } catch {
+        /* inbox is a courtesy */
+      }
+    };
+    const pollOverview = async () => {
+      const headers = authed();
+      if (!headers) return;
+      try {
+        const res = await fetch("/api/agents/overview", { headers });
+        if (!res.ok || stop) return;
+        const data = (await res.json()) as AgentOverview;
+        if (data && typeof data === "object") setOverview(data);
+      } catch {
+        /* dashboard is a courtesy */
+      }
+    };
+    void pollProposals();
+    void pollOverview();
+    const t1 = setInterval(pollProposals, 15_000);
+    const t2 = setInterval(pollOverview, 60_000);
+    return () => {
+      stop = true;
+      clearInterval(t1);
+      clearInterval(t2);
+    };
+  }, []);
+
+  // One-tap approve: the whole post-tap pipeline lives in
+  // submitPreparedTx — silent pairing restore + liveness probe, the
+  // signature request through the existing DAppConnector pairing, then
+  // mirror-node confirmation. The human's only action is the tap.
+  const approveProposal = useCallback(
+    (payload: PreparedTxPayload): Promise<SubmitPreparedTxResult> =>
+      submitPreparedTx(payload, {
+        restoreIfMissing: true,
+        expectedOwnerAccountId: overview?.ownerAccountId,
+      }),
+    [overview?.ownerAccountId],
+  );
+
+  // A proposal settled (approved, or errored terminally): dismiss the
+  // inbox slot so it doesn't reappear. The thread keeps the card as the
+  // receipt — history, not a live proposal.
+  const settleProposal = useCallback((id: string) => {
+    const h = sessionHeader();
+    if (!h[SESSION_HEADER]) return;
+    void fetch("/api/agents/proposals", {
+      method: "POST",
+      headers: { ...h, "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "dismiss", id }),
+    }).catch(() => {});
   }, []);
 
   // Builder banner handoff (2026-09-28): the builder's "Ask Buddy to build
@@ -959,6 +1078,18 @@ export default function AgentChat() {
             </button>
           </div>
 
+          {/* Mission control: owners of an AI agent blockpage get the compact
+              dashboard (status, activity, proposals) pinned above the thread.
+              Everyone else sees an unchanged chat. */}
+          {overview?.ownsAgentPage === true && (
+            <BuddyDashboard
+              overview={overview}
+              proposals={proposals}
+              onApprove={approveProposal}
+              onProposalSettled={settleProposal}
+            />
+          )}
+
           {/* Messages */}
           <div
             ref={listRef}
@@ -1022,6 +1153,22 @@ export default function AgentChat() {
                   {m.role === "assistant" ? (
                     <>
                       <BuddyMarkdown content={visible} />
+                      {/* The agent's proposal message carries its inline
+                          one-tap approval card — the approval lives where
+                          the proposal lives; the human never leaves the chat. */}
+                      {m.actionCard && (
+                        <BuddyActionCard
+                          label={m.actionCard.label}
+                          title={m.actionCard.title}
+                          summary={m.actionCard.summary}
+                          costEstimate={m.actionCard.costEstimate}
+                          payload={m.actionCard.payload}
+                          onApprove={approveProposal}
+                          onSettled={() => {
+                            if (m.actionCard) settleProposal(m.actionCard.id);
+                          }}
+                        />
+                      )}
                       {draft != null && (
                         <>
                           <BuddyDraftPreview page={draft} />

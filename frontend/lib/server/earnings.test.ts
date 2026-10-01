@@ -4,7 +4,7 @@
  * modes are exercised without hitting Hedera.
  */
 import { describe, expect, it } from "vitest";
-import { fetchEarningsSummary } from "./earnings";
+import { fetchEarningsSummary, fetchRecentTips } from "./earnings";
 import { TIPSENT_TOPIC } from "../leaderboard";
 
 const OWNER = "0x" + "aa".repeat(20);
@@ -129,5 +129,51 @@ describe("fetchEarningsSummary", () => {
     if (!r.ok) return;
     expect(r.address).toBe(OWNER);
     expect(r.summary.hbar7d).toBeCloseTo(1, 8);
+  });
+});
+
+describe("fetchRecentTips", () => {
+  it("returns the newest tips to the owner first, with tx hashes", async () => {
+    const now = Math.floor(NOW_MS / 1000);
+    // Fixture is order=desc (newest first), as the mirror node returns it.
+    const logs = [
+      { ...tipLog(TIPPER_B, OWNER, 0.5, now - 30), transaction_hash: "0xdef" },
+      tipLog(TIPPER_B, OTHER, 2, now - 120),
+      { ...tipLog(TIPPER_A, OWNER, 1.5, now - 60), transaction_hash: "0xabc" },
+    ];
+    const tips = await fetchRecentTips(OWNER, 5, { fetcher: okFetch(logs) });
+    expect(tips).toHaveLength(2);
+    // Logs arrive order=desc — newest first is preserved.
+    expect(tips[0].from).toBe(TIPPER_B.toLowerCase());
+    expect(tips[0].amountHbar).toBeCloseTo(0.5, 8);
+    expect(tips[0].txHash).toBe("0xdef");
+    expect(tips[1].from).toBe(TIPPER_A.toLowerCase());
+    expect(tips[1].amountHbar).toBeCloseTo(1.5, 8);
+    expect(tips[1].txHash).toBe("0xabc");
+  });
+
+  it("nulls the tx hash when the log doesn't carry one", async () => {
+    const now = Math.floor(NOW_MS / 1000);
+    const tips = await fetchRecentTips(OWNER, 5, {
+      fetcher: okFetch([tipLog(TIPPER_A, OWNER, 1, now - 60)]),
+    });
+    expect(tips).toHaveLength(1);
+    expect(tips[0].txHash).toBeNull();
+  });
+
+  it("respects the limit", async () => {
+    const now = Math.floor(NOW_MS / 1000);
+    const logs = [0, 1, 2, 3].map((i) => tipLog(TIPPER_A, OWNER, 1, now - i * 60));
+    const tips = await fetchRecentTips(OWNER, 2, { fetcher: okFetch(logs) });
+    expect(tips).toHaveLength(2);
+  });
+
+  it("returns [] instead of throwing when the mirror node fails", async () => {
+    const failing: MockFetch = async () => new Response("bad", { status: 503 });
+    const throwing: MockFetch = async () => {
+      throw new Error("network down");
+    };
+    expect(await fetchRecentTips(OWNER, 5, { fetcher: failing })).toEqual([]);
+    expect(await fetchRecentTips(OWNER, 5, { fetcher: throwing })).toEqual([]);
   });
 });

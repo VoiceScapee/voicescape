@@ -93,3 +93,57 @@ export async function fetchEarningsSummary(
     return { ok: false, error: "earnings data is unavailable right now" };
   }
 }
+
+/** One tip addressed to a page owner, newest first — the dashboard's activity feed. */
+export interface RecentTipItem {
+  /** Tipper's EVM address (lowercased). */
+  from: string;
+  /** The creator's 98% share, in HBAR. */
+  amountHbar: number;
+  /** Mirror-node timestamp of the log ("seconds.nanoseconds"). */
+  timestamp: string;
+  /** EVM transaction hash ("0x…") for the HashScan link, when the log carries it. */
+  txHash: string | null;
+}
+
+/**
+ * The newest tips addressed to one recipient, newest first. Reads a single
+ * page of TipSent logs (order=desc) and stops at `limit` matches — cheap
+ * enough for the chat dashboard's activity feed. Never throws: every
+ * failure mode returns [] so the dashboard shows a quiet state, not an
+ * error.
+ */
+export async function fetchRecentTips(
+  address: string,
+  limit: number,
+  opts?: { fetcher?: Fetcher },
+): Promise<RecentTipItem[]> {
+  const owner = address.toLowerCase();
+  const n = Math.min(Math.max(Math.floor(limit) || 1, 1), 25);
+  const fetcher: Fetcher = opts?.fetcher ?? fetch;
+  try {
+    const res = await fetcher(
+      `${MIRROR_NODE}/contracts/${TIPS_CONTRACT}/results/logs?order=desc&limit=${LOGS_PER_PAGE}`,
+      { headers: { Accept: "application/json" } },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as { logs?: unknown[] };
+    const logs = Array.isArray(data.logs) ? data.logs : [];
+    const out: RecentTipItem[] = [];
+    for (const log of logs) {
+      const e = decodeTipSentLog(log);
+      if (!e || e.to !== owner) continue;
+      const txHash =
+        log !== null &&
+        typeof log === "object" &&
+        typeof (log as { transaction_hash?: unknown }).transaction_hash === "string"
+          ? (log as { transaction_hash: string }).transaction_hash
+          : null;
+      out.push({ from: e.from, amountHbar: e.amountHbar, timestamp: e.timestamp, txHash });
+      if (out.length >= n) break;
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}

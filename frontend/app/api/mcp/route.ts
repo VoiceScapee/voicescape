@@ -30,6 +30,7 @@ import {
   postAgentIntro,
   prepareAgentClaim,
 } from "@/lib/server/mcp-tools";
+import { stashPendingAction } from "@/lib/server/pending-actions";
 
 const READONLY = {
   readOnlyHint: true,
@@ -168,7 +169,7 @@ function registerTools(server: McpServer): void {
     "prepare_agent_claim",
     {
       description:
-        "Build a complete UNSIGNED agent-blockpage claim package for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain, confirms the owner account exists and is funded, pins a starter agent page to IPFS, and returns the frozen registerPage transaction bytes plus a plain-words summary of what the human is signing. Pure preparation — no keys, no signing, no submission, no spending. The human opens voicescape.vercel.app/agents/claim, connects the owner wallet, reviews, and signs once.",
+        "Build a complete UNSIGNED agent-blockpage claim package for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain, confirms the owner account exists and is funded, pins a starter agent page to IPFS, and returns the frozen registerPage transaction bytes plus a plain-words summary of what the human is signing. Pure preparation — no keys, no signing, no submission, no spending. The package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens). Fallback: the human opens voicescape.vercel.app/agents/claim, connects the owner wallet, reviews, and signs once.",
       inputSchema: z.object({
         username: z
           .string()
@@ -195,7 +196,16 @@ function registerTools(server: McpServer): void {
     },
     async (args) => {
       const res = await prepareAgentClaim(args);
-      return "error" in res ? toolError(res.error) : toolResult(res);
+      if ("error" in res) return toolError(res.error);
+      // Best-effort: queue the package as a one-tap approval card in the
+      // owner's Buddy chat. The tool itself stays pure — if the inbox
+      // write fails, the /agents/claim fallback path still works.
+      try {
+        await stashPendingAction(res);
+      } catch {
+        /* inbox is a courtesy */
+      }
+      return toolResult(res);
     },
   );
 }

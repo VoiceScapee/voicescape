@@ -14,6 +14,7 @@ import { deriveUsername, getVanityName } from "@/lib/identity";
 import { NotificationBell } from "./NotificationBell";
 import {
   isHashPackInAppBrowser,
+  OPEN_WALLET_CONNECT_EVENT,
   resolveInAppHeaderState,
   useWallet,
   WALLET_ADAPTERS,
@@ -125,6 +126,16 @@ export function WalletConnect() {
       // Dismissal surfaces via session.error; the user can sign in later.
     });
   }, [session, account]);
+
+  // In-chat one-tap approvals (BuddyActionCard) live outside the wallet
+  // provider, so they can't call connect() directly. When the pairing is
+  // missing or stale they dispatch OPEN_WALLET_CONNECT_EVENT; the nearest
+  // mounted WalletConnect opens its pairing UI in response.
+  useEffect(() => {
+    const open = () => setShowOptions(true);
+    window.addEventListener(OPEN_WALLET_CONNECT_EVENT, open);
+    return () => window.removeEventListener(OPEN_WALLET_CONNECT_EVENT, open);
+  }, []);
 
   // Close the wallet picker when clicking outside or pressing Escape.
   useEffect(() => {

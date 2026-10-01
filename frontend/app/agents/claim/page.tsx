@@ -13,7 +13,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useSession } from "@/lib/session";
-import { getHederaPairing } from "@/lib/wallet";
+import {
+  submitPreparedTx,
+  NoWalletPairingError,
+  StaleWalletPairingError,
+  OwnerMismatchError,
+} from "@/lib/prepared-tx";
 
 const SHELL_BG =
   "radial-gradient(900px 480px at 12% -8%, rgba(130, 89, 239, 0.14), transparent 60%), radial-gradient(760px 420px at 92% 4%, rgba(145, 168, 255, 0.1), transparent 60%), var(--vs-bg)";
@@ -66,32 +71,11 @@ interface ClaimPackage {
   next?: string;
 }
 
-function toMirrorTxId(txId: string): string {
-  const m = /^(\d+\.\d+\.\d+)@(\d+)\.(\d+)$/.exec(txId.trim());
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : txId;
-}
-
 /** Normalize 0.0.x and 0x… account forms to one comparable string. */
 function normalizeAccount(a: string): string {
   const m = /^0\.0\.(\d+)$/.exec(a.trim());
   if (m) return "0x" + BigInt(m[1]).toString(16).padStart(40, "0");
   return a.trim().toLowerCase();
-}
-
-async function txLanded(txId: string): Promise<"success" | "failed" | "unknown"> {
-  try {
-    const res = await fetch(
-      `https://mainnet.mirrornode.hedera.com/api/v1/transactions/${encodeURIComponent(toMirrorTxId(txId))}`,
-    );
-    if (!res.ok) return "unknown";
-    const body = (await res.json()) as { transactions?: Array<{ result?: string }> };
-    const result = body.transactions?.[0]?.result;
-    if (result === "SUCCESS") return "success";
-    if (result) return "failed";
-    return "unknown";
-  } catch {
-    return "unknown";
-  }
 }
 
 export default function AgentClaimPage() {
@@ -137,60 +121,54 @@ export default function AgentClaimPage() {
     if (!pkg) return;
     setError("");
     setNote("");
-    const pairing = getHederaPairing();
-    if (!pairing) {
-      setError("Wallet isn't connected — connect it first, then sign in.");
-      return;
-    }
-    setPhase("signing");
+    // The fallback page runs the exact same submission path as the in-chat
+    // one-tap card (lib/prepared-tx) — one implementation, two doors.
+    // restoreIfMissing: false — this page owns its connect UI; a missing
+    // pairing is the user's explicit connect step, not a silent restore.
+    // expectedOwnerAccountId is belt-and-suspenders: ownerMatches already
+    // gated the button on the session account.
     try {
-      // The package names the owner in 0.0.x form and ownerMatches already
-      // verified it's the connected wallet — sign as that account.
-      const walletSend = (
-        pairing.hc.signAndExecuteTransaction as unknown as (
-          params: object,
-        ) => Promise<unknown>
-      )({
-        signerAccountId: `hedera:mainnet:${pkg.owner_account_id.trim()}`,
-        transactionList: pkg.unsignedTxBytes,
-      });
-      // The wallet sometimes goes silent after approval; don't hang forever.
-      await Promise.race([
-        walletSend,
-        new Promise((_, reject) => setTimeout(() => reject(new Error("WALLET_TIMEOUT")), 30_000)),
-      ]);
-    } catch (e) {
-      if (!(e instanceof Error && e.message === "WALLET_TIMEOUT")) {
-        setPhase("idle");
-        setError(e instanceof Error ? e.message : "The wallet refused the transaction.");
-        return;
-      }
-      // Timeout: the wallet may still have submitted it — verify on-chain.
-    }
-    setPhase("confirming");
-    setNote("Checking the Hedera network for your transaction…");
-    const deadline = Date.now() + 120_000;
-    for (;;) {
-      const landed = await txLanded(pkg.transactionId);
-      if (landed === "success") {
+      const res = await submitPreparedTx(
+        {
+          transactionList: pkg.unsignedTxBytes,
+          signerAccountId: `hedera:mainnet:${pkg.owner_account_id.trim()}`,
+          transactionId: pkg.transactionId,
+        },
+        {
+          restoreIfMissing: false,
+          expectedOwnerAccountId: pkg.owner_account_id,
+          onPhase: (p) => {
+            if (p === "signing") setPhase("signing");
+            else if (p === "confirming") {
+              setPhase("confirming");
+              setNote("Checking the Hedera network for your transaction…");
+            }
+            // "checking" stays silent here — the probes take well under a
+            // second and this page's button already gated on the session.
+          },
+        },
+      );
+      if (res.confirmed) {
         setPhase("done");
         setNote("");
-        return;
-      }
-      if (landed === "failed") {
-        setPhase("idle");
-        setError("The transaction failed on-chain. Nothing was registered — it's safe to retry.");
-        return;
-      }
-      if (Date.now() >= deadline) {
+      } else {
         setPhase("idle");
         setError(
           "Couldn't confirm the transaction after 2 minutes. It may still land — " +
             `check ${pkg.username} on the directory before retrying.`,
         );
-        return;
       }
-      await new Promise((r) => setTimeout(r, 4_000));
+    } catch (e) {
+      setPhase("idle");
+      if (e instanceof NoWalletPairingError) {
+        setError("Wallet isn't connected — connect it first, then sign in.");
+      } else if (e instanceof StaleWalletPairingError) {
+        setError(e.message);
+      } else if (e instanceof OwnerMismatchError) {
+        setError(e.message);
+      } else {
+        setError(e instanceof Error ? e.message : "The wallet refused the transaction.");
+      }
     }
   }
 

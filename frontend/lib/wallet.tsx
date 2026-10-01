@@ -225,6 +225,25 @@ export const STALE_CONNECTION_COPY =
   "then reconnect and try again.";
 
 /**
+ * Event the in-chat one-tap approval card dispatches when the pairing is
+ * missing or stale and the agent can't fix it itself. The chat widget
+ * mounts outside the wallet provider, so it can't call connect()
+ * directly — the nearest mounted WalletConnect component hears this and
+ * opens its pairing UI. One tap in the chat opens the standard flow the
+ * user already knows; the user then taps Approve again deliberately.
+ */
+export const OPEN_WALLET_CONNECT_EVENT = "vs:open-wallet-connect";
+
+/** Dispatch the wallet-connect UI event; no-ops when nothing is listening. */
+export function requestWalletConnectUI(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(OPEN_WALLET_CONNECT_EVENT));
+  } catch {
+    /* no UI mounted — the card's copy still guides the user */
+  }
+}
+
+/**
  * True when a wallet error message means the WalletConnect session went
  * stale — the wallet never responded, so the fix is a fresh pairing, not
  * retrying the same action. Single source of truth for the tip modal's
