@@ -15,6 +15,7 @@ import {
   unfollowPage,
   USERNAME_RE,
 } from "@/lib/follows";
+import { recordFollowEvent } from "@/lib/server/notify";
 
 export const runtime = "nodejs";
 
@@ -119,6 +120,9 @@ export async function POST(req: NextRequest) {
   if (quotaHit) return quotaHit;
 
   try {
+    // Only a first-time follow is a "new follower" event — read the list
+    // before writing so repeat follows don't re-notify.
+    const before = await readFollowList(getKvStore(), authed.wallet);
     const result = await followPage({
       store: getKvStore(),
       wallet: authed.wallet,
@@ -137,6 +141,15 @@ export async function POST(req: NextRequest) {
             ? "you can't follow your own page"
             : "invalid username";
       return NextResponse.json({ error: message }, { status });
+    }
+    // Record the follow event for the return-loop sweep (new followers
+    // get a notification). Best-effort — never breaks the follow itself.
+    if (!before.includes(name)) {
+      try {
+        await recordFollowEvent(getKvStore(), authed.wallet, name);
+      } catch {
+        /* follow-event logging is best-effort */
+      }
     }
     return NextResponse.json({ ok: true, following: result.following });
   } catch (err) {
