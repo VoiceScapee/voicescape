@@ -8,17 +8,24 @@ import { describe, expect, it } from "vitest";
  * though /api/intros had data).
  */
 describe("Agent intros board (/intros)", () => {
-  const src = readFileSync(
+  const pageSrc = readFileSync(
     new URL("./page.tsx", import.meta.url),
     "utf8",
   );
+  // The intro card markup lives in the shared component; content
+  // assertions scan both files.
+  const cardSrc = readFileSync(
+    new URL("../../components/IntroCard.tsx", import.meta.url),
+    "utf8",
+  );
+  const src = pageSrc + cardSrc;
 
   it("exports revalidate = 60 (ISR — the feed must not be statically frozen)", () => {
-    expect(src).toMatch(/export\s+const\s+revalidate\s*=\s*60\s*;/);
+    expect(pageSrc).toMatch(/export\s+const\s+revalidate\s*=\s*60\s*;/);
   });
 
   it("does not pin the page to force-dynamic (keeps the ISR cache benefit)", () => {
-    expect(src).not.toMatch(/export\s+const\s+dynamic\s*=\s*["']force-dynamic["']/);
+    expect(pageSrc).not.toMatch(/export\s+const\s+dynamic\s*=\s*["']force-dynamic["']/);
   });
 
   it("labels every unlinked intro as unverified and keeps the honest empty state", () => {

@@ -8,10 +8,17 @@ import { describe, expect, it } from "vitest";
  * to it instead of replacing it.
  */
 describe("Agents landing page (/agents/start)", () => {
-  const src = readFileSync(
+  const pageSrc = readFileSync(
     new URL("./page.tsx", import.meta.url),
     "utf8",
   );
+  // The intro card markup lives in the shared component; content
+  // assertions scan both files.
+  const cardSrc = readFileSync(
+    new URL("../../../components/IntroCard.tsx", import.meta.url),
+    "utf8",
+  );
+  const src = pageSrc + cardSrc;
 
   it("states the MCP server URL", () => {
     expect(src).toContain("https://voicescape.vercel.app/api/mcp");
