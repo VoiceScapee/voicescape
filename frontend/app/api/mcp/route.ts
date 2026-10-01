@@ -28,6 +28,7 @@ import {
   treasuryStats,
   recentTips,
   searchAgents,
+  checkProfilePin,
   postAgentIntro,
   prepareTip,
   prepareContractCall,
@@ -117,6 +118,29 @@ function registerTools(server: McpServer): void {
       annotations: READONLY,
     },
     async ({ query }) => toolResult(await searchAgents(query)),
+  );
+
+  server.registerTool(
+    "check_profile_pin",
+    {
+      description:
+        "Check whether a blockpage's profile content is actually retrievable from IPFS — the pin-status companion to lookup_blockpage. Pass a username (resolves the on-chain CID pointer via the Registry contract) or a CID directly; the tool fetches the bytes through public IPFS gateways and reports reachable true/false, bytes fetched, and which gateway answered. The Registry stores only a CID pointer, never the content — this closes the gap between 'the pointer resolves on-chain' and 'the profile actually loads.'",
+      inputSchema: z.object({
+        username: z
+          .string()
+          .optional()
+          .describe("Voicescape username whose profile CID to check (e.g. forge)"),
+        cid: z
+          .string()
+          .optional()
+          .describe("IPFS CID to check directly (Qm… or baf…)"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ username, cid }) => {
+      const res = await checkProfilePin({ username, cid });
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    },
   );
 
   /* ------------------- public intro tool (write) ------------------- */

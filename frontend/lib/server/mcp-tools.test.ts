@@ -13,6 +13,7 @@ import {
   treasuryStats,
   recentTips,
   searchAgents,
+  checkProfilePin,
   postAgentIntro,
   prepareTip,
   prepareContractCall,
@@ -129,6 +130,125 @@ describe("lookup_blockpage", () => {
     const r = await lookupBlockpage("forge", fetchFn);
     expect(r.found).toBe(true);
     expect(r.owner_account).toBeNull();
+  });
+});
+
+/* ------------------------- check_profile_pin ------------------------- */
+
+describe("check_profile_pin", () => {
+  const PIN_CID = "Qm" + "1".repeat(44);
+
+  function pinPageResult(): string {
+    return RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+      "0xAbC1230000000000000000000000000000000001",
+      PIN_CID,
+      1n,
+      "0x0000000000000000000000000000000000000000",
+      "test agent",
+    ]);
+  }
+
+  function streamResponse(chunks: Uint8Array[], contentType = "application/json"): Response {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const c of chunks) controller.enqueue(c);
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": contentType } });
+  }
+
+  /** Routes mirror-node calls to the Registry fixture; gateway calls per `gw`. */
+  function pinFetch(
+    gw: (url: string) => Response | { status: number },
+  ): typeof fetch {
+    return (async (input: any) => {
+      const url = String(input);
+      if (/contracts\/call$/.test(url)) {
+        return { ok: true, status: 200, json: async () => ({ result: pinPageResult() }) } as Response;
+      }
+      if (/accounts\//.test(url)) {
+        return { ok: true, status: 200, json: async () => ({ account: "0.0.99999" }) } as Response;
+      }
+      const out = gw(url);
+      return out instanceof Response ? out : ({ ok: false, status: out.status, body: null } as unknown as Response);
+    }) as unknown as typeof fetch;
+  }
+
+  it("resolves the username's CID and reports reachable with byte count", async () => {
+    const body = new TextEncoder().encode('{"name":"forge"}');
+    const fetchFn = pinFetch(() => streamResponse([body]));
+    const r = await checkProfilePin({ username: "forge" }, fetchFn);
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.username).toBe("forge");
+    expect(r.cid).toBe(PIN_CID);
+    expect(r.reachable).toBe(true);
+    expect(r.bytes_fetched).toBe(body.byteLength);
+    expect(r.gateway).toContain("pinata");
+    expect(r.truncated).toBe(false);
+  });
+
+  it("falls through to the second gateway when the first fails", async () => {
+    const body = new TextEncoder().encode("{}");
+    const fetchFn = pinFetch((url) =>
+      url.includes("pinata") ? { status: 500 } : streamResponse([body]),
+    );
+    const r = await checkProfilePin({ cid: PIN_CID }, fetchFn);
+    if ("error" in r) throw new Error("unexpected error");
+    expect(r.reachable).toBe(true);
+    expect(r.gateway).toContain("ipfs.io");
+  });
+
+  it("reports unreachable when every gateway fails", async () => {
+    const fetchFn = pinFetch(() => ({ status: 500 }));
+    const r = await checkProfilePin({ cid: PIN_CID }, fetchFn);
+    if ("error" in r) throw new Error("unexpected error");
+    expect(r.reachable).toBe(false);
+    expect(r.bytes_fetched).toBe(0);
+    expect(r.gateway).toBeNull();
+    expect(r.note).toContain("not retrievable");
+  });
+
+  it("rejects malformed CIDs without hitting the network", async () => {
+    const fetchFn = pinFetch(() => {
+      throw new Error("must not fetch");
+    });
+    const r = await checkProfilePin({ cid: "not-a-cid" }, fetchFn);
+    if ("error" in r) throw new Error("unexpected error");
+    expect(r.reachable).toBe(false);
+    expect(r.note).toContain("CID");
+  });
+
+  it("reports unreachable for an unregistered username", async () => {
+    const fetchFn = pinFetch(() => ({ status: 500 }));
+    // Override: Registry reverts for unknown names.
+    const f2 = (async (input: any) => {
+      const url = String(input);
+      if (/contracts\/call$/.test(url)) {
+        return { ok: true, status: 200, json: async () => ({ result: "0x" }) } as Response;
+      }
+      return (fetchFn as any)(input);
+    }) as unknown as typeof fetch;
+    const r = await checkProfilePin({ username: "no-such-user" }, f2);
+    if ("error" in r) throw new Error("unexpected error");
+    expect(r.reachable).toBe(false);
+    expect(r.note).toContain("not registered");
+  });
+
+  it("returns an error when given neither username nor cid", async () => {
+    const r = await checkProfilePin({}, pinFetch(() => ({ status: 500 })));
+    expect("error" in r).toBe(true);
+  });
+
+  it("truncates reads past the byte cap", async () => {
+    const big = new Uint8Array(300 * 1024).fill(7);
+    const fetchFn = pinFetch(() => streamResponse([big]));
+    const r = await checkProfilePin({ cid: PIN_CID }, fetchFn);
+    if ("error" in r) throw new Error("unexpected error");
+    expect(r.reachable).toBe(true);
+    expect(r.truncated).toBe(true);
+    expect(r.bytes_fetched).toBeLessThanOrEqual(256 * 1024);
   });
 });
 
