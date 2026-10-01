@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { agentOwnerFromRequest } from "@/lib/server/agent-session";
-import { getPendingAction, clearPendingAction } from "@/lib/server/pending-actions";
+import { getPendingActions, clearPendingAction } from "@/lib/server/pending-actions";
 
 export const runtime = "nodejs";
 
@@ -8,19 +8,20 @@ export const runtime = "nodejs";
  * /api/agents/proposals — the owner's pending-approval inbox.
  * Session-authenticated (x-vs-session); strictly per-owner.
  *
- * GET  → { proposals: PendingAction[] } (one slot per owner, so 0 or 1).
- *        The chat polls this every ~15s and renders each proposal as an
- *        inline one-tap approval card in the thread.
- * POST { action: "dismiss" } → clears the slot. The chat calls this when a
- *        proposal settles (approved or errored) so it doesn't reappear.
+ * GET  → { proposals: PendingAction[] } (up to 3 per owner, oldest
+ *        first). The chat polls this every ~15s and renders each proposal
+ *        as an inline one-tap approval card in the thread.
+ * POST { action: "dismiss", id? } → clears one proposal (or the whole
+ *        inbox when id is omitted). The chat calls this when a proposal
+ *        settles (approved or errored) so it doesn't reappear.
  */
 export async function GET(req: NextRequest) {
   const owner = await agentOwnerFromRequest(req);
   if (!owner) {
     return NextResponse.json({ error: "sign in required" }, { status: 401 });
   }
-  const pending = await getPendingAction(owner);
-  return NextResponse.json({ proposals: pending ? [pending] : [] });
+  const proposals = await getPendingActions(owner);
+  return NextResponse.json({ proposals });
 }
 
 export async function POST(req: NextRequest) {
@@ -28,10 +29,14 @@ export async function POST(req: NextRequest) {
   if (!owner) {
     return NextResponse.json({ error: "sign in required" }, { status: 401 });
   }
-  const body = (await req.json().catch(() => null)) as { action?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as {
+    action?: unknown;
+    id?: unknown;
+  } | null;
   if (!body || body.action !== "dismiss") {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }
-  await clearPendingAction(owner);
+  const id = typeof body.id === "string" && body.id ? body.id : undefined;
+  await clearPendingAction(owner, id);
   return NextResponse.json({ ok: true });
 }

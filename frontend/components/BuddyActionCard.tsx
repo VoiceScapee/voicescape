@@ -23,13 +23,15 @@
 import { useState } from "react";
 import {
   hashscanTxUrl,
+  normalizeAccountId,
   NoWalletPairingError,
   OwnerMismatchError,
   StaleWalletPairingError,
-  type PreparedTxPayload,
   type PreparedTxPhase,
   type SubmitPreparedTxResult,
 } from "@/lib/prepared-tx";
+import { getHederaPairing } from "@/lib/wallet";
+import type { PendingAction } from "@/lib/server/pending-actions";
 import {
   STALE_CONNECTION_COPY,
   friendlyWalletError,
@@ -45,13 +47,18 @@ export interface BuddyActionCardProps {
   summary: string;
   /** Cost copy, e.g. "Network gas only — a few cents of HBAR." */
   costEstimate: string;
-  /** The frozen unsigned transaction the Approve tap submits. */
-  payload: PreparedTxPayload;
   /**
-   * Runs the whole post-tap pipeline (silent checks → sign → confirm).
-   * Provided by the host (the chat widget binds the owner account).
+   * The pending action. The frozen transaction is NOT baked in: the host's
+   * onApprove finalizes the claim package (pins the page, builds the tx
+   * with the connected wallet as payer) and then submits it.
    */
-  onApprove: (payload: PreparedTxPayload) => Promise<SubmitPreparedTxResult>;
+  action: PendingAction;
+  /**
+   * Runs the whole post-tap pipeline (finalize → silent checks → sign →
+   * confirm). Provided by the host (the chat widget binds the owner
+   * account).
+   */
+  onApprove: (action: PendingAction) => Promise<SubmitPreparedTxResult>;
   /** Called when the action settles, so the host can dismiss the inbox slot. */
   onSettled?: (result: SubmitPreparedTxResult) => void;
 }
@@ -93,7 +100,7 @@ export default function BuddyActionCard({
   title,
   summary,
   costEstimate,
-  payload,
+  action,
   onApprove,
   onSettled,
 }: BuddyActionCardProps) {
@@ -102,7 +109,7 @@ export default function BuddyActionCard({
   async function approve() {
     setState({ kind: "working", phase: "checking" });
     try {
-      const result = await onApprove(payload);
+      const result = await onApprove(action);
       setState({ kind: "done", txId: result.txId, confirmed: result.confirmed });
       onSettled?.(result);
     } catch (e) {
@@ -128,6 +135,14 @@ export default function BuddyActionCard({
   }
 
   const working = state.kind === "working";
+
+  // Proactive wrong-wallet hint: the pairing may have been switched after
+  // sign-in. The tap itself still enforces the owner match (OwnerMismatchError)
+  // — this just explains it before the human taps.
+  const pairedAccount = getHederaPairing()?.accountId ?? null;
+  const wrongWallet =
+    pairedAccount !== null &&
+    normalizeAccountId(pairedAccount) !== normalizeAccountId(action.ownerAccountId);
 
   return (
     <div
@@ -156,6 +171,14 @@ export default function BuddyActionCard({
       <div style={{ fontSize: 12.5, marginTop: 8, opacity: 0.75 }}>
         Cost: {costEstimate}
       </div>
+
+      {wrongWallet && state.kind === "idle" && (
+        <div style={{ fontSize: 13, marginTop: 10, lineHeight: 1.55, color: "#ffb86b" }}>
+          This proposal is for <strong>{action.ownerAccountId}</strong>, but your
+          connected wallet is <strong>{pairedAccount}</strong> — switch wallets
+          to approve it.
+        </div>
+      )}
 
       {state.kind === "idle" && (
         <button type="button" onClick={() => void approve()} style={{ ...BTN, marginTop: 12 }}>

@@ -637,4 +637,72 @@ describe("prepare_agent_claim tool", () => {
     expect("error" in res).toBe(true);
     if ("error" in res) expect(res.error).toMatch(/not found/);
   });
+
+  it("returns a short approval link package — nothing pinned, no tx built at prepare time", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      {
+        username: "linkbot",
+        purpose: "an agent page for testing links",
+        intro_claim_code: "ABCD-1234",
+      },
+      fetchFn,
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect(res.claim_package_id).toMatch(/^[0-9a-f]{32}$/);
+    expect(res.approve_url).toBe(`https://voicescape.vercel.app/c/${res.claim_package_id}`);
+    expect(res.owner_account_id).toBeNull();
+    expect(res.intro_claim_code).toBe("ABCD-1234");
+    // No transaction bytes at prepare time — built at tap time.
+    expect("unsignedTxBytes" in res).toBe(false);
+    expect(res.next).toMatch(/approval link/);
+  });
+
+  it("skips the account check when no owner override is given", async () => {
+    let accountsHit = 0;
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      if (url.includes("/accounts/")) accountsHit++;
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      { username: "noownerbot", purpose: "no owner needed" },
+      fetchFn,
+    );
+    expect("error" in res).toBe(false);
+    expect(accountsHit).toBe(0);
+  });
+
+  it("checks the account when an owner override is given", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      if (url.includes("/accounts/0.0.1234")) {
+        return ok({ evm_address: "0x0000000000000000000000000000000000001234", balance: { balance: 5_000_000_00 } });
+      }
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      { username: "ownerbot", owner_account_id: "0.0.1234", purpose: "owned" },
+      fetchFn,
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect(res.owner_account_id).toBe("0.0.1234");
+    expect(res.owner_funded).toBe(true);
+    expect(res.what_youre_signing).toMatch(/owned by 0\.0\.1234/);
+  });
+
+  it("rejects a bad operator address", async () => {
+    const res = await prepareAgentClaim({
+      username: "opbot",
+      purpose: "test",
+      operator: "not-an-address",
+    });
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/operator/);
+  });
 });

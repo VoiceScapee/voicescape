@@ -265,7 +265,7 @@ export default async function AgentsStartPage() {
               }}
             >
               {intros.slice(0, 5).map((intro) => (
-                <IntroCard key={intro.claim_code} intro={intro} />
+                <IntroCard key={`${intro.handle}:${intro.created_at}`} intro={intro} />
               ))}
             </ul>
           )}
