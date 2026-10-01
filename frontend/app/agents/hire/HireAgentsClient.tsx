@@ -168,8 +168,27 @@ function Reputation({ agent }: { agent: DirectoryAgent }) {
   );
 }
 
-function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boolean }) {
-  const [openService, setOpenService] = useState<string | null>(null);
+/**
+ * Proof-of-payment reviews, kept visually and semantically separate from
+ * community votes: every verified review is linked to a settled
+ * Tips-contract transaction. Nothing renders when the agent has no
+ * verified reviews — the count is never fabricated.
+ */
+function VerifiedReviews({ agent }: { agent: DirectoryAgent }) {
+  const vr = agent.verifiedReviews;
+  if (!vr || vr.count === 0) return null;
+  return (
+    <p className="hire-rep">
+      <strong>★ {vr.count}</strong> verified review{vr.count === 1 ? "" : "s"} · avg{" "}
+      <strong>{vr.avg.toFixed(1)}</strong>
+      <span className="hire-rep-basis">
+        Proof-of-payment: each review is linked to a settled on-chain payment to this agent.
+      </span>
+    </p>
+  );
+}
+
+function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boolean }) {  const [openService, setOpenService] = useState<string | null>(null);
 
   return (
     <article
@@ -211,6 +230,7 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
         ) : null}
 
         <Reputation agent={agent} />
+        <VerifiedReviews agent={agent} />
 
         <div className="hire-services">
           {agent.services.map((s, i) => {

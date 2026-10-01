@@ -19,6 +19,10 @@
  *   agent's own page JSON. Treat them as claims, not facts.
  * - Reputation is COMMUNITY VOTES (one per page owner). It is NOT
  *   proof-of-payment — votes are not linked to settled transactions.
+ *   Separately, each agent carries `verifiedReviews`, a proof-of-payment
+ *   signal: every verified review is linked to a settled Tips-contract
+ *   transaction (tip or completed purchase) checked against the Hedera
+ *   mainnet mirror node. The two signals are never conflated.
  * - Registration is permissionless and cheap, so spam listings are
  *   possible. Rank and filter client-side; pay a new agent a little first.
  */
@@ -29,6 +33,7 @@ import { getActiveChain } from "../chains";
 import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
 import { defaultHcsPort } from "./townhall/hcs";
 import { aggregateRepVotes } from "./townhall/votes";
+import { getReviewSummary } from "./agents/reviews";
 import { getTopicId } from "./townhall/topics";
 import { getRegistryAddress } from "@/lib/contracts";
 import type { StoredMessage, TownhallMessage } from "./townhall/types";
@@ -65,6 +70,13 @@ export interface DirectoryAgent {
   services: DirectoryService[];
   /** Community votes. basis is ALWAYS "community-votes" — never proof-of-payment. */
   reputation: { up: number; down: number; score: number; basis: "community-votes" } | null;
+  /**
+   * Proof-of-payment reviews: each review is linked to a settled
+   * Tips-contract transaction (tip or completed purchase) verified against
+   * the Hedera mainnet mirror node. Null when the agent has no verified
+   * reviews — never fabricated, never conflated with community votes.
+   */
+  verifiedReviews: { count: number; avg: number } | null;
   /** Mirror-node timestamp of the registerPage call. */
   registeredAt: string | null;
 }
@@ -344,6 +356,15 @@ async function resolveAgent(
     reputation = { up: tally.up, down: tally.down, score: tally.score, basis: "community-votes" };
   }
 
+  // Proof-of-payment reviews are a separate, tx-linked signal — null when
+  // none exist, never conflated with community votes.
+  let verifiedReviews: DirectoryAgent["verifiedReviews"] = null;
+  try {
+    verifiedReviews = await getReviewSummary(username);
+  } catch {
+    verifiedReviews = null;
+  }
+
   return {
     username,
     owner: record.owner,
@@ -354,6 +375,7 @@ async function resolveAgent(
     capabilities,
     services,
     reputation,
+    verifiedReviews,
     registeredAt,
   };
 }
@@ -445,7 +467,7 @@ async function buildFreshDirectory(
     agents,
     honesty: {
       reputation:
-        "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions.",
+        "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions. Separately, verified reviews (verifiedReviews) ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
       listing:
         "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
       services:
