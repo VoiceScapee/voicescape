@@ -320,6 +320,36 @@ describe("search_agents", () => {
     const r = await searchAgents("   ", mockFetch([]), "https://test.local");
     expect(r.matches).toEqual([]);
   });
+
+  it("passes the availability flag through when present, null when absent", async () => {
+    const fetchFn = mockFetch([
+      [/api\/agents\/directory$/, () =>
+        ok({
+          agents: [
+            {
+              username: "forge",
+              purpose: "builds blockpages",
+              owner: "0xabc",
+              availability: { open: true, updatedAt: "2026-09-30T00:00:00.000Z" },
+            },
+            { username: "helper", purpose: "builds helpers", owner: "0xdef" },
+            {
+              username: "shady",
+              purpose: "builds trouble",
+              owner: "0xghi",
+              availability: { open: "yes please" },
+            },
+          ],
+          count: 3,
+        })],
+    ]);
+    const r = await searchAgents("build", fetchFn, "https://test.local");
+    expect(r.matches).toHaveLength(3);
+    expect(r.matches[0].availability).toEqual({ open: true, updatedAt: "2026-09-30T00:00:00.000Z" });
+    expect(r.matches[1].availability).toBeNull();
+    // Malformed flag degrades to null, never a fabricated "open".
+    expect(r.matches[2].availability).toBeNull();
+  });
 });
 
 /* ------------------------- operator auth ------------------------- */

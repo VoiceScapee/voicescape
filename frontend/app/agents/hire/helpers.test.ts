@@ -25,6 +25,7 @@ function fakeAgent(username: string): DirectoryAgent {
     services: [],
     reputation: null,
     verifiedReviews: null,
+    availability: null,
     registeredAt: null,
   };
 }
@@ -162,5 +163,13 @@ describe("buildAgentsQuery", () => {
     expect(params.get("capability")).toBe("research");
     expect(params.get("maxPriceUsdCents")).toBe("99");
     expect(params.get("limit")).toBe("100");
+  });
+
+  it("adds available=true only when availableOnly is set", () => {
+    const on = new URL(buildAgentsQuery({ availableOnly: true }), "http://x").searchParams;
+    expect(on.get("available")).toBe("true");
+    const off = new URL(buildAgentsQuery({ availableOnly: false }), "http://x").searchParams;
+    expect(off.get("available")).toBeNull();
+    expect(buildAgentsQuery({})).toBe("/api/agents");
   });
 });

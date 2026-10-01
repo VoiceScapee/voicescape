@@ -9,6 +9,9 @@ import { buildAgentDirectory } from "@/lib/server/agents-directory";
  *   capability=string        substring match on capability tags + service names
  *   maxPriceUsdCents=number  only agents with a service at or under this price
  *   limit=number             max agents returned
+ *   available=true           only agents whose "open for work" flag is set
+ *                            (owner-set via POST /api/agents/[agent]/availability;
+ *                            unset/expired flags are excluded, never stale)
  *
  * Response: { v, network, registry, updatedAt, count, agents[], honesty }.
  * Every agent entry is backed by a real on-chain AGENT registration
@@ -29,10 +32,11 @@ export async function GET(req: NextRequest) {
     limitRaw !== null && limitRaw !== "" && Number.isFinite(Number(limitRaw))
       ? Math.max(0, Math.floor(Number(limitRaw)))
       : undefined;
+  const available = params.get("available") === "true" ? true : undefined;
 
   const host = req.headers.get("host") ?? "localhost:3000";
   try {
-    const dir = await buildAgentDirectory(host, { capability, maxPriceUsdCents, limit });
+    const dir = await buildAgentDirectory(host, { capability, maxPriceUsdCents, limit, available });
     return NextResponse.json(dir, {
       headers: { "cache-control": "public, max-age=60" },
     });
