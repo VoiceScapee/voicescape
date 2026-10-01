@@ -84,7 +84,7 @@ function NewEventForm({ onCreated }: { onCreated: () => void }) {
       setOpen(false);
       onCreated();
     } catch (e) {
-      reportError(e, "events-create");
+      reportError(e, "events-create", { action: "create-event" });
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
@@ -170,7 +170,7 @@ export default function EventsClient() {
       list.sort((a, b) => a.startsAt - b.startsAt);
       setEvents(list);
     } catch (e) {
-      reportError(e, "events-list");
+      reportError(e, "events-list", { action: "load-events" });
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);

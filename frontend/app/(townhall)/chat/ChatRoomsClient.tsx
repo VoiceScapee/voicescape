@@ -118,7 +118,7 @@ export default function ChatRoomsClient() {
     } catch (e) {
       // Server verification failed — the HCS tx is still on-chain, but the
       // server didn't accept it (e.g., content filter). Show the error.
-      reportError(e, "chat-create-room");
+      reportError(e, "chat-create-room", { action: "create-room" });
       setFormError(e instanceof Error ? e.message : String(e));
       return;
     }

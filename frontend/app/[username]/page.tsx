@@ -10,7 +10,7 @@ import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schem
 import { getActiveChain } from "@/lib/chains";
 import { approveTokenSpender, resolvePage, swapTokenForHbar, tipPage } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
-import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, isStaleConnectionError, isWalletSessionAlive, repairStaleConnection, STALE_CONNECTION_COPY, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { useFundingGoal, TIP_CONFIRMED_EVENT } from "@/hooks/useFundingGoal";
 import { WalletTimeoutError } from "@/lib/tx";
@@ -374,6 +374,15 @@ function TipBox({
         return;
       }
     }
+    // Pre-flight: verify the wallet session is actually alive BEFORE we
+    // record a tip attempt. A silent/stale pairing would fail mid-flow —
+    // show the reconnect guidance up front instead (the existing repair
+    // button appears automatically), and don't record an attempt that
+    // never happened so the funnel stays honest.
+    if (!(await isWalletSessionAlive())) {
+      setError(STALE_CONNECTION_COPY);
+      return;
+    }
     setBusy(true);
     recordConversionEvent("tip_attempt", "blockpage");
     try {
@@ -421,7 +430,9 @@ function TipBox({
         // attempt, and map known wallet-library TypeErrors to actionable
         // copy instead of the cryptic raw message. Report the reason so the
         // founder dashboard can show WHY tips fail, not just that they did.
-        reportError(e, "tip-modal");
+        // walletState is "connected" — the pre-flight liveness probe above
+        // verified the session before the attempt started.
+        reportError(e, "tip-modal", { action: "tip-submit", walletState: "connected" });
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "blockpage");
       }
@@ -467,6 +478,12 @@ function TipBox({
       setError(
         `You only have ${formatTokenAmount(token.balance, token.decimals)} ${token.symbol} in this wallet.`,
       );
+      return;
+    }
+    // Same pre-flight liveness probe as the HBAR path: never record a tip
+    // attempt against a dead session.
+    if (!(await isWalletSessionAlive())) {
+      setError(STALE_CONNECTION_COPY);
       return;
     }
     setBusy(true);
@@ -522,7 +539,7 @@ function TipBox({
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
       } else {
-        reportError(e, "tip-modal");
+        reportError(e, "tip-modal", { action: "tip-submit-token", walletState: "connected" });
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "blockpage");
       }

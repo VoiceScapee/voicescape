@@ -217,7 +217,7 @@ export default function TipModal({
         // Wallet-side failure (rejection, wallet-library error): record the
         // outcome so the funnel never shows a bare attempt, report the
         // reason, and map known wallet-library TypeErrors to actionable copy.
-        reportError(e, "post-tip");
+        reportError(e, "post-tip", { action: "tip-submit", walletState: account ? "connected" : "disconnected" });
         setError(`Tip failed: ${friendlyWalletError(e)}`);
         recordConversionEvent("tip_failed", "post");
       }

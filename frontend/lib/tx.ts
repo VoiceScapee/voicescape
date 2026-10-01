@@ -27,6 +27,7 @@ import {
 import type { DAppConnector } from "@hashgraph/hedera-wallet-connect";
 import type { ChainConfig } from "./chains";
 import { toMirrorTxId } from "./tx-confirm";
+import { STALE_CONNECTION_COPY } from "./wallet";
 import {
   reconcilePendingIntents,
   removePendingIntent,
@@ -392,11 +393,7 @@ export function createHederaTxSender(
         // Not on-chain after 30s of wallet silence: the prompt never appeared
         // (stale WalletConnect session, HashPack #291). Don't leave the user
         // hanging — tell them exactly how to fix it.
-        throw new Error(
-          "HashPack didn't respond — your wallet connection is stale. " +
-          "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
-          "then reconnect and try again.",
-        );
+        throw new Error(STALE_CONNECTION_COPY);
       }
       throw e;
     }

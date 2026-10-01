@@ -23,6 +23,9 @@ interface ErrorAggregate {
   page: string;
   message: string;
   component: string | null;
+  name: string | null;
+  action: string | null;
+  walletState: "connected" | "disconnected" | "connecting" | null;
   frame: string | null;
   count: number;
   firstSeen: number;
@@ -172,6 +175,21 @@ export default function AdminErrorsPage() {
                 {e.component && (
                   <span style={{ marginLeft: 12 }}>
                     Component: <code>{e.component}</code>
+                  </span>
+                )}
+                {e.name && (
+                  <span style={{ marginLeft: 12 }}>
+                    Name: <code>{e.name}</code>
+                  </span>
+                )}
+                {e.action && (
+                  <span style={{ marginLeft: 12 }}>
+                    Action: <code>{e.action}</code>
+                  </span>
+                )}
+                {e.walletState && (
+                  <span style={{ marginLeft: 12 }}>
+                    Wallet: <code>{e.walletState}</code>
                   </span>
                 )}
                 {e.frame && (

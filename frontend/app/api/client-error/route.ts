@@ -7,7 +7,9 @@ export const runtime = "nodejs";
 
 /**
  * POST /api/client-error
- * { message: string, page: string, component?: string }
+ * { message: string, page: string, component?: string, name?: string,
+ *   action?: string, walletState?: "connected"|"disconnected"|"connecting",
+ *   frame?: string }
  *
  * Privacy-first client error telemetry. Stores aggregate counts only —
  * never IPs, user agents, wallet addresses, query strings, or stack
@@ -39,10 +41,22 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ ok: true });
   }
-  const b = (body ?? {}) as { message?: unknown; page?: unknown; component?: unknown; frame?: unknown };
+  const b = (body ?? {}) as {
+    message?: unknown;
+    page?: unknown;
+    component?: unknown;
+    name?: unknown;
+    action?: unknown;
+    walletState?: unknown;
+    frame?: unknown;
+  };
 
   try {
-    await recordClientError(getKvStore(), b.page, b.message, b.component, b.frame);
+    await recordClientError(getKvStore(), b.page, b.message, b.component, b.frame, Date.now(), {
+      name: b.name,
+      action: b.action,
+      walletState: b.walletState,
+    });
   } catch {
     /* telemetry must never break the page */
   }
