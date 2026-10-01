@@ -202,3 +202,120 @@ describe("pollTransactionStatus onConsensus", () => {
     expect(seen).toBeNull();
   });
 });
+
+describe("mirror catch-up signal", () => {
+  it("parses the valid start from an @-form transaction id", async () => {
+    const { parseTxValidStartMs } = await import("./tx-confirm");
+    // 1000000000.5s -> 1000000000500 ms
+    expect(parseTxValidStartMs("0.0.123@1000000000.500000000")).toBe(1000000000500);
+    expect(parseTxValidStartMs("0.0.123@1000000000")).toBe(1000000000000);
+  });
+
+  it("returns null for ids with no parseable valid start — never a default signal", async () => {
+    const { parseTxValidStartMs } = await import("./tx-confirm");
+    expect(parseTxValidStartMs("0.0.123-1000000000-500000000")).toBeNull(); // dash form
+    expect(parseTxValidStartMs("0xabcdef1234567890")).toBeNull(); // EVM hash
+    expect(parseTxValidStartMs("not-a-tx-id")).toBeNull();
+  });
+
+  it("reads the mirror index frontier from the newest block", async () => {
+    const { getMirrorHeadTimestampMs } = await import("./tx-confirm");
+    mockFetchSequence([
+      {
+        ok: true,
+        body: { blocks: [{ timestamp: { from: "1789520000.000000000", to: "1789520060.250000000" } }] },
+      },
+    ]);
+    // 1789520060.25s -> ms
+    expect(await getMirrorHeadTimestampMs()).toBe(1789520060250);
+  });
+
+  it("returns null (no signal) when the blocks endpoint fails", async () => {
+    const { getMirrorHeadTimestampMs } = await import("./tx-confirm");
+    mockFetchSequence([{ ok: false }]);
+    expect(await getMirrorHeadTimestampMs()).toBeNull();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("down")));
+    expect(await getMirrorHeadTimestampMs()).toBeNull();
+  });
+
+  it("only declares the window passed when the frontier is beyond valid start + margin", async () => {
+    const { isMirrorBeyondTxWindow } = await import("./tx-confirm");
+    const txId = "0.0.123@1000000000.000000000"; // valid start = 1000000000000 ms
+    const margin = 60_000;
+    expect(isMirrorBeyondTxWindow(txId, 1000000060000, margin)).toBe(true); // exactly at the edge
+    expect(isMirrorBeyondTxWindow(txId, 1000000120000, margin)).toBe(true);
+    expect(isMirrorBeyondTxWindow(txId, 1000000059999, margin)).toBe(false); // mirror still behind
+    expect(isMirrorBeyondTxWindow(txId, null, margin)).toBe(false); // no signal -> never final
+    expect(isMirrorBeyondTxWindow("0xdeadbeef", 1000000120000, margin)).toBe(false); // unparseable -> never final
+  });
+
+  it("poll returns expired when the mirror has indexed past the tx window and the tx never appeared", async () => {
+    const headTo = "1000000120.000000000"; // 1000000120000 ms
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/blocks")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ blocks: [{ timestamp: { to: headTo } }] }),
+          });
+        }
+        return Promise.resolve({ ok: false }); // tx never indexed
+      }),
+    );
+    const outcome = await pollTransactionStatus("0.0.123@1000000000.000000000", {
+      timeoutMs: 5000,
+      baseDelayMs: 5,
+      maxDelayMs: 10,
+      catchUpMarginMs: 60_000, // window ends at 1000000060000 < head 1000000120000
+    });
+    expect(outcome).toBe("expired");
+  });
+
+  it("poll keeps unknown-as-timeout when the mirror has NOT caught up", async () => {
+    const headTo = "1000000005.000000000"; // head still inside the window
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/blocks")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ blocks: [{ timestamp: { to: headTo } }] }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    const outcome = await pollTransactionStatus("0.0.123@1000000000.000000000", {
+      timeoutMs: 60,
+      baseDelayMs: 5,
+      maxDelayMs: 10,
+      catchUpMarginMs: 60_000,
+    });
+    // Never misreported as expired — the mirror may just be behind.
+    expect(outcome).toBe("timeout");
+  });
+
+  it("poll with catchUpMarginMs 0 disables the check — missing txs only time out", async () => {
+    const headTo = "1000000999.000000000"; // far past the window
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/blocks")) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ blocks: [{ timestamp: { to: headTo } }] }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }),
+    );
+    const outcome = await pollTransactionStatus("0.0.123@1000000000.000000000", {
+      timeoutMs: 60,
+      baseDelayMs: 5,
+      maxDelayMs: 10,
+      catchUpMarginMs: 0,
+    });
+    expect(outcome).toBe("timeout");
+  });
+});

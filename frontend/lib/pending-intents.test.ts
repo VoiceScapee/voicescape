@@ -108,6 +108,17 @@ describe("pending-intent ledger", () => {
     expect(summary.resolved).toBe(0);
     expect(summary.stillPending).toBe(1);
   });
+
+  it("reconcile clears an expired intent — the mirror indexed past its window without seeing it", async () => {
+    savePendingIntent(makeIntent("0.0.1@8.8")); // expired — cleared
+    savePendingIntent(makeIntent("0.0.1@9.9")); // unknown — stays
+    const summary = await reconcilePendingIntents(async (txId) =>
+      txId === "0.0.1@8.8" ? "expired" : "unknown",
+    );
+    expect(summary.resolved).toBe(1);
+    expect(summary.stillPending).toBe(1);
+    expect(listPendingIntents().map((i) => i.txId)).toEqual(["0.0.1@9.9"]);
+  });
 });
 
 describe("pending-intent ledger without a browser", () => {

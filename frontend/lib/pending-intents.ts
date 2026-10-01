@@ -95,7 +95,7 @@ export function removePendingIntent(txId: string): void {
   }
 }
 
-export type LandedStatus = "success" | "failed" | "unknown";
+export type LandedStatus = "success" | "failed" | "unknown" | "expired";
 
 export interface ReconcileSummary {
   /** Intents the mirror node answered definitively (now cleared). */
@@ -123,7 +123,10 @@ export async function reconcilePendingIntents(
       } catch {
         status = "unknown";
       }
-      if (status === "success" || status === "failed") {
+      // "expired" is also terminal: the mirror has indexed past the tx's
+      // validity window without seeing it, so it can never land. "unknown"
+      // stays stored — the mirror may just be behind.
+      if (status === "success" || status === "failed" || status === "expired") {
         removePendingIntent(intent.txId);
         resolved++;
       }

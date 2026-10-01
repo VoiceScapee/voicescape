@@ -129,6 +129,13 @@ export default function CommentWall({
       } else if (outcome === "failed") {
         setOptimistic((prev) => prev.filter((p) => p.seq !== tempSeq));
         setPostError("The transaction failed on-chain — your comment was not posted.");
+      } else if (outcome === "expired") {
+        // Mirror indexed past the tx's validity window without seeing it:
+        // never landed, safe to resend.
+        setOptimistic((prev) => prev.filter((p) => p.seq !== tempSeq));
+        setPostError(
+          "The transaction never reached the Hedera network — your comment was not posted and it's safe to retry.",
+        );
       } else {
         setOptimistic((prev) =>
           prev.map((p) => (p.seq === tempSeq ? { ...p, pending: false, unconfirmed: true } : p)),

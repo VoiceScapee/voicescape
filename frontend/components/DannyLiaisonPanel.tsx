@@ -267,6 +267,14 @@ export default function DannyLiaisonPanel() {
       setPayStage(null);
       setConfirmTxId(null);
       setConfirmProduct(null);
+    } else if (confirmStatus === "expired") {
+      // Mirror indexed past the tx's validity window without seeing it:
+      // never landed, safe to retry.
+      setPayError("The transaction never reached the Hedera network — no payment was sent and it's safe to retry.");
+      setPaying(null);
+      setPayStage(null);
+      setConfirmTxId(null);
+      setConfirmProduct(null);
     } else if (confirmStatus === "timeout") {
       setPayError("Tip submitted but not yet visible — give it a moment, then refresh.");
       setPaying(null);

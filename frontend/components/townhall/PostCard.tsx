@@ -117,6 +117,14 @@ function TipModal({ author, onClose }: { author: string; onClose: () => void }) 
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent.");
       recordConversionEvent("tip_failed", "post");
+    } else if (confirmStatus === "expired") {
+      // The mirror has indexed past this transaction's validity window
+      // without seeing it: it can never land, no tip was sent, and retrying
+      // with a fresh transaction is safe.
+      setError(
+        "The transaction never reached the Hedera network — no tip was sent and it's safe to retry.",
+      );
+      recordConversionEvent("tip_failed", "post");
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.

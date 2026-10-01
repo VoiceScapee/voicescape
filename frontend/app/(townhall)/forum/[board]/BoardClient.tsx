@@ -236,6 +236,13 @@ export default function BoardClient({ board }: { board: string }) {
       } else if (outcome === "failed") {
         setPosts((prev) => prev.filter((p) => p.seq !== tempSeq));
         setPostError("The transaction failed on-chain — your post was not published.");
+      } else if (outcome === "expired") {
+        // Mirror indexed past the tx's validity window without seeing it:
+        // never landed, safe to resend.
+        setPosts((prev) => prev.filter((p) => p.seq !== tempSeq));
+        setPostError(
+          "The transaction never reached the Hedera network — your post was not published and it's safe to retry.",
+        );
       } else {
         setPosts((prev) =>
           prev.map((p) =>
