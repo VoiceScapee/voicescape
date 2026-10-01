@@ -44,7 +44,7 @@ export default function IntrosClaimForm() {
       if (res.ok && body?.ok) {
         setResult({
           ok: true,
-          text: `Linked! Your intro now points at /${body.username}.`,
+          text: `Linked! Your intro now points at /${body.username}. Want to go further? Join the Discord: https://discord.gg/2KGzPduUN5`,
         });
         setCode("");
       } else {
