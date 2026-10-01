@@ -348,6 +348,9 @@ export async function checkProfilePin(
           if (done) break;
           bytes += value.byteLength;
           if (bytes >= PIN_MAX_BYTES) {
+            // Clamp: a single chunk can overshoot the cap — report the cap,
+            // not the overshoot, since the read stops here.
+            bytes = PIN_MAX_BYTES;
             truncated = true;
             break;
           }
