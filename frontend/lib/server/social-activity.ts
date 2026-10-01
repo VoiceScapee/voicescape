@@ -2,9 +2,25 @@
  * Social activity log — the real-data source for the X and Discord
  * constellation nodes on Danny's Vision.
  *
- * Bot posting paths call ~/workspace/ops/social-log/log_social.py when they
- * actually send a post; the dapp reads via readMergedSocialActivity().
- * Two sinks, merged newest-first:
+ * Producer pipes (real posting paths call these when they actually send
+ * a post — never for scheduled, queued, or failed posts):
+ *   A. Dapp-side: POST /api/social/activity/log
+ *        Body: { platform: "x"|"discord", summary: string (<=300 chars),
+ *                ts?: ISO string }
+ *        Auth: Authorization: Bearer <SOCIAL_LOG_TOKEN> (server env var;
+ *        fails closed with 401 when unset). Rate-limited per IP.
+ *        Example:
+ *          curl -X POST https://voicescape.vercel.app/api/social/activity/log \
+ *            -H "Authorization: Bearer $SOCIAL_LOG_TOKEN" \
+ *            -H "Content-Type: application/json" \
+ *            -d '{"platform":"discord","summary":"posted the daily ship log"}'
+ *        The endpoint only records — it never posts anything itself.
+ *   B. VM-side: ~/workspace/ops/social-log/log_social.py — writes the
+ *        gist sink directly (platform + timestamp only, via the `gh`
+ *        CLI); the sink the bots can always reach.
+ *
+ * The dapp reads via readMergedSocialActivity(). Two sinks, merged
+ * newest-first:
  *   1. The shared KV store (Upstash on Vercel, self-hosted Valkey, or the
  *      in-memory fallback) — primary; holds a short summary that stays
  *      server-side.
@@ -92,20 +108,27 @@ function parseGistRows(raw: string | null): SocialEvent[] {
 
 /**
  * Record that one of our bots actually posted. Called by the real
- * posting paths (Discord bot CLI, X automation) — never by timers or
- * the page itself. Logging-only: a store failure rejects, and the
- * caller decides whether that matters (posting already succeeded).
+ * posting paths — either the dapp-side producer pipe
+ * (POST /api/social/activity/log, which validates the body and calls
+ * this) or the VM-side logger — never by timers or the page itself.
+ * Logging-only: a store failure rejects, and the caller decides whether
+ * that matters (posting already succeeded).
+ *
+ * `ts` is optional: when a producer supplies a validated ISO timestamp
+ * (the moment the post was confirmed live) it is used as-is; otherwise
+ * the server stamps arrival time.
  */
 export async function logSocialPost(
   platform: SocialPlatform,
   summary: string,
+  ts?: string,
 ): Promise<void> {
   const store = getKvStore();
   const events = parse(await store.get(SOCIAL_ACTIVITY_KEY));
   events.unshift({
     platform,
     summary: summary.slice(0, 140),
-    ts: new Date().toISOString(),
+    ts: ts ?? new Date().toISOString(),
   });
   await store.set(
     SOCIAL_ACTIVITY_KEY,
