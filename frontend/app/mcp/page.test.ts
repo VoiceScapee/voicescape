@@ -40,6 +40,7 @@ describe("MCP call-to-action page (/mcp)", () => {
       "treasury_stats",
       "recent_tips",
       "search_agents",
+      "check_profile_pin",
       "post_agent_intro",
     ]) {
       expect(routeSrc).toContain(`"${tool}"`);
@@ -47,10 +48,11 @@ describe("MCP call-to-action page (/mcp)", () => {
     }
   });
 
-  it("keeps the operator tools honest: unsigned, Brandon signs", () => {
-    expect(pageSrc).toMatch(/unsigned/i);
-    expect(pageSrc).toMatch(/Brandon/);
-    expect(pageSrc).toMatch(/never signs/i);
+  it("has no operator tier anymore: public tools only", () => {
+    expect(pageSrc).not.toMatch(/prepare_tip/);
+    expect(pageSrc).not.toMatch(/prepare_contract_call/);
+    expect(pageSrc).not.toMatch(/operator/i);
+    expect(pageSrc).toMatch(/seven public tools/i);
   });
 
   it("states the rate limit and the Hedera mainnet source honestly", () => {

@@ -2,10 +2,9 @@
  * Voicescape MCP tools — unit tests.
  *
  * Every mirror-node call is driven by a fixture fetch; the real network is
- * never touched. Auth is exercised through the same AsyncLocalStorage
- * context the route handler sets.
+ * never touched.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { ethers } from "ethers";
 import {
   lookupBlockpage,
@@ -15,10 +14,6 @@ import {
   searchAgents,
   checkProfilePin,
   postAgentIntro,
-  prepareTip,
-  prepareContractCall,
-  checkOperatorAuth,
-  requireOperator,
   requestContextStorage,
   toolResult,
   MIRROR_BASE,
@@ -472,134 +467,6 @@ describe("search_agents", () => {
   });
 });
 
-/* ------------------------- operator auth ------------------------- */
-
-describe("operator auth", () => {
-  beforeEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  function headersWith(token: string | null): Headers {
-    const h = new Headers();
-    if (token !== null) h.set("Authorization", `Bearer ${token}`);
-    return h;
-  }
-
-  it("rejects when the env var is unset", () => {
-    vi.stubEnv("MCP_OPERATOR_TOKEN", "");
-    expect(checkOperatorAuth(headersWith("anything"))).toBe(false);
-  });
-
-  it("rejects a missing header", () => {
-    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
-    expect(checkOperatorAuth(new Headers())).toBe(false);
-  });
-
-  it("rejects a wrong token", () => {
-    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
-    expect(checkOperatorAuth(headersWith("wrong"))).toBe(false);
-  });
-
-  it("rejects a non-Bearer scheme", () => {
-    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
-    const h = new Headers();
-    h.set("Authorization", "Basic c2NyZXQ=");
-    expect(checkOperatorAuth(h)).toBe(false);
-  });
-
-  it("accepts the exact token", () => {
-    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
-    expect(checkOperatorAuth(headersWith("s3cret"))).toBe(true);
-  });
-
-  it("requireOperator blocks without an authed context", () => {
-    const err = requestContextStorage.run(
-      { operatorAuthed: false, origin: "https://x", clientIp: "9.9.9.9" },
-      () => requireOperator(),
-    );
-    expect(err).not.toBeNull();
-    expect(JSON.stringify(err)).toContain("Authorization");
-  });
-
-  it("requireOperator passes with an authed context", () => {
-    const err = requestContextStorage.run(
-      { operatorAuthed: true, origin: "https://x", clientIp: "9.9.9.9" },
-      () => requireOperator(),
-    );
-    expect(err).toBeNull();
-  });
-});
-
-/* ------------------------- prepare_tip ------------------------- */
-
-describe("prepare_tip", () => {
-  it("builds a well-formed unsigned package", () => {
-    const r = prepareTip({ recipient_account: "0.0.555", amount_hbar: "1.5", memo: "thanks" });
-    expect("error" in r).toBe(false);
-    if ("error" in r) return;
-    expect(r.type).toBe("prepare_tip");
-    expect(r.unsigned).toBe(true);
-    expect(r.amount_tinybar).toBe("150000000");
-    expect(r.amount_hbar).toBe("1.5");
-    expect(r.memo).toBe("thanks");
-    expect(r.route.contract).toBe("0.0.10854060");
-    expect(r.route.settlement).toContain("98/2");
-    expect(r.notice).toContain("never signs");
-  });
-
-  it("rejects bad account ids, zero amounts, and over-precise amounts", () => {
-    expect(prepareTip({ recipient_account: "nope", amount_hbar: "1" })).toHaveProperty("error");
-    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "0" })).toHaveProperty("error");
-    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "-2" })).toHaveProperty("error");
-    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "1.123456789" })).toHaveProperty(
-      "error",
-    );
-    expect(
-      prepareTip({ recipient_account: "0.0.1", amount_hbar: "1", memo: "x".repeat(101) }),
-    ).toHaveProperty("error");
-  });
-
-  it("makes no network calls (pure)", async () => {
-    const fetchFn = mockFetch([]);
-    const r = prepareTip({ recipient_account: "0.0.1", amount_hbar: "2" });
-    expect("error" in r).toBe(false);
-    void fetchFn;
-  });
-});
-
-/* ------------------------- prepare_contract_call ------------------------- */
-
-describe("prepare_contract_call", () => {
-  it("builds a well-formed unsigned package", () => {
-    const r = prepareContractCall({
-      contract_id: "0.0.10854060",
-      function_name: "tipPage",
-      params_json: '["forge"]',
-    });
-    expect("error" in r).toBe(false);
-    if ("error" in r) return;
-    expect(r.type).toBe("prepare_contract_call");
-    expect(r.unsigned).toBe(true);
-    expect(r.params).toEqual(["forge"]);
-    expect(r.notice).toContain("never signs");
-  });
-
-  it("rejects bad contract ids, bad function names, and bad JSON", () => {
-    expect(
-      prepareContractCall({ contract_id: "zzz", function_name: "tipPage", params_json: "[]" }),
-    ).toHaveProperty("error");
-    expect(
-      prepareContractCall({ contract_id: "0.0.1", function_name: "tip Page", params_json: "[]" }),
-    ).toHaveProperty("error");
-    expect(
-      prepareContractCall({ contract_id: "0.0.1", function_name: "tipPage", params_json: "{bad" }),
-    ).toHaveProperty("error");
-    expect(
-      prepareContractCall({ contract_id: "0.0.1", function_name: "tipPage", params_json: "42" }),
-    ).toHaveProperty("error");
-  });
-});
-
 /* ------------------------- toolResult helper ------------------------- */
 
 describe("toolResult", () => {
@@ -655,7 +522,7 @@ describe("post_agent_intro tool", () => {
 
   function withIp<T>(ip: string, fn: () => Promise<T>): Promise<T> {
     return requestContextStorage.run(
-      { operatorAuthed: false, origin: "https://voicescape.vercel.app", clientIp: ip },
+      { origin: "https://voicescape.vercel.app", clientIp: ip },
       fn,
     );
   }

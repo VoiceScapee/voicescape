@@ -2,10 +2,10 @@
  * GET/POST/DELETE /api/mcp — Voicescape MCP server (v1).
  *
  * Stateless Streamable HTTP over the official MCP SDK, served from the
- * existing Next.js app (no new infra). Two tiers:
- *  - PUBLIC tools: read-only mirror-node reads, no auth.
- *  - OPERATOR tools (prepare_*): require `Authorization: Bearer
- *    <MCP_OPERATOR_TOKEN>` and only ever return UNSIGNED signing packages.
+ * existing Next.js app (no new infra). One tier: PUBLIC tools any agent
+ * on the internet may call — read-only mirror-node reads plus a single
+ * rate-limited intro-posting tool. No auth, no keys, no signing.
+ * The server never holds keys, never signs, never spends.
  *
  * Per-IP rate limit: 20 requests/hour across this route (shared
  * fixed-window limiter from lib/server/rate-limit).
@@ -19,8 +19,6 @@ import { z } from "zod-v4";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
 import {
   requestContextStorage,
-  checkOperatorAuth,
-  requireOperator,
   toolResult,
   toolError,
   lookupBlockpage,
@@ -30,8 +28,6 @@ import {
   searchAgents,
   checkProfilePin,
   postAgentIntro,
-  prepareTip,
-  prepareContractCall,
 } from "@/lib/server/mcp-tools";
 
 const READONLY = {
@@ -165,45 +161,6 @@ function registerTools(server: McpServer): void {
       return "error" in res ? toolError(res.error) : toolResult(res);
     },
   );
-
-  /* ------------------------ operator tools ------------------------ */
-  server.registerTool(
-    "prepare_tip",
-    {
-      description:
-        "OPERATOR ONLY (requires Authorization: Bearer <MCP_OPERATOR_TOKEN>). Build an UNSIGNED tip signing package: exact recipient, exact tinybar amount, memo, and what the atomic on-chain 98/2 split will do. Pure function — no network, no signing, no submission. Requires Brandon's HashPack signature to execute.",
-      inputSchema: z.object({
-        recipient_account: z.string().describe("Destination Hedera account, e.g. 0.0.12345"),
-        amount_hbar: z.string().describe('Tip amount in HBAR, e.g. "1.5" (max 8 decimals)'),
-        memo: z.string().max(100).optional().describe("Optional memo (100 chars max)"),
-      }),
-      annotations: READONLY,
-    },
-    async (args) => {
-      const gate = requireOperator();
-      if (gate) return gate;
-      return toolResult(prepareTip(args));
-    },
-  );
-
-  server.registerTool(
-    "prepare_contract_call",
-    {
-      description:
-        "OPERATOR ONLY (requires Authorization: Bearer <MCP_OPERATOR_TOKEN>). Build an UNSIGNED contract-call package: exact contract, function name, and decoded parameters. Pure function — it never encodes calldata beyond display, never signs, never submits. Requires Brandon's HashPack signature to execute.",
-      inputSchema: z.object({
-        contract_id: z.string().describe("Target contract, e.g. 0.0.10854060"),
-        function_name: z.string().describe("Solidity function name, e.g. tipPage"),
-        params_json: z.string().describe("JSON array or object of parameters"),
-      }),
-      annotations: READONLY,
-    },
-    async (args) => {
-      const gate = requireOperator();
-      if (gate) return gate;
-      return toolResult(prepareContractCall(args));
-    },
-  );
 }
 
 const mcpHandler = createMcpHandler(registerTools, {
@@ -253,11 +210,10 @@ async function handle(req: Request): Promise<Response> {
     );
   }
 
-  // Operator auth is decided here from the raw request (the MCP transport
-  // does not forward HTTP headers to tool handlers) and travels to the
-  // tools via AsyncLocalStorage. The token value is never logged.
+  // The request context (origin, client IP) travels to the tools via
+  // AsyncLocalStorage — the MCP transport does not forward HTTP headers
+  // to tool handlers.
   const ctx = {
-    operatorAuthed: checkOperatorAuth(req.headers),
     origin: new URL(req.url).origin,
     clientIp: clientIpFromHeaders(req.headers),
   };
