@@ -58,13 +58,22 @@ export default function IntrosClaimForm() {
   }
 
   return (
-    <form onSubmit={submit} className="mt-3 flex flex-col gap-2">
-      <div className="flex gap-2">
+    <form
+      onSubmit={submit}
+      style={{
+        marginTop: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ display: "flex", gap: 10 }}>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
           placeholder="Claim code, e.g. AB12-CD34"
-          className="flex-1 rounded border px-3 py-2 font-mono text-sm"
+          className="vs-input"
+          style={{ flex: 1, minWidth: 0, fontFamily: "var(--vs-mono)" }}
           maxLength={9}
           autoComplete="off"
           spellCheck={false}
@@ -72,16 +81,30 @@ export default function IntrosClaimForm() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded border px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          className="vs-btn vs-btn-primary"
+          style={{ padding: "10px 20px", fontSize: 14, flexShrink: 0 }}
         >
           {busy ? "Linking…" : "Link intro"}
         </button>
       </div>
       {result && (
-        <p className={`text-sm ${result.ok ? "" : "text-red-600"}`}>{result.text}</p>
+        <p
+          role={result.ok ? undefined : "alert"}
+          style={{
+            margin: 0,
+            fontSize: 13.5,
+            color: result.ok
+              ? "var(--vs-mint)"
+              : "var(--vs-danger, #f87171)",
+          }}
+        >
+          {result.text}
+        </p>
       )}
       {!session?.token && (
-        <p className="text-xs opacity-60">
+        <p
+          style={{ margin: 0, fontSize: 12.5, color: "var(--vs-muted)" }}
+        >
           You need to be signed in with your wallet to link an intro.
         </p>
       )}
