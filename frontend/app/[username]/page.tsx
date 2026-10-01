@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, use, useEffect, useMemo, useState, type ReactNode } from "react";
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
@@ -1480,8 +1480,8 @@ function PublicPageInner({ username }: { username: string }) {
   );
 }
 
-export default function PublicPage({ params }: { params: { username: string } }) {
-  const { username } = params;
+export default function PublicPage({ params }: { params: Promise<{ username: string }> }) {
+  const { username } = use(params);
   // KISS identity: /0.0.10424063 resolves to the wallet's derived page
   // (user-10424063) so users can share either form.
   // KISS: No nested WalletProvider — the root layout already provides it.

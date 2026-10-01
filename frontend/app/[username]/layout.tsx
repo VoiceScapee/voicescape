@@ -31,9 +31,10 @@ function fallbackMetadata(username: string): Metadata {
 export async function generateMetadata({
   params,
 }: {
-  params: { username: string };
+  params: Promise<{ username: string }>;
 }): Promise<Metadata> {
-  const username = decodeURIComponent(params.username ?? "");
+  const { username: rawUsername } = await params;
+  const username = decodeURIComponent(rawUsername ?? "");
   if (!username) return fallbackMetadata("voicescape");
   try {
     const page = await Promise.race([

@@ -9,7 +9,7 @@ export const runtime = "nodejs";
  * GET /api/pagechat/[room]?since=<id> — public message poll.
  * Returns {messages} newer than `since`.
  */
-export async function GET(req: NextRequest, { params }: { params: { room: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   const gated = await ipGate(
     req,
     "pagechat-read",
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
   if (gated) return gated;
   const url = new URL(req.url);
   const since = parseInt(url.searchParams.get("since") || "0", 10);
-  const { status, json } = await listPageChat(defaultPageChatDeps(), params.room, since);
+  const { status, json } = await listPageChat(defaultPageChatDeps(), (await params).room, since);
   return NextResponse.json(json, { status });
 }
 
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest, { params }: { params: { room: string
  * A wallet session (x-vs-session) is optional; when present the message is
  * marked verified with the author's address.
  */
-export async function POST(req: NextRequest, { params }: { params: { room: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   const gated = await ipGate(
     req,
     "pagechat-post",
@@ -47,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: { room: strin
   const ip = clientIpFromHeaders(req.headers);
   const { status, json } = await postPageChat(
     defaultPageChatDeps(),
-    params.room,
+    (await params).room,
     withAuth((body ?? {}) as { name?: unknown; body?: unknown }, req),
     ip,
   );

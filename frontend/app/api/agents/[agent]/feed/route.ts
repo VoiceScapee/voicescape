@@ -21,7 +21,7 @@ export const runtime = "nodejs";
  *
  * Read-only public data. No keys, no HBAR movement.
  */
-export async function GET(req: NextRequest, { params }: { params: { agent: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ agent: string }> }) {
   // Feed polls are unattended: bound per-IP floods. 120/min leaves wide
   // headroom for ~45s polling across tabs.
   const gated = await ipGate(
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: { params: { agent: strin
   );
   if (gated) return gated;
 
-  const agent = params.agent ?? "";
+  const agent = (await params).agent ?? "";
   if (!isGodseyeAgent(agent)) {
     return NextResponse.json({ ok: false, error: "unknown agent" }, { status: 404 });
   }

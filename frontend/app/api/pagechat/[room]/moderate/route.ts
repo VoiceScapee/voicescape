@@ -13,7 +13,7 @@ export const runtime = "nodejs";
  * (chatted once with their wallet connected) so mod powers can't be claimed
  * by picking someone's username.
  */
-export async function POST(req: NextRequest, { params }: { params: { room: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ room: string }> }) {
   const gated = await ipGate(
     req,
     "pagechat-mod",
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { room: strin
   const ip = clientIpFromHeaders(req.headers);
   const { status, json } = await moderatePageChat(
     defaultPageChatDeps(),
-    params.room,
+    (await params).room,
     withAuth((body ?? {}) as Record<string, unknown>, req),
     ip,
   );
