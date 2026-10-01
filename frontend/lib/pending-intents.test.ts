@@ -11,6 +11,8 @@ import {
   savePendingIntent,
   removePendingIntent,
   reconcilePendingIntents,
+  reconcileAndGate,
+  UnresolvedIntentError,
   type PendingIntent,
 } from "./pending-intents";
 
@@ -129,5 +131,63 @@ describe("pending-intent ledger without a browser", () => {
     expect(() => removePendingIntent("0.0.1@1.1")).not.toThrow();
     const summary = await reconcilePendingIntents(async () => "success");
     expect(summary).toEqual({ resolved: 0, stillPending: 0 });
+  });
+});
+
+describe("reconcileAndGate — unknown is never permission to retry", () => {
+  it("passes silently when the ledger is empty", async () => {
+    await expect(
+      reconcileAndGate(async () => "success", "0.0.1234"),
+    ).resolves.toBeUndefined();
+  });
+
+  it("passes when the only intent reaches a definitive outcome", async () => {
+    savePendingIntent(makeIntent("0.0.1@1.1"));
+    await expect(
+      reconcileAndGate(async () => "success", "0.0.1234"),
+    ).resolves.toBeUndefined();
+    expect(listPendingIntents()).toEqual([]);
+  });
+
+  it("blocks the write while an intent is still unknown — and keeps the intent stored", async () => {
+    savePendingIntent(makeIntent("0.0.1@3.3"));
+    const err = await reconcileAndGate(async () => "unknown", "0.0.1234").catch(
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(UnresolvedIntentError);
+    expect(err.intents.map((i: PendingIntent) => i.txId)).toEqual(["0.0.1@3.3"]);
+    expect(err.message).toContain("0.0.1@3.3");
+    // The question is preserved, not dropped — the next session re-asks.
+    expect(listPendingIntents().map((i) => i.txId)).toEqual(["0.0.1@3.3"]);
+  });
+
+  it("clears resolvable intents first, then still blocks on the remaining unknown one", async () => {
+    savePendingIntent(makeIntent("0.0.1@1.1")); // success — cleared
+    savePendingIntent(makeIntent("0.0.1@3.3")); // unknown — blocks
+    const err = await reconcileAndGate(
+      async (txId) => (txId === "0.0.1@1.1" ? "success" : "unknown"),
+      "0.0.1234",
+    ).catch((e) => e);
+    expect(err).toBeInstanceOf(UnresolvedIntentError);
+    expect(err.intents.map((i: PendingIntent) => i.txId)).toEqual(["0.0.1@3.3"]);
+    expect(listPendingIntents().map((i) => i.txId)).toEqual(["0.0.1@3.3"]);
+  });
+
+  it("a checker exception degrades to unknown — the write is blocked, not released", async () => {
+    savePendingIntent(makeIntent("0.0.1@7.7"));
+    const err = await reconcileAndGate(async () => {
+      throw new Error("mirror node unreachable");
+    }, "0.0.1234").catch((e) => e);
+    expect(err).toBeInstanceOf(UnresolvedIntentError);
+  });
+
+  it("does not block on another account's unresolved intent", async () => {
+    const other: PendingIntent = { ...makeIntent("0.0.1@9.9"), account: "0.0.9999" };
+    savePendingIntent(other);
+    await expect(
+      reconcileAndGate(async () => "unknown", "0.0.1234"),
+    ).resolves.toBeUndefined();
+    // The other account's question is untouched.
+    expect(listPendingIntents().map((i) => i.txId)).toEqual(["0.0.1@9.9"]);
   });
 });

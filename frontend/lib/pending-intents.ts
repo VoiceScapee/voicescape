@@ -136,3 +136,50 @@ export async function reconcilePendingIntents(
   }
   return { resolved, stillPending: listPendingIntents().length };
 }
+
+/**
+ * Thrown when a new write is refused because a previous intent from the
+ * same account still has no definitive on-chain outcome. Carries the
+ * unresolved intents so the UI can point the user at exactly what to
+ * check (e.g. on HashScan) before retrying.
+ */
+export class UnresolvedIntentError extends Error {
+  readonly intents: PendingIntent[];
+  constructor(intents: PendingIntent[]) {
+    super(
+      "A previous transaction's outcome is still unknown — the network " +
+        "couldn't confirm whether it went through. Check its status on " +
+        "HashScan before trying again, so you don't send the same payment " +
+        "twice. Unresolved: " +
+        intents.map((i) => i.txId).join(", "),
+    );
+    this.name = "UnresolvedIntentError";
+    this.intents = intents;
+  }
+}
+
+/**
+ * Reconcile-then-gate: re-ask the mirror node about every stored intent,
+ * then refuse to proceed while any of THIS account's intents are still
+ * unanswered.
+ *
+ * "Unknown" is never permission to retry. A missing transaction is not
+ * proof of failure (the mirror may just be behind), and it is not proof
+ * of success either — so a new write from the same account is only safe
+ * once every prior intent has a definitive outcome. When the mirror can't
+ * answer, the write is blocked with an UnresolvedIntentError instead of
+ * risking a duplicate.
+ *
+ * Storage or network failures degrade to "still pending", which trips the
+ * gate — the safe direction. Never throws for infrastructure problems;
+ * only UnresolvedIntentError escapes, and only when intents genuinely
+ * remain unanswered.
+ */
+export async function reconcileAndGate(
+  checkLanded: (txId: string) => Promise<LandedStatus>,
+  account: string,
+): Promise<void> {
+  await reconcilePendingIntents(checkLanded);
+  const blocked = listPendingIntents().filter((i) => i.account === account);
+  if (blocked.length > 0) throw new UnresolvedIntentError(blocked);
+}
