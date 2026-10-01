@@ -255,6 +255,135 @@ export async function lookupBlockpage(
 }
 
 /* ------------------------------------------------------------------ */
+/* PUBLIC tool: check_profile_pin (pin-status companion to lookup)      */
+/* ------------------------------------------------------------------ */
+
+export interface ProfilePinCheck {
+  username?: string;
+  cid: string;
+  reachable: boolean;
+  bytes_fetched: number;
+  content_type: string | null;
+  gateway: string | null;
+  truncated: boolean;
+  checked_at: string;
+  note: string | null;
+}
+
+/** CIDv0 (Qm…) or CIDv1 (baf…) — the only forms the Registry ever stores. */
+const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[a-z2-7]{50,100})$/;
+/** Pinata first: the dapp pins profile JSON through Pinata server-side. */
+const PIN_GATEWAYS = [
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://ipfs.io/ipfs/",
+];
+const PIN_FETCH_TIMEOUT_MS = 10_000;
+/** Blockpage JSON is a few KB — cap the read so a hostile CID can't blow memory. */
+const PIN_MAX_BYTES = 256 * 1024;
+
+function pinCheckResult(
+  partial: Partial<ProfilePinCheck> & { cid: string; reachable: boolean },
+): ProfilePinCheck {
+  return {
+    username: partial.username,
+    cid: partial.cid,
+    reachable: partial.reachable,
+    bytes_fetched: partial.bytes_fetched ?? 0,
+    content_type: partial.content_type ?? null,
+    gateway: partial.gateway ?? null,
+    truncated: partial.truncated ?? false,
+    checked_at: new Date().toISOString(),
+    note: partial.note ?? null,
+  };
+}
+
+/**
+ * Pin-status companion to lookup_blockpage. The Registry stores only a CID
+ * pointer, never the content — this tool actually fetches the bytes through
+ * public IPFS gateways and reports whether the profile loads. Returns
+ * { error } when called with neither a username nor a cid; never throws.
+ */
+export async function checkProfilePin(
+  args: { username?: string; cid?: string },
+  fetchFn: FetchFn = fetch,
+): Promise<ProfilePinCheck | { error: string }> {
+  let cid = (args.cid ?? "").trim();
+  const username = (args.username ?? "").trim().toLowerCase() || undefined;
+
+  if (!cid && username) {
+    if (!USERNAME_RE.test(username)) return { error: "invalid username" };
+    const page = await lookupBlockpage(username, fetchFn);
+    if (!page.found || !page.ipfs_hash) {
+      return pinCheckResult({
+        username,
+        cid: "",
+        reachable: false,
+        note: "username not registered on-chain (or no profile CID stored)",
+      });
+    }
+    cid = page.ipfs_hash;
+  }
+  if (!cid) return { error: "pass a username or a cid" };
+  if (!CID_RE.test(cid)) {
+    return pinCheckResult({
+      username,
+      cid,
+      reachable: false,
+      note: "not a recognized IPFS CID (expected Qm… or baf…)",
+    });
+  }
+
+  for (const gw of PIN_GATEWAYS) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), PIN_FETCH_TIMEOUT_MS);
+    try {
+      const res = await fetchFn(gw + cid, { signal: ctrl.signal });
+      if (!res.ok || !res.body) continue;
+      const reader = res.body.getReader();
+      let bytes = 0;
+      let truncated = false;
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          bytes += value.byteLength;
+          if (bytes >= PIN_MAX_BYTES) {
+            truncated = true;
+            break;
+          }
+        }
+      } finally {
+        try {
+          await reader.cancel();
+        } catch {
+          /* already closed */
+        }
+      }
+      return pinCheckResult({
+        username,
+        cid,
+        reachable: true,
+        bytes_fetched: bytes,
+        content_type: res.headers.get("content-type"),
+        gateway: gw,
+        truncated,
+        note: truncated ? "content larger than 256KB — read truncated" : null,
+      });
+    } catch {
+      /* gateway failed or timed out — try the next one */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return pinCheckResult({
+    username,
+    cid,
+    reachable: false,
+    note: "CID not retrievable from public IPFS gateways (unpinned or gateway issue)",
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* PUBLIC tool 2: verify_tip                                           */
 /* ------------------------------------------------------------------ */
 
