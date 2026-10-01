@@ -29,7 +29,8 @@ import type { ChainConfig } from "./chains";
 import { toMirrorTxId } from "./tx-confirm";
 import { STALE_CONNECTION_COPY } from "./wallet";
 import {
-  reconcilePendingIntents,
+  type LandedStatus,
+  reconcileAndGate,
   removePendingIntent,
   savePendingIntent,
 } from "./pending-intents";
@@ -75,7 +76,7 @@ export interface ResolveResult {
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /**
- * Thrown when the wallet goes silent after the user approved (the 90s
+ * Thrown when the wallet goes silent after the user approved (the 30s
  * timeout). Carries the transaction id we generated ourselves, so the UI
  * can switch to a live on-chain "confirming…" state instead of an error —
  * the transaction may well have executed.
@@ -255,6 +256,30 @@ export function createHederaTxSender(
   }
 
   /**
+   * Time-bounded wrapper around checkTxLanded. The gate in executeWrite
+   * awaits reconciliation before every write, so an unbounded mirror-node
+   * stall here would hang the write flow instead of the wallet flow. A
+   * timeout degrades to "unknown" — which blocks the write via
+   * UnresolvedIntentError — instead of hanging it. Safe direction, always.
+   */
+  const CHECK_TX_TIMEOUT_MS = 10_000;
+  function checkTxLandedBounded(txId: string): Promise<LandedStatus> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve("unknown"), CHECK_TX_TIMEOUT_MS);
+      checkTxLanded(txId).then(
+        (s) => {
+          clearTimeout(timer);
+          resolve(s);
+        },
+        () => {
+          clearTimeout(timer);
+          resolve("unknown");
+        },
+      );
+    });
+  }
+
+  /**
    * Check whether the WalletConnect session is still alive before asking
    * the wallet to sign. Stale sessions (HashPack #291) silently swallow
    * signing requests — no prompt appears, no error fires, and the app
@@ -289,11 +314,13 @@ export function createHederaTxSender(
     intentLabel?: string,
   ): Promise<string> {
     const { dAppConnector: liveConnector, accountId } = requireWallet();
-    // Reconcile first, write second: any intent left behind by an
-    // interrupted earlier session gets re-asked (never replayed) before
-    // we broadcast a new one. Fire-and-forget — reconciliation must never
-    // block or break the write.
-    void reconcilePendingIntents(checkTxLanded);
+    // Reconcile first, write second: re-ask the mirror node about any
+    // intent left behind by an interrupted session, and REFUSE the new
+    // write while any of this account's intents are still unanswered.
+    // "Unknown" is never permission to retry — a blocked write beats a
+    // duplicate payment. The check is time-bounded (10s per intent), so a
+    // stalled mirror degrades to "unknown" (blocked) instead of hanging.
+    await reconcileAndGate(checkTxLandedBounded, accountId.toString());
     // Fail fast on a dead session — otherwise the wallet prompt never
     // appears and the user stares at "Publishing…" for 90 seconds.
     if (!isSessionAlive()) {
