@@ -1,0 +1,498 @@
+/**
+ * Voicescape MCP tools — unit tests.
+ *
+ * Every mirror-node call is driven by a fixture fetch; the real network is
+ * never touched. Auth is exercised through the same AsyncLocalStorage
+ * context the route handler sets.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ethers } from "ethers";
+import {
+  lookupBlockpage,
+  verifyTip,
+  treasuryStats,
+  recentTips,
+  searchAgents,
+  prepareTip,
+  prepareContractCall,
+  checkOperatorAuth,
+  requireOperator,
+  requestContextStorage,
+  toolResult,
+  MIRROR_BASE,
+  TREASURY_ID,
+} from "./mcp-tools";
+import { TIPSENT_TOPIC } from "../leaderboard";
+import { checkIpRateLimit } from "./rate-limit";
+import { resetKvStoreSingleton } from "./store";
+
+type RouteHandler = (url: string, init?: RequestInit) => unknown;
+
+function mockFetch(routes: Array<[RegExp, RouteHandler | { status: number; body: unknown }]>): typeof fetch {
+  return (async (input: any, init?: any) => {
+    const url = String(input);
+    for (const [re, handler] of routes) {
+      if (re.test(url)) {
+        const out: { status: number; body: unknown } =
+          typeof handler === "function" ? (handler(url, init) as { status: number; body: unknown }) : handler;
+        return {
+          ok: out.status >= 200 && out.status < 300,
+          status: out.status,
+          json: async () => out.body,
+        } as Response;
+      }
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as unknown as typeof fetch;
+}
+
+const ok = (body: unknown) => ({ status: 200, body });
+const notFound = { status: 404, body: null };
+
+/* ------------------------- fixtures ------------------------- */
+
+const RESOLVE_IFACE = new ethers.Interface([
+  "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
+]);
+
+function resolvePageResult(): string {
+  return RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+    "0xAbC1230000000000000000000000000000000001",
+    "QmTestHash",
+    1n,
+    "0x0000000000000000000000000000000000000000",
+    "test agent",
+  ]);
+}
+
+const TIP_TX = "0.0.10424063-1790769243-014218142";
+const GROSS = 91824244n; // tinybar
+const FEE = (GROSS * 200n) / 10000n;
+const pad32 = (n: bigint) => n.toString(16).padStart(64, "0");
+const addrTopic = (a: string) => "0x" + "0".repeat(24) + a.slice(2).toLowerCase();
+
+function tipContractsResult() {
+  return {
+    contract_id: "0.0.10854060",
+    status: "0x1",
+    logs: [
+      {
+        topics: [
+          TIPSENT_TOPIC,
+          "0x" + "0".repeat(64),
+          addrTopic("0x1111111111111111111111111111111111111111"),
+          addrTopic("0x2222222222222222222222222222222222222222"),
+        ],
+        data: "0x" + pad32(GROSS) + pad32(FEE),
+        timestamp: "1790769255.000001045",
+      },
+    ],
+  };
+}
+
+/* ------------------------- lookup_blockpage ------------------------- */
+
+describe("lookup_blockpage", () => {
+  it("resolves a registered username via the Registry", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: "0.0.99999" })],
+    ]);
+    const r = await lookupBlockpage("forge", fetchFn);
+    expect(r.found).toBe(true);
+    expect(r.username).toBe("forge");
+    expect(r.owner_evm).toBe("0xabc1230000000000000000000000000000000001");
+    expect(r.owner_account).toBe("0.0.99999");
+    expect(r.ipfs_hash).toBe("QmTestHash");
+    expect(r.owner_type).toBe("agent");
+    expect(r.purpose).toBe("test agent");
+  });
+
+  it("returns found=false when the Registry reverts (unknown name)", async () => {
+    const fetchFn = mockFetch([[/contracts\/call$/, () => ok({ result: "0x" })]]);
+    const r = await lookupBlockpage("no-such-user", fetchFn);
+    expect(r).toEqual({ found: false, username: "no-such-user" });
+  });
+
+  it("returns found=false for malformed usernames without hitting the network", async () => {
+    const fetchFn = mockFetch([]);
+    const r = await lookupBlockpage("BAD NAME!!", fetchFn);
+    expect(r.found).toBe(false);
+  });
+
+  it("stays fail-soft when the account lookup fails", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\//, () => notFound],
+    ]);
+    const r = await lookupBlockpage("forge", fetchFn);
+    expect(r.found).toBe(true);
+    expect(r.owner_account).toBeNull();
+  });
+});
+
+/* ------------------------- verify_tip ------------------------- */
+
+describe("verify_tip", () => {
+  function tipFetch() {
+    return mockFetch([
+      [/\/transactions\//, () =>
+        ok({
+          transactions: [
+            {
+              entity_id: "0.0.10854060",
+              result: "SUCCESS",
+              consensus_timestamp: "1790769255.000001045",
+            },
+          ],
+        })],
+      [/contracts\/results\//, () => ok(tipContractsResult())],
+    ]);
+  }
+
+  it("verifies a real tip and decodes the exact 98/2 split", async () => {
+    const r = await verifyTip("0.0.10424063@1790769243.014218142", tipFetch());
+    expect(r.is_tip).toBe(true);
+    expect(r.status).toBe("SUCCESS");
+    expect(r.gross_hbar).toBe("0.91824244");
+    expect(r.treasury_hbar).toBe("0.01836484");
+    expect(r.creator_hbar).toBe("0.8998776");
+    expect(r.split_exact_98_2).toBe(true);
+    expect(r.sender_evm).toBe("0x1111111111111111111111111111111111111111");
+    expect(r.recipient_evm).toBe("0x2222222222222222222222222222222222222222");
+    expect(r.hashscan).toContain("hashscan.io");
+  });
+
+  it("accepts the dash-separated id form too", async () => {
+    const r = await verifyTip(TIP_TX, tipFetch());
+    expect(r.is_tip).toBe(true);
+    expect(r.transaction_id).toBe(TIP_TX);
+  });
+
+  it("rejects malformed ids without network", async () => {
+    const r = await verifyTip("not-a-tx", mockFetch([]));
+    expect(r.is_tip).toBe(false);
+    expect(r.reason).toContain("transaction id");
+  });
+
+  it("reports not-a-tip when the tx targeted another contract", async () => {
+    const fetchFn = mockFetch([
+      [/\/transactions\//, () =>
+        ok({ transactions: [{ entity_id: "0.0.999", result: "SUCCESS" }] })],
+    ]);
+    const r = await verifyTip(TIP_TX, fetchFn);
+    expect(r.is_tip).toBe(false);
+    expect(r.reason).toContain("not a successful tip");
+  });
+
+  it("reports not-a-tip for a Tips call with no TipSent event (e.g. purchase)", async () => {
+    const fetchFn = mockFetch([
+      [/\/transactions\//, () =>
+        ok({ transactions: [{ entity_id: "0.0.10854060", result: "SUCCESS" }] })],
+      [/contracts\/results\//, () => ok({ contract_id: "0.0.10854060", status: "0x1", logs: [] })],
+    ]);
+    const r = await verifyTip(TIP_TX, fetchFn);
+    expect(r.is_tip).toBe(false);
+  });
+});
+
+/* ------------------------- treasury_stats ------------------------- */
+
+describe("treasury_stats", () => {
+  it("returns balance and recent inbound transfers", async () => {
+    const fetchFn = mockFetch([
+      [/accounts\/0\.0\.10424063$/, () => ok({ balance: { balance: 5_000_000_000 } })],
+      [/transactions\?/, () =>
+        ok({
+          transactions: [
+            {
+              transaction_id: "0.0.1-2-3",
+              consensus_timestamp: "1790000000.000000001",
+              transfers: [
+                { account: "0.0.10424063", amount: 1_836_484 },
+                { account: "0.0.10854060", amount: 89_987_760 },
+                { account: "0.0.555", amount: -91_824_244 },
+              ],
+            },
+            {
+              transaction_id: "0.0.1-2-4",
+              consensus_timestamp: "1790000001.000000001",
+              transfers: [{ account: "0.0.10424063", amount: -500 }],
+            },
+          ],
+        })],
+    ]);
+    const r = await treasuryStats(fetchFn);
+    expect(r.treasury).toBe(TREASURY_ID);
+    expect(r.balance_hbar).toBe("50");
+    expect(r.recent_inbound).toHaveLength(1);
+    expect(r.recent_inbound[0].amount_hbar).toBe("0.01836484");
+    expect(r.recent_inbound[0].from).toBe("0.0.555");
+  });
+
+  it("returns a null balance instead of throwing when the mirror node is down", async () => {
+    const r = await treasuryStats(mockFetch([[/accounts\//, () => ({ status: 500, body: null })]]));
+    expect(r.balance_hbar).toBeNull();
+    expect(r.recent_inbound).toEqual([]);
+  });
+});
+
+/* ------------------------- recent_tips ------------------------- */
+
+describe("recent_tips", () => {
+  const TIPPAGE_SEL = new ethers.Interface([
+    "function tipPage(string username) payable",
+  ]).getFunction("tipPage")!.selector;
+
+  it("lists recent calls with kind labels", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/0\.0\.10854060\/results/, () =>
+        ok({
+          results: [
+            {
+              timestamp: "1790000002.000000001",
+              from: "0xaaaa",
+              amount: 100_000_000,
+              function_parameters: TIPPAGE_SEL + "00".repeat(32),
+              transaction_id: "0.0.1-2-5",
+            },
+            {
+              timestamp: "1790000001.000000001",
+              from: "0xbbbb",
+              amount: 0,
+              function_parameters: "0xdeadbeef" + "00".repeat(32),
+              error_message: "",
+            },
+            {
+              timestamp: "1790000000.000000001",
+              from: "0xcccc",
+              amount: 0,
+              function_parameters: "0xdeadbeef",
+              error_message: "revert",
+            },
+          ],
+        })],
+    ]);
+    const r = await recentTips(10, fetchFn);
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.contract).toBe("0.0.10854060");
+    expect(r.tips).toHaveLength(2); // reverted row excluded
+    expect(r.tips[0].kind).toBe("tip");
+    expect(r.tips[0].amount_hbar).toBe("1");
+    expect(r.tips[0].transaction_id).toBe("0.0.1-2-5");
+    expect(r.tips[1].kind).toBe("other");
+  });
+
+  it("rejects out-of-range limits", async () => {
+    expect(await recentTips(0, mockFetch([]))).toEqual({
+      error: "limit must be an integer between 1 and 25",
+    });
+    expect(await recentTips(26, mockFetch([]))).toEqual({
+      error: "limit must be an integer between 1 and 25",
+    });
+  });
+});
+
+/* ------------------------- search_agents ------------------------- */
+
+describe("search_agents", () => {
+  it("filters the directory by query text", async () => {
+    const fetchFn = mockFetch([
+      [/api\/agents\/directory$/, () =>
+        ok({
+          agents: [
+            { username: "forge", purpose: "builds blockpages", owner: "0xabc" },
+            { username: "helper", purpose: "answers questions", owner: "0xdef" },
+          ],
+          count: 2,
+        })],
+    ]);
+    const r = await searchAgents("build", fetchFn, "https://test.local");
+    expect(r.matches).toHaveLength(1);
+    expect(r.matches[0].username).toBe("forge");
+    expect(r.total_in_directory).toBe(2);
+    expect(r.note).toContain("self-reported");
+  });
+
+  it("returns empty matches for a blank query without fetching", async () => {
+    const r = await searchAgents("   ", mockFetch([]), "https://test.local");
+    expect(r.matches).toEqual([]);
+  });
+});
+
+/* ------------------------- operator auth ------------------------- */
+
+describe("operator auth", () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function headersWith(token: string | null): Headers {
+    const h = new Headers();
+    if (token !== null) h.set("Authorization", `Bearer ${token}`);
+    return h;
+  }
+
+  it("rejects when the env var is unset", () => {
+    vi.stubEnv("MCP_OPERATOR_TOKEN", "");
+    expect(checkOperatorAuth(headersWith("anything"))).toBe(false);
+  });
+
+  it("rejects a missing header", () => {
+    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
+    expect(checkOperatorAuth(new Headers())).toBe(false);
+  });
+
+  it("rejects a wrong token", () => {
+    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
+    expect(checkOperatorAuth(headersWith("wrong"))).toBe(false);
+  });
+
+  it("rejects a non-Bearer scheme", () => {
+    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
+    const h = new Headers();
+    h.set("Authorization", "Basic c2NyZXQ=");
+    expect(checkOperatorAuth(h)).toBe(false);
+  });
+
+  it("accepts the exact token", () => {
+    vi.stubEnv("MCP_OPERATOR_TOKEN", "s3cret");
+    expect(checkOperatorAuth(headersWith("s3cret"))).toBe(true);
+  });
+
+  it("requireOperator blocks without an authed context", () => {
+    const err = requestContextStorage.run(
+      { operatorAuthed: false, origin: "https://x" },
+      () => requireOperator(),
+    );
+    expect(err).not.toBeNull();
+    expect(JSON.stringify(err)).toContain("Authorization");
+  });
+
+  it("requireOperator passes with an authed context", () => {
+    const err = requestContextStorage.run(
+      { operatorAuthed: true, origin: "https://x" },
+      () => requireOperator(),
+    );
+    expect(err).toBeNull();
+  });
+});
+
+/* ------------------------- prepare_tip ------------------------- */
+
+describe("prepare_tip", () => {
+  it("builds a well-formed unsigned package", () => {
+    const r = prepareTip({ recipient_account: "0.0.555", amount_hbar: "1.5", memo: "thanks" });
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.type).toBe("prepare_tip");
+    expect(r.unsigned).toBe(true);
+    expect(r.amount_tinybar).toBe("150000000");
+    expect(r.amount_hbar).toBe("1.5");
+    expect(r.memo).toBe("thanks");
+    expect(r.route.contract).toBe("0.0.10854060");
+    expect(r.route.settlement).toContain("98/2");
+    expect(r.notice).toContain("never signs");
+  });
+
+  it("rejects bad account ids, zero amounts, and over-precise amounts", () => {
+    expect(prepareTip({ recipient_account: "nope", amount_hbar: "1" })).toHaveProperty("error");
+    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "0" })).toHaveProperty("error");
+    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "-2" })).toHaveProperty("error");
+    expect(prepareTip({ recipient_account: "0.0.1", amount_hbar: "1.123456789" })).toHaveProperty(
+      "error",
+    );
+    expect(
+      prepareTip({ recipient_account: "0.0.1", amount_hbar: "1", memo: "x".repeat(101) }),
+    ).toHaveProperty("error");
+  });
+
+  it("makes no network calls (pure)", async () => {
+    const fetchFn = mockFetch([]);
+    const r = prepareTip({ recipient_account: "0.0.1", amount_hbar: "2" });
+    expect("error" in r).toBe(false);
+    void fetchFn;
+  });
+});
+
+/* ------------------------- prepare_contract_call ------------------------- */
+
+describe("prepare_contract_call", () => {
+  it("builds a well-formed unsigned package", () => {
+    const r = prepareContractCall({
+      contract_id: "0.0.10854060",
+      function_name: "tipPage",
+      params_json: '["forge"]',
+    });
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.type).toBe("prepare_contract_call");
+    expect(r.unsigned).toBe(true);
+    expect(r.params).toEqual(["forge"]);
+    expect(r.notice).toContain("never signs");
+  });
+
+  it("rejects bad contract ids, bad function names, and bad JSON", () => {
+    expect(
+      prepareContractCall({ contract_id: "zzz", function_name: "tipPage", params_json: "[]" }),
+    ).toHaveProperty("error");
+    expect(
+      prepareContractCall({ contract_id: "0.0.1", function_name: "tip Page", params_json: "[]" }),
+    ).toHaveProperty("error");
+    expect(
+      prepareContractCall({ contract_id: "0.0.1", function_name: "tipPage", params_json: "{bad" }),
+    ).toHaveProperty("error");
+    expect(
+      prepareContractCall({ contract_id: "0.0.1", function_name: "tipPage", params_json: "42" }),
+    ).toHaveProperty("error");
+  });
+});
+
+/* ------------------------- toolResult helper ------------------------- */
+
+describe("toolResult", () => {
+  it("serializes objects as JSON text content", () => {
+    const r = toolResult({ a: 1 });
+    expect(r.content[0].type).toBe("text");
+    expect(JSON.parse(r.content[0].text)).toEqual({ a: 1 });
+  });
+});
+
+/* ------------------------- rate limiter ------------------------- */
+
+describe("MCP per-IP rate limit (20/hour)", () => {
+  beforeEach(async () => {
+    await resetKvStoreSingleton();
+  });
+
+  it("allows 20 requests then blocks the 21st", async () => {
+    const ip = "9.9.9.9";
+    for (let i = 1; i <= 20; i++) {
+      const r = await checkIpRateLimit(ip, "mcp", 20, 3_600_000);
+      expect(r.allowed).toBe(true);
+      expect(r.used).toBe(i);
+    }
+    const blocked = await checkIpRateLimit(ip, "mcp", 20, 3_600_000);
+    expect(blocked.allowed).toBe(false);
+    expect(blocked.used).toBe(21);
+  });
+
+  it("tracks IPs independently", async () => {
+    for (let i = 0; i < 20; i++) await checkIpRateLimit("1.1.1.1", "mcp", 20, 3_600_000);
+    const other = await checkIpRateLimit("2.2.2.2", "mcp", 20, 3_600_000);
+    expect(other.allowed).toBe(true);
+    expect(other.used).toBe(1);
+  });
+
+  it("resets in a new window", async () => {
+    const now = Date.now();
+    await checkIpRateLimit("3.3.3.3", "mcp", 1, 60_000, now);
+    const blocked = await checkIpRateLimit("3.3.3.3", "mcp", 1, 60_000, now);
+    expect(blocked.allowed).toBe(false);
+    const next = await checkIpRateLimit("3.3.3.3", "mcp", 1, 60_000, now + 60_001);
+    expect(next.allowed).toBe(true);
+  });
+});
+
+void MIRROR_BASE;
