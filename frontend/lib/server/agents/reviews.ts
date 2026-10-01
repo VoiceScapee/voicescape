@@ -293,6 +293,16 @@ export async function claimReviewTx(txId: string): Promise<boolean> {
   return getKvStore().setNx(claimKey(txId), "1", REVIEW_TTL_MS);
 }
 
+/**
+ * Release a transaction claim — used when storing the review fails AFTER
+ * the claim was won, so the reviewer's proof isn't burned with no recourse.
+ * Best-effort: if the release itself fails, the claim stays (fail closed —
+ * the tx still can't mint a duplicate review).
+ */
+export async function releaseReviewTx(txId: string): Promise<void> {
+  await getKvStore().del(claimKey(txId));
+}
+
 /** Parse the stored array defensively — corrupt values read as empty. */
 function parseReviews(raw: string | null): VerifiedReview[] {
   if (!raw) return [];
@@ -316,13 +326,39 @@ function parseReviews(raw: string | null): VerifiedReview[] {
 /**
  * Append a review for an agent. Newest first, capped at MAX_REVIEWS_PER_AGENT.
  * The caller must have already won claimReviewTx(txId).
+ *
+ * The read-modify-write runs under a short per-agent lock: without it, two
+ * reviews for the same agent submitted in the same instant could both read
+ * the same list and the second write would silently drop the first review —
+ * and since each transaction is already claimed, the dropped review's proof
+ * would be burned with no recourse. The lock TTL bounds a crash to a few
+ * seconds of contention, never a stuck list.
  */
 export async function addReview(username: string, review: VerifiedReview): Promise<void> {
   const store = getKvStore();
   const key = reviewsKey(username);
-  const existing = parseReviews(await store.get(key));
-  const next = [review, ...existing].slice(0, MAX_REVIEWS_PER_AGENT);
-  await store.set(key, JSON.stringify(next), REVIEW_TTL_MS);
+  const lock = `agent:reviews:lock:${username.toLowerCase()}`;
+  let locked = false;
+  for (let i = 0; i < 20 && !locked; i++) {
+    try {
+      locked = await store.setNx(lock, "1", 10_000);
+    } catch {
+      locked = false;
+    }
+    if (!locked) await new Promise((r) => setTimeout(r, 50));
+  }
+  if (!locked) throw new Error("could not lock the review list — try again in a moment");
+  try {
+    const existing = parseReviews(await store.get(key));
+    const next = [review, ...existing].slice(0, MAX_REVIEWS_PER_AGENT);
+    await store.set(key, JSON.stringify(next), REVIEW_TTL_MS);
+  } finally {
+    try {
+      await store.del(lock);
+    } catch {
+      // Harmless: the lock expires on its own.
+    }
+  }
 }
 
 /** Mean rating rounded to 1 decimal; null when there are no reviews. */

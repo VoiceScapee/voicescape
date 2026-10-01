@@ -14,6 +14,7 @@ import {
   claimReviewTx,
   getReviewSummary,
   listReviews,
+  releaseReviewTx,
   validateReviewInput,
   verifyReviewTx,
   type VerifiedReview,
@@ -207,6 +208,13 @@ export async function POST(req: NextRequest, { params }: Params) {
   try {
     await addReview(username, review);
   } catch {
+    // The claim was already won: release it so the reviewer's proof isn't
+    // burned — they can retry the same transaction.
+    try {
+      await releaseReviewTx(input.input.txId);
+    } catch {
+      // Best-effort; a stuck claim fails closed (no duplicate review).
+    }
     return NextResponse.json(
       { error: "could not record the review — try again in a moment" },
       { status: 503 },

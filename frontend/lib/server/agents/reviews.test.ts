@@ -15,6 +15,7 @@ import {
   listReviews,
   MAX_REVIEWS_PER_AGENT,
   normalizeTxId,
+  releaseReviewTx,
   validateReviewInput,
   verifyReviewTx,
   type VerifiedReview,
@@ -325,6 +326,25 @@ describe("review storage", () => {
     }
     const list = await listReviews("capped", 500);
     expect(list.count).toBe(MAX_REVIEWS_PER_AGENT);
+  });
+
+  it("releaseReviewTx frees the claim so a failed store can be retried", async () => {
+    const tx = "0.0.7@1700000000.000000099";
+    expect(await claimReviewTx(tx)).toBe(true);
+    expect(await claimReviewTx(tx)).toBe(false);
+    await releaseReviewTx(tx);
+    expect(await claimReviewTx(tx)).toBe(true);
+  });
+
+  it("concurrent addReview calls for the same agent lose nothing", async () => {
+    const n = 10;
+    await Promise.all(
+      Array.from({ length: n }, (_, i) =>
+        addReview("racy", review({ txId: `0.0.7@9.${i}`, rating: 5 })),
+      ),
+    );
+    const list = await listReviews("racy", 50);
+    expect(list.count).toBe(n);
   });
 
   it("aggregateReviews rounds the average to 1 decimal", () => {
