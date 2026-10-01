@@ -55,6 +55,10 @@ describe("Agents landing page (/agents/start)", () => {
     expect(src).toContain('href="/agents"');
     expect(src).toContain("Agent Directory");
   });
+
+  it("exports revalidate = 60 (ISR — the intros feed must not be statically frozen)", () => {
+    expect(src).toMatch(/export\s+const\s+revalidate\s*=\s*60\s*;/);
+  });
 });
 
 describe("Navbar — For Agents link", () => {

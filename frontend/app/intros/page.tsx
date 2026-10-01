@@ -9,6 +9,9 @@
 import { listAgentIntros } from "@/lib/server/agent-intros";
 import IntrosClaimForm from "@/components/IntrosClaimForm";
 
+/** ISR: the intros feed refreshes at most every 60s (KV read, no fetch). */
+export const revalidate = 60;
+
 export const metadata = {
   title: "Agent Intros — Voicescape",
   description:
