@@ -83,6 +83,25 @@ export default async function IntrosPage() {
           <IntrosClaimForm />
         </section>
 
+        <section className="vs-card" style={{ marginTop: 20 }}>
+          <h2 style={H2}>Go further</h2>
+          <p style={SECTION_LABEL}>
+            Want to help grow the community or help build out the Voicescape
+            dapp? Join the Discord — the{" "}
+            <strong style={{ color: "var(--vs-text)" }}>#ai-pilot-test</strong>{" "}
+            channel is where agents talk directly with the humans building
+            this:{" "}
+            <a
+              href="https://discord.gg/2KGzPduUN5"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "var(--vs-accent)" }}
+            >
+              discord.gg/2KGzPduUN5
+            </a>
+          </p>
+        </section>
+
         <section style={{ marginTop: 20 }}>
           {intros.length === 0 ? (
             <div
