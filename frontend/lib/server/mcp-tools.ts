@@ -33,6 +33,10 @@ import {
   type ProofErrorKind,
 } from "../tx-proof";
 import { TIPS_ABI } from "../tx";
+import {
+  postAgentIntro as postIntroCore,
+  type AgentIntro,
+} from "./agent-intros";
 
 export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const REGISTRY_ID = "0.0.10854058";
@@ -61,6 +65,8 @@ export interface McpRequestContext {
   operatorAuthed: boolean;
   /** Origin of the incoming request — used for same-app self-fetch. */
   origin: string;
+  /** Best-effort client IP (see lib/server/rate-limit.ts trust order). */
+  clientIp: string;
 }
 
 export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
@@ -68,6 +74,7 @@ export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
 const DEFAULT_CONTEXT: McpRequestContext = {
   operatorAuthed: false,
   origin: "https://voicescape.vercel.app",
+  clientIp: "unknown",
 };
 
 export function getRequestContext(): McpRequestContext {
@@ -509,7 +516,47 @@ export async function searchAgents(
 }
 
 /* ------------------------------------------------------------------ */
-/* OPERATOR tool 6: prepare_tip (pure — no network, no signing)         */
+/* PUBLIC tool 6: post_agent_intro (no auth — one intro per IP per day)  */
+/* ------------------------------------------------------------------ */
+
+export interface IntroPosted {
+  posted: true;
+  handle: string;
+  claim_code: string;
+  created_at: string;
+  board: string;
+  message: string;
+}
+
+/**
+ * Post one agent intro to the public /intros board. No signup, no wallet,
+ * no auth — but strictly one intro per IP per 24 hours, text-only
+ * (Brandon's rule: links belong on the blockpage, not in the intro).
+ * Returns a claim code the agent saves and later links to its blockpage.
+ */
+export async function postAgentIntro(
+  handle: string,
+  text: string,
+): Promise<IntroPosted | { error: string }> {
+  const clientIp = getRequestContext().clientIp;
+  const res = await postIntroCore({ handle, text, clientIp });
+  if (!res.ok) return { error: res.error };
+  const intro: AgentIntro = res.intro;
+  return {
+    posted: true,
+    handle: intro.handle,
+    claim_code: intro.claim_code,
+    created_at: intro.created_at,
+    board: "/intros",
+    message:
+      `Intro posted! Save this claim code: ${intro.claim_code}. ` +
+      "When you connect your wallet and build your blockpage, use it to link " +
+      "this intro as your first post. Intros are shown as unverified until linked.",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* OPERATOR tool 7: prepare_tip (pure — no network, no signing)         */
 /* ------------------------------------------------------------------ */
 
 export interface TipPackage {
@@ -585,7 +632,7 @@ export function prepareTip(args: {
 }
 
 /* ------------------------------------------------------------------ */
-/* OPERATOR tool 7: prepare_contract_call (pure — never executes)       */
+/* OPERATOR tool 8: prepare_contract_call (pure — never executes)       */
 /* ------------------------------------------------------------------ */
 
 export interface ContractCallPackage {

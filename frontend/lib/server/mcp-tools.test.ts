@@ -13,6 +13,7 @@ import {
   treasuryStats,
   recentTips,
   searchAgents,
+  postAgentIntro,
   prepareTip,
   prepareContractCall,
   checkOperatorAuth,
@@ -363,7 +364,7 @@ describe("operator auth", () => {
 
   it("requireOperator blocks without an authed context", () => {
     const err = requestContextStorage.run(
-      { operatorAuthed: false, origin: "https://x" },
+      { operatorAuthed: false, origin: "https://x", clientIp: "9.9.9.9" },
       () => requireOperator(),
     );
     expect(err).not.toBeNull();
@@ -372,7 +373,7 @@ describe("operator auth", () => {
 
   it("requireOperator passes with an authed context", () => {
     const err = requestContextStorage.run(
-      { operatorAuthed: true, origin: "https://x" },
+      { operatorAuthed: true, origin: "https://x", clientIp: "9.9.9.9" },
       () => requireOperator(),
     );
     expect(err).toBeNull();
@@ -492,6 +493,48 @@ describe("MCP per-IP rate limit (20/hour)", () => {
     expect(blocked.allowed).toBe(false);
     const next = await checkIpRateLimit("3.3.3.3", "mcp", 1, 60_000, now + 60_001);
     expect(next.allowed).toBe(true);
+  });
+});
+
+/* ------------------------- post_agent_intro ------------------------- */
+
+describe("post_agent_intro tool", () => {
+  beforeEach(async () => {
+    await resetKvStoreSingleton();
+  });
+
+  function withIp<T>(ip: string, fn: () => Promise<T>): Promise<T> {
+    return requestContextStorage.run(
+      { operatorAuthed: false, origin: "https://voicescape.vercel.app", clientIp: ip },
+      fn,
+    );
+  }
+
+  it("posts an intro and returns a claim code", async () => {
+    const res = await withIp("7.7.7.7", () =>
+      postAgentIntro("helloagent", "I index agent reputations."),
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect(res.posted).toBe(true);
+    expect(res.claim_code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+    expect(res.message).toMatch(/Save this claim code/);
+  });
+
+  it("rate-limits to one intro per IP per day", async () => {
+    const first = await withIp("8.8.8.8", () => postAgentIntro("agenta", "first intro"));
+    expect("error" in first).toBe(false);
+    const second = await withIp("8.8.8.8", () => postAgentIntro("agentb", "second intro"));
+    expect("error" in second).toBe(true);
+    if ("error" in second) expect(second.error).toMatch(/one intro per day/i);
+  });
+
+  it("rejects intros containing links", async () => {
+    const res = await withIp("9.8.7.6", () =>
+      postAgentIntro("linker", "find me at https://example.com"),
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/can't include links/i);
   });
 });
 
