@@ -21,6 +21,10 @@ const confirmSrc = readFileSync(join(here, "TxConfirm.tsx"), "utf8");
 const cssSrc = readFileSync(join(here, "..", "app", "globals.css"), "utf8");
 const pageSrc = readFileSync(join(here, "..", "app", "[username]", "page.tsx"), "utf8");
 const postCardSrc = readFileSync(join(here, "townhall", "PostCard.tsx"), "utf8");
+// The townhall tip flow was extracted verbatim into the shared TipModal
+// (also used by /embed/tip/[username]) — the waiting-phase assertions below
+// target the flow's new home.
+const tipModalSrc = readFileSync(join(here, "TipModal.tsx"), "utf8");
 
 describe("TxConfirming in-flight proof", () => {
   it("accepts an optional txId + explorerBase", () => {
@@ -67,28 +71,33 @@ describe("blockpage TipBox waiting phases", () => {
   });
 });
 
-describe("townhall PostCard waiting phases", () => {
+describe("TipModal (townhall + embed widget) waiting phases", () => {
+  it("PostCard still delegates tipping to the shared TipModal", () => {
+    expect(postCardSrc).toContain("<TipModal");
+    expect(postCardSrc).toMatch(/author=\{post\.author\}/);
+  });
+
   it("phase A: alive 'waiting on wallet' state while busy without a hash", () => {
-    expect(postCardSrc).toMatch(/busy && !confirmTxId &&/);
-    expect(postCardSrc).toContain('title="Waiting on your wallet…"');
+    expect(tipModalSrc).toMatch(/busy && !confirmTxId &&/);
+    expect(tipModalSrc).toContain('title="Waiting on your wallet…"');
   });
 
   it("phase B: passes the broadcast hash to the confirming state", () => {
-    expect(postCardSrc).toMatch(
+    expect(tipModalSrc).toMatch(
       /<TxConfirming[\s\S]*txId=\{confirmTxId\}[\s\S]*explorerBase=\{chain\.blockExplorer\}/,
     );
   });
 
   it("the dead 15s 'still working' note is gone", () => {
-    expect(postCardSrc).not.toContain("waitingLong");
+    expect(tipModalSrc).not.toContain("waitingLong");
   });
 
   it("celebrates confirmed townhall tips too", () => {
-    const confirmed = postCardSrc.indexOf('title="Tip confirmed"');
-    const celebration = postCardSrc.indexOf("<TipCelebration");
+    const confirmed = tipModalSrc.indexOf('title="Tip confirmed"');
+    const celebration = tipModalSrc.indexOf("<TipCelebration");
     expect(celebration).toBeGreaterThan(-1);
     expect(celebration).toBeLessThan(confirmed);
-    expect(postCardSrc).toMatch(
+    expect(tipModalSrc).toMatch(
       /<TipCelebration[\s\S]*usd=\{isHbar \?[\s\S]*username=\{author\}/,
     );
   });

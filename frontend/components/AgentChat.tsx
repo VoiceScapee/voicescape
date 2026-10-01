@@ -834,6 +834,12 @@ export default function AgentChat() {
     }
   }
 
+  // Never render inside a third-party iframe (e.g. the embeddable tip
+  // widget): the Buddy widget belongs to voicescape.vercel.app pages, and
+  // a floating chat button would sit on top of someone else's embed.
+  // Placed after all hooks so hook order stays stable.
+  if (typeof window !== "undefined" && window.self !== window.top) return null;
+
   return (
     <>
       {/* Floating button: draggable, and hidden while the chat or a tip

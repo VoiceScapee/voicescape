@@ -8,6 +8,24 @@ const nextConfig = {
       { source: "/townhall/", destination: "/forum", permanent: true },
     ];
   },
+  async headers() {
+    return [
+      // The embeddable tip widget (/embed/*) is MEANT to be framed by
+      // third-party sites (Carrd, blogs, link-in-bio pages) — explicitly
+      // allow it here, and only here. The visitor's Voicescape session and
+      // wallet state live on our origin; a cross-origin embedder cannot read
+      // anything inside the frame.
+      {
+        source: "/embed/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: "frame-ancestors *",
+          },
+        ],
+      },
+    ];
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.externals.push("hashconnect", "@hashgraph/sdk");

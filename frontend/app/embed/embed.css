@@ -1,0 +1,231 @@
+/**
+ * Embeddable tip widget styles (/embed/*).
+ *
+ * Mobile-first, standalone: the widget lives inside a third-party iframe,
+ * so it carries its own shell and never depends on site chrome (no navbar,
+ * no footer). Dark theme matches the dapp; the tip panel itself reuses the
+ * town-hall .th-modal styles already loaded globally.
+ */
+
+.embed-shell {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 16px 12px 20px;
+  background: #090b12;
+  color: #e8ecf4;
+  font-family: var(--font-sans, "DM Sans", system-ui, sans-serif);
+  box-sizing: border-box;
+}
+
+.embed-card {
+  width: 100%;
+  max-width: 296px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.embed-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b93a7;
+}
+
+.embed-brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00d4a4;
+  box-shadow: 0 0 8px #00d4a4;
+}
+
+.embed-who {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.embed-sub {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #aab2c5;
+}
+
+.embed-sub strong {
+  color: #00d4a4;
+  font-weight: 600;
+}
+
+.embed-connect {
+  display: flex;
+  justify-content: center;
+}
+
+.embed-foot {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #6b7386;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.embed-foot a {
+  color: #8b93a7;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Inline tip panel: full-width inside the widget card, no overlay. */
+.th-modal.th-modal-inline {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+/* Honest empty states — never fake content. */
+.embed-empty {
+  text-align: center;
+  padding: 32px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.embed-empty h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.embed-empty p {
+  margin: 0;
+  font-size: 13px;
+  color: #aab2c5;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.embed-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 3px solid #232839;
+  border-top-color: #00d4a4;
+  animation: embed-spin 0.9s linear infinite;
+  margin: 48px auto;
+}
+
+@keyframes embed-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- /embed creator page ---- */
+
+.embed-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.embed-page h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.embed-page .lede {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #aab2c5;
+}
+
+.embed-field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.embed-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.embed-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #2a3044;
+  background: #121623;
+  color: #e8ecf4;
+  font-size: 15px;
+}
+
+.embed-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.embed-code {
+  width: 100%;
+  min-height: 118px;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #2a3044;
+  background: #0d1119;
+  color: #9fe8cd;
+  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+
+.embed-preview-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 16px;
+  border: 1px dashed #2a3044;
+  border-radius: 14px;
+  background: #0d1119;
+}
+
+.embed-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #c6cddc;
+}
+
+.embed-note {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #8b93a7;
+  border-left: 3px solid #00d4a4;
+  padding-left: 12px;
+  margin: 0;
+}
