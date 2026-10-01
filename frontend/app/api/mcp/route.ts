@@ -30,7 +30,7 @@ import {
   postAgentIntro,
   prepareAgentClaim,
 } from "@/lib/server/mcp-tools";
-import { stashPendingAction } from "@/lib/server/pending-actions";
+import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
 
 const READONLY = {
   readOnlyHint: true,
@@ -169,18 +169,21 @@ function registerTools(server: McpServer): void {
     "prepare_agent_claim",
     {
       description:
-        "Build a complete UNSIGNED agent-blockpage claim package for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain, confirms the owner account exists and is funded, pins a starter agent page to IPFS, and returns the frozen registerPage transaction bytes plus a plain-words summary of what the human is signing. Pure preparation — no keys, no signing, no submission, no spending. The package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens). Fallback: the human opens voicescape.vercel.app/agents/claim, connects the owner wallet, reviews, and signs once.",
+        "Prepare an agent-blockpage claim as a one-tap approval LINK for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain; when an owner account is given, confirms it exists and is funded. Returns an approve_url: the human opens it in any browser (no signup, no sign-in), reviews the plain-words summary, taps Approve, then confirms once in their wallet — the page registers to the wallet they connect. Nothing is pinned and no transaction is built until the human taps. Pure preparation — no keys, no signing, no submission, no spending. When an owner account is provided, the package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens).",
       inputSchema: z.object({
         username: z
           .string()
           .describe("Desired agent username, 3-32 lowercase letters/numbers/_/- (e.g. thechomps)"),
         owner_account_id: z
           .string()
-          .describe("The human's EXISTING Hedera account, e.g. 0.0.10424063 — it will own the agent page and pay the registration gas"),
+          .optional()
+          .describe(
+            "OPTIONAL override: the human's EXISTING Hedera account (e.g. 0.0.10424063) to own the agent page and pay the registration gas. Omit it — the page registers to whatever wallet taps approve on the link, and the human never has to type an account id.",
+          ),
         operator: z
           .string()
           .optional()
-          .describe("0x EVM address disclosed as operator on-chain; defaults to the owner account"),
+          .describe("0x EVM address disclosed as operator on-chain; defaults to the approving wallet's address"),
         purpose: z
           .string()
           .max(500)
@@ -191,6 +194,10 @@ function registerTools(server: McpServer): void {
           .max(20)
           .optional()
           .describe("Capability tags for the agent page"),
+        intro_claim_code: z
+          .string()
+          .optional()
+          .describe("Claim code returned by post_agent_intro — auto-linked to the blockpage after registration"),
       }),
       annotations: WRITE,
     },
@@ -198,14 +205,26 @@ function registerTools(server: McpServer): void {
       const res = await prepareAgentClaim(args);
       if ("error" in res) return toolError(res.error);
       // Best-effort: queue the package as a one-tap approval card in the
-      // owner's Buddy chat. The tool itself stays pure — if the inbox
-      // write fails, the /agents/claim fallback path still works.
-      try {
-        await stashPendingAction(res);
-      } catch {
-        /* inbox is a courtesy */
+      // owner's Buddy chat (only when an owner account was named — without
+      // one, the approval link is the door). The tool itself stays pure —
+      // if the inbox write fails or conflicts, the link still works.
+      let inboxNote = "";
+      if (res.owner_account_id) {
+        try {
+          await stashPendingAction({
+            claimPackageId: res.claim_package_id,
+            username: res.username,
+            owner_account_id: res.owner_account_id,
+            what_youre_signing: res.what_youre_signing,
+          });
+        } catch (e) {
+          inboxNote =
+            e instanceof PendingActionConflictError
+              ? ` Note: ${res.owner_account_id} already has pending proposals — ask the human to check their Buddy chat; the approval link above still works and nothing was overwritten.`
+              : " Note: the Buddy-chat card could not be queued; the approval link above still works.";
+        }
       }
-      return toolResult(res);
+      return toolResult({ ...res, next: res.next + inboxNote });
     },
   );
 }

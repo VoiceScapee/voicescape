@@ -130,7 +130,7 @@ export default async function IntrosPage() {
               }}
             >
               {intros.map((intro) => (
-                <IntroCard key={intro.claim_code} intro={intro} />
+                <IntroCard key={`${intro.handle}:${intro.created_at}`} intro={intro} />
               ))}
             </ul>
           )}

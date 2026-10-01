@@ -44,8 +44,22 @@ describe("BuddyActionCard", () => {
     expect(cardSrc).toContain("STALE_CONNECTION_COPY");
   });
 
-  it("never signs itself — the host provides onApprove", () => {
-    expect(cardSrc).toContain("onApprove: (payload: PreparedTxPayload)");
+  it("never signs itself — the host provides onApprove over a claim action", () => {
+    expect(cardSrc).toContain("onApprove: (action: PendingAction)");
     expect(cardSrc).not.toContain("signAndExecuteTransaction");
+  });
+
+  it("surfaces a wrong-wallet notice before the human taps", () => {
+    expect(cardSrc).toContain("getHederaPairing");
+    expect(cardSrc).toContain("switch wallets");
+    // The tap still enforces the owner match — the notice is just the
+    // explanation ahead of time.
+    expect(cardSrc).toContain("OwnerMismatchError");
+  });
+
+  it("never bakes the transaction — the host finalizes at tap time", () => {
+    expect(cardSrc).toContain("PendingAction");
+    expect(cardSrc).toMatch(/finalizes? the claim package/);
+    expect(cardSrc).not.toContain("unsignedTxBytes");
   });
 });
