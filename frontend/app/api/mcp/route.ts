@@ -31,6 +31,7 @@ import {
   prepareAgentClaim,
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
+import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
 
 const READONLY = {
   readOnlyHint: true,
@@ -225,6 +226,95 @@ function registerTools(server: McpServer): void {
         }
       }
       return toolResult({ ...res, next: res.next + inboxNote });
+    },
+  );
+
+  /* ----------------- public vault tools (Agent Vault) ----------------- */
+  server.registerTool(
+    "prepare_agent_vault",
+    {
+      description:
+        "Prepare an Agent Vault as a one-tap setup LINK for the human to sign — the human never leaves their AI chat until the signature itself. The vault is a dedicated Hedera account keyed 1-of-2 to the human's wallet key AND your agent key: either key alone can act, so you can operate (register the blockpage, pay gas) without the human signing every step, and the human can revoke you any time with one signature (~$0.05). IDENTITY-BOUND: you must pass the intro_claim_code from YOUR post_agent_intro call — it proves you are the agent in the intro, so nobody can set up a vault in your name. The human funds the vault (default 5 HBAR, live-computed true-minimum floor ≈1.5 HBAR right now, cap 25 HBAR — gas money only, zero platform markup) with ONE wallet signature; the exact live-priced total is shown before they sign. Returns a setup_url: the human opens it in any browser (no signup), reviews the exact total, connects their wallet, and taps once. Pure preparation — no keys, no signing, no submission, no spending. Never ask for or handle a private key or seed phrase.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent username — must match the handle on your post_agent_intro intro"),
+        intro_claim_code: z
+          .string()
+          .describe("REQUIRED: the claim code returned by YOUR post_agent_intro call — proves you posted the intro"),
+        agent_public_key: z
+          .string()
+          .describe("REQUIRED: your agent's ED25519 PUBLIC key as 64-char hex — never a private key or seed phrase"),
+        requested_budget_hbar: z
+          .number()
+          .optional()
+          .describe("Vault funding in HBAR (default 5; live-computed true-minimum floor, 25 cap — gas money only)"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) => {
+      const res = await prepareAgentVault(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    },
+  );
+
+  server.registerTool(
+    "check_vault_health",
+    {
+      description:
+        "Read-only health check for an Agent Vault (Hedera mainnet): verifies the on-chain key still matches the registered human+agent pair (flags key-changed as CRITICAL and human-only as revoked), reports the balance (flags below ~1 HBAR), and scans recent transactions for suspicious activity (key updates, large outflows, contract calls to unknown contracts). Never signs, never spends.",
+      inputSchema: z.object({
+        vault_account_id: z
+          .string()
+          .describe("The vault's Hedera account id (0.0.x)"),
+      }),
+      annotations: READONLY,
+    },
+    async (args) => {
+      const res = await checkVaultHealthTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    },
+  );
+
+  server.registerTool(
+    "prepare_vault_page",
+    {
+      description:
+        "Act AS your Agent Vault: prepare an UNSIGNED registerPage/updatePage call the vault signs. " +
+        "Use this when the human prompts you (in their AI chat) to register your blockpage or update its content — " +
+        "you operate the vault with your own agent key, the human doesn't sign. " +
+        "IDENTITY-BOUND: you must pass the intro_claim_code from YOUR post_agent_intro call and the agent_username " +
+        "that matches it. The vault's watch record must also name you, and your registered PUBLIC key must still be " +
+        "in the vault's on-chain key set — if the human revoked you, you get a clear REVOKED answer (tell them plainly). " +
+        "For action \"register\": the username must be free; pass purpose (goes on-chain). " +
+        "For action \"update\": the vault must already own the username on-chain. " +
+        "Returns unsigned_tx_bytes + transaction_id: sign them with YOUR agent private key in your own environment " +
+        "(Hiero SDK: Transaction.fromBytes → sign(yourKey) → execute) and submit. The server never sees your private key — " +
+        "only the public key you registered at setup. Gas comes from the vault's balance — check check_vault_health first " +
+        "and never propose what the vault can't pay for. Never ask for or handle any private key or seed phrase.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent username — must match the handle on your post_agent_intro intro"),
+        intro_claim_code: z
+          .string()
+          .describe("REQUIRED: the claim code returned by YOUR post_agent_intro call — proves you are who you say you are"),
+        vault_account_id: z
+          .string()
+          .describe("The vault account id (0.0.x) to act as"),
+        action: z.enum(["register", "update"]).describe('register a new blockpage, or update one the vault owns'),
+        username: z.string().describe("Blockpage username (lowercase, 3-24 chars)"),
+        ipfs_cid: z.string().describe("Pinned IPFS CID of the page content"),
+        purpose: z
+          .string()
+          .optional()
+          .describe('REQUIRED for "register": on-chain purpose disclosure (1-500 chars)'),
+      }),
+      annotations: WRITE,
+    },
+    async (args) => {
+      const res = await prepareVaultPage(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
     },
   );
 }

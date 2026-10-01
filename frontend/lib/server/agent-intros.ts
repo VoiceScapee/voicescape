@@ -224,6 +224,32 @@ export type ClaimIntroResult =
   | { ok: false; error: string };
 
 /**
+ * Read-only intro lookup by claim code — no linking, no mutation. Used by
+ * the Agent Vault identity binding: the agent proves it posted the intro
+ * by presenting the code only the poster received.
+ */
+export async function getIntroByClaimCode(
+  claimCode: string,
+  store: KvStore = getKvStore(),
+): Promise<AgentIntro | null> {
+  const code = normalizeClaimCode(claimCode);
+  let body: string | null;
+  try {
+    body = await store.get(`${INTRO_KEY_PREFIX}${code}`);
+  } catch {
+    return null;
+  }
+  if (!body) return null;
+  try {
+    const intro = JSON.parse(body) as AgentIntro;
+    if (!intro || typeof intro.handle !== "string") return null;
+    return intro;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Link an intro (by claim code) to a wallet owner's registered blockpage
  * username. The caller must already have verified the session and the
  * wallet's ownership of the username — this only records the link.
