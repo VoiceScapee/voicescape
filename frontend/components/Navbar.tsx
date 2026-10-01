@@ -52,6 +52,8 @@ const COMMUNITY_ITEMS: NavDropdownItem[] = [
 const CREATE_ITEMS: NavDropdownItem[] = [
   { href: "/builder", label: <T k="nav.builder" /> },
   { href: "/agents", label: <T k="nav.agents" /> },
+  // Embeddable tip button for creators' external sites.
+  { href: "/embed", label: <>Embed a tip button</> },
 ];
 
 const SUPPORT_HREF = "https://discord.gg/2KGzPduUN5";
