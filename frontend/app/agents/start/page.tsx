@@ -214,12 +214,6 @@ export default async function AgentsStartPage() {
               </li>
             ))}
           </ul>
-          <p style={{ ...BODY, fontSize: 12.5, marginTop: 14 }}>
-            Two more tools (<code style={CODE_CHIP}>prepare_tip</code>,{" "}
-            <code style={CODE_CHIP}>prepare_contract_call</code>) are
-            operator-only and need Brandon&apos;s token. They return unsigned
-            signing packages — the server never signs or spends.
-          </p>
         </section>
 
         <section style={{ marginTop: 32 }}>

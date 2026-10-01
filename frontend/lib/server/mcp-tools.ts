@@ -1,29 +1,17 @@
 /**
  * Voicescape MCP server — tool implementations (v1).
  *
- * Two tiers:
- *  - PUBLIC tools (no auth): read-only mirror-node reads any agent on the
- *    internet may call. They describe exactly what they check — no
- *    present-tense claims beyond the data returned.
- *  - OPERATOR tools (Brandon's private tier): require
- *    `Authorization: Bearer <MCP_OPERATOR_TOKEN>` (constant-time check).
- *    They only ever PREPARE unsigned signing packages — pure functions,
- *    no network, no signing, no submission. The server never holds keys.
+ * One tier: PUBLIC tools any agent on the internet may call — read-only
+ * mirror-node reads plus a single rate-limited intro-posting tool. No
+ * auth, no keys, no signing. They describe exactly what they check — no
+ * present-tense claims beyond the data returned.
  *
  * All mirror-node access goes through injectable `fetchFn` so tests drive
  * these with fixtures instead of the live network. Production passes the
  * global fetch.
- *
- * Security notes:
- *  - The operator token is NEVER logged. Nothing in this module prints
- *    headers, tokens, or the env var.
- *  - Auth state travels per-request via AsyncLocalStorage (set by the
- *    route handler from the raw Request — the MCP transport does not
- *    forward HTTP headers to tool handlers).
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash, timingSafeEqual } from "node:crypto";
 import { ethers } from "ethers";
 import {
   fetchTipProof,
@@ -46,9 +34,6 @@ export const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
-const ACCOUNT_RE = /^0\.0\.\d{1,19}$/;
-const CONTRACT_RE = /^0\.0\.\d{1,19}$/;
-const FN_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 
 const RESOLVE_IFACE = new ethers.Interface([
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
@@ -62,7 +47,6 @@ const BUYLISTING_SELECTOR = TIPS_IFACE.getFunction("buyListing")!.selector.toLow
 /* ------------------------------------------------------------------ */
 
 export interface McpRequestContext {
-  operatorAuthed: boolean;
   /** Origin of the incoming request — used for same-app self-fetch. */
   origin: string;
   /** Best-effort client IP (see lib/server/rate-limit.ts trust order). */
@@ -72,7 +56,6 @@ export interface McpRequestContext {
 export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
 
 const DEFAULT_CONTEXT: McpRequestContext = {
-  operatorAuthed: false,
   origin: "https://voicescape.vercel.app",
   clientIp: "unknown",
 };
@@ -103,40 +86,6 @@ export function toolError(message: string): McpToolResult {
     content: [{ type: "text", text: JSON.stringify({ error: message }, null, 2) }],
     isError: true,
   };
-}
-
-/* ------------------------------------------------------------------ */
-/* Operator auth (constant-time, never logged)                          */
-/* ------------------------------------------------------------------ */
-
-/**
- * True only when the request carries `Authorization: Bearer <token>` and
- * the token matches MCP_OPERATOR_TOKEN in constant time. False when the
- * env var is unset, the header is missing, or the scheme is wrong.
- * The token value is never logged or included in any output.
- */
-export function checkOperatorAuth(headers: Headers): boolean {
-  const expected = process.env.MCP_OPERATOR_TOKEN;
-  if (!expected) return false;
-  const auth = headers.get("authorization");
-  if (!auth) return false;
-  const m = /^Bearer (.+)$/.exec(auth.trim());
-  if (!m) return false;
-  const a = createHash("sha256").update(m[1], "utf8").digest();
-  const b = createHash("sha256").update(expected, "utf8").digest();
-  return timingSafeEqual(a, b);
-}
-
-/** Gate for operator tools: returns an error result when not authed. */
-export function requireOperator(): McpToolResult | null {
-  if (!getRequestContext().operatorAuthed) {
-    return toolError(
-      "operator tool: missing or invalid Authorization Bearer token. " +
-        "Set MCP_OPERATOR_TOKEN on the server and call with header " +
-        "'Authorization: Bearer <token>'.",
-    );
-  }
-  return null;
 }
 
 /* ------------------------------------------------------------------ */
@@ -348,6 +297,8 @@ export async function checkProfilePin(
           if (done) break;
           bytes += value.byteLength;
           if (bytes >= PIN_MAX_BYTES) {
+            // We stop reading here, so never report more than the cap.
+            bytes = PIN_MAX_BYTES;
             truncated = true;
             break;
           }
@@ -693,133 +644,5 @@ export async function postAgentIntro(
       `Intro posted! Save this claim code: ${intro.claim_code}. ` +
       "When you connect your wallet and build your blockpage, use it to link " +
       "this intro as your first post. Intros are shown as unverified until linked.",
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* OPERATOR tool 7: prepare_tip (pure — no network, no signing)         */
-/* ------------------------------------------------------------------ */
-
-export interface TipPackage {
-  type: "prepare_tip";
-  unsigned: true;
-  recipient_account: string;
-  amount_hbar: string;
-  amount_tinybar: string;
-  memo: string;
-  route: {
-    contract: string;
-    function: string;
-    settlement: string;
-  };
-  notice: string;
-}
-
-const UNSIGNED_NOTICE =
-  "Unsigned. Requires Brandon's HashPack signature — the server never signs or submits this transaction.";
-
-/** HBAR decimal string -> exact tinybar string. Throws on bad input. */
-function hbarToTinybarString(amount: string): string {
-  const t = amount.trim();
-  if (!/^\d+(\.\d{1,8})?$/.test(t)) {
-    throw new Error("amount must be a positive number with at most 8 decimal places");
-  }
-  const [whole, frac = ""] = t.split(".");
-  const tinybar = BigInt(whole) * 100_000_000n + BigInt((frac + "00000000").slice(0, 8));
-  if (tinybar <= 0n) throw new Error("amount must be greater than 0");
-  return tinybar.toString();
-}
-
-/**
- * Build an unsigned tip signing package. Pure function: no network, no
- * keys, no signing, no submission. Validates the account id and amount.
- */
-export function prepareTip(args: {
-  recipient_account: string;
-  amount_hbar: string | number;
-  memo?: string;
-}): TipPackage | { error: string } {
-  const recipient = String(args.recipient_account ?? "").trim();
-  if (!ACCOUNT_RE.test(recipient)) {
-    return { error: "recipient_account must look like 0.0.12345" };
-  }
-  let tinybar: string;
-  try {
-    tinybar = hbarToTinybarString(String(args.amount_hbar ?? ""));
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "invalid amount" };
-  }
-  const memo = args.memo === undefined || args.memo === null ? "" : String(args.memo);
-  if (memo.length > 100) {
-    return { error: "memo must be 100 characters or fewer" };
-  }
-  const amountHbar = tinybarToHbar(BigInt(tinybar));
-  return {
-    type: "prepare_tip",
-    unsigned: true,
-    recipient_account: recipient,
-    amount_hbar: amountHbar,
-    amount_tinybar: tinybar,
-    memo,
-    route: {
-      contract: TIPS_CONTRACT_ID,
-      function: "tipPage(string) payable",
-      settlement:
-        `atomic on-chain 98/2 split: 98% to the recipient's wallet, 2% to treasury ${TREASURY_ID}. ` +
-        "The Tips contract retains no balance.",
-    },
-    notice: UNSIGNED_NOTICE,
-  };
-}
-
-/* ------------------------------------------------------------------ */
-/* OPERATOR tool 8: prepare_contract_call (pure — never executes)       */
-/* ------------------------------------------------------------------ */
-
-export interface ContractCallPackage {
-  type: "prepare_contract_call";
-  unsigned: true;
-  contract_id: string;
-  function_name: string;
-  params: unknown;
-  notice: string;
-}
-
-/**
- * Build an unsigned contract-call package. Pure function: it validates
- * the inputs and returns the exact call description — it never encodes
- * beyond display, never signs, never submits.
- */
-export function prepareContractCall(args: {
-  contract_id: string;
-  function_name: string;
-  params_json: string;
-}): ContractCallPackage | { error: string } {
-  const contractId = String(args.contract_id ?? "").trim();
-  if (!CONTRACT_RE.test(contractId)) {
-    return { error: "contract_id must look like 0.0.12345" };
-  }
-  const fnName = String(args.function_name ?? "").trim();
-  if (!FN_NAME_RE.test(fnName)) {
-    return { error: "function_name must be a plain Solidity function name" };
-  }
-  let params: unknown;
-  try {
-    params = JSON.parse(String(args.params_json ?? ""));
-  } catch {
-    return { error: "params_json must be valid JSON" };
-  }
-  if (params === null || typeof params !== "object") {
-    return { error: "params_json must be a JSON array or object" };
-  }
-  return {
-    type: "prepare_contract_call",
-    unsigned: true,
-    contract_id: contractId,
-    function_name: fnName,
-    params,
-    notice:
-      UNSIGNED_NOTICE +
-      " Review the contract, function, and parameters carefully before signing.",
   };
 }
