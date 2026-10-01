@@ -14,6 +14,7 @@ import {
   searchAgents,
   checkProfilePin,
   postAgentIntro,
+  prepareAgentClaim,
   requestContextStorage,
   toolResult,
   MIRROR_BASE,
@@ -556,3 +557,84 @@ describe("post_agent_intro tool", () => {
 });
 
 void MIRROR_BASE;
+
+describe("prepare_agent_claim tool", () => {
+  const ok = (body: unknown) =>
+    (async () =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => body,
+      }) as unknown as Response)();
+
+  it("rejects a bad username", async () => {
+    const res = await prepareAgentClaim({
+      username: "BAD NAME!",
+      owner_account_id: "0.0.1234",
+      purpose: "test",
+    });
+    expect("error" in res).toBe(true);
+  });
+
+  it("rejects a bad owner account id", async () => {
+    const res = await prepareAgentClaim({
+      username: "goodbot",
+      owner_account_id: "not-an-account",
+      purpose: "test",
+    });
+    expect("error" in res).toBe(true);
+  });
+
+  it("rejects a missing purpose", async () => {
+    const res = await prepareAgentClaim({
+      username: "goodbot",
+      owner_account_id: "0.0.1234",
+      purpose: "",
+    });
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/purpose/i);
+  });
+
+  it("rejects a username that is already registered", async () => {
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["address", "string", "uint8", "address", "string"],
+      [
+        "0x0000000000000000000000000000000000001234",
+        "QmTaken",
+        1,
+        "0x0000000000000000000000000000000000001234",
+        "taken",
+      ],
+    );
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: encoded });
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      { username: "takenbot", owner_account_id: "0.0.1234", purpose: "test" },
+      fetchFn,
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/already registered/);
+  });
+
+  it("rejects when the owner account does not exist", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      if (url.includes("/accounts/")) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => null,
+        } as unknown as Response;
+      }
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      { username: "freebot", owner_account_id: "0.0.99999999", purpose: "test" },
+      fetchFn,
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/not found/);
+  });
+});

@@ -302,3 +302,39 @@ describe("directory: attachAvailability + available filter", () => {
     ).toEqual(["forge"]);
   });
 });
+
+describe("agent-token scope (setAvailabilityCore)", () => {
+  const AGENT_OWNER = `0x${"ab".repeat(20)}`;
+
+  it("200: an agent token may manage its own username", async () => {
+    const { deps } = fakeDeps({
+      verifySession: async () => ({ ok: true as const, address: AGENT_OWNER, agent: "forge" }),
+    });
+    const r = await setAvailabilityCore("forge", { open: true }, "tok", deps);
+    expect(r.status).toBe(200);
+  });
+
+  it("403: an agent token may not manage another agent's username, even when the wallet owns the page", async () => {
+    const { deps } = fakeDeps({
+      verifySession: async () => ({ ok: true as const, address: AGENT_OWNER, agent: "forge" }),
+    });
+    const r = await setAvailabilityCore("otherbot", { open: true }, "tok", deps);
+    expect(r.status).toBe(403);
+    expect((r.json as { error?: string }).error).toContain("forge");
+  });
+
+  it("400: an agent token cannot manage a human page (agents-only endpoint, unchanged behavior)", async () => {
+    const { deps } = fakeDeps({
+      verifySession: async () => ({ ok: true as const, address: AGENT_OWNER, agent: "forge" }),
+      resolvePage: async () => ({ owner: AGENT_OWNER, ownerType: 0 }),
+    });
+    const r = await setAvailabilityCore("humanpage", { open: true }, "tok", deps);
+    expect(r.status).toBe(400);
+  });
+
+  it("200: a full human session keeps managing its owned agent page (unchanged behavior)", async () => {
+    const { deps } = fakeDeps();
+    const r = await setAvailabilityCore("forge", { open: false }, "tok", deps);
+    expect(r.status).toBe(200);
+  });
+});

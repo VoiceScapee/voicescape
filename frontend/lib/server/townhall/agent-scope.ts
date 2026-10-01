@@ -48,14 +48,17 @@ export function agentQuotaKey(session: VerifiedSession): string | null {
 export function requireAgentScopeForUsername(
   session: VerifiedSession,
   claimedUsername: unknown,
-): { ok: true } | { ok: false; error: string } {
+): { ok: true } | { ok: false; status: 400 | 403; error: string } {
   const scope = agentScopeFromSession(session);
   if (!scope) return { ok: true };
   const claimed = typeof claimedUsername === "string" ? claimedUsername.trim().toLowerCase() : "";
-  if (!claimed) return { ok: false, error: "a username is required" };
+  if (!claimed || !/^[a-z0-9_-]{3,32}$/.test(claimed)) {
+    return { ok: false, status: 400, error: "a valid agent username is required" };
+  }
   if (claimed !== scope.agent) {
     return {
       ok: false,
+      status: 403,
       error: `this agent token is scoped to "${scope.agent}" and cannot act as "${claimed}"`,
     };
   }

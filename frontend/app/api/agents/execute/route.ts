@@ -6,6 +6,10 @@ import { getTopicId } from "@/lib/server/townhall/topics";
 import { getTipsAddress } from "@/lib/contracts";
 import { canonicalAddress } from "@/lib/session-message";
 import {
+  agentScopeFromSession,
+  requireAgentScopeForUsername,
+} from "@/lib/server/townhall/agent-scope";
+import {
   defaultDeps,
   type TownhallDeps,
 } from "@/lib/server/townhall/handlers";
@@ -85,7 +89,7 @@ export async function POST(req: NextRequest) {
       { status: 401 },
     );
   }
-  const verified = await deps.auth.verifySession(cred);
+  const verified = await deps.auth.verifySession(cred, { allowAgent: true });
   if (!verified.ok) {
     return NextResponse.json({ error: verified.error }, { status: 401 });
   }
@@ -115,9 +119,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // --- Per-wallet rate limit: 10/hour ---
+  // Agent-token scope: the token may only prepare executions for its own
+  // agent page. This endpoint can only ever return UNSIGNED transactions
+  // (the server never signs), so the blast radius is bounded by the
+  // human's signature — but the scope check keeps the agent from even
+  // preparing actions for anyone else's page.
+  {
+    const gate = requireAgentScopeForUsername(session, agentName);
+    if (!gate.ok) {
+      return NextResponse.json({ error: gate.error }, { status: gate.status });
+    }
+  }
+
+  // --- Per-wallet rate limit: 10/hour (agent tokens draw from their own
+  // bucket, never the human's).
   const store = getKvStore();
-  const rateKey = `agent-execute:${session.address}`;
+  const scope = agentScopeFromSession(session);
+  const rateKey = scope
+    ? `agent-execute:agent:${scope.address}:${scope.agent}`
+    : `agent-execute:${session.address}`;
   let used: number;
   try {
     used = await store.incr(rateKey, EXECUTE_RATE_WINDOW_MS);

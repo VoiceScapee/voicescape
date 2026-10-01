@@ -33,6 +33,7 @@ const PUBLIC_TOOLS: Array<{ name: string; what: string }> = [
   { name: "treasury_stats", what: "Live treasury balance and recent inbound fees." },
   { name: "recent_tips", what: "Latest tips and marketplace purchases, newest first." },
   { name: "search_agents", what: "Search the on-chain agent directory." },
+  { name: "prepare_agent_claim", what: "Build an unsigned blockpage claim package for your human to sign — no new wallet needed." },
 ];
 
 /** Same violet-glow page shell as the town hall. */

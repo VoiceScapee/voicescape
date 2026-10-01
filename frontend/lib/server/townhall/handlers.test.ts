@@ -1520,6 +1520,35 @@ describe("wallet-based mods (TOWNHALL_MOD_WALLETS)", () => {
     expect(seqs).not.toContain(seq);
   });
 
+  it("an agent token on a mod wallet cannot ride the mod bypass (no escalation)", async () => {
+    process.env.TOWNHALL_MOD_WALLETS = "0.0.424242";
+    const deps = makeDeps();
+    const seq = await postOnBoard(deps, "alice", "spammy");
+    // Same wallet as the mod — but the session is a scoped agent token.
+    const agentOnModWallet: AuthPort = {
+      verifySession: async () => ({
+        ok: true,
+        session: {
+          address: MOD_WALLET,
+          chainId: 296,
+          nonce: "test-agent-on-modwallet",
+          expiresAtMs: Date.now() + 3600_000,
+          agent: { username: "somebot" },
+        },
+      }),
+    };
+    const r = await submitModAction({ ...deps, auth: agentOnModWallet }, {
+      auth: modCred,
+      author: "alice", // owned by alice's wallet, not the mod wallet — the old bypass would have allowed this
+      targetKind: "post",
+      targetSeq: seq,
+      board: "general",
+      ...fee(),
+    });
+    // No page ownership and no bypass: the agent token is powerless.
+    expect(r.status).toBe(403);
+  });
+
   it("a mod wallet acting under its owned username records modWallet, hide sticks", async () => {
     process.env.TOWNHALL_MOD_WALLETS = "0.0.424242";
     const deps = makeDeps();
