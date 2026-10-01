@@ -124,7 +124,7 @@ function ProposalCard({ proposal, onVoted }: { proposal: Proposal; onVoted: () =
       });
       // Tally refresh happens on "confirmed" below.
     } catch (e) {
-      reportError(e, "polls-vote");
+      reportError(e, "polls-vote", { action: "vote" });
       setError(e instanceof Error ? e.message : String(e));
       setBusy(null);
       setConfirmTxId(null);
@@ -477,7 +477,7 @@ export default function PollsClient() {
       list.sort((a, b) => b.closesAt - a.closesAt);
       setProposals(list);
     } catch (e) {
-      reportError(e, "polls-list");
+      reportError(e, "polls-list", { action: "load-polls" });
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);

@@ -5,7 +5,7 @@
  * minimal report to POST /api/client-error. The server stores AGGREGATE
  * counts only — never anything that identifies who hit the error:
  *
- *   stored:   errors:agg:<date>:<page-slug>:<hash> → {page, message, component, frame, count, firstSeen, lastSeen}
+ *   stored:   errors:agg:<date>:<page-slug>:<hash> → {page, message, component, name, action, walletState, frame, count, firstSeen, lastSeen}
  *   NOT stored: IP addresses, user agents, wallet addresses, full URLs
  *                (query strings / fragments are stripped), full stack
  *                traces (first scrubbed frame only — enough to attribute
@@ -25,6 +25,8 @@ export const CLIENT_ERROR_TTL_MS = 7 * 24 * 3600 * 1000; // 7 days
 export const MAX_ERROR_MESSAGE_LEN = 200;
 export const MAX_ERROR_PAGE_LEN = 120;
 export const MAX_ERROR_COMPONENT_LEN = 40;
+export const MAX_ERROR_NAME_LEN = 40;
+export const MAX_ERROR_ACTION_LEN = 40;
 export const MAX_ERROR_FRAME_LEN = 120;
 export const MAX_ERRORS_INDEXED_PER_DAY = 100;
 export const ERROR_STATS_DAY_COUNT = 7;
@@ -94,6 +96,34 @@ export function normalizeErrorComponent(raw: unknown): string | null {
   return c || null;
 }
 
+/** Optional error-name slug ("TypeError", "UserRejected", …). Null when unusable. */
+export function normalizeErrorName(raw: unknown): string | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw !== "string") return null;
+  const n = raw.trim().slice(0, MAX_ERROR_NAME_LEN).replace(/[^a-zA-Z0-9_]/g, "");
+  return n || null;
+}
+
+/** Optional attempted-action slug ("tip-submit", "pair-wallet", …). Null when unusable. */
+export function normalizeErrorAction(raw: unknown): string | null {
+  if (raw == null || raw === "") return null;
+  if (typeof raw !== "string") return null;
+  const a = raw.trim().toLowerCase().slice(0, MAX_ERROR_ACTION_LEN).replace(/[^a-z0-9_-]/g, "");
+  return a || null;
+}
+
+/**
+ * Wallet-connection state at report time. Strict enum — only
+ * "connected" | "disconnected" | "connecting" survive; anything else
+ * (notably anything that looks like an address) is dropped. Never
+ * carries an address by construction.
+ */
+export type ErrorWalletState = "connected" | "disconnected" | "connecting";
+
+export function normalizeErrorWalletState(raw: unknown): ErrorWalletState | null {
+  return raw === "connected" || raw === "disconnected" || raw === "connecting" ? raw : null;
+}
+
 /**
  * First stack frame, scrubbed of identifiers, capped at 120 chars.
  * Null when empty. Only ever the single first frame — never a full stack.
@@ -140,11 +170,24 @@ export interface ErrorAggregate {
   page: string;
   message: string;
   component: string | null;
+  /** Error name ("TypeError", "UserRejected", …), or null. */
+  name: string | null;
+  /** Attempted action ("tip-submit", "pair-wallet", …), or null. */
+  action: string | null;
+  /** Wallet-connection state at report time — never an address. */
+  walletState: ErrorWalletState | null;
   /** First scrubbed stack frame (function + chunk + line), or null. */
   frame: string | null;
   count: number;
   firstSeen: number;
   lastSeen: number;
+}
+
+/** Optional structured context carried alongside a report. */
+export interface ClientErrorContext {
+  name?: unknown;
+  action?: unknown;
+  walletState?: unknown;
 }
 
 /**
@@ -166,15 +209,21 @@ export async function recordClientError(
   componentRaw: unknown = null,
   frameRaw: unknown = null,
   nowMs: number = Date.now(),
+  context: ClientErrorContext = {},
 ): Promise<boolean> {
   const page = normalizeErrorPage(pageRaw);
   const message = normalizeErrorMessage(messageRaw);
   if (!page || !message) return false;
   const component = normalizeErrorComponent(componentRaw);
   const frame = normalizeErrorFrame(frameRaw);
+  const name = normalizeErrorName(context.name);
+  const action = normalizeErrorAction(context.action);
+  const walletState = normalizeErrorWalletState(context.walletState);
   try {
     const date = errorDateKey(new Date(nowMs));
-    const hash = hashErrorMessage(`${page}|${component ?? ""}|${message}|${frame ?? ""}`);
+    const hash = hashErrorMessage(
+      `${page}|${component ?? ""}|${name ?? ""}|${action ?? ""}|${walletState ?? ""}|${message}|${frame ?? ""}`,
+    );
     const key = errorAggKey(date, page, hash);
 
     let agg: ErrorAggregate | null = null;
@@ -188,6 +237,14 @@ export async function recordClientError(
             page,
             message,
             component,
+            name: typeof parsed.name === "string" ? parsed.name : name,
+            action: typeof parsed.action === "string" ? parsed.action : action,
+            walletState:
+              parsed.walletState === "connected" ||
+              parsed.walletState === "disconnected" ||
+              parsed.walletState === "connecting"
+                ? parsed.walletState
+                : walletState,
             frame: typeof parsed.frame === "string" ? parsed.frame : frame,
             count: parsed.count,
             firstSeen: typeof parsed.firstSeen === "number" ? parsed.firstSeen : nowMs,
@@ -200,7 +257,7 @@ export async function recordClientError(
       agg = null;
     }
     if (!agg) {
-      agg = { page, message, component, frame, count: 0, firstSeen: nowMs, lastSeen: nowMs };
+      agg = { page, message, component, name, action, walletState, frame, count: 0, firstSeen: nowMs, lastSeen: nowMs };
     }
     agg.count += 1;
     agg.lastSeen = nowMs;
@@ -272,6 +329,14 @@ export async function getErrorAggregates(
             page: typeof agg.page === "string" ? agg.page : "?",
             message: agg.message.slice(0, MAX_ERROR_MESSAGE_LEN),
             component: typeof agg.component === "string" ? agg.component : null,
+            name: typeof agg.name === "string" ? agg.name : null,
+            action: typeof agg.action === "string" ? agg.action : null,
+            walletState:
+              agg.walletState === "connected" ||
+              agg.walletState === "disconnected" ||
+              agg.walletState === "connecting"
+                ? agg.walletState
+                : null,
             frame: typeof agg.frame === "string" ? agg.frame : null,
             count: agg.count,
             firstSeen: typeof agg.firstSeen === "number" ? agg.firstSeen : 0,

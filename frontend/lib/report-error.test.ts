@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { __resetReportErrorSeenForTests, reportError } from "./report-error";
+import { __resetReportErrorSeenForTests, extractErrorDetails, reportError } from "./report-error";
 
 function installBrowserStubs() {
   const sendBeacon = vi.fn(() => true);
@@ -96,5 +96,104 @@ describe("reportError", () => {
     } finally {
       delete (globalThis as Record<string, unknown>).fetch;
     }
+  });
+
+  it("carries name, action, and walletState in the payload when given", () => {
+    const sendBeacon = installBrowserStubs();
+    reportError(new TypeError("bad call"), "tip-modal", {
+      action: "tip-submit",
+      walletState: "connected",
+    });
+    const [, blob] = sendBeacon.mock.calls[0] as unknown as [string, Blob];
+    return blob.text().then((text) => {
+      const body = JSON.parse(text) as Record<string, string>;
+      expect(body.message).toBe("bad call");
+      expect(body.name).toBe("TypeError");
+      expect(body.action).toBe("tip-submit");
+      expect(body.walletState).toBe("connected");
+    });
+  });
+
+  it("omits name/action/walletState when not provided", () => {
+    const sendBeacon = installBrowserStubs();
+    reportError(new Error("plain"), "x");
+    const [, blob] = sendBeacon.mock.calls[0] as unknown as [string, Blob];
+    return blob.text().then((text) => {
+      const body = JSON.parse(text) as Record<string, string>;
+      expect("action" in body).toBe(false);
+      expect("walletState" in body).toBe(false);
+    });
+  });
+
+  it("rejects a bogus walletState instead of storing it", () => {
+    const sendBeacon = installBrowserStubs();
+    reportError(new Error("plain"), "x", {
+      walletState: "0.0.12345" as unknown as "connected",
+    });
+    const [, blob] = sendBeacon.mock.calls[0] as unknown as [string, Blob];
+    return blob.text().then((text) => {
+      const body = JSON.parse(text) as Record<string, string>;
+      expect("walletState" in body).toBe(false);
+    });
+  });
+});
+
+describe("extractErrorDetails", () => {
+  it("uses the Error message and keeps the error name", () => {
+    expect(extractErrorDetails(new TypeError("bad call"))).toEqual({
+      message: "bad call",
+      name: "TypeError",
+    });
+  });
+
+  it("names an Error with an empty message instead of saying 'unknown error'", () => {
+    const e = new Error();
+    e.name = "WalletTimeoutError";
+    expect(extractErrorDetails(e)).toEqual({
+      message: "WalletTimeoutError (no message)",
+      name: "WalletTimeoutError",
+    });
+  });
+
+  it("extracts message + code from WalletConnect-style plain-object rejections", () => {
+    // This is the class of failure that used to record "unknown error".
+    expect(extractErrorDetails({ code: 5000, message: "User rejected the request." })).toEqual({
+      message: "User rejected the request. (code 5000)",
+      name: null,
+    });
+  });
+
+  it("handles a code-only thrown object", () => {
+    expect(extractErrorDetails({ code: 4001 })).toEqual({
+      message: "thrown object (code 4001)",
+      name: null,
+    });
+  });
+
+  it("dumps an otherwise opaque thrown object instead of giving up", () => {
+    const d = extractErrorDetails({ reason: "weird", nested: { a: 1 } });
+    expect(d.message).toContain("thrown object");
+    expect(d.message).toContain("weird");
+  });
+
+  it("survives circular thrown objects", () => {
+    const o: Record<string, unknown> = { a: 1 };
+    o.self = o;
+    expect(() => extractErrorDetails(o)).not.toThrow();
+    expect(extractErrorDetails(o).message).toBe("thrown object");
+  });
+
+  it("distinguishes null, undefined, and primitive thrown values", () => {
+    expect(extractErrorDetails(null).message).toBe("thrown null");
+    expect(extractErrorDetails(undefined).message).toBe("thrown undefined");
+    expect(extractErrorDetails(42).message).toBe("thrown 42");
+    expect(extractErrorDetails(false).message).toBe("thrown false");
+  });
+
+  it("accepts plain strings", () => {
+    expect(extractErrorDetails("plain string failure")).toEqual({
+      message: "plain string failure",
+      name: null,
+    });
   });
 });

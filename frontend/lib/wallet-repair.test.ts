@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { isStaleConnectionError, repairStaleConnection } from "./wallet";
+import {
+  __probePairingLiveness,
+  isStaleConnectionError,
+  isWalletSessionAlive,
+  repairStaleConnection,
+  STALE_CONNECTION_COPY,
+} from "./wallet";
 
 describe("isStaleConnectionError", () => {
   it("matches the real stale-session tip failure copy", () => {
@@ -69,5 +75,97 @@ describe("repairStaleConnection", () => {
     ).rejects.toBe(failure);
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(connect).toHaveBeenCalledWith("blade");
+  });
+});
+
+describe("STALE_CONNECTION_COPY", () => {
+  it("is the single copy the repair button keys off", () => {
+    expect(isStaleConnectionError(STALE_CONNECTION_COPY)).toBe(true);
+    expect(STALE_CONNECTION_COPY).toContain("HashPack didn't respond");
+  });
+});
+
+describe("__probePairingLiveness", () => {
+  function fakePairing(opts: {
+    accountId?: string;
+    signers?: { getAccountId: () => { toString: () => string }; getAccountBalance: () => Promise<unknown> }[];
+  }) {
+    return {
+      hc: { signers: opts.signers ?? [] },
+      accountId: opts.accountId ?? "0.0.123",
+    } as unknown as Parameters<typeof __probePairingLiveness>[0];
+  }
+
+  function liveSigner(accountId: string) {
+    return {
+      getAccountId: () => ({ toString: () => accountId }),
+      getAccountBalance: async () => ({ hbars: 1 }),
+    };
+  }
+
+  it("returns true when the wallet answers the balance query", async () => {
+    const pairing = fakePairing({ signers: [liveSigner("0.0.123")] });
+    await expect(__probePairingLiveness(pairing, 1000)).resolves.toBe(true);
+  });
+
+  it("returns false when the wallet rejects the query (stale session)", async () => {
+    const dead = {
+      getAccountId: () => ({ toString: () => "0.0.123" }),
+      getAccountBalance: async () => {
+        throw new Error("No session");
+      },
+    };
+    const pairing = fakePairing({ signers: [dead] });
+    await expect(__probePairingLiveness(pairing, 1000)).resolves.toBe(false);
+  });
+
+  it("returns false when the balance query hangs past the timeout", async () => {
+    const hanging = {
+      getAccountId: () => ({ toString: () => "0.0.123" }),
+      getAccountBalance: () => new Promise(() => {}),
+    };
+    const pairing = fakePairing({ signers: [hanging] });
+    await expect(__probePairingLiveness(pairing, 50)).resolves.toBe(false);
+  });
+
+  it("returns false when there are no signers", async () => {
+    const pairing = fakePairing({ signers: [] });
+    await expect(__probePairingLiveness(pairing, 1000)).resolves.toBe(false);
+  });
+
+  it("prefers the signer matching the paired account", async () => {
+    const asked: string[] = [];
+    const mk = (id: string, alive: boolean) => ({
+      getAccountId: () => ({ toString: () => id }),
+      getAccountBalance: async () => {
+        asked.push(id);
+        if (!alive) throw new Error("dead");
+        return {};
+      },
+    });
+    const pairing = fakePairing({ accountId: "0.0.999", signers: [mk("0.0.111", false), mk("0.0.999", true)] });
+    await expect(__probePairingLiveness(pairing, 1000)).resolves.toBe(true);
+    expect(asked).toEqual(["0.0.999"]);
+  });
+
+  it("never throws, even for a throwing getAccountId", async () => {
+    const bad = {
+      getAccountId: () => {
+        throw new Error("nope");
+      },
+      getAccountBalance: async () => ({}),
+    };
+    const pairing = fakePairing({ signers: [bad] });
+    // getAccountId throws on the only signer → falls back to signers[0],
+    // whose balance query succeeds → alive.
+    await expect(__probePairingLiveness(pairing, 1000)).resolves.toBe(true);
+  });
+});
+
+describe("isWalletSessionAlive", () => {
+  it("returns false when no pairing exists (module starts unpaired)", async () => {
+    // Fresh module state in tests has no connector — never claims stale,
+    // just reports no live session.
+    await expect(isWalletSessionAlive(50)).resolves.toBe(false);
   });
 });

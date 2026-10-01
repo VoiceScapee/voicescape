@@ -215,6 +215,16 @@ export function friendlyWalletError(e: unknown): string {
 }
 
 /**
+ * Single source of truth for the stale-connection guidance. Shown when a
+ * WalletConnect session goes silent (the wallet never answers) — the fix
+ * is a fresh pairing, not retrying the same action.
+ */
+export const STALE_CONNECTION_COPY =
+  "HashPack didn't respond — your wallet connection is stale. " +
+  "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
+  "then reconnect and try again.";
+
+/**
  * True when a wallet error message means the WalletConnect session went
  * stale — the wallet never responded, so the fix is a fresh pairing, not
  * retrying the same action. Single source of truth for the tip modal's
@@ -238,6 +248,59 @@ export async function repairStaleConnection(deps: {
 }): Promise<void> {
   deps.signOut();
   await deps.connect(deps.adapterId);
+}
+
+/** How long the proactive session-liveness probe waits for a wallet answer. */
+export const WALLET_LIVENESS_TIMEOUT_MS = 10_000;
+
+/**
+ * Testable core of the liveness probe: asks the wallet for the paired
+ * account's balance through the live DAppConnector session. A balance
+ * query is read-only — wallets answer it silently, never with a prompt —
+ * so this proves the session can actually talk to the wallet right now.
+ * The balance itself is discarded: never logged, never stored, never
+ * returned.
+ *
+ * Resolves false (never throws) when there is no signer, the query hangs
+ * past the timeout, or the wallet answers with an error — in every one of
+ * those cases the pairing could not sign a transaction either.
+ */
+export async function __probePairingLiveness(
+  pairing: { hc: DAppConnector; accountId: string },
+  timeoutMs: number = WALLET_LIVENESS_TIMEOUT_MS,
+): Promise<boolean> {
+  try {
+    const signers = pairing.hc.signers ?? [];
+    const signer =
+      signers.find((s) => {
+        try {
+          return s.getAccountId().toString() === pairing.accountId;
+        } catch {
+          return false;
+        }
+      }) ?? signers[0];
+    if (!signer) return false;
+    await withTimeout(signer.getAccountBalance(), timeoutMs, "wallet liveness probe timed out");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Proactive wallet-session liveness check for pre-flight guards (e.g. the
+ * tip modal). Returns true only when the current pairing provably answered
+ * a read-only query through the live session; false when there is no
+ * pairing OR the probe failed — callers must only claim "stale" when a
+ * pairing existed and the probe failed, never from a bare false here.
+ * Never throws.
+ */
+export async function isWalletSessionAlive(
+  timeoutMs: number = WALLET_LIVENESS_TIMEOUT_MS,
+): Promise<boolean> {
+  const pairing = getHederaPairing();
+  if (!pairing) return false;
+  return __probePairingLiveness(pairing, timeoutMs);
 }
 
 /**
@@ -971,7 +1034,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       senderGetter.current = null;
       // Report the reason (not just a failed attempt) so the founder
       // dashboard can show WHY connections fail; fail-silent by design.
-      reportError(e, "wallet-connect");
+      // walletState is "disconnected" — pairing never completed.
+      reportError(e, "wallet-connect", { action: "pair-wallet", walletState: "disconnected" });
       recordConversionEvent("wallet_connect_failed");
       // Map known transient wallet-library TypeErrors (e.g. the
       // hedera-wallet-connect "reading 'call'" init race) to actionable

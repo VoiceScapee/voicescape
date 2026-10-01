@@ -2601,7 +2601,7 @@ function PublishPanel({
     } catch (e) {
       // Report the reason (not just the count) so the founder dashboard can
       // show WHY publishes fail; plain-words copy for the phone user.
-      reportError(e, "builder-publish");
+      reportError(e, "builder-publish", { action: "publish", walletState: account ? "connected" : "disconnected" });
       recordConversionEvent("publish_failed");
       const stale = isStaleConnectionError(e instanceof Error ? e.message : String(e));
       setPublishStale(stale);

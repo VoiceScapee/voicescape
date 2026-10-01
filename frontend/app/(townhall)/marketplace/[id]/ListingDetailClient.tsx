@@ -329,7 +329,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
     } catch (e) {
       // Report the reason (not just the count) and use plain-words copy —
       // this is a money path; raw wallet-library text erodes trust.
-      reportError(e, "marketplace-buy");
+      reportError(e, "marketplace-buy", { action: "buy", walletState: account ? "connected" : "disconnected" });
       recordConversionEvent("purchase_failed");
       setBuy({ kind: "error", message: friendlyWalletError(e) });
     }

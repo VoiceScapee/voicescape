@@ -18,10 +18,13 @@ import {
   getErrorAggregates,
   hashErrorMessage,
   isFounderWallet,
+  normalizeErrorAction,
   normalizeErrorComponent,
   normalizeErrorFrame,
   normalizeErrorMessage,
+  normalizeErrorName,
   normalizeErrorPage,
+  normalizeErrorWalletState,
   recordClientError,
   scrubErrorMessage,
   slugifyErrorPage,
@@ -119,7 +122,7 @@ describe("recordClientError", () => {
     await recordClientError(store, "/builder", "chunk failed", null, null, t0);
     await recordClientError(store, "/builder", "chunk failed", null, null, t0 + 1000);
     const date = errorDateKey(new Date(t0));
-    const key = errorAggKey(date, "/builder", hashErrorMessage("/builder||chunk failed|"));
+    const key = errorAggKey(date, "/builder", hashErrorMessage("/builder|||||chunk failed|"));
     const raw = await store.get(key);
     expect(raw).not.toBeNull();
     const agg = JSON.parse(raw!) as { count: number; firstSeen: number; lastSeen: number };
@@ -153,7 +156,7 @@ describe("recordClientError", () => {
     const keys = JSON.parse((await store.get(errorIndexKey(date)))!) as string[];
     const agg = JSON.parse((await store.get(keys[0]))!) as Record<string, unknown>;
     expect(Object.keys(agg).sort()).toEqual(
-      ["component", "count", "firstSeen", "frame", "lastSeen", "message", "page", "spikeAlerted"].sort(),
+      ["action", "component", "count", "firstSeen", "frame", "lastSeen", "message", "name", "page", "spikeAlerted", "walletState"].sort(),
     );
     expect(agg.page).toBe("/builder"); // query stripped
     expect(agg.message).not.toContain("0.0.10424063"); // scrubbed
@@ -232,6 +235,56 @@ describe("recordClientError", () => {
     } finally {
       console.warn = orig;
     }
+  });
+
+  test("stores and returns name/action/walletState context", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    await recordClientError(store, "/", "tip boom", "tip-modal", null, t0, {
+      name: "TypeError",
+      action: "tip-submit",
+      walletState: "connected",
+    });
+    const aggs = await getErrorAggregates(store, ERROR_STATS_DAY_COUNT, t0);
+    expect(aggs).toHaveLength(1);
+    expect(aggs[0].name).toBe("TypeError");
+    expect(aggs[0].action).toBe("tip-submit");
+    expect(aggs[0].walletState).toBe("connected");
+  });
+
+  test("identical messages with different actions bucket separately", async () => {
+    const store = mem();
+    const t0 = Date.UTC(2026, 8, 11, 12, 0, 0);
+    await recordClientError(store, "/", "boom", "tip-modal", null, t0, { action: "tip-submit" });
+    await recordClientError(store, "/", "boom", "tip-modal", null, t0, { action: "tip-submit-token" });
+    const aggs = await getErrorAggregates(store, ERROR_STATS_DAY_COUNT, t0);
+    expect(aggs).toHaveLength(2);
+  });
+});
+
+describe("normalizeErrorName / normalizeErrorAction / normalizeErrorWalletState", () => {
+  test("name keeps case, strips junk", () => {
+    expect(normalizeErrorName("TypeError")).toBe("TypeError");
+    expect(normalizeErrorName("WalletTimeoutError")).toBe("WalletTimeoutError");
+    expect(normalizeErrorName("a b!")).toBe("ab");
+    expect(normalizeErrorName("")).toBeNull();
+    expect(normalizeErrorName(null)).toBeNull();
+  });
+
+  test("action slugifies like component", () => {
+    expect(normalizeErrorAction("tip-submit")).toBe("tip-submit");
+    expect(normalizeErrorAction("Pair Wallet!")).toBe("pairwallet");
+    expect(normalizeErrorAction("")).toBeNull();
+  });
+
+  test("walletState only accepts the strict enum — never an address", () => {
+    expect(normalizeErrorWalletState("connected")).toBe("connected");
+    expect(normalizeErrorWalletState("disconnected")).toBe("disconnected");
+    expect(normalizeErrorWalletState("connecting")).toBe("connecting");
+    expect(normalizeErrorWalletState("0.0.10424063")).toBeNull();
+    expect(normalizeErrorWalletState("0x1234abcd")).toBeNull();
+    expect(normalizeErrorWalletState("CONNECTED")).toBeNull();
+    expect(normalizeErrorWalletState(null)).toBeNull();
   });
 });
 

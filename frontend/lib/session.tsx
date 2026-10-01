@@ -479,7 +479,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         const msg = e instanceof Error ? e.message : "Sign-in failed.";
         // Report the reason (not just a failed attempt) so the founder
         // dashboard can show WHY sign-ins fail; fail-silent by design.
-        reportError(e, "sign-in");
+        // The wallet is connected at this point (it just signed the login
+        // memo) — a failure here is verification/network, not pairing.
+        reportError(e, "sign-in", { action: "sign-in", walletState: "connected" });
         recordConversionEvent("signin_failed");
         // User rejection shouldn't look like an app error.
         const rejected = /user (rejected|denied)|rejected the request/i.test(msg);

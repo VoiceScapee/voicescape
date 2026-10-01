@@ -1,6 +1,7 @@
 "use client";
 
 import { toMirrorTxId } from "./tx-confirm";
+import { STALE_CONNECTION_COPY } from "./wallet";
 
 /**
  * Client-side HCS message submit via the user's wallet.
@@ -149,11 +150,7 @@ export async function submitHcsViaWallet(
         }
         // Not on-chain after 30s of wallet silence: the prompt never appeared
         // (stale WalletConnect session). Tell the user how to fix it.
-        throw new Error(
-          "HashPack didn't respond — your wallet connection is stale. " +
-          "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
-          "then reconnect and try again.",
-        );
+        throw new Error(STALE_CONNECTION_COPY);
       }
       throw e;
     }

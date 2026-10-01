@@ -108,7 +108,7 @@ export default function BoardClient({ board }: { board: string }) {
       );
       setPosts(Array.isArray(data.posts) ? data.posts.map(normalizePost) : []);
     } catch (e) {
-      reportError(e, "forum-board");
+      reportError(e, "forum-board", { action: "load-board" });
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
