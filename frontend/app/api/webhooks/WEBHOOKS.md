@@ -99,8 +99,11 @@ Rotate by deleting the subscription and creating a new one (new secret).
   attempt; redeliveries after 24h are possible — key on it).
 - 5s timeout, one immediate retry. Your endpoint should answer 2xx fast
   and do heavy work asynchronously.
-- The dispatcher runs every 5 minutes via Vercel Cron; expect events
-  within ~5 minutes of consensus.
+- The dispatcher is driven every 5 minutes by the project's own scheduler
+  (a VM cron hitting `/api/webhooks/poll` with the `CRON_SECRET` bearer —
+  Vercel's Hobby tier only allows daily crons, so the `vercel.json` cron is
+  a once-daily backstop, not the primary driver). Expect events within
+  ~5 minutes of consensus while the VM driver is healthy.
 
 ## Operator setup (Brandon)
 
@@ -116,3 +119,7 @@ The dispatcher is cron-guarded:
    `{ ok: true, … }`. The first run seeds the cursor at "now" and
    dispatches nothing (no backfill — history stays queryable via the
    mirror node).
+5. The 5-minute driver is a VM-side cron (project scheduler), not Vercel:
+   it reads the same secret from a 600-permission file and GETs
+   `/api/webhooks/poll` every 5 minutes. Keep the secret identical in
+   both places.
