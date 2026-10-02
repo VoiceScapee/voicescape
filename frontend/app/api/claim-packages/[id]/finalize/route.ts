@@ -31,6 +31,32 @@ import {
 } from "@/lib/server/mcp-tools";
 import { buildRegisterTransaction } from "@/lib/server/agents/executor";
 import { ipGate } from "@/lib/server/rate-limit";
+import { getKvStore } from "@/lib/server/store";
+import { recordClientError } from "@/lib/server/client-errors";
+
+/**
+ * Categorical error return that also records the failure in the shared
+ * error aggregates — finalize failures used to vanish into the user's
+ * browser; now they surface in /api/admin/errors (founder-gated) next to
+ * the MCP tool telemetry. Codes are coarse by design; detail for debugging
+ * goes to Vercel logs via console.error at the call site.
+ */
+async function fail(code: string, message: string, status: number): Promise<Response> {
+  try {
+    await recordClientError(
+      getKvStore(),
+      "/api/claim-packages/finalize",
+      code,
+      "server",
+      null,
+      Date.now(),
+      { action: code },
+    );
+  } catch {
+    /* tracking never blocks the response */
+  }
+  return NextResponse.json({ error: message }, { status });
+}
 
 export async function POST(
   req: Request,
@@ -48,10 +74,7 @@ export async function POST(
   const { id } = await params;
   const pkg = await getClaimPackage(id);
   if (!pkg) {
-    return NextResponse.json(
-      { error: "this approval link is invalid or expired — ask your agent for a fresh one" },
-      { status: 404 },
-    );
+    return fail("link-invalid", "this approval link is invalid or expired — ask your agent for a fresh one", 404);
   }
 
   // Idempotent replay: a double-tap/double-submit returns the SAME unsigned
@@ -70,13 +93,10 @@ export async function POST(
     const body = (await req.json()) as { account_id?: unknown };
     accountId = typeof body.account_id === "string" ? body.account_id.trim() : "";
   } catch {
-    return NextResponse.json({ error: "body must be JSON with account_id" }, { status: 400 });
+    return fail("bad-request", "body must be JSON with account_id", 400);
   }
   if (!/^0\.0\.\d+$/.test(accountId)) {
-    return NextResponse.json(
-      { error: "account_id must be a 0.0.x Hedera account" },
-      { status: 400 },
-    );
+    return fail("bad-account", "account_id must be a 0.0.x Hedera account", 400);
   }
   // An explicit owner override on the package wins; otherwise the paired
   // wallet owns the page.
@@ -88,10 +108,7 @@ export async function POST(
   try {
     lookup = await lookupBlockpage(pkg.username);
   } catch {
-    return NextResponse.json(
-      { error: "registry unreachable — try again in a moment" },
-      { status: 503 },
-    );
+    return fail("registry-down", "registry unreachable — try again in a moment", 503);
   }
   if (lookup.found) {
     // Record the loss so the AGENT polling the status endpoint learns the
@@ -100,9 +117,10 @@ export async function POST(
       username: pkg.username,
       detail: `"${pkg.username}" was registered by someone else before the human tapped — prepare a fresh claim with a different name`,
     });
-    return NextResponse.json(
-      { error: `"${pkg.username}" was just registered by someone else — ask your agent for a fresh name` },
-      { status: 409 },
+    return fail(
+      "username-taken",
+      `"${pkg.username}" was just registered by someone else — ask your agent for a fresh name`,
+      409,
     );
   }
 
@@ -113,16 +131,10 @@ export async function POST(
       headers: { Accept: "application/json" },
     });
     if (res.status === 404) {
-      return NextResponse.json(
-        { error: `account ${owner} not found on Hedera mainnet` },
-        { status: 400 },
-      );
+      return fail("account-not-found", `account ${owner} not found on Hedera mainnet`, 400);
     }
     if (!res.ok) {
-      return NextResponse.json(
-        { error: "mirror node unreachable — try again in a moment" },
-        { status: 503 },
-      );
+      return fail("mirror-down", "mirror node unreachable — try again in a moment", 503);
     }
     const body = (await res.json().catch(() => null)) as {
       balance?: { balance?: number };
@@ -130,10 +142,7 @@ export async function POST(
     const bal = body?.balance?.balance;
     funded = typeof bal === "number" ? bal > 0 : null;
   } catch {
-    return NextResponse.json(
-      { error: "mirror node unreachable — try again in a moment" },
-      { status: 503 },
-    );
+    return fail("mirror-down", "mirror node unreachable — try again in a moment", 503);
   }
 
   // 3. Pin the customized page (once per package — cached on the record).
@@ -156,10 +165,8 @@ export async function POST(
         links: pkg.links,
       });
     } catch (e) {
-      return NextResponse.json(
-        { error: `could not pin page: ${e instanceof Error ? e.message : "pinning failed"}` },
-        { status: 502 },
-      );
+      console.error(`[claim-finalize] pin failed for ${pkg.username}:`, e instanceof Error ? e.message : e);
+      return fail("pin-failed", `could not pin page: ${e instanceof Error ? e.message : "pinning failed"}`, 502);
     }
     pkg.cid = cid;
     await saveClaimPackage(pkg);
@@ -175,10 +182,8 @@ export async function POST(
       { payerAccountId: owner, network: "mainnet", registryContractAddress: REGISTRY_EVM },
     );
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "failed to build transaction" },
-      { status: 500 },
-    );
+    console.error(`[claim-finalize] tx build failed for ${pkg.username}:`, e instanceof Error ? e.message : e);
+    return fail("tx-build-failed", e instanceof Error ? e.message : "failed to build transaction", 500);
   }
 
   const kindWord = pkg.ownerType === "human" ? "a HUMAN" : "an AGENT";

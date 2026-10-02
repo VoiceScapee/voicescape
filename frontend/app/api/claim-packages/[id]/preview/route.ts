@@ -9,6 +9,8 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { getClaimPackage } from "@/lib/server/claim-packages";
 import { assembleClaimPage } from "@/lib/server/page-customize";
+import { getKvStore } from "@/lib/server/store";
+import { recordClientError } from "@/lib/server/client-errors";
 
 export async function GET(
   _req: Request,
@@ -39,6 +41,16 @@ export async function GET(
     });
     return NextResponse.json({ page });
   } catch (e) {
+    try {
+      await recordClientError(
+        getKvStore(),
+        "/api/claim-packages/preview",
+        "assemble-failed",
+        "server",
+      );
+    } catch {
+      /* tracking never blocks the response */
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "could not assemble preview" },
       { status: 502 },

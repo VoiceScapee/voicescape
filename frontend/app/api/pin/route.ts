@@ -9,6 +9,19 @@ import { ipGate } from "@/lib/server/rate-limit";
 import { validateAudioUpload } from "@/lib/server/media-safety";
 import { checkPageJson } from "@/lib/server/townhall/content-filter";
 import { isValidPage } from "@/lib/schema";
+import { getKvStore } from "@/lib/server/store";
+import { recordClientError } from "@/lib/server/client-errors";
+
+/** Best-effort server-error aggregate for JSON-pin failures. Never throws. */
+async function trackPin(code: string): Promise<void> {
+  try {
+    await recordClientError(getKvStore(), "/api/pin", code, "server", null, Date.now(), {
+      action: code,
+    });
+  } catch {
+    /* tracking never blocks the response */
+  }
+}
 
 export const runtime = "nodejs";
 
@@ -163,6 +176,7 @@ export async function POST(req: NextRequest) {
         : undefined;
     const gate = requireAgentScopeForUsername(session, pageUsername);
     if (!gate.ok) {
+      await trackPin("scope-rejected");
       return NextResponse.json({ error: gate.error }, { status: gate.status });
     }
   }
@@ -177,6 +191,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     // Quota store unreachable: fail CLOSED (503).
     console.error(`[pin] quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    await trackPin("quota-store-down");
     return NextResponse.json(
       { error: "temporarily unavailable — please retry in a moment" },
       { status: 503 },
@@ -186,6 +201,7 @@ export async function POST(req: NextRequest) {
     console.warn(
       `[quota] pin:json: wallet ${verified.session.address} hit daily limit ${pinLimit}`,
     );
+    await trackPin("quota-exceeded");
     return NextResponse.json(
       quotaExceededBody(pinQ, `daily page pin limit reached (${pinLimit}/day)`),
       { status: 429 },
@@ -198,6 +214,7 @@ export async function POST(req: NextRequest) {
     // titles, or text blocks before pinning (and before the wallet signs).
     const piiBlock = checkPageJson(body);
     if (piiBlock) {
+      await trackPin("content-blocked");
       return NextResponse.json({ error: piiBlock }, { status: 400 });
     }
     // Schema: a JSON pin is always a Voicescape page document. Reject
@@ -206,6 +223,7 @@ export async function POST(req: NextRequest) {
     // us on /forge, whose hand-written JSON was missing its theme).
     // User-facing copy: no schema jargon.
     if (!isValidPage(body)) {
+      await trackPin("invalid-page");
       return NextResponse.json(
         { error: "This page can't be published because something's missing. Please rebuild it in the builder and try again." },
         { status: 400 },
@@ -224,6 +242,7 @@ export async function POST(req: NextRequest) {
       : message.includes("page JSON too large")
         ? 413
         : 502;
+    await trackPin(pinataDown ? "pinata-down" : status === 413 ? "page-too-large" : "pin-failed");
     // User-facing copy: no env var names, no config URLs. The draft is
     // safe in the builder's local state — the user can retry later.
     const userMessage = pinataDown

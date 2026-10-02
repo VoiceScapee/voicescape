@@ -17,6 +17,8 @@ import { createMcpHandler } from "mcp-handler";
 import type { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod-v4";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
+import { getKvStore } from "@/lib/server/store";
+import { recordClientError } from "@/lib/server/client-errors";
 import {
   requestContextStorage,
   toolResult,
@@ -460,6 +462,16 @@ async function handle(req: Request): Promise<Response> {
     );
   }
   if (!rl.allowed) {
+    // Throttled agents would otherwise be invisible — record the 429 in
+    // the shared error aggregates so a misbehaving client shows up in
+    // /api/admin/errors.
+    try {
+      await recordClientError(getKvStore(), "/api/mcp", "rate-limited", "server", null, Date.now(), {
+        action: "rate-limited",
+      });
+    } catch {
+      /* tracking never blocks the response */
+    }
     return Response.json(
       {
         error: "MCP rate limit exceeded: 20 requests/hour per IP",
