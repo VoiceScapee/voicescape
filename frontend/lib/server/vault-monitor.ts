@@ -171,7 +171,42 @@ export async function registerVaultWatch(
   };
   await store.set(watchKey(input.vaultId), JSON.stringify(record), WATCH_TTL_MS);
   await indexVaultOwner(input.humanAccountId, input.vaultId, store);
+  await indexVaultGlobal(input.vaultId, store);
   return record;
+}
+
+/**
+ * Global vault index — every watched vault id, for the scheduled scan.
+ * (indexVaultOwner is per-human; the cron needs the full set.)
+ */
+const GLOBAL_INDEX_KEY = "vault-index:all";
+const GLOBAL_INDEX_MAX = 5000;
+
+async function indexVaultGlobal(vaultId: string, store: KvStore): Promise<void> {
+  try {
+    const raw = await store.get(GLOBAL_INDEX_KEY);
+    let list: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+    if (!Array.isArray(list)) list = [];
+    if (!list.includes(vaultId)) {
+      list.push(vaultId);
+      await store.set(GLOBAL_INDEX_KEY, JSON.stringify(list.slice(-GLOBAL_INDEX_MAX)), WATCH_TTL_MS);
+    }
+  } catch {
+    /* index is best-effort — the watch record itself is the source of truth */
+  }
+}
+
+/** All watched vault ids (for the scheduled scan). Never throws. */
+export async function getAllWatchedVaultIds(
+  store: KvStore = getKvStore(),
+): Promise<string[]> {
+  try {
+    const raw = await store.get(GLOBAL_INDEX_KEY);
+    const list = raw ? (JSON.parse(raw) as string[]) : [];
+    return Array.isArray(list) ? list.filter((v) => /^0\.0\.\d+$/.test(v)) : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function getVaultWatch(

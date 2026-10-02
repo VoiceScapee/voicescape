@@ -60,6 +60,10 @@
     {
       "path": "/api/webhooks/poll",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/vault/watch/scan",
+      "schedule": "17 * * * *"
     }
   ]
 }

@@ -176,7 +176,11 @@ export async function prepareAgentVault(
     next:
       `Send your human this link: ${setupUrl} — they open it in any browser (no signup), ` +
       `review the exact total, connect their wallet, and tap once. ` +
-      `Tell them: the agent never sees their keys; the signature happens in their own wallet app.`,
+      `Tell them: the agent never sees their keys; the signature happens in their own wallet app. ` +
+      `Track this package without asking the human: GET ${origin}/api/vault-packages/${record.id}/status ` +
+      `— pending → finalized → completed, or expired (link unused after 24h). ` +
+      `Once completed, the vault is saved and reusable: the watch record persists, so the human ` +
+      `can direct this vault from their AI chat any time in the future.`,
   };
 }
 
@@ -230,7 +234,37 @@ export { VAULT_BUDGET_DEFAULT_HBAR, VAULT_BUDGET_MAX_HBAR };
 /* prepare_vault_page — the agent acts AS the vault                     */
 /* ------------------------------------------------------------------ */
 
-import { lookupBlockpage } from "./mcp-tools";
+import { lookupBlockpage, checkProfilePin } from "./mcp-tools";
+
+/**
+ * Minimum vault balance (HBAR) required before we'll build a page
+ * transaction for the agent. A register/update call costs a few cents;
+ * 1 HBAR is a conservative floor that keeps dust-level vaults from
+ * building txs destined to fail with INSUFFICIENT_TX_FEE on-chain.
+ */
+const VAULT_PAGE_MIN_BALANCE_HBAR = 1;
+
+/** Vault balance in HBAR, or null when the mirror can't answer. */
+async function vaultBalanceHbar(vaultId: string, fetchFn: FetchFn): Promise<number | null> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 10_000);
+  try {
+    const res = await fetchFn(`${MIRROR_BASE}/accounts/${vaultId}`, {
+      headers: { Accept: "application/json" },
+      signal: ctrl.signal,
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as {
+      balance?: { balance?: number };
+    } | null;
+    const tinybar = body?.balance?.balance;
+    return typeof tinybar === "number" ? tinybar / 100_000_000 : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 
@@ -369,8 +403,49 @@ export async function prepareVaultPage(
     };
   }
 
+  // 4. The vault must afford the transaction. Previously we only *told*
+  //    the agent to check the balance first — now the server verifies it,
+  //    so a dust-level vault gets a clear error instead of an on-chain
+  //    INSUFFICIENT_TX_FEE after signing.
+  const balanceHbar = await vaultBalanceHbar(vaultId, fetchFn);
+  if (balanceHbar !== null && balanceHbar < VAULT_PAGE_MIN_BALANCE_HBAR) {
+    return {
+      error:
+        `vault ${vaultId} holds only ${balanceHbar.toFixed(2)} HBAR — below the ` +
+        `${VAULT_PAGE_MIN_BALANCE_HBAR} HBAR minimum to build a page transaction. ` +
+        `Ask your human to fund the vault, then try again. ` +
+        `check_vault_health shows the live balance.`,
+    };
+  }
+
+  // 5. The page content must actually load. An unpinned/dead CID would
+  //    otherwise register "successfully" with a broken page — silent
+  //    success is worse than a loud error.
   const pageName = (args.username ?? "").trim().toLowerCase();
   const cid = (args.ipfs_cid ?? "").trim();
+  if (!cid) {
+    return { error: "ipfs_cid is required — pin your page content first, then pass its CID" };
+  }
+  try {
+    const pin = await checkProfilePin({ cid }, fetchFn);
+    if ("error" in pin) {
+      return {
+        error:
+          `couldn't verify your page content (${pin.error}). ` +
+          `Pin it to IPFS first so it actually loads, then try again.`,
+      };
+    }
+    if (!pin.reachable) {
+      return {
+        error:
+          `your page content (CID ${cid}) isn't retrievable from IPFS — ` +
+          `registering it would publish a broken page. ` +
+          `Pin it first (it must load through a public gateway), then try again.`,
+      };
+    }
+  } catch {
+    return { error: "couldn't verify your page content on IPFS — try again in a moment" };
+  }
 
   if (args.action === "register") {
     const purpose = (args.purpose ?? "").trim();
@@ -413,7 +488,7 @@ export async function prepareVaultPage(
         "sees your private key — only the public key you registered at setup.",
       next:
         "After it confirms, report back in your human's chat with the receipt and a HashScan link. " +
-        "Check the vault balance first (check_vault_health) — never propose what the vault can't pay for.",
+        "The server already verified the vault balance and that your page content loads — sign and submit.",
     };
   }
 

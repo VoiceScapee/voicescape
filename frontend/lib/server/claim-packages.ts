@@ -36,6 +36,14 @@ export interface ClaimPackageRecord extends ClaimPackageInput {
   createdAt: number;
   /** Starter-page CID — pinned at finalize time, not prepare time. */
   cid: string | null;
+  /**
+   * Single-use guard: set at the first finalize. A repeated finalize POST
+   * returns the cached response instead of building a second transaction,
+   * so a double-tap/double-submit can never mint two registerPage txs.
+   */
+  finalizedAt: number | null;
+  /** Cached finalize response JSON, returned verbatim on replay. */
+  finalizedResponseJson: string | null;
 }
 
 const KEY_PREFIX = "claim-package:";
@@ -89,6 +97,8 @@ export async function stashClaimPackage(
     id: randomBytes(16).toString("hex"),
     createdAt: Date.now(),
     cid: null,
+    finalizedAt: null,
+    finalizedResponseJson: null,
   };
   await store.set(keyFor(record.id), JSON.stringify(record), TTL_MS);
   return record;
