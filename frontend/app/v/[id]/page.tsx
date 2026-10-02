@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { WalletConnect } from "@/components/WalletConnect";
 import { requestWalletConnectUI, useWallet } from "@/lib/wallet";
+import { reportError } from "@/lib/report-error";
 import { submitPreparedTx, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
 import {
   fetchVaultSummary,
@@ -81,12 +82,16 @@ export default function VaultSetupPage() {
         setPhase({ kind: "review" });
       })
       .catch((e) => {
+        reportError(e, "vault-setup", {
+          action: "load-link",
+          walletState: accountId ? "connected" : "disconnected",
+        });
         setPhase({
           kind: "error",
           message: e instanceof VaultLinkError ? e.message : "Couldn't load this setup link.",
         });
       });
-  }, [id]);
+  }, [id, accountId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +104,10 @@ export default function VaultSetupPage() {
         }
       } catch (e) {
         if (!cancelled) {
+          reportError(e, "vault-setup", {
+            action: "load-link",
+            walletState: accountId ? "connected" : "disconnected",
+          });
           setPhase({
             kind: "error",
             message: e instanceof VaultLinkError ? e.message : "Couldn't load this setup link.",
@@ -110,7 +119,7 @@ export default function VaultSetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, accountId]);
 
   const approve = useCallback(async () => {
     if (!accountId) return;
@@ -142,6 +151,7 @@ export default function VaultSetupPage() {
         agentUsername: fin.agent_username,
       });
     } catch (e) {
+      reportError(e, "vault-setup", { action: "create-vault", walletState: "connected" });
       setPhase({
         kind: "error",
         message:

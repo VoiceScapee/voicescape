@@ -15,6 +15,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { WalletConnect } from "@/components/WalletConnect";
 import { requestWalletConnectUI, useWallet } from "@/lib/wallet";
+import { reportError } from "@/lib/report-error";
 import {
   submitPreparedTx,
   hashscanTxUrl,
@@ -179,9 +180,13 @@ function ManageInner() {
         setVaults(r.vaults);
         if (r.vaults.length === 1) setSelected((s) => s ?? r.vaults[0].vault_account_id);
       })
-      .catch((e) =>
-        setVaultsError(e instanceof VaultLinkError ? e.message : "Couldn't load your vaults — try again in a moment."),
-      );
+      .catch((e) => {
+        reportError(e, "vault-manage", {
+          action: "load-vaults",
+          walletState: accountId ? "connected" : "disconnected",
+        });
+        setVaultsError(e instanceof VaultLinkError ? e.message : "Couldn't load your vaults — try again in a moment.");
+      });
   }, [accountId]);
 
   useEffect(() => {
@@ -194,9 +199,13 @@ function ManageInner() {
     setHealthError(null);
     fetchVaultHealth(selected)
       .then((h) => setHealth(h))
-      .catch((e) =>
-        setHealthError(e instanceof VaultLinkError ? e.message : "Couldn't check this vault — try again in a moment."),
-      )
+      .catch((e) => {
+        reportError(e, "vault-manage", {
+          action: "load-health",
+          walletState: accountId ? "connected" : "disconnected",
+        });
+        setHealthError(e instanceof VaultLinkError ? e.message : "Couldn't check this vault — try again in a moment.");
+      })
       .finally(() => setHealthLoading(false));
     // Recent activity, straight from the Hedera mirror node.
     setTxns(null);
@@ -243,6 +252,7 @@ function ManageInner() {
         loadVaults();
         loadHealth();
       } catch (e) {
+        reportError(e, "vault-manage", { action: "submit-tx", walletState: "connected" });
         setAction({
           kind: "error",
           what: e instanceof VaultLinkError || e instanceof Error ? e.message : "Something went wrong — try again in a moment.",
@@ -259,6 +269,7 @@ function ManageInner() {
       const prepared = await prepareVaultRevoke(selected, accountId);
       await runPrepared(prepared, "Done — your agent can't touch this account any more. The funds are still in the account; sweep them below if you want them back.");
     } catch (e) {
+      reportError(e, "vault-manage", { action: "revoke", walletState: "connected" });
       setAction({
         kind: "error",
         what: e instanceof VaultLinkError ? e.message : "Couldn't prepare that — try again in a moment.",
@@ -276,6 +287,7 @@ function ManageInner() {
         `Done — ${prepared.amount_hbar.toFixed(2)} HBAR is on its way back to your wallet.`,
       );
     } catch (e) {
+      reportError(e, "vault-manage", { action: "sweep", walletState: "connected" });
       setAction({
         kind: "error",
         what: e instanceof VaultLinkError ? e.message : "Couldn't prepare that — try again in a moment.",
@@ -298,6 +310,7 @@ function ManageInner() {
       setPreparedUpdateNote(prepared.what_youre_signing);
       setAction({ kind: "confirm", what: "update" });
     } catch (e) {
+      reportError(e, "vault-manage", { action: "prepare-update", walletState: "connected" });
       setAction({
         kind: "error",
         what: e instanceof VaultLinkError ? e.message : "Couldn't prepare the update — try again in a moment.",
@@ -314,6 +327,7 @@ function ManageInner() {
       const prepared = await prepareVaultUpdate(selected, accountId, name, cid);
       await runPrepared(prepared, `Done — @${name}'s blockpage now points at the new content.`);
     } catch (e) {
+      reportError(e, "vault-manage", { action: "sign-update", walletState: "connected" });
       setAction({
         kind: "error",
         what: e instanceof VaultLinkError ? e.message : "Couldn't sign that — try again in a moment.",
