@@ -16,6 +16,7 @@ import {
   upvoteWorkshopReport,
   normalizeSignature,
   normalizeUsername,
+  stripStackTraces,
   validateWorkshopInput,
   isValidStatusTransition,
   WORKSHOP_DAILY_LIMIT,
@@ -90,6 +91,50 @@ describe("normalizeSignature", () => {
     expect(normalizeSignature("   ")).toBeNull();
     expect(normalizeSignature(null)).toBeNull();
   });
+  it("strips pasted stack frames so traces cluster on the message", () => {
+    const sig = normalizeSignature(
+      "Error: stale wallet pairing\n    at checkPairing (pair.ts:42:10)\n    at async approve (wallet.ts:7:3)",
+    );
+    expect(sig).toBe("error: stale wallet pairing");
+  });
+});
+
+describe("stripStackTraces", () => {
+  it("strips JS/TS frames but keeps the message and prose", () => {
+    const out = stripStackTraces(
+      "Pairing dies after app-switch.\nError: stale wallet pairing\n    at checkPairing (pair.ts:42:10)\n    at async approve (wallet.ts:7:3)",
+    );
+    expect(out).toContain("Pairing dies after app-switch.");
+    expect(out).toContain("Error: stale wallet pairing");
+    expect(out).not.toContain("at checkPairing");
+    expect(out).not.toContain("wallet.ts");
+  });
+  it("strips Python tracebacks but keeps the exception line", () => {
+    const out = stripStackTraces(
+      'Traceback (most recent call last):\n  File "x.py", line 3, in main\n    run()\nValueError: bad literal',
+    );
+    expect(out).not.toContain("Traceback");
+    expect(out).not.toContain('File "x.py"');
+    expect(out).toContain("ValueError: bad literal");
+  });
+  it("strips Java noise lines", () => {
+    const out = stripStackTraces("boom\nCaused by: java.lang.NullPointer\n    ... 5 more");
+    expect(out).toBe("boom");
+  });
+  it("keeps prose that merely starts with the word at", () => {
+    expect(stripStackTraces("at the moment the probe times out")).toBe(
+      "at the moment the probe times out",
+    );
+  });
+  it("returns empty for an all-frames paste", () => {
+    expect(stripStackTraces("    at a (b.ts:1:2)\n    at c (d.ts:3:4)")).toBe("");
+  });
+  it("catches frames even when the first line lost its indentation", () => {
+    // validateWorkshopInput used to trim before stripping, which erased the
+    // indentation marking the first frame line.
+    expect(stripStackTraces("at a (b.ts:1:2)\n    at c (d.ts:3:4)")).toBe("");
+    expect(stripStackTraces("at /app/dist/x.js:10:5\nboom")).toBe("boom");
+  });
 });
 
 describe("validateWorkshopInput", () => {
@@ -105,6 +150,27 @@ describe("validateWorkshopInput", () => {
   it("rejects over-long titles and bodies", () => {
     expect(validateWorkshopInput({ category: "bug", title: "x".repeat(121), body: "y" }).ok).toBe(false);
     expect(validateWorkshopInput({ category: "bug", title: "x", body: "y".repeat(2001) }).ok).toBe(false);
+  });
+  it("rejects a body that is only a pasted stack trace", () => {
+    const r = validateWorkshopInput({
+      category: "bug",
+      title: "x",
+      body: "    at a (b.ts:1:2)\n    at c (d.ts:3:4)",
+    });
+    expect(r.ok).toBe(false);
+  });
+  it("strips stack frames from body and repro, never stores them raw", () => {
+    const r = validateWorkshopInput({
+      category: "bug",
+      title: "x",
+      body: "Pairing dies.\n    at checkPairing (pair.ts:42:10)",
+      repro: "1. pair\n    at tap (ui.ts:9:1)",
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.clean.body).toBe("Pairing dies.");
+      expect(r.clean.repro).toBe("1. pair");
+    }
   });
 });
 

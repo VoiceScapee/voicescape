@@ -136,7 +136,8 @@ export function normalizeUsername(raw: unknown): string | null {
  */
 export function normalizeSignature(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
-  let s = raw.trim().toLowerCase().replace(/\s+/g, " ");
+  // A pasted trace is not a signature — strip frames, cluster on the message.
+  let s = stripStackTraces(raw).toLowerCase().replace(/\s+/g, " ");
   if (!s) return null;
   // Strip volatile identifiers: 0.0.x@seq.nanos, 0.0.x-Seq-nanos, 0x…,
   // bare timestamps, long hex/numeric nonces.
@@ -152,6 +153,41 @@ export function normalizeSignature(raw: unknown): string | null {
 
 export function signatureKey(sig: string): string {
   return createHash("sha256").update(`workshop-sig:${sig}`, "utf8").digest("hex").slice(0, 32);
+}
+
+/**
+ * Strip raw stack-trace frame lines from free text before storage.
+ * Brandon's storage rule: describe the bug in plain words — frames bloat
+ * the record and leak file paths. Human-readable message lines are kept;
+ * only the frame noise is dropped. A body that is NOTHING but a pasted
+ * trace is rejected by validation (it carries no description).
+ */
+export function stripStackTraces(text: string): string {
+  const kept: string[] = [];
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // JS/TS/Java frames. Pasted traces keep their indentation ("    at foo
+    // (bar.ts:1:2)"), but the first line may have been trimmed by the
+    // caller — so also catch structurally-obvious frames: at <sym> (<loc>)
+    // or at <path>:<line>:<col>. Plain prose starting with "at " has
+    // neither parens-with-location nor a :line:col suffix, so it survives.
+    const isFrame =
+      /^\s+at\s+\S/.test(rawLine) ||
+      /^at\s+\S+\s*\([^()]*:\d/.test(line) ||
+      /^at\s+\S+:\d/.test(line);
+    if (isFrame) continue;
+    // Python: 'Traceback (most recent call last):' header + 'File "x", line N' frames
+    if (/^Traceback\s*\(most recent call last\)/i.test(line)) continue;
+    if (/^File\s+"[^"]*"\s*,\s*line\s+\d+/i.test(line)) continue;
+    // Java: "... 5 more", "Caused by: ..."
+    if (/^\.\.\.\s*\d*\s*more$/i.test(line)) continue;
+    if (/^Caused by:/i.test(line)) continue;
+    // Ruby/PHP numbered frames: "#0 /path/file.php(42): ..."
+    if (/^#\d+\s/.test(line)) continue;
+    kept.push(rawLine.trimEnd());
+  }
+  return kept.join("\n").trim();
 }
 
 export function utcDayKey(d: Date = new Date()): string {
@@ -172,8 +208,11 @@ export function validateWorkshopInput(input: {
   const title = typeof input.title === "string" ? input.title.trim() : "";
   if (!title) return { ok: false, error: "title is required" };
   if (title.length > MAX_TITLE_LEN) return { ok: false, error: `title too long (max ${MAX_TITLE_LEN} chars)` };
-  const body = typeof input.body === "string" ? input.body.trim() : "";
-  if (!body) return { ok: false, error: "body is required" };
+  const bodyRaw = typeof input.body === "string" ? input.body : "";
+  // Never store raw stack traces — strip frames before trimming (trimming
+  // first would erase the indentation that marks frame lines).
+  const body = stripStackTraces(bodyRaw);
+  if (!body) return { ok: false, error: "body must describe the issue in plain words — a pasted stack trace alone isn't a report" };
   if (body.length > MAX_BODY_LEN) return { ok: false, error: `body too long (max ${MAX_BODY_LEN} chars)` };
   const clean: { title: string; body: string; tool?: string; repro?: string } = { title, body };
   if (input.tool !== undefined) {
@@ -181,7 +220,8 @@ export function validateWorkshopInput(input: {
     if (tool) clean.tool = tool;
   }
   if (input.repro !== undefined) {
-    const repro = typeof input.repro === "string" ? input.repro.trim().slice(0, MAX_REPRO_LEN) : "";
+    const reproRaw = typeof input.repro === "string" ? input.repro : "";
+    const repro = stripStackTraces(reproRaw).slice(0, MAX_REPRO_LEN);
     if (repro) clean.repro = repro;
   }
   // Signatures are normalized separately (normalizeSignature); over-long
