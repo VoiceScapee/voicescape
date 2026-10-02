@@ -230,10 +230,20 @@ export default function VaultSetupPage() {
               <strong>Total due now:</strong> {summary.exact_total}{" "}
               {usdNote && <span style={{ opacity: 0.7 }}>({usdNote})</span>}
             </div>
-            <div style={{ marginTop: 4, fontSize: 13.5, opacity: 0.7, lineHeight: 1.6 }}>
-              {summary.budget_hbar} HBAR goes into the account for the agent's gas ·{" "}
-              {summary.cost_breakdown.create_fee_hbar.toFixed(2)} HBAR covers Hedera's network fees.
-              Voicescape takes no cut.
+            <div style={{ marginTop: 8, fontSize: 14, lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Where it goes — simply:</div>
+              <div>
+                <strong>{summary.budget_hbar} HBAR</strong> lands in the shared account as gas money.{" "}
+                It&apos;s still yours — your agent spends it only on network fees when it works
+                for you (registering your page ≈ $0.05, updates a few cents).
+              </div>
+              <div style={{ marginTop: 4 }}>
+                <strong>{summary.cost_breakdown.create_fee_hbar.toFixed(2)} HBAR</strong> pays
+                Hedera&apos;s one-time fee to create the account.
+              </div>
+              <div style={{ marginTop: 4, opacity: 0.75 }}>
+                Voicescape takes nothing. Your main wallet is never touched.
+              </div>
             </div>
           </div>
 
