@@ -16,6 +16,25 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getVaultPackage, deleteVaultPackage } from "@/lib/server/vault-packages";
+import { getKvStore } from "@/lib/server/store";
+import { recordClientError } from "@/lib/server/client-errors";
+
+/** Best-effort server-error aggregate for vault-finalize failures. */
+async function vfail(code: string): Promise<void> {
+  try {
+    await recordClientError(
+      getKvStore(),
+      "/api/vault-packages/finalize",
+      code,
+      "server",
+      null,
+      Date.now(),
+      { action: code },
+    );
+  } catch {
+    /* tracking never blocks the response */
+  }
+}
 import { humanKeyFromMirrorAccount } from "@/lib/server/vault-keys";
 import {
   parseKeySet,
@@ -44,7 +63,8 @@ export async function POST(
   const { id } = await params;
   const pkg = await getVaultPackage(id);
   if (!pkg) {
-    return NextResponse.json(
+      await vfail("link-invalid");
+      return NextResponse.json(
       { error: "this setup link is invalid, expired, or already used" },
       { status: 404 },
     );
@@ -63,10 +83,12 @@ export async function POST(
     humanAccountId = typeof body.human_account_id === "string" ? body.human_account_id.trim() : "";
     setupTxId = typeof body.setup_tx_id === "string" && body.setup_tx_id.trim() ? body.setup_tx_id.trim() : null;
   } catch {
-    return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
+      await vfail("bad-request");
+      return NextResponse.json({ error: "body must be JSON" }, { status: 400 });
   }
   if (!ID_RE.test(vaultAccountId) || !ID_RE.test(humanAccountId)) {
-    return NextResponse.json({ error: "vault_account_id and human_account_id must be 0.0.x accounts" }, { status: 400 });
+      await vfail("bad-account");
+      return NextResponse.json({ error: "vault_account_id and human_account_id must be 0.0.x accounts" }, { status: 400 });
   }
 
   // 1. The human's key, fresh from the mirror node.
@@ -77,16 +99,19 @@ export async function POST(
       headers: { Accept: "application/json" },
     });
     if (!res.ok) {
+      await vfail("account-not-found");
       return NextResponse.json({ error: `human account ${humanAccountId} not found on Hedera mainnet` }, { status: 400 });
     }
     const parsed = humanKeyFromMirrorAccount(await res.json().catch(() => null));
     if (!parsed.ok) {
+      await vfail("account-problem");
       return NextResponse.json({ error: `human account problem: ${parsed.error}`, guidance: parsed.guidance }, { status: 400 });
     }
     humanKeyHex = parsed.keyHex;
     humanKeyType = parsed.keyType;
   } catch {
-    return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
+      await vfail("mirror-down");
+      return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
   }
 
   // 2. The vault's on-chain key must be EXACTLY the expected 1-of-2 pair.
@@ -95,6 +120,7 @@ export async function POST(
       headers: { Accept: "application/json" },
     });
     if (!res.ok) {
+      await vfail("vault-not-found");
       return NextResponse.json(
         { error: `vault account ${vaultAccountId} not found yet — the transaction may still be confirming; wait a few seconds and retry` },
         { status: 400 },
@@ -112,6 +138,7 @@ export async function POST(
     const isThreshold1 =
       rawType.includes("THRESHOLD") && body?.key?.threshold === 1 && Array.isArray(body?.key?.keys) && body.key.keys.length === 2;
     if (!actual || !keySetsEqual(expected, actual) || !isThreshold1) {
+      await vfail("key-mismatch");
       return NextResponse.json(
         {
           error: "the vault's on-chain key doesn't match the approved setup",
@@ -124,7 +151,8 @@ export async function POST(
     }
   } catch (e) {
     if (e instanceof Response) throw e;
-    return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
+      await vfail("mirror-down");
+      return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
   }
 
   // 3. Best-effort: link the setup transaction receipt when the mirror knows it.
