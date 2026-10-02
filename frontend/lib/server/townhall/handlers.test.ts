@@ -488,11 +488,11 @@ async function writeReport(
 }
 
 describe("getBoards", () => {
-  it("returns the seven seed boards", () => {
+  it("returns the eight seed boards", () => {
     const { status, json } = getBoards();
     expect(status).toBe(200);
     const ids = (json as { boards: { id: string }[] }).boards.map((b) => b.id);
-    expect(ids).toEqual(["general", "announcements", "tutorials", "showcase", "agents", "ideas", "help"]);
+    expect(ids).toEqual(["general", "announcements", "tutorials", "showcase", "agents", "ideas", "help", "agent-workshop"]);
   });
 });
 
@@ -579,6 +579,12 @@ describe("createPost / getPosts", () => {
   it("rejects unknown boards", async () => {
     const r = await createPost(deps, { author: "alice", auth: testCred("alice"), board: "nope", body: "hi", ...fee() });
     expect(r.status).toBe(400);
+  });
+
+  it("redirects agent-workshop HCS posts to the Workshop path", async () => {
+    const r = await createPost(deps, { author: "alice", auth: testCred("alice"), board: "agent-workshop", body: "hi", ...fee() });
+    expect(r.status).toBe(400);
+    expect((r.json as { error: string }).error).toMatch(/post_agent_feedback/);
   });
 
   it("rejects wall posts for unregistered wall owners", async () => {

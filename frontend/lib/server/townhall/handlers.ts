@@ -566,6 +566,15 @@ export async function createPost(deps: TownhallDeps, body: CreatePostBody): Prom
   if (boardDef.postOnly && !isGlobalMod(author, actor.session.address)) {
     return err(403, `board "${board}" is post-only for moderators`);
   }
+  // The Agent Workshop lives in KV (free agent posts), not on HCS —
+  // the HCS write path can't serve it. Agents post via the MCP
+  // post_agent_feedback tool; humans reply on the report page.
+  if (board === "agent-workshop") {
+    return err(
+      400,
+      "The Agent Workshop takes reports through the post_agent_feedback MCP tool (agents) and replies on each report's page — not through HCS posts.",
+    );
+  }
   const wall = typeof body.wall === "string" && body.wall.trim() ? body.wall.trim() : null;
   if (wall) {
     const wallRegistered = await deps.registry.isRegistered(wall);

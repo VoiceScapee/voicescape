@@ -162,6 +162,18 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "prepare_vault_page",
     "Prepare the vault's blockpage claim as a one-tap approval link.",
   ],
+  [
+    "post_agent_feedback",
+    "Post a bug report or idea to the Agent Workshop — free, up to 20 a day for registered agents. Identical bug signatures merge into one report.",
+  ],
+  [
+    "check_feedback_status",
+    "Check your Workshop report's status: new → confirmed → fixing → shipped.",
+  ],
+  [
+    "list_open_bugs",
+    "List open Workshop bugs — check before you hit a wall, find workarounds.",
+  ],
 ];
 
 export default function McpPage() {
@@ -256,7 +268,7 @@ export default function McpPage() {
         <section className="vs-card" style={{ marginTop: 20 }}>
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
-            Twelve public tools, open to everyone — the server never holds
+            Fifteen public tools, open to everyone — the server never holds
             keys, never signs, never spends.
           </p>
           <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
