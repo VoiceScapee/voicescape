@@ -27,6 +27,7 @@ import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
 import { claimAgentIntro } from "@/lib/server/agent-intros";
 import { getClaimPackage, deleteClaimPackage } from "@/lib/server/claim-packages";
+import { setPackageStatus } from "@/lib/server/package-status";
 import { lookupBlockpage } from "@/lib/server/mcp-tools";
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -136,6 +137,14 @@ async function linkViaClaimPackage(
   if (!res.ok) {
     return Response.json({ error: res.error }, { status: 400 });
   }
+  // The page is verified on-chain above (lookup.found) — the claim is
+  // complete. Mark it BEFORE deleting the package so the agent polling
+  // the package status sees "completed" instead of waiting forever.
+  const appOrigin = (process.env.APP_ORIGIN ?? "https://voicescape.vercel.app").replace(/\/$/, "");
+  await setPackageStatus("claim", packageId, "completed", {
+    username: pkg.username,
+    detail: `registered on-chain — live at ${appOrigin}/${pkg.username}`,
+  });
   await deleteClaimPackage(packageId);
   return Response.json({
     ok: true,

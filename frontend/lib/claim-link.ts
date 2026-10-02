@@ -152,3 +152,26 @@ export async function linkIntroAfterClaim(
     return false;
   }
 }
+
+/**
+ * Best-effort: after the wallet's signature confirms on-chain, tell the
+ * server the claim completed so the agent polling the package status sees
+ * "completed" (with the live page URL) instead of waiting on "finalized"
+ * forever. The server verifies the transaction on the mirror node before
+ * marking it — the client's word alone isn't enough. Never throws.
+ */
+export async function reportClaimCompleted(
+  packageId: string,
+  transactionId: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/claim-packages/${encodeURIComponent(packageId)}/completed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transaction_id: transactionId }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}

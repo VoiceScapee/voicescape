@@ -157,6 +157,39 @@ describe("POST /api/agents/onboard", () => {
     expect(hcs10.unsignedTxs?.inbound.unsignedTxBytes.length).toBeGreaterThan(100);
   });
 
+  it("returns one ordered signing ceremony: publish then directory topics", async () => {
+    const res = await POST(postReq(GOOD_BODY, "good.token"));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as Record<string, unknown>;
+    const ceremony = json.signing_ceremony as {
+      steps: Array<{
+        step: number;
+        kind: string;
+        what: string;
+        unsignedTxBytes: string;
+        transactionId: string;
+        txType: string;
+      }>;
+      final_step: string | null;
+    };
+    expect(ceremony).toBeDefined();
+    // registerPage first (publish), then the two HCS-10 discovery topics.
+    expect(ceremony.steps.map((s) => s.kind)).toEqual([
+      "registerPage",
+      "hcs10-inbound-topic",
+      "hcs10-outbound-topic",
+    ]);
+    // Steps are numbered in signing order, each with real unsigned bytes.
+    for (const [i, s] of ceremony.steps.entries()) {
+      expect(s.step).toBe(i + 1);
+      expect(s.unsignedTxBytes.length).toBeGreaterThan(100);
+      expect(s.transactionId).toMatch(/^0\.0\.\d+@\d+\.\d+$/);
+    }
+    expect(ceremony.final_step).toContain("buildHcs10RegistryRegisterTx");
+    // The guidance is one ceremony, not "sign, then come back and sign again".
+    expect(json.next as string).toContain("One signing ceremony");
+  });
+
   it("honors a custom username when supplied", async () => {
     const res = await POST(
       postReq({ ...GOOD_BODY, username: "scout-7" }, "good.token"),

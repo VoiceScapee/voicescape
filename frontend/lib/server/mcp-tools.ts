@@ -926,12 +926,13 @@ export async function prepareAgentClaim(
       `The page content can be updated later by the page owner.`,
     next:
       `Send the human this approval link: ${approveUrl} — they open it in any browser ` +
-      `(no signup, no sign-in), review the plain-words summary, tap Approve, then confirm ` +
-      `once in their wallet (the wallet shows its own confirmation screen — that is the ` +
-      `wallet's security UI). The page registers to the wallet they connect. ` +
+      `(no signup, no sign-in), review the plain-words summary, tap Approve, then connect ` +
+      `their wallet and confirm once in the wallet's own screen (one signature — the page ` +
+      `publishes and registers in the same stroke). The page registers to the wallet they connect. ` +
       `Afterward verify with lookup_blockpage. ` +
       `Track this package without asking the human: GET ${origin}/api/claim-packages/${record.id}/status ` +
       `— pending → finalized → completed, or race_lost (username taken — prepare a fresh ` +
-      `claim), or expired (link unused after 24h).`,
+      `claim), or expired (link unused after 24h). "completed" means the human's signature ` +
+      `landed on-chain and the blockpage is live — that is your cue the registration is done.`,
   };
 }
