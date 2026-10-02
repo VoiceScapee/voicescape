@@ -15,6 +15,7 @@ import { useParams } from "next/navigation";
 import BuddyActionCard from "@/components/BuddyActionCard";
 import { WalletConnect } from "@/components/WalletConnect";
 import { getHederaPairing, requestWalletConnectUI, useWallet } from "@/lib/wallet";
+import { reportError } from "@/lib/report-error";
 import {
   submitPreparedTx,
   NoWalletPairingError,
@@ -64,6 +65,10 @@ export default function ClaimLinkPage() {
       })
       .catch((e) => {
         if (!cancelled) {
+          reportError(e, "claim-approve", {
+            action: "load-link",
+            walletState: accountId ? "connected" : "disconnected",
+          });
           setPhase({
             kind: "error",
             message: e instanceof ClaimLinkError ? e.message : "Couldn't load this approval link.",
@@ -73,7 +78,7 @@ export default function ClaimLinkPage() {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, accountId]);
 
   // The synthetic action behind the card. Pre-finalize, the owner is the
   // explicit override when the agent named one, otherwise the wallet the
@@ -108,6 +113,7 @@ export default function ClaimLinkPage() {
       const paired = pairing?.accountId;
       if (!paired) throw new NoWalletPairingError("Connect your wallet first.");
       const fin = await finalizeClaimPackage(a.claimPackageId, paired).catch((e) => {
+        reportError(e, "claim-approve", { action: "finalize-claim", walletState: "connected" });
         throw new Error(
           e instanceof ClaimLinkError ? e.message : "Couldn't prepare the transaction — try again in a moment.",
         );

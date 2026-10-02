@@ -33,6 +33,7 @@ import {
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
+import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 
 const READONLY = {
   readOnlyHint: true,
@@ -59,7 +60,8 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async ({ username }) => toolResult(await lookupBlockpage(username)),
+    async ({ username }) =>
+      withMcpErrorTelemetry("lookup_blockpage", async () => toolResult(await lookupBlockpage(username))),
   );
 
   server.registerTool(
@@ -74,7 +76,8 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async ({ transaction_id }) => toolResult(await verifyTip(transaction_id)),
+    async ({ transaction_id }) =>
+      withMcpErrorTelemetry("verify_tip", async () => toolResult(await verifyTip(transaction_id))),
   );
 
   server.registerTool(
@@ -85,7 +88,7 @@ function registerTools(server: McpServer): void {
       inputSchema: z.object({}),
       annotations: READONLY,
     },
-    async () => toolResult(await treasuryStats()),
+    async () => withMcpErrorTelemetry("treasury_stats", async () => toolResult(await treasuryStats())),
   );
 
   server.registerTool(
@@ -104,7 +107,8 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async ({ limit }) => toolResult(await recentTips(limit)),
+    async ({ limit }) =>
+      withMcpErrorTelemetry("recent_tips", async () => toolResult(await recentTips(limit))),
   );
 
   server.registerTool(
@@ -117,7 +121,8 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async ({ query }) => toolResult(await searchAgents(query)),
+    async ({ query }) =>
+      withMcpErrorTelemetry("search_agents", async () => toolResult(await searchAgents(query))),
   );
 
   server.registerTool(
@@ -137,10 +142,11 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async ({ username, cid }) => {
-      const res = await checkProfilePin({ username, cid });
-      return "error" in res ? toolError(res.error) : toolResult(res);
-    },
+    async ({ username, cid }) =>
+      withMcpErrorTelemetry("check_profile_pin", async () => {
+        const res = await checkProfilePin({ username, cid });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
   );
 
   /* ------------------- public intro tool (write) ------------------- */
@@ -160,10 +166,11 @@ function registerTools(server: McpServer): void {
       }),
       annotations: WRITE,
     },
-    async ({ handle, text }) => {
-      const res = await postAgentIntro(handle, text);
-      return "error" in res ? toolError(res.error) : toolResult(res);
-    },
+    async ({ handle, text }) =>
+      withMcpErrorTelemetry("post_agent_intro", async () => {
+        const res = await postAgentIntro(handle, text);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
   );
 
   /* ----------------- public claim-package tool (write) ----------------- */
@@ -244,31 +251,32 @@ function registerTools(server: McpServer): void {
       }),
       annotations: WRITE,
     },
-    async (args) => {
-      const res = await prepareAgentClaim(args);
-      if ("error" in res) return toolError(res.error);
-      // Best-effort: queue the package as a one-tap approval card in the
-      // owner's Buddy chat (only when an owner account was named — without
-      // one, the approval link is the door). The tool itself stays pure —
-      // if the inbox write fails or conflicts, the link still works.
-      let inboxNote = "";
-      if (res.owner_account_id) {
-        try {
-          await stashPendingAction({
-            claimPackageId: res.claim_package_id,
-            username: res.username,
-            owner_account_id: res.owner_account_id,
-            what_youre_signing: res.what_youre_signing,
-          });
-        } catch (e) {
-          inboxNote =
-            e instanceof PendingActionConflictError
-              ? ` Note: ${res.owner_account_id} already has pending proposals — ask the human to check their Buddy chat; the approval link above still works and nothing was overwritten.`
-              : " Note: the Buddy-chat card could not be queued; the approval link above still works.";
+    async (args) =>
+      withMcpErrorTelemetry("prepare_agent_claim", async () => {
+        const res = await prepareAgentClaim(args);
+        if ("error" in res) return toolError(res.error);
+        // Best-effort: queue the package as a one-tap approval card in the
+        // owner's Buddy chat (only when an owner account was named — without
+        // one, the approval link is the door). The tool itself stays pure —
+        // if the inbox write fails or conflicts, the link still works.
+        let inboxNote = "";
+        if (res.owner_account_id) {
+          try {
+            await stashPendingAction({
+              claimPackageId: res.claim_package_id,
+              username: res.username,
+              owner_account_id: res.owner_account_id,
+              what_youre_signing: res.what_youre_signing,
+            });
+          } catch (e) {
+            inboxNote =
+              e instanceof PendingActionConflictError
+                ? ` Note: ${res.owner_account_id} already has pending proposals — ask the human to check their Buddy chat; the approval link above still works and nothing was overwritten.`
+                : " Note: the Buddy-chat card could not be queued; the approval link above still works.";
+          }
         }
-      }
-      return toolResult({ ...res, next: res.next + inboxNote });
-    },
+        return toolResult({ ...res, next: res.next + inboxNote });
+      }),
   );
 
   /* ----------------- public template catalog (read) ----------------- */
@@ -306,10 +314,11 @@ function registerTools(server: McpServer): void {
       }),
       annotations: WRITE,
     },
-    async (args) => {
-      const res = await prepareAgentVault(args);
-      return "error" in res ? toolError(res.error) : toolResult(res);
-    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_agent_vault", async () => {
+        const res = await prepareAgentVault(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
   );
 
   server.registerTool(
@@ -324,10 +333,11 @@ function registerTools(server: McpServer): void {
       }),
       annotations: READONLY,
     },
-    async (args) => {
-      const res = await checkVaultHealthTool(args);
-      return "error" in res ? toolError(res.error) : toolResult(res);
-    },
+    async (args) =>
+      withMcpErrorTelemetry("check_vault_health", async () => {
+        const res = await checkVaultHealthTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
   );
 
   server.registerTool(
@@ -366,10 +376,11 @@ function registerTools(server: McpServer): void {
       }),
       annotations: WRITE,
     },
-    async (args) => {
-      const res = await prepareVaultPage(args);
-      return "error" in res ? toolError(res.error) : toolResult(res);
-    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_vault_page", async () => {
+        const res = await prepareVaultPage(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
   );
 }
 
