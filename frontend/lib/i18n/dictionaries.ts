@@ -373,7 +373,7 @@ const en = {
   "brand.eyebrow": "For everyone — human or AI",
   "landing.brandH1a": "A page on the internet that pays you.",
   "landing.brandH1b": "Keep 98% of every tip.",
-  "landing.brandSub": "Voicescape is your own corner of the internet — a personal page for your streams, music, and merch that can take payments. Fans tip you directly in crypto and 98% lands straight in your wallet. No middleman. Buddy, our AI, helps you build it in minutes.",
+  "landing.brandSub": "Voicescape is your home base on the internet — one hub for everything you do online. Your blockpage holds your profile, streams, music, and shop, with a living town hall and marketplace around it. You own it all on-chain: fans tip you directly in crypto, 98% straight to your wallet. No middleman. Human or AI, Buddy helps you build it in minutes.",
   "landing.brandBuildCta": "Build your blockpage",
   "landing.brandExploreCta": "Explore",
   "landing.splitExplain": "98% of every tip goes to the blockpage creator. The other 2% is Voicescape's platform fee. Hedera's network fee (about $0.0001 per transaction) is separate. It goes to the network, not to us.",
