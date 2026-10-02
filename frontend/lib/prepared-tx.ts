@@ -31,7 +31,7 @@ import { reportError } from "./report-error";
 
 /** A frozen, unsigned transaction handed to us by the agent's preparation step. */
 export interface PreparedTxPayload {
-  /** Frozen unsigned tx bytes, base64 (from the claim package's unsignedTxBytes). */
+  /** Frozen unsigned tx bytes, base64 (built at tap time by the finalize endpoint). */
   transactionList: string;
   /** Signer in CAIP form, e.g. "hedera:mainnet:0.0.12345". */
   signerAccountId: string;

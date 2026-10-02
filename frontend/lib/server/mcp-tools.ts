@@ -27,7 +27,7 @@ import {
 } from "./agent-intros";
 import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
-import { buildRegisterTransaction } from "./agents/executor";
+import { stashClaimPackage } from "./claim-packages";
 
 export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const REGISTRY_ID = "0.0.10854058";
@@ -657,16 +657,19 @@ export async function postAgentIntro(
 
 export interface AgentClaimPackage {
   username: string;
-  owner_account_id: string;
-  operator: string;
+  /** The owner override, or null — then the wallet that taps approve owns it. */
+  owner_account_id: string | null;
+  /** Explicit 0x operator override, or null (defaults to the payer's address). */
+  operator: string | null;
   purpose: string;
-  cid: string;
   page_url: string;
-  unsignedTxBytes: string;
-  description: string;
-  transactionId: string;
-  txType: string;
-  owner_funded: boolean;
+  /** Short id behind the approval link. */
+  claim_package_id: string;
+  /** The one-tap approval link the agent hands the human. */
+  approve_url: string;
+  /** Intro claim code to auto-link after registration, or null. */
+  intro_claim_code: string | null;
+  owner_funded: boolean | null;
   owner_balance_hbar: number | null;
   what_youre_signing: string;
   next: string;
@@ -674,22 +677,90 @@ export interface AgentClaimPackage {
 
 export interface PrepareAgentClaimArgs {
   username: string;
-  owner_account_id: string;
+  /**
+   * OPTIONAL override. When omitted, the page registers to whatever wallet
+   * taps approve on the link — the human never types an account id.
+   */
+  owner_account_id?: string;
   operator?: string;
   purpose: string;
   display_name?: string;
   capabilities?: string[];
+  /** Claim code from post_agent_intro — auto-linked after registration. */
+  intro_claim_code?: string;
+}
+
+/** Resolve a 0.0.x account's EVM address (long-zero fallback). Fail-soft. */
+export async function evmAddressForAccount(
+  accountId: string,
+  fetchFn: FetchFn = fetch,
+): Promise<string> {
+  try {
+    const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${accountId}`);
+    const evm = ok && body && typeof body?.evm_address === "string" ? body.evm_address : null;
+    if (evm && /^0x[0-9a-fA-F]{40}$/.test(evm)) return evm.toLowerCase();
+  } catch {
+    /* fall through to long-zero */
+  }
+  return "0x" + BigInt(accountId.split(".")[2]).toString(16).padStart(40, "0");
+}
+
+export interface AgentPageSpec {
+  username: string;
+  displayName: string;
+  purpose: string;
+  capabilities: string[];
+  operator: string;
 }
 
 /**
- * Build a complete, UNSIGNED agent-blockpage claim package for the
+ * Build + pin the starter agent page (server-side Pinata, like
+ * /api/agents/onboard). Called at FINALIZE time — pinning at prepare time
+ * orphans a page every time the human never taps.
+ */
+export async function pinAgentPage(spec: AgentPageSpec): Promise<string> {
+  const template = TEMPLATES.find((t) => t.id === "agent-personal");
+  if (!template) throw new Error("agent page template missing");
+  const page = JSON.parse(JSON.stringify(template.page)) as {
+    username: string;
+    ownerType: string;
+    purpose: string;
+    blocks: Array<Record<string, unknown>>;
+  };
+  page.username = spec.username;
+  page.ownerType = "agent";
+  page.purpose = spec.purpose;
+  for (const block of page.blocks) {
+    if (block.type === "hero") {
+      block.title = spec.displayName.slice(0, 60);
+      block.subtitle = spec.purpose.slice(0, 120);
+    } else if (block.type === "bio") {
+      block.text = spec.purpose;
+    } else if (block.type === "capabilities") {
+      block.items = spec.capabilities;
+    } else if (block.type === "operator") {
+      block.wallet = spec.operator;
+      block.name = `${spec.displayName} operator wallet`;
+    }
+  }
+  const result = (await publishPageJson(page)) as { cid: string };
+  return result.cid;
+}
+
+/**
+ * Prepare an agent-blockpage claim as a one-tap approval link — the
  * Sovereign mode: the human's EXISTING wallet owns the agent page — no
  * new wallet, no new seed phrase, no wallet-switching.
  *
- * The agent calls this with the human's account id; the server validates
- * the username is free, confirms the account exists and is funded (via
- * the mirror node), pins a starter agent page to IPFS, and returns the
- * frozen registerPage transaction for the human to sign in their wallet.
+ * The agent calls this with a username and purpose (the owner's account id
+ * is an OPTIONAL override). The server validates the username is free and
+ * stashes a claim package under a short random id — the agent hands the
+ * human the approve_url. Nothing is pinned and no transaction is built
+ * until the human taps: the approve page pairs their wallet, then a
+ * finalize step pins the starter page and builds the frozen registerPage
+ * transaction with the ACTUALLY CONNECTED account as payer. Whoever pairs
+ * owns it — the human never types an account id.
+ *
  * Pure preparation — no keys, no signing, no submission, no spending.
  * The human's single signature is the only thing that can execute it.
  */
@@ -701,9 +772,15 @@ export async function prepareAgentClaim(
   if (!USERNAME_RE.test(username)) {
     return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
   }
-  const ownerAccountId = (args.owner_account_id ?? "").trim();
-  if (!/^0\.0\.\d+$/.test(ownerAccountId)) {
-    return { error: `invalid owner_account_id "${args.owner_account_id}" — expected a 0.0.x Hedera account` };
+  // owner_account_id is an OPTIONAL override. Default: the wallet that
+  // taps approve on the link owns the page.
+  let ownerAccountId: string | null = null;
+  const rawOwner = (args.owner_account_id ?? "").trim();
+  if (rawOwner !== "") {
+    if (!/^0\.0\.\d+$/.test(rawOwner)) {
+      return { error: `invalid owner_account_id "${args.owner_account_id}" — expected a 0.0.x Hedera account` };
+    }
+    ownerAccountId = rawOwner;
   }
   const purpose = (args.purpose ?? "").trim();
   if (!purpose || purpose.length > 500) {
@@ -713,6 +790,7 @@ export async function prepareAgentClaim(
   const capabilities = Array.isArray(args.capabilities)
     ? args.capabilities.filter((c): c is string => typeof c === "string" && c.trim() !== "").map((c) => c.trim().slice(0, 40)).slice(0, 20)
     : [];
+  const introClaimCode = (args.intro_claim_code ?? "").trim().toUpperCase() || null;
 
   // 1. Username must be free (on-chain Registry read).
   let existing: BlockpageLookup;
@@ -725,28 +803,25 @@ export async function prepareAgentClaim(
     return { error: `username "${username}" is already registered — pick another` };
   }
 
-  // 2. Owner account must exist and be funded (it pays the registerPage gas).
-  let evmAddress: string | null = null;
+  // 2. When an owner override is given, it must exist (it pays the gas).
+  //    Without an override there is nothing to check — the approving wallet
+  //    pays, and finalize re-validates everything at tap time.
   let balanceHbar: number | null = null;
-  try {
-    const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${ownerAccountId}`);
-    if (!ok || !body) return { error: `account ${ownerAccountId} not found on Hedera mainnet` };
-    const balTinybar = body?.balance?.balance;
-    if (typeof balTinybar === "number") balanceHbar = balTinybar / 100_000_000;
-    const evm = typeof body?.evm_address === "string" ? body.evm_address : null;
-    evmAddress = evm && /^0x[0-9a-fA-F]{40}$/.test(evm) ? evm.toLowerCase() : null;
-  } catch {
-    return { error: "mirror node unavailable — try again in a moment" };
+  if (ownerAccountId) {
+    try {
+      const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${ownerAccountId}`);
+      if (!ok || !body) return { error: `account ${ownerAccountId} not found on Hedera mainnet` };
+      const balTinybar = body?.balance?.balance;
+      if (typeof balTinybar === "number") balanceHbar = balTinybar / 100_000_000;
+    } catch {
+      return { error: "mirror node unavailable — try again in a moment" };
+    }
   }
-  // Fallback: long-zero form when the mirror node has no EVM address.
-  if (!evmAddress) {
-    const num = BigInt(ownerAccountId.split(".")[2]);
-    evmAddress = "0x" + num.toString(16).padStart(40, "0");
-  }
-  const funded = balanceHbar !== null && balanceHbar > 0;
+  const funded = balanceHbar === null ? null : balanceHbar > 0;
 
-  // 3. Operator: explicit 0x, or default to the owner account itself.
-  let operator = evmAddress;
+  // 3. Operator override, if given (0x form); otherwise the payer's address
+  //    at finalize time.
+  let operator: string | null = null;
   if (args.operator !== undefined && args.operator !== "") {
     const op = args.operator.trim().toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(op)) {
@@ -755,72 +830,44 @@ export async function prepareAgentClaim(
     operator = op;
   }
 
-  // 4. Pin the starter agent page (server-side Pinata, like /api/agents/onboard).
-  let cid: string;
-  try {
-    const template = TEMPLATES.find((t) => t.id === "agent-personal");
-    if (!template) return { error: "agent page template missing" };
-    const page = JSON.parse(JSON.stringify(template.page)) as {
-      username: string;
-      ownerType: string;
-      purpose: string;
-      blocks: Array<Record<string, unknown>>;
-    };
-    page.username = username;
-    page.ownerType = "agent";
-    page.purpose = purpose;
-    for (const block of page.blocks) {
-      if (block.type === "hero") {
-        block.title = displayName.slice(0, 60);
-        block.subtitle = purpose.slice(0, 120);
-      } else if (block.type === "bio") {
-        block.text = purpose;
-      } else if (block.type === "capabilities") {
-        block.items = capabilities;
-      } else if (block.type === "operator") {
-        block.wallet = operator;
-        block.name = `${displayName} operator wallet`;
-      }
-    }
-    const result = (await publishPageJson(page)) as { cid: string };
-    cid = result.cid;
-  } catch (e) {
-    const message = e instanceof Error ? e.message : "pinning failed";
-    return { error: `could not pin agent page: ${message}` };
-  }
+  // 4. Stash the package — nothing pinned, nothing built, until the tap.
+  const origin = getRequestContext().origin.replace(/\/$/, "");
+  const record = await stashClaimPackage({
+    username,
+    purpose,
+    displayName,
+    capabilities,
+    operator,
+    claimCode: introClaimCode,
+    ownerAccountId,
+    pageUrl: `${origin}/${username}`,
+  });
+  const approveUrl = `${origin}/c/${record.id}`;
 
-  // 5. Build the UNSIGNED registerPage transaction (payer = owner account).
-  let built: { unsignedTxBytes: string; description: string; transactionId: string; txType: string };
-  try {
-    built = buildRegisterTransaction(
-      { username, ipfsHash: cid, ownerType: 1, operator, purpose },
-      { payerAccountId: ownerAccountId, network: "mainnet", registryContractAddress: REGISTRY_EVM },
-    );
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "failed to build transaction" };
-  }
-
+  const ownerPhrase = ownerAccountId
+    ? `owned by ${ownerAccountId}`
+    : "owned by the wallet that approves";
   return {
     username,
     owner_account_id: ownerAccountId,
     operator,
     purpose,
-    cid,
-    page_url: `https://voicescape.vercel.app/${username}`,
-    unsignedTxBytes: built.unsignedTxBytes,
-    description: built.description,
-    transactionId: built.transactionId,
-    txType: built.txType,
+    page_url: `${origin}/${username}`,
+    claim_package_id: record.id,
+    approve_url: approveUrl,
+    intro_claim_code: introClaimCode,
     owner_funded: funded,
     owner_balance_hbar: balanceHbar,
     what_youre_signing:
       `registerPage("${username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
-      `registers "${username}" as an AGENT page owned by ${ownerAccountId}, operator ${operator}, ` +
+      `registers "${username}" as an AGENT page ${ownerPhrase}, ` +
       `with the purpose "${purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
-      `The page content (IPFS ${cid}) can be updated later by the page owner.`,
+      `The page content can be updated later by the page owner.`,
     next:
-      "Have the human open voicescape.vercel.app/agents/claim, connect the " +
-      `${ownerAccountId} wallet, load this package, review what they are signing, and sign + submit. ` +
-      "Then verify with lookup_blockpage and link the intro claim code.",
+      `Send the human this approval link: ${approveUrl} — they open it in any browser ` +
+      `(no signup, no sign-in), review the plain-words summary, tap Approve, then confirm ` +
+      `once in their wallet (the wallet shows its own confirmation screen — that is the ` +
+      `wallet's security UI). The page registers to the wallet they connect. ` +
+      `Afterward verify with lookup_blockpage.`,
   };
 }

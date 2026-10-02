@@ -23,15 +23,12 @@ import { useState } from "react";
 import BuddyActionCard from "./BuddyActionCard";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
-import type {
-  PreparedTxPayload,
-  SubmitPreparedTxResult,
-} from "@/lib/prepared-tx";
+import type { SubmitPreparedTxResult } from "@/lib/prepared-tx";
 
 export interface BuddyDashboardProps {
   overview: AgentOverview;
   proposals: PendingAction[];
-  onApprove: (payload: PreparedTxPayload) => Promise<SubmitPreparedTxResult>;
+  onApprove: (action: PendingAction) => Promise<SubmitPreparedTxResult>;
   onProposalSettled: (id: string) => void;
 }
 
@@ -177,7 +174,7 @@ export default function BuddyDashboard({
                 title={p.title}
                 summary={p.summary}
                 costEstimate={p.costEstimate}
-                payload={p.payload}
+                action={p}
                 onApprove={onApprove}
                 onSettled={() => onProposalSettled(p.id)}
               />

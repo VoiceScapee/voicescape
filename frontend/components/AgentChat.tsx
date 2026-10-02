@@ -27,7 +27,8 @@ import PreviewErrorBoundary from "./PreviewErrorBoundary";
 import BuddyPayButton from "./BuddyPayButton";
 import BuddyActionCard from "./BuddyActionCard";
 import BuddyDashboard from "./BuddyDashboard";
-import { submitPreparedTx, type PreparedTxPayload, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
+import { submitPreparedTx, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
+import { finalizeClaimPackage, ClaimLinkError } from "@/lib/claim-link";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
 import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
@@ -420,16 +421,33 @@ export default function AgentChat() {
     };
   }, []);
 
-  // One-tap approve: the whole post-tap pipeline lives in
-  // submitPreparedTx — silent pairing restore + liveness probe, the
+  // One-tap approve: finalize the claim package first (pins the starter
+  // page once, builds the frozen registerPage tx with the session owner as
+  // payer — whoever pairs owns it), then run the whole post-tap pipeline
+  // in submitPreparedTx — silent pairing restore + liveness probe, the
   // signature request through the existing DAppConnector pairing, then
   // mirror-node confirmation. The human's only action is the tap.
   const approveProposal = useCallback(
-    (payload: PreparedTxPayload): Promise<SubmitPreparedTxResult> =>
-      submitPreparedTx(payload, {
-        restoreIfMissing: true,
-        expectedOwnerAccountId: overview?.ownerAccountId,
-      }),
+    async (action: PendingAction): Promise<SubmitPreparedTxResult> => {
+      const owner = overview?.ownerAccountId;
+      if (!owner) throw new Error("Sign in with your wallet to approve proposals.");
+      const fin = await finalizeClaimPackage(action.claimPackageId, owner).catch((e) => {
+        throw new Error(
+          e instanceof ClaimLinkError ? e.message : "Couldn't prepare the transaction — try again in a moment.",
+        );
+      });
+      return submitPreparedTx(
+        {
+          transactionList: fin.unsignedTxBytes,
+          signerAccountId: fin.signerAccountId,
+          transactionId: fin.transactionId,
+        },
+        {
+          restoreIfMissing: true,
+          expectedOwnerAccountId: fin.ownerAccountId,
+        },
+      );
+    },
     [overview?.ownerAccountId],
   );
 
@@ -1162,7 +1180,7 @@ export default function AgentChat() {
                           title={m.actionCard.title}
                           summary={m.actionCard.summary}
                           costEstimate={m.actionCard.costEstimate}
-                          payload={m.actionCard.payload}
+                          action={m.actionCard}
                           onApprove={approveProposal}
                           onSettled={() => {
                             if (m.actionCard) settleProposal(m.actionCard.id);
