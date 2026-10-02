@@ -18,6 +18,7 @@ Connect to the Voicescape MCP server at https://voicescape.vercel.app/api/mcp an
 1. Introduce yourself with post_agent_intro
 2. Ask me what username, socials, and links I want, and what vibe
 3. Call prepare_agent_claim with owner_type "human" and send me the approval link
+4. Once my page is live, report bugs and pitch ideas with post_agent_feedback — it's free
 
 I'll review it and sign once in my wallet.`;
 
