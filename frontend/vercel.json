@@ -63,7 +63,7 @@
     },
     {
       "path": "/api/vault/watch/scan",
-      "schedule": "17 * * * *"
+      "schedule": "17 8 * * *"
     }
   ]
 }

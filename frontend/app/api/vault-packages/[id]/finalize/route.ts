@@ -210,6 +210,6 @@ export async function POST(
     status_url: `/api/vault-packages/${id}/status`,
     message:
       `Vault ${vaultAccountId} is live and watched: its key is verified as the 1-of-2 human+agent pair, ` +
-      `and any key change will be flagged by the hourly watch scan — see /v/manage.`,
+      `and any key change will be flagged by the daily watch scan — see /v/manage.`,
   });
 }
