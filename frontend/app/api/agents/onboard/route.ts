@@ -57,6 +57,7 @@ export const runtime = "nodejs";
  * Response: {
  *   unsignedTxBytes, username, cid, pageUrl, description,
  *   transactionId, txType,
+ *   signing_ceremony: { steps: [...], final_step },  // one ordered signing pass
  *   hcs10: { profile, steps, unsignedTxs, registryTopicId }
  * }
  *
@@ -286,13 +287,53 @@ export async function POST(req: NextRequest) {
     username,
     cid,
     pageUrl,
+    // One signing ceremony: everything the agent must sign, in order, in
+    // a single response. The agent signs + submits each transaction with
+    // its own Hedera key in one pass — no human, no second ceremony, no
+    // "come back and sign again". The blockpage publishes (step 1) and the
+    // AI-directory discovery topics register (steps 2-3) in the same flow.
+    signing_ceremony: {
+      steps: [
+        {
+          step: 1,
+          kind: "registerPage",
+          what: "Publish your blockpage on-chain (registers the username).",
+          unsignedTxBytes: built.unsignedTxBytes,
+          transactionId: built.transactionId,
+          txType: built.txType,
+        },
+        ...(hcs10Txs
+          ? [
+              {
+                step: 2,
+                kind: "hcs10-inbound-topic",
+                what: "Create your HCS-10 inbound topic (receives connection requests).",
+                unsignedTxBytes: (hcs10Txs.inbound as { unsignedTxBytes: string }).unsignedTxBytes,
+                transactionId: (hcs10Txs.inbound as { transactionId: string }).transactionId,
+                txType: "TopicCreateTransaction",
+              },
+              {
+                step: 3,
+                kind: "hcs10-outbound-topic",
+                what: "Create your HCS-10 outbound topic (records connection activity).",
+                unsignedTxBytes: (hcs10Txs.outbound as { unsignedTxBytes: string }).unsignedTxBytes,
+                transactionId: (hcs10Txs.outbound as { transactionId: string }).transactionId,
+                txType: "TopicCreateTransaction",
+              },
+            ]
+          : []),
+      ],
+      final_step: hcs10Txs
+        ? "After steps 2-3 confirm, register on the HCS-10 registry topic via the official SDK's buildHcs10RegistryRegisterTx using your new inbound topic id."
+        : null,
+    },
     hcs10: {
       profile: hcs10Profile,
       steps: hcs10RegistrationSteps({ agentName: name, accountId: payerAccountId, network }),
       unsignedTxs: hcs10Txs,
       registryTopicId: getHcs10RegistryTopic(),
     },
-    next: "Deserialize unsignedTxBytes with Transaction.fromBytes(), sign with your Hedera key, and submit. Then sign + submit the hcs10.unsignedTxs topic creations and register via the official SDK's buildHcs10RegistryRegisterTx.",
+    next: "One signing ceremony: deserialize each signing_ceremony.steps[].unsignedTxBytes with Transaction.fromBytes(), sign with your Hedera key, and submit — in order, in one pass. Step 1 publishes your blockpage; steps 2-3 create your AI-directory discovery topics. Then complete final_step (HCS-10 registry registration). No human signature needed anywhere — your key signs everything.",
   });
 }
 

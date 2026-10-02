@@ -3,16 +3,15 @@
 /**
  * /c/[id] — the short approval link an outside agent drops in its own chat.
  *
- * Pairing is the ONLY auth here (no 7-day session): the human opens the
- * link, reviews what the agent prepared, connects a wallet, and taps
- * Approve. The tap finalizes the claim package (pins the starter page
- * once, builds the frozen registerPage transaction with the connected
- * wallet as payer) and submits it through submitPreparedTx — one tap out
- * to the wallet's own confirmation screen and back.
+ * Flow: Review → Approve → Connect → Done. The human reviews what the
+ * agent prepared and taps Approve (intent — no wallet needed). Then they
+ * connect a wallet, and the signature fires immediately on connect: one
+ * signature, and the page is live and registered. Pairing is the ONLY auth
+ * here (no 7-day session). Connecting at the last moment (instead of
+ * before approving) keeps the wallet session fresh for the signature.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import BuddyActionCard from "@/components/BuddyActionCard";
 import { WalletConnect } from "@/components/WalletConnect";
 import { getHederaPairing, requestWalletConnectUI, useWallet } from "@/lib/wallet";
 import { reportError } from "@/lib/report-error";
@@ -26,6 +25,7 @@ import {
   fetchClaimPreview,
   finalizeClaimPackage,
   linkIntroAfterClaim,
+  reportClaimCompleted,
   ClaimLinkError,
   type ClaimSummary,
 } from "@/lib/claim-link";
@@ -45,6 +45,12 @@ export default function ClaimLinkPage() {
   const [summary, setSummary] = useState<ClaimSummary | null>(null);
   const [preview, setPreview] = useState<VoicescapePage | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
+  // Approve-before-connect: the tap on "Approve" records intent (no wallet
+  // needed). The wallet connects after, and the signature fires on connect.
+  const [intentApproved, setIntentApproved] = useState(false);
+  const [signError, setSignError] = useState<string | null>(null);
+  const [signing, setSigning] = useState(false);
+  const signStarted = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,10 +141,41 @@ export default function ClaimLinkPage() {
         // registered on-chain. Never blocks the success state.
         linked = await linkIntroAfterClaim(id, summary.claim_code);
       }
+      if (result.confirmed) {
+        // Tell the server the signature landed so the agent polling the
+        // package status sees "completed" instead of waiting forever.
+        // Best-effort: the status endpoint also self-heals from the chain.
+        reportClaimCompleted(id, result.txId).catch(() => {});
+      }
       setPhase({ kind: "done", linked });
     },
     [id, summary],
   );
+
+  // Approve-before-connect: once the human has tapped Approve (intent) and
+  // a wallet is paired, fire the signature immediately. One ceremony:
+  // connect → sign → done. Guarded so it runs exactly once.
+  useEffect(() => {
+    if (!intentApproved || !accountId || !action || signStarted.current) return;
+    if (phase.kind !== "review") return;
+    signStarted.current = true;
+    setSigning(true);
+    setSignError(null);
+    approve(action)
+      .then((result) => onSettled(result))
+      .catch((e) => {
+        signStarted.current = false;
+        setSigning(false);
+        const message =
+          e instanceof NoWalletPairingError
+            ? "Wallet disconnected — reconnect and try again."
+            : e instanceof Error
+              ? e.message
+              : "Couldn't complete the signature — try again.";
+        setSignError(message);
+        reportError(e, "claim-approve", { action: "approve-after-connect", walletState: "connected" });
+      });
+  }, [intentApproved, accountId, action, approve, onSettled, phase.kind]);
 
   return (
     <main
@@ -169,17 +206,20 @@ export default function ClaimLinkPage() {
             @{summary.username}
           </h1>
           <p style={{ margin: "0 0 16px", opacity: 0.75, fontSize: 14, lineHeight: 1.6 }}>
-            {summary.owner_type === "human" ? "Your AI agent prepared this blockpage for you." : "An AI agent prepared this blockpage claim."} Review it, connect a wallet,
-            and tap Approve — the page registers to the wallet you connect.
+            {summary.owner_type === "human" ? "Your AI agent prepared this blockpage for you." : "An AI agent prepared this blockpage claim."} Review it,
+            tap Approve, then connect a wallet to sign — one signature and the page is live and registered.
           </p>
 
           {/* What-happens-next stepper — the human opening this link is often
-              non-technical and arrived from their AI chat, not our site. */}
+              non-technical and arrived from their AI chat, not our site.
+              Order: Review → Approve → Connect → Done. Approve is the
+              human's decision (no wallet needed); the wallet connects last
+              and the signature fires on connect. */}
           <div style={{ display: "flex", gap: 0, marginBottom: 18 }} aria-label="Steps">
             {[
               { n: 1, label: "Review", done: true },
-              { n: 2, label: "Connect", done: !!accountId },
-              { n: 3, label: "Approve", done: false },
+              { n: 2, label: "Approve", done: intentApproved },
+              { n: 3, label: "Connect", done: intentApproved && (!!accountId || signing || phase.kind === "done") },
               { n: 4, label: "Done", done: phase.kind === "done" },
             ].map((s, i, arr) => (
               <div key={s.n} style={{ flex: 1, display: "flex", alignItems: "center" }}>
@@ -263,9 +303,9 @@ export default function ClaimLinkPage() {
             </div>
           )}
 
-          {phase.kind === "review" && !accountId && (
+          {phase.kind === "review" && !intentApproved && (
             <button
-              onClick={requestWalletConnectUI}
+              onClick={() => setIntentApproved(true)}
               style={{
                 width: "100%",
                 padding: "14px",
@@ -278,20 +318,92 @@ export default function ClaimLinkPage() {
                 cursor: "pointer",
               }}
             >
-              Connect wallet to review &amp; approve
+              Approve @{summary.username}
             </button>
           )}
 
-          {phase.kind === "review" && accountId && action && (
-            <BuddyActionCard
-              label={action.label}
-              title={action.title}
-              summary={action.summary}
-              costEstimate={action.costEstimate}
-              action={action}
-              onApprove={approve}
-              onSettled={onSettled}
-            />
+          {phase.kind === "review" && intentApproved && !accountId && !signing && (
+            <>
+              <p style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.8, margin: "0 0 10px" }}>
+                Approved ✓ — now connect your wallet. The signature fires
+                right after you connect; one confirmation and @{summary.username} is live.
+              </p>
+              <button
+                onClick={requestWalletConnectUI}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: 12,
+                  border: "none",
+                  background: "linear-gradient(135deg,#7b3ff2,#b45cf0)",
+                  color: "white",
+                  fontSize: 16,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                Connect wallet to sign
+              </button>
+            </>
+          )}
+
+          {phase.kind === "review" && intentApproved && signing && (
+            <div
+              style={{
+                width: "100%",
+                padding: "14px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,.14)",
+                background: "rgba(255,255,255,.06)",
+                color: "white",
+                fontSize: 15,
+                fontWeight: 700,
+                textAlign: "center",
+              }}
+            >
+              Check your wallet — confirm the signature to publish @{summary.username}…
+            </div>
+          )}
+
+          {phase.kind === "review" && signError && (
+            <div style={{ border: "1px solid rgba(255,120,120,.4)", borderRadius: 12, padding: "12px 14px", background: "rgba(255,80,80,.06)", marginTop: 10 }}>
+              <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.9 }}>{signError}</div>
+              <button
+                onClick={() => {
+                  setSignError(null);
+                  signStarted.current = false;
+                  if (!accountId) requestWalletConnectUI();
+                  else {
+                    // Wallet is paired but the sign failed — retry the ceremony.
+                    signStarted.current = true;
+                    setSigning(true);
+                    if (action) {
+                      approve(action)
+                        .then((result) => onSettled(result))
+                        .catch((e) => {
+                          signStarted.current = false;
+                          setSigning(false);
+                          setSignError(e instanceof Error ? e.message : "Couldn't complete the signature — try again.");
+                        });
+                    }
+                  }
+                }}
+                style={{
+                  marginTop: 10,
+                  width: "100%",
+                  padding: "12px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "linear-gradient(135deg,#7b3ff2,#b45cf0)",
+                  color: "white",
+                  fontSize: 15,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {!accountId ? "Reconnect wallet" : "Try signing again"}
+              </button>
+            </div>
           )}
 
           {phase.kind === "done" && (
@@ -314,9 +426,10 @@ export default function ClaimLinkPage() {
           )}
 
           <p style={{ fontSize: 12.5, opacity: 0.55, marginTop: 18, lineHeight: 1.6 }}>
-            No signup, no sign-in — connecting your wallet is the approval.
-            Tapping Approve asks your wallet to show its own confirmation screen;
-            nothing is signed until you confirm there.
+            No signup, no sign-in. Tapping Approve records your decision —
+            nothing is signed until you connect your wallet and confirm in
+            the wallet's own screen. One signature publishes the blockpage
+            and registers it — done.
           </p>
         </>
       )}

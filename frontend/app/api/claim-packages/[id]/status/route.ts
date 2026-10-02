@@ -6,12 +6,20 @@
  * expired. A 404 here means the id never existed; a well-formed id with
  * no status record and no live package means it expired silently after
  * the 24h TTL (reported as expired so the agent stops guessing).
+ *
+ * Self-healing: a "finalized" record means the unsigned tx was issued and
+ * we're waiting on the human's signature. If the page is now registered
+ * on-chain (the human signed but the completion signal never arrived —
+ * closed tab, failed request), this endpoint upgrades the record to
+ * "completed" on read so the agent learns the truth instead of waiting
+ * forever. Best-effort: a failed chain read returns the recorded status.
  */
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getClaimPackage } from "@/lib/server/claim-packages";
-import { getPackageStatus } from "@/lib/server/package-status";
+import { getPackageStatus, setPackageStatus } from "@/lib/server/package-status";
+import { lookupBlockpage } from "@/lib/server/mcp-tools";
 
 export async function GET(
   _req: Request,
@@ -20,6 +28,35 @@ export async function GET(
   const { id } = await params;
   const recorded = await getPackageStatus("claim", id);
   if (recorded) {
+    // Self-heal: "finalized" waits on the human's signature. If the page
+    // is on-chain now, the human signed and the completion signal was
+    // lost — upgrade to "completed" so the agent stops waiting.
+    if (recorded.status === "finalized" && recorded.username) {
+      try {
+        const lookup = await lookupBlockpage(recorded.username);
+        if (lookup.found) {
+          const appOrigin = (process.env.APP_ORIGIN ?? "https://voicescape.vercel.app").replace(
+            /\/$/,
+            "",
+          );
+          await setPackageStatus("claim", id, "completed", {
+            username: recorded.username,
+            transactionId: recorded.transactionId,
+            detail: `registered on-chain — live at ${appOrigin}/${recorded.username}`,
+          });
+          return NextResponse.json({
+            package_id: recorded.packageId,
+            status: "completed",
+            updated_at: new Date().toISOString(),
+            username: recorded.username,
+            ...(recorded.transactionId ? { transaction_id: recorded.transactionId } : {}),
+            detail: `registered on-chain — live at ${appOrigin}/${recorded.username}`,
+          });
+        }
+      } catch {
+        // Chain read failed — fall through to the recorded status.
+      }
+    }
     return NextResponse.json({
       package_id: recorded.packageId,
       status: recorded.status,
