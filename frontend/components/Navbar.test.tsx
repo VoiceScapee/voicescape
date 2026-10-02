@@ -37,3 +37,30 @@ describe("Navbar — legal links", () => {
     expect(learn).toContain('href: "/privacy"');
   });
 });
+
+describe("Navbar — mobile menu (Brandon 2026-10-01 cleanup)", () => {
+  const src = readFileSync(new URL("./Navbar.tsx", import.meta.url), "utf8");
+
+  it("renders the three nav groups as accordions, not a flat 17-row list", () => {
+    expect(src).toContain("MobileNavGroup");
+    expect(src).toContain('id="create"');
+    expect(src).toContain('id="learn"');
+    expect(src).toContain('id="community"');
+    // The old flat labelled sections are gone.
+    expect(src).not.toContain("vs-nav-group-label");
+  });
+
+  it("gives the header a solid background while the mobile menu is open", () => {
+    expect(src).toContain("vs-nav-menu-open");
+  });
+
+  it("keeps support/install/language/wallet on the desktop row", () => {
+    expect(src).toContain("vs-nav-desktop-tools");
+    expect(src).toContain("SUPPORT_HREF");
+  });
+
+  it("separates wallet controls into a mobile menu footer", () => {
+    expect(src).toContain("vs-nav-mobile-footer");
+    expect(src).toContain("vs-nav-mobile-account");
+  });
+});

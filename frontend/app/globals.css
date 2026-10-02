@@ -444,16 +444,12 @@ a {
   display: none;
 }
 
-.vs-nav-group-label {
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--vs-muted);
-  margin: 10px 4px 6px;
-}
-
-.vs-nav-group-label:first-child {
-  margin-top: 2px;
+/* Desktop row wrapper for support/install/language/wallet: display:contents
+   keeps them as direct flex items of the nav row (no layout change). */
+@media (min-width: 1024px) {
+  .vs-nav-desktop-tools {
+    display: contents;
+  }
 }
 
 @media (max-width: 1023px) {
@@ -470,25 +466,114 @@ a {
   .vs-nav-items {
     display: none;
   }
-  /* The single mobile menu: every nav item, no tall wrapping stack. */
+  /* While the mobile menu is open the header goes solid: with the
+     transparent header, page content scrolled straight through behind the
+     open menu (Brandon 2026-10-01). Desktop keeps the floating look. */
+  .vs-nav-menu-open {
+    background: var(--vs-bg);
+    border-bottom: 1px solid var(--vs-border);
+  }
+  /* The single mobile menu: grouped accordions, not a tall flat stack. */
   .vs-nav-items.vs-nav-open {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 6px;
+    gap: 8px;
     position: absolute;
     top: calc(100% + 6px);
     left: 12px;
     right: 12px;
     margin-left: 0;
-    background: rgba(13, 16, 26, 0.98);
+    background: var(--vs-bg);
     border: 1px solid var(--vs-border);
-    border-radius: 14px;
+    border-radius: 16px;
     padding: 12px;
     z-index: 60;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
     max-height: calc(100vh - 96px);
     overflow-y: auto;
+  }
+  /* One accordion card per nav group: tap the header to scan, tap again
+     to pick. 52px headers, 46px rows — built for thumbs. */
+  .vs-nav-accordion {
+    border: 1px solid var(--vs-border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+  }
+  .vs-nav-accordion-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 52px;
+    padding: 8px 16px;
+    background: transparent;
+    border: 0;
+    color: var(--vs-text);
+    font-family: var(--vs-font);
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .vs-nav-accordion-label {
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--vs-muted);
+  }
+  .vs-nav-accordion-chevron {
+    color: var(--vs-muted);
+    font-size: 14px;
+    transition: transform 0.18s ease;
+  }
+  .vs-nav-accordion-chevron.is-open {
+    transform: rotate(180deg);
+  }
+  .vs-nav-accordion-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 6px 8px;
+    border-top: 1px solid var(--vs-border);
+  }
+  .vs-nav-accordion-body .vs-btn.vs-nav-link {
+    min-height: 46px;
+    font-size: 16px;
+  }
+  /* Support row matches the accordion cards so the menu reads as one list. */
+  .vs-nav-support-row {
+    min-height: 52px;
+    border: 1px solid var(--vs-border);
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    justify-content: space-between;
+  }
+  .vs-nav-external {
+    color: var(--vs-muted);
+    font-size: 14px;
+  }
+  /* Footer: wallet controls and app tools get their own separated section
+     instead of floating loose at the end of the link list. */
+  .vs-nav-mobile-footer {
+    border-top: 1px solid var(--vs-border);
+    margin-top: 4px;
+    padding-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .vs-nav-mobile-account {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .vs-nav-mobile-tools {
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
   .vs-btn.vs-nav-link {
     width: 100%;

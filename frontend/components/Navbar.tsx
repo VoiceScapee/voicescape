@@ -22,7 +22,7 @@ interface NavbarProps {
 
 /**
  * Nav groups, defined once and rendered twice: as click-to-toggle
- * dropdowns on desktop, and as flat labelled sections inside the single
+ * dropdowns on desktop, and as collapsible accordions inside the single
  * mobile menu. Destinations stay identical in both presentations.
  */
 const LEARN_ITEMS: NavDropdownItem[] = [
@@ -58,8 +58,67 @@ const CREATE_ITEMS: NavDropdownItem[] = [
 
 const SUPPORT_HREF = "https://discord.gg/2KGzPduUN5";
 
+/**
+ * Mobile accordion group (Brandon 2026-10-01): the flat 17-row mobile menu
+ * was unreadable, so the three nav groups collapse into accordions — one
+ * tap to scan the groups, one more to pick a destination. Only one group
+ * opens at a time; headers stay 52px tall for thumbs.
+ */
+function MobileNavGroup({
+  id,
+  label,
+  items,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  id: string;
+  label: React.ReactNode;
+  items: NavDropdownItem[];
+  open: boolean;
+  onToggle: () => void;
+  onNavigate: () => void;
+}) {
+  const bodyId = `vs-mobile-nav-${id}`;
+  return (
+    <div className="vs-nav-accordion">
+      <button
+        type="button"
+        className="vs-nav-accordion-head"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={onToggle}
+      >
+        <span className="vs-nav-accordion-label">{label}</span>
+        <span
+          aria-hidden="true"
+          className={`vs-nav-accordion-chevron${open ? " is-open" : ""}`}
+        >
+          ▾
+        </span>
+      </button>
+      {open && (
+        <div id={bodyId} className="vs-nav-accordion-body">
+          {items.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="vs-btn vs-btn-ghost vs-nav-link"
+              onClick={onNavigate}
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Navbar({ right, hideLogo = false }: NavbarProps) {
   const [open, setOpen] = useState(false);
+  // Which mobile accordion group is expanded (null = all collapsed).
+  const [openGroup, setOpenGroup] = useState<string | null>("create");
   const rootRef = useRef<HTMLElement>(null);
 
   // The mobile menu closes on outside tap or Escape, same as NavDropdown.
@@ -81,13 +140,31 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
     };
   }, [open ]);
 
-  const close = () => setOpen(false);
+  const close = () => {
+    setOpen(false);
+    // The next open starts from the same predictable place.
+    setOpenGroup("create");
+  };
+
+  const toggleMenu = () => {
+    setOpen((v) => {
+      if (!v) setOpenGroup("create");
+      return !v;
+    });
+  };
+
+  const toggleGroup = (id: string) =>
+    setOpenGroup((g) => (g === id ? null : id));
 
   return (
     <header
       ref={rootRef}
       // No banner bar behind the logo (Brandon 2026-09-13): the header is
-      // transparent so just the logo and nav float over the page.
+      // transparent so just the logo and nav float over the page. Exception
+      // (Brandon 2026-10-01): while the mobile menu is open the header goes
+      // solid — page content scrolling through behind the open menu looked
+      // broken. Desktop keeps the floating look.
+      className={open ? "vs-nav-menu-open" : undefined}
       style={{
         position: "sticky",
         top: 0,
@@ -135,14 +212,14 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
           className="vs-btn vs-btn-ghost vs-nav-burger"
           aria-expanded={open}
           aria-label="Menu"
-          onClick={() => setOpen((v) => !v)}
+          onClick={toggleMenu}
         >
           <span aria-hidden="true">{open ? "✕" : "☰"}</span>
         </button>
         {/* Global network pulse: the dapp breathing with Hedera mainnet. */}
         <NetworkPulse />
         <div className={`vs-nav-items${open ? " vs-nav-open" : ""}`}>
-          {/* Desktop: grouped dropdowns. Mobile: flat sections below. */}
+          {/* Desktop: grouped dropdowns. Mobile: accordions below. */}
           <div className="vs-nav-desktop-only">
             <NavDropdown label={<T k="nav.create" />} items={CREATE_ITEMS} />
           </div>
@@ -153,59 +230,73 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
             <NavDropdown label={<T k="nav.community" />} items={COMMUNITY_ITEMS} />
           </div>
           <div className="vs-nav-mobile-only">
-            <p className="vs-nav-group-label">
-              <T k="nav.create" />
-            </p>
-            {CREATE_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="vs-btn vs-btn-ghost vs-nav-link"
-                onClick={close}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <p className="vs-nav-group-label">
-              <T k="nav.learn" />
-            </p>
-            {LEARN_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="vs-btn vs-btn-ghost vs-nav-link"
-                onClick={close}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <p className="vs-nav-group-label">
-              <T k="nav.community" />
-            </p>
-            {COMMUNITY_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="vs-btn vs-btn-ghost vs-nav-link"
-                onClick={close}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {/* Mobile: the same three groups as desktop, collapsed into
+                accordions so the menu scans in three rows, not seventeen. */}
+            <MobileNavGroup
+              id="create"
+              label={<T k="nav.create" />}
+              items={CREATE_ITEMS}
+              open={openGroup === "create"}
+              onToggle={() => toggleGroup("create")}
+              onNavigate={close}
+            />
+            <MobileNavGroup
+              id="learn"
+              label={<T k="nav.learn" />}
+              items={LEARN_ITEMS}
+              open={openGroup === "learn"}
+              onToggle={() => toggleGroup("learn")}
+              onNavigate={close}
+            />
+            <MobileNavGroup
+              id="community"
+              label={<T k="nav.community" />}
+              items={COMMUNITY_ITEMS}
+              open={openGroup === "community"}
+              onToggle={() => toggleGroup("community")}
+              onNavigate={close}
+            />
+            <a
+              href={SUPPORT_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="vs-btn vs-btn-ghost vs-nav-link vs-nav-support-row"
+              title="Customer support on Discord"
+              onClick={close}
+            >
+              <T k="nav.support" />
+              <span aria-hidden="true" className="vs-nav-external">
+                ↗
+              </span>
+            </a>
+            {/* Account + tools footer: wallet controls and app settings get
+                their own separated section instead of floating loose. */}
+            <div className="vs-nav-mobile-footer">
+              {right ? (
+                <div className="vs-nav-mobile-account">{right}</div>
+              ) : null}
+              <div className="vs-nav-mobile-tools">
+                <InstallAppButton />
+                <LanguageSelector />
+              </div>
+            </div>
           </div>
-          <a
-            href={SUPPORT_HREF}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="vs-btn vs-btn-ghost vs-nav-link"
-            title="Customer support on Discord"
-            onClick={close}
-          >
-            <T k="nav.support" />
-          </a>
-          <InstallAppButton />
-          <LanguageSelector />
-          {right}
+          {/* Desktop row: support, install, language, wallet. display:contents
+              keeps them as direct flex items of the nav row. */}
+          <div className="vs-nav-desktop-only vs-nav-desktop-tools">
+            <a
+              href={SUPPORT_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="vs-btn vs-btn-ghost vs-nav-link"
+              title="Customer support on Discord"
+            >
+              <T k="nav.support" />
+            </a>
+            <InstallAppButton />
+            <LanguageSelector />
+            {right}
+          </div>
         </div>
       </nav>
     </header>
