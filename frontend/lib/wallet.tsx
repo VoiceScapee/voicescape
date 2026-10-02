@@ -220,9 +220,8 @@ export function friendlyWalletError(e: unknown): string {
  * is a fresh pairing, not retrying the same action.
  */
 export const STALE_CONNECTION_COPY =
-  "HashPack didn't respond — your wallet connection is stale. " +
-  "Disconnect Voicescape in HashPack's connected apps, sign out here, " +
-  "then reconnect and try again.";
+  "HashPack didn't respond — the wallet connection went stale. " +
+  "Reconnect your wallet and try again.";
 
 /**
  * Event the in-chat one-tap approval card dispatches when the pairing is
@@ -271,6 +270,15 @@ export async function repairStaleConnection(deps: {
 
 /** How long the proactive session-liveness probe waits for a wallet answer. */
 export const WALLET_LIVENESS_TIMEOUT_MS = 10_000;
+
+/** Upper bound for the one-shot re-wake attempt after a failed liveness probe. */
+export const REWAKE_TIMEOUT_MS = 12_000;
+/**
+ * Liveness-probe budget for the post-re-wake recheck. Shorter than the
+ * first probe — the relay socket was just reconnected, so a healthy
+ * session answers fast; a slow one is genuinely dying.
+ */
+export const REWAKE_PROBE_TIMEOUT_MS = 8_000;
 
 /**
  * Testable core of the liveness probe: asks the wallet for the paired
@@ -776,6 +784,46 @@ export async function restoreHederaPairing(): Promise<string | null> {
     return accountId;
   } catch {
     // Stale storage / relay unreachable / HashPack #291: not connected.
+    return null;
+  }
+}
+
+/**
+ * Re-wake a pairing whose liveness probe just failed — no user action.
+ *
+ * Mobile browsers suspend background tabs: after an app-switch pairing
+ * (wallet app → back to the browser) the WalletConnect relay socket is
+ * often dead even though the session itself is persisted and healthy.
+ * Dropping the connector singleton and rebuilding rehydrates the
+ * persisted session from localStorage and reconnects the relay — exactly
+ * what a page reload does, without the reload.
+ *
+ * Returns the fresh pairing, or null when the session is truly gone (or
+ * the rebuild timed out). Never throws — callers fall through to the
+ * normal stale-pairing path with its one-tap reconnect. Deps are
+ * injectable for tests; production callers pass none.
+ */
+export async function rewakeHederaPairing(
+  deps: {
+    drop?: () => void;
+    restore?: () => Promise<string | null>;
+    read?: () => { hc: DAppConnector; accountId: string } | null;
+    timeoutMs?: number;
+  } = {},
+): Promise<{
+  hc: DAppConnector;
+  accountId: string;
+} | null> {
+  const drop = deps.drop ?? dropConnector;
+  const restore = deps.restore ?? restoreHederaPairing;
+  const read = deps.read ?? getHederaPairing;
+  const timeoutMs = deps.timeoutMs ?? REWAKE_TIMEOUT_MS;
+  try {
+    drop();
+    const accountId = await withTimeout(restore(), timeoutMs, "wallet re-wake timed out");
+    if (!accountId) return null;
+    return read();
+  } catch {
     return null;
   }
 }

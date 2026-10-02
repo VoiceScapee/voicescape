@@ -4,6 +4,7 @@ import {
   isStaleConnectionError,
   isWalletSessionAlive,
   repairStaleConnection,
+  rewakeHederaPairing,
   STALE_CONNECTION_COPY,
 } from "./wallet";
 
@@ -11,7 +12,7 @@ describe("isStaleConnectionError", () => {
   it("matches the real stale-session tip failure copy", () => {
     expect(
       isStaleConnectionError(
-        "Tip failed: HashPack didn't respond — your wallet connection is stale. Disconnect Voicescape in HashPack's connected apps, sign out here, then reconnect and try again.",
+        "Tip failed: HashPack didn't respond — the wallet connection went stale. Reconnect your wallet and try again.",
       ),
     ).toBe(true);
   });
@@ -167,5 +168,69 @@ describe("isWalletSessionAlive", () => {
     // Fresh module state in tests has no connector — never claims stale,
     // just reports no live session.
     await expect(isWalletSessionAlive(50)).resolves.toBe(false);
+  });
+});
+
+describe("rewakeHederaPairing", () => {
+  const fakePairing = { hc: {}, accountId: "0.0.123" } as never;
+
+  it("drops, restores, and returns the fresh pairing", async () => {
+    const order: string[] = [];
+    const result = await rewakeHederaPairing({
+      drop: () => {
+        order.push("drop");
+      },
+      restore: async () => {
+        order.push("restore");
+        return "0.0.123";
+      },
+      read: () => {
+        order.push("read");
+        return fakePairing;
+      },
+    });
+    expect(order).toEqual(["drop", "restore", "read"]);
+    expect(result).toBe(fakePairing);
+  });
+
+  it("returns null (never throws) when the restore finds no session", async () => {
+    const result = await rewakeHederaPairing({
+      drop: () => {},
+      restore: async () => null,
+      read: () => fakePairing,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the restore throws", async () => {
+    const result = await rewakeHederaPairing({
+      drop: () => {},
+      restore: async () => {
+        throw new Error("relay down");
+      },
+      read: () => fakePairing,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the rebuild exceeds the timeout", async () => {
+    const result = await rewakeHederaPairing({
+      drop: () => {},
+      restore: () => new Promise<string | null>(() => {}), // never settles
+      read: () => fakePairing,
+      timeoutMs: 20,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("returns null when the drop itself throws", async () => {
+    const result = await rewakeHederaPairing({
+      drop: () => {
+        throw new Error("nope");
+      },
+      restore: async () => "0.0.123",
+      read: () => fakePairing,
+    });
+    expect(result).toBeNull();
   });
 });

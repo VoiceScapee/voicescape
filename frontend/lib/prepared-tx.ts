@@ -12,9 +12,13 @@
  * UX contract (Brandon's one-tap directive): the human's ONLY action is the
  * Approve tap. This module silently restores the pairing and probes
  * liveness first (isWalletSessionAlive is a read-only balance check — it
- * never prompts). It surfaces an error only when the agent cannot fix the
- * state itself: no pairing at all (the user must connect — inherently a
- * human action), or a dead pairing (needs a re-pair the agent can't do).
+ * never prompts). When the probe fails it re-wakes the session once
+ * (rebuilds the relay transport from the persisted pairing — the usual
+ * victim is a socket that died while the tab was backgrounded during an
+ * app-switch pairing) and re-probes. It surfaces an error only when the
+ * agent cannot fix the state itself: no pairing at all (the user must
+ * connect — inherently a human action), or a dead pairing (needs a
+ * re-pair the agent can't do).
  *
  * HONEST CONSTRAINT (code comment, not user-facing copy): the wallet app
  * itself may show its own signature prompt when the request fires — that
@@ -24,7 +28,9 @@
 import {
   getHederaPairing,
   restoreHederaPairing,
+  rewakeHederaPairing,
   isWalletSessionAlive,
+  REWAKE_PROBE_TIMEOUT_MS,
   STALE_CONNECTION_COPY,
 } from "./wallet";
 import { reportError } from "./report-error";
@@ -135,7 +141,22 @@ export async function submitPreparedTx(
 
   // 2. Silent liveness probe. Read-only, never prompts, never throws.
   //    A dead pairing can't be fixed by the agent — surface it.
-  const alive = await isWalletSessionAlive();
+  let alive = await isWalletSessionAlive();
+  if (!alive) {
+    // The relay socket often dies while the tab is backgrounded during an
+    // app-switch pairing: the session is persisted and healthy, only the
+    // transport is asleep. Re-wake once (rebuild from the persisted
+    // session, exactly like a page reload) and re-probe before calling it
+    // stale — the 2026-10-01 claim failure probed dead seconds after a
+    // good pairing, and this turns that case into a silent recovery.
+    // Never throws; a null re-wake falls through to the stale path below.
+    phase("checking");
+    const rewoken = await rewakeHederaPairing();
+    if (rewoken) {
+      pairing = rewoken;
+      alive = await isWalletSessionAlive(REWAKE_PROBE_TIMEOUT_MS);
+    }
+  }
   if (!alive) {
     reportError(new Error("stale wallet pairing for prepared tx"), "prepared-tx", {
       action: "approve-action",
