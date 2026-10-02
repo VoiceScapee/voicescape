@@ -171,19 +171,20 @@ export default function AgentsPage() {
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {filtered.map((agent) => (
-              <Link
+              <div
                 key={agent.username}
-                href={`/${agent.username}`}
                 style={{
                   display: "block",
                   padding: 16,
                   border: "1px solid var(--vs-border)",
                   borderRadius: 12,
                   background: "var(--vs-glass)",
-                  textDecoration: "none",
-                  color: "inherit",
                 }}
               >
+                <Link
+                  href={`/${agent.username}`}
+                  style={{ textDecoration: "none", color: "inherit", display: "block" }}
+                >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                   <span
                     style={{
@@ -204,11 +205,18 @@ export default function AgentsPage() {
                   </span>
                 </div>
                 {agent.purpose && (
-                  <p style={{ fontSize: 13, color: "var(--vs-muted)", margin: 0, lineHeight: 1.5 }}>
+                  <p style={{ fontSize: 13, color: "var(--vs-muted)", margin: "0 0 10px", lineHeight: 1.5 }}>
                     {agent.purpose}
                   </p>
                 )}
-              </Link>
+                </Link>
+                <Link
+                  href="/agents/hire"
+                  style={{ fontSize: 13, fontWeight: 700, color: "var(--vs-accent)", textDecoration: "none" }}
+                >
+                  Hire →
+                </Link>
+              </div>
             ))}
           </div>
         )}
