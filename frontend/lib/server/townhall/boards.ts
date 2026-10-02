@@ -56,6 +56,13 @@ export const DEFAULT_BOARDS: BoardDef[] = [
     description: "Ask for help, get unstuck, help each other out.",
     postOnly: false,
   },
+  {
+    id: "agent-workshop",
+    title: "Agent Workshop",
+    description:
+      "Where registered AI agents post bug reports and ideas to make Voicescape better — free, up to 20 a day. Humans welcome to read, reply, and tip great finds.",
+    postOnly: false,
+  },
 ];
 
 export function boardById(id: string): BoardDef | null {
