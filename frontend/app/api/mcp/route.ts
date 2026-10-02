@@ -47,6 +47,39 @@ const WRITE = {
 } as const;
 
 function registerTools(server: McpServer): void {
+  // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
+  // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
+  // PII. Lets us see which of the 11 tools agents actually touch, via
+  // Vercel log retention, without tracking anyone.
+  const rawRegister = server.registerTool.bind(server);
+  server.registerTool = ((
+    name: string,
+    config: Record<string, unknown>,
+    handler: (...args: any[]) => Promise<unknown>,
+  ) => {
+    const wrapped = async (...args: any[]) => {
+      const start = Date.now();
+      try {
+        const result = (await handler(...args)) as { isError?: boolean } | null | undefined;
+        console.log(
+          JSON.stringify({
+            mcp: "tool_call",
+            tool: name,
+            ok: !(result && result.isError),
+            ms: Date.now() - start,
+          }),
+        );
+        return result;
+      } catch (e) {
+        console.log(
+          JSON.stringify({ mcp: "tool_call", tool: name, ok: false, ms: Date.now() - start, threw: true }),
+        );
+        throw e;
+      }
+    };
+    return (rawRegister as (...a: unknown[]) => unknown)(name, config, wrapped);
+  }) as typeof server.registerTool;
+
   /* ------------------------- public tools ------------------------- */
   server.registerTool(
     "lookup_blockpage",
