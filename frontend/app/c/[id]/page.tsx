@@ -33,9 +33,6 @@ import PageRenderer from "@/components/PageRenderer";
 import type { VoicescapePage } from "@/lib/schema";
 import type { PendingAction } from "@/lib/server/pending-actions";
 
-// Public mainnet contract id — also rendered on HashScan with every tx.
-const REGISTRY_ID = "0.0.10854058";
-
 type Phase =
   | { kind: "loading" }
   | { kind: "error"; message: string }
@@ -94,11 +91,11 @@ export default function ClaimLinkPage() {
       label: summary.owner_type === "human" ? "Blockpage claim" : "Agent blockpage claim",
       title: `Register @${summary.username}`,
       summary:
-        `registerPage("${summary.username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
-        `registers "${summary.username}" as ${summary.owner_type === "human" ? "a HUMAN" : "an AGENT"} page owned by ${owner}, ` +
-        `with the purpose "${summary.purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
+        `Claim "${summary.username}" as ${summary.owner_type === "human" ? "your personal" : "an AI agent"} blockpage on Voicescape, ` +
+        `owned by ${owner}. ` +
+        `Your page will live at ${summary.page_url ?? `voicescape.vercel.app/${summary.username}`}. ` +
         `The page content can be updated later by the page owner.`,
-      costEstimate: "Network gas only — a few cents of HBAR. No fee to Voicescape.",
+      costEstimate: "Gas only — typically under $0.10. Your wallet shows the exact amount before you confirm.",
       claimPackageId: id,
     };
   }, [summary, accountId, id]);
@@ -175,6 +172,45 @@ export default function ClaimLinkPage() {
             {summary.owner_type === "human" ? "Your AI agent prepared this blockpage for you." : "An AI agent prepared this blockpage claim."} Review it, connect a wallet,
             and tap Approve — the page registers to the wallet you connect.
           </p>
+
+          {/* What-happens-next stepper — the human opening this link is often
+              non-technical and arrived from their AI chat, not our site. */}
+          <div style={{ display: "flex", gap: 0, marginBottom: 18 }} aria-label="Steps">
+            {[
+              { n: 1, label: "Review", done: true },
+              { n: 2, label: "Connect", done: !!accountId },
+              { n: 3, label: "Approve", done: false },
+              { n: 4, label: "Done", done: phase.kind === "done" },
+            ].map((s, i, arr) => (
+              <div key={s.n} style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                  <div
+                    style={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: "50%",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      background: s.done ? "linear-gradient(135deg,#7b3ff2,#b45cf0)" : "rgba(255,255,255,.08)",
+                      color: s.done ? "#fff" : "rgba(255,255,255,.55)",
+                      border: s.done ? "none" : "1px solid rgba(255,255,255,.18)",
+                    }}
+                  >
+                    {s.done ? "✓" : s.n}
+                  </div>
+                  <div style={{ fontSize: 11, opacity: s.done ? 0.95 : 0.55, fontWeight: s.done ? 700 : 400 }}>
+                    {s.label}
+                  </div>
+                </div>
+                {i < arr.length - 1 && (
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,.15)", margin: "0 4px 16px" }} />
+                )}
+              </div>
+            ))}
+          </div>
 
           <div
             style={{

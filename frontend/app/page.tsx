@@ -63,6 +63,13 @@ export default function LandingPage() {
                 onboarded users go straight to the builder. */}
             <BuildCtaButton />
             <Link
+              href="/ai-agent"
+              className="vs-btn vs-btn-ghost"
+              style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
+            >
+              🤖 Have an AI agent?
+            </Link>
+            <Link
               href="/explore"
               className="vs-btn vs-btn-ghost"
               style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
