@@ -16,6 +16,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getVaultPackage, deleteVaultPackage } from "@/lib/server/vault-packages";
+import { setPackageStatus } from "@/lib/server/package-status";
 import { humanKeyFromMirrorAccount } from "@/lib/server/vault-keys";
 import {
   parseKeySet,
@@ -162,6 +163,14 @@ export async function POST(
     );
   }
   await deleteVaultPackage(id);
+  // Durable grant record for the agent: the vault is now saved and reusable.
+  // The watch record (1yr TTL) is the persistent human↔agent↔vault linkage;
+  // this status lets the agent confirm completion by polling.
+  await setPackageStatus("vault", id, "completed", {
+    vaultAccountId: vaultAccountId,
+    transactionId: setupTxId ?? undefined,
+    detail: `Vault ${vaultAccountId} is live and watched — reusable for future blockpage operations`,
+  });
 
   return NextResponse.json({
     vault_account_id: vaultAccountId,
@@ -170,8 +179,9 @@ export async function POST(
     agent_username: pkg.agentUsername,
     budget_hbar: pkg.budgetHbar,
     watch: "active",
+    status_url: `/api/vault-packages/${id}/status`,
     message:
       `Vault ${vaultAccountId} is live and watched: its key is verified as the 1-of-2 human+agent pair, ` +
-      `and any key change will be flagged within minutes on /v/manage.`,
+      `and any key change will be flagged by the hourly watch scan — see /v/manage.`,
   });
 }

@@ -86,6 +86,6 @@ export async function POST(req: Request): Promise<Response> {
     watched: true,
     vault_account_id: vaultAccountId,
     key_verification: agentPublicKey ? "active — the on-chain key is compared against the registered human+agent pair" : "unverified — no agent key registered, so key changes can't be verified",
-    message: `Watching ${vaultAccountId}: key integrity, suspicious activity, and the ~1 HBAR balance floor are checked every few minutes. See /v/manage.`,
+    message: `Watching ${vaultAccountId}: key integrity, suspicious activity, and the ~1 HBAR balance floor are checked by the hourly watch scan. See /v/manage.`,
   });
 }

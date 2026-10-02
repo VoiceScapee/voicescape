@@ -20,6 +20,7 @@ import {
   getClaimPackage,
   saveClaimPackage,
 } from "@/lib/server/claim-packages";
+import { setPackageStatus } from "@/lib/server/package-status";
 import {
   lookupBlockpage,
   pinAgentPage,
@@ -53,6 +54,17 @@ export async function POST(
     );
   }
 
+  // Idempotent replay: a double-tap/double-submit returns the SAME unsigned
+  // transaction instead of building a second one. The package is single-use
+  // in effect — one transaction id ever leaves this endpoint per package.
+  if (pkg.finalizedResponseJson) {
+    try {
+      return NextResponse.json(JSON.parse(pkg.finalizedResponseJson));
+    } catch {
+      /* fall through and rebuild below */
+    }
+  }
+
   let accountId = "";
   try {
     const body = (await req.json()) as { account_id?: unknown };
@@ -82,6 +94,12 @@ export async function POST(
     );
   }
   if (lookup.found) {
+    // Record the loss so the AGENT polling the status endpoint learns the
+    // username is gone — previously only the human saw this 409.
+    await setPackageStatus("claim", id, "race_lost", {
+      username: pkg.username,
+      detail: `"${pkg.username}" was registered by someone else before the human tapped — prepare a fresh claim with a different name`,
+    });
     return NextResponse.json(
       { error: `"${pkg.username}" was just registered by someone else — ask your agent for a fresh name` },
       { status: 409 },
@@ -170,7 +188,7 @@ export async function POST(
     `with the purpose "${pkg.purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
     `The page content (IPFS ${cid}) can be updated later by the page owner.`;
 
-  return NextResponse.json({
+  const responseBody = {
     username: pkg.username,
     owner_account_id: owner,
     unsignedTxBytes: built.unsignedTxBytes,
@@ -184,5 +202,20 @@ export async function POST(
     cid,
     intro_claim_code: pkg.claimCode,
     owner_funded: funded,
+    status_url: `/api/claim-packages/${id}/status`,
+  };
+
+  // Single-use in effect: cache the response so a replay returns the same
+  // transaction id instead of minting a second one. The package itself
+  // still expires on its 24h TTL; the intro-link deletes it on completion.
+  pkg.finalizedAt = Date.now();
+  pkg.finalizedResponseJson = JSON.stringify(responseBody);
+  await saveClaimPackage(pkg);
+  await setPackageStatus("claim", id, "finalized", {
+    username: pkg.username,
+    transactionId: built.transactionId,
+    detail: "unsigned registerPage transaction issued — waiting for the human's wallet signature",
   });
+
+  return NextResponse.json(responseBody);
 }
