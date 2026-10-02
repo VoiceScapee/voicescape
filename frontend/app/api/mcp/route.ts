@@ -19,6 +19,7 @@ import { z } from "zod-v4";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
 import { recordClientError } from "@/lib/server/client-errors";
+import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
 import {
   requestContextStorage,
   toolResult,
@@ -53,7 +54,7 @@ const WRITE = {
 function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 11 tools agents actually touch, via
+  // PII. Lets us see which of the 12 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -63,6 +64,9 @@ function registerTools(server: McpServer): void {
   ) => {
     const wrapped = async (...args: any[]) => {
       const start = Date.now();
+      // Anonymous visitor counter (Brandon 2026-10-01): aggregate only,
+      // fire-and-forget, never blocks or breaks the tool call.
+      void recordMcpToolCall(name);
       try {
         const result = (await handler(...args)) as { isError?: boolean } | null | undefined;
         console.log(
