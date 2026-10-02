@@ -22,11 +22,14 @@ import {
 } from "@/lib/prepared-tx";
 import {
   fetchClaimSummary,
+  fetchClaimPreview,
   finalizeClaimPackage,
   linkIntroAfterClaim,
   ClaimLinkError,
   type ClaimSummary,
 } from "@/lib/claim-link";
+import PageRenderer from "@/components/PageRenderer";
+import type { VoicescapePage } from "@/lib/schema";
 import type { PendingAction } from "@/lib/server/pending-actions";
 
 // Public mainnet contract id — also rendered on HashScan with every tx.
@@ -42,6 +45,7 @@ export default function ClaimLinkPage() {
   const { id } = useParams<{ id: string }>();
   const { account: accountId } = useWallet();
   const [summary, setSummary] = useState<ClaimSummary | null>(null);
+  const [preview, setPreview] = useState<VoicescapePage | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
 
   useEffect(() => {
@@ -52,6 +56,11 @@ export default function ClaimLinkPage() {
           setSummary(s);
           setPhase({ kind: "review" });
         }
+        // Preview is best-effort — the text summary above is the decision
+        // surface; a failed preview never blocks approval.
+        fetchClaimPreview(id).then((p) => {
+          if (!cancelled && p) setPreview(p as unknown as VoicescapePage);
+        });
       })
       .catch((e) => {
         if (!cancelled) {
@@ -77,11 +86,11 @@ export default function ClaimLinkPage() {
       kind: "agent-claim",
       createdAt: Date.now(),
       ownerAccountId: summary.owner_account_id ?? accountId ?? "",
-      label: "Agent blockpage claim",
+      label: summary.owner_type === "human" ? "Blockpage claim" : "Agent blockpage claim",
       title: `Register @${summary.username}`,
       summary:
         `registerPage("${summary.username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
-        `registers "${summary.username}" as an AGENT page owned by ${owner}, ` +
+        `registers "${summary.username}" as ${summary.owner_type === "human" ? "a HUMAN" : "an AGENT"} page owned by ${owner}, ` +
         `with the purpose "${summary.purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
         `The page content can be updated later by the page owner.`,
       costEstimate: "Network gas only — a few cents of HBAR. No fee to Voicescape.",
@@ -139,7 +148,7 @@ export default function ClaimLinkPage() {
     >
       <WalletConnect />
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
-        Voicescape · Agent claim approval
+        Voicescape · {summary?.owner_type === "human" ? "Blockpage" : "Agent"} claim approval
       </div>
 
       {phase.kind === "loading" && <p>Loading the approval…</p>}
@@ -157,7 +166,7 @@ export default function ClaimLinkPage() {
             @{summary.username}
           </h1>
           <p style={{ margin: "0 0 16px", opacity: 0.75, fontSize: 14, lineHeight: 1.6 }}>
-            An AI agent prepared this blockpage claim. Review it, connect a wallet,
+            {summary.owner_type === "human" ? "Your AI agent prepared this blockpage for you." : "An AI agent prepared this blockpage claim."} Review it, connect a wallet,
             and tap Approve — the page registers to the wallet you connect.
           </p>
 
@@ -194,6 +203,23 @@ export default function ClaimLinkPage() {
               </div>
             )}
           </div>
+
+          {preview && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, opacity: 0.85 }}>
+                Page preview — this is what you're approving
+              </div>
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,.14)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                }}
+              >
+                <PageRenderer page={preview} preview />
+              </div>
+            </div>
+          )}
 
           {phase.kind === "review" && !accountId && (
             <button

@@ -118,21 +118,28 @@ export async function POST(
     );
   }
 
-  // 3. Pin the starter page (once per package — cached on the record).
+  // 3. Pin the customized page (once per package — cached on the record).
+  // Assembled server-side from the template + the agent's customization;
+  // page-customize runs the same gates as /api/pin before anything pins.
   let cid = pkg.cid;
   if (!cid) {
     const operator = pkg.operator ?? (await evmAddressForAccount(owner));
     try {
       cid = await pinAgentPage({
         username: pkg.username,
+        ownerType: pkg.ownerType === "human" ? "human" : "agent",
         displayName: pkg.displayName ?? pkg.username,
         purpose: pkg.purpose,
         capabilities: pkg.capabilities ?? [],
         operator,
+        templateId: pkg.templateId,
+        theme: pkg.theme,
+        socials: pkg.socials,
+        links: pkg.links,
       });
     } catch (e) {
       return NextResponse.json(
-        { error: `could not pin agent page: ${e instanceof Error ? e.message : "pinning failed"}` },
+        { error: `could not pin page: ${e instanceof Error ? e.message : "pinning failed"}` },
         { status: 502 },
       );
     }
@@ -142,10 +149,11 @@ export async function POST(
   const operator = pkg.operator ?? (await evmAddressForAccount(owner));
 
   // 4. Build the frozen UNSIGNED registerPage transaction (payer = owner).
+  const ownerTypeNum = pkg.ownerType === "human" ? 0 : 1;
   let built;
   try {
     built = buildRegisterTransaction(
-      { username: pkg.username, ipfsHash: cid, ownerType: 1, operator, purpose: pkg.purpose },
+      { username: pkg.username, ipfsHash: cid, ownerType: ownerTypeNum, operator, purpose: pkg.purpose },
       { payerAccountId: owner, network: "mainnet", registryContractAddress: REGISTRY_EVM },
     );
   } catch (e) {
@@ -155,9 +163,10 @@ export async function POST(
     );
   }
 
+  const kindWord = pkg.ownerType === "human" ? "a HUMAN" : "an AGENT";
   const whatYoureSigning =
     `registerPage("${pkg.username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
-    `registers "${pkg.username}" as an AGENT page owned by ${owner}, ` +
+    `registers "${pkg.username}" as ${kindWord} page owned by ${owner}, ` +
     `with the purpose "${pkg.purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
     `The page content (IPFS ${cid}) can be updated later by the page owner.`;
 
