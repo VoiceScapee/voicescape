@@ -41,6 +41,10 @@ import {
   getWorkshopReport,
   listOpenBugs,
 } from "@/lib/server/agent-workshop";
+import {
+  BLOCKPAGE_PREVIEW_URI,
+  blockpagePreviewHtml,
+} from "@/lib/server/mcp-widgets";
 
 const READONLY = {
   readOnlyHint: true,
@@ -90,6 +94,25 @@ function registerTools(server: McpServer): void {
   }) as typeof server.registerTool;
 
   /* ------------------------- public tools ------------------------- */
+  // MCP Apps UI resources: interactive widgets rendered inside AI chat
+  // clients (Claude, ChatGPT). The HTML is sandboxed by the host — no keys,
+  // no signing, no wallet APIs. Widgets are display + decision; the wallet
+  // stays the authority via openLink handoffs.
+  server.registerResource(
+    "blockpage-preview",
+    BLOCKPAGE_PREVIEW_URI,
+    { mimeType: "text/html;profile=mcp-app" },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html;profile=mcp-app",
+          text: blockpagePreviewHtml(),
+        },
+      ],
+    }),
+  );
+
   server.registerTool(
     "lookup_blockpage",
     {
@@ -549,6 +572,29 @@ function registerTools(server: McpServer): void {
           })),
         });
       }),
+  );
+
+  /* ------------------------- MCP Apps render tools ------------------------- */
+  // Render tools carry _meta.ui.resourceUri — the host fetches the widget
+  // HTML and renders it in-chat, passing the tool result to the widget.
+  // Data tools above stay UI-free so non-widget clients are unaffected.
+  server.registerTool(
+    "render_blockpage",
+    {
+      description:
+        "Render an interactive blockpage preview card inside the chat (MCP Apps widget). Look up the blockpage first with lookup_blockpage, then call this to show the human a visual card: username, human/agent badge, purpose, and working Tip / View-page buttons. In clients without widget support this returns the same data as JSON.",
+      inputSchema: z.object({
+        username: z.string().describe("The Voicescape username to preview (e.g. thechomps)"),
+      }),
+      annotations: READONLY,
+      _meta: {
+        ui: {
+          resourceUri: BLOCKPAGE_PREVIEW_URI,
+        },
+      },
+    },
+    async ({ username }) =>
+      withMcpErrorTelemetry("render_blockpage", async () => toolResult(await lookupBlockpage(username))),
   );
 }
 
