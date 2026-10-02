@@ -29,6 +29,21 @@ export interface ClaimPackageInput {
   /** Optional owner override; null = the wallet that taps approve owns it. */
   ownerAccountId?: string | null;
   pageUrl: string;
+  /** "human" or "agent" page. Default "agent". */
+  ownerType?: "human" | "agent" | null;
+  /** Template id from the public catalog; null = default per ownerType. */
+  templateId?: string | null;
+  /** Freeform theme override (validated at assemble time). */
+  theme?: {
+    background?: string;
+    foreground?: string;
+    accent?: string;
+    fontFamily?: string;
+  } | null;
+  /** Social profiles to link on the page. */
+  socials?: Array<{ platform: string; url: string }> | null;
+  /** Arbitrary project links. */
+  links?: Array<{ label: string; url: string }> | null;
 }
 
 export interface ClaimPackageRecord extends ClaimPackageInput {
@@ -86,6 +101,32 @@ export async function stashClaimPackage(
     claimCode: claimCode ? claimCode.trim().toUpperCase() : null,
     ownerAccountId: ownerAccountId ? ownerAccountId.trim() : null,
     pageUrl: input.pageUrl,
+    ownerType: input.ownerType === "human" ? "human" : "agent",
+    templateId:
+      typeof input.templateId === "string" && /^[a-z0-9-]{1,40}$/.test(input.templateId.trim())
+        ? input.templateId.trim().toLowerCase()
+        : null,
+    theme:
+      input.theme && typeof input.theme === "object"
+        ? {
+            background: typeof input.theme.background === "string" ? input.theme.background.slice(0, 120) : undefined,
+            foreground: typeof input.theme.foreground === "string" ? input.theme.foreground.slice(0, 120) : undefined,
+            accent: typeof input.theme.accent === "string" ? input.theme.accent.slice(0, 120) : undefined,
+            fontFamily: typeof input.theme.fontFamily === "string" ? input.theme.fontFamily.slice(0, 120) : undefined,
+          }
+        : null,
+    socials: Array.isArray(input.socials)
+      ? input.socials
+          .filter((s) => s && typeof s.platform === "string" && typeof s.url === "string")
+          .map((s) => ({ platform: s.platform.slice(0, 40), url: s.url.slice(0, 500) }))
+          .slice(0, 12)
+      : null,
+    links: Array.isArray(input.links)
+      ? input.links
+          .filter((l) => l && typeof l.label === "string" && typeof l.url === "string")
+          .map((l) => ({ label: l.label.slice(0, 40), url: l.url.slice(0, 500) }))
+          .slice(0, 12)
+      : null,
     id: randomBytes(16).toString("hex"),
     createdAt: Date.now(),
     cid: null,

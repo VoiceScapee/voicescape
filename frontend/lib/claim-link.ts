@@ -17,6 +17,7 @@ export interface ClaimSummary {
   owner_account_id: string | null;
   claim_code: string | null;
   page_url: string;
+  owner_type: "human" | "agent";
   created_at: string;
 }
 
@@ -49,6 +50,24 @@ export async function fetchClaimSummary(id: string): Promise<ClaimSummary> {
     );
   }
   return body as unknown as ClaimSummary;
+}
+
+/**
+ * Fetch the assembled (not yet pinned) page document for a short id, so
+ * the approve page can render a true preview of the custom layout before
+ * the human signs. Best-effort: returns null when the preview can't be
+ * assembled — the text summary above still lets the human decide.
+ */
+export async function fetchClaimPreview(id: string): Promise<Record<string, unknown> | null> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/claim-packages/${encodeURIComponent(id)}/preview`, { cache: "no-store" });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+  const body = (await res.json().catch(() => null)) as { page?: Record<string, unknown> } | null;
+  return body && typeof body.page === "object" && body.page !== null ? body.page : null;
 }
 
 /**

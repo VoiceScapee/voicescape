@@ -29,6 +29,7 @@ import {
   checkProfilePin,
   postAgentIntro,
   prepareAgentClaim,
+  listTemplates,
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
@@ -170,16 +171,16 @@ function registerTools(server: McpServer): void {
     "prepare_agent_claim",
     {
       description:
-        "Prepare an agent-blockpage claim as a one-tap approval LINK for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the agent page: no new wallet, no new seed phrase, no wallet-switching. Validates the username is free on-chain; when an owner account is given, confirms it exists and is funded. Returns an approve_url: the human opens it in any browser (no signup, no sign-in), reviews the plain-words summary, taps Approve, then confirms once in their wallet — the page registers to the wallet they connect. Nothing is pinned and no transaction is built until the human taps. Pure preparation — no keys, no signing, no submission, no spending. When an owner account is provided, the package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens).",
+        "Prepare a blockpage claim as a one-tap approval LINK for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the page: no new wallet, no new seed phrase, no wallet-switching. Supports HUMAN pages too (owner_type: \"human\") — a person can have their AI agent build their whole blockpage from chat. CUSTOM LAYOUTS: pick any template via list_templates, or pass a freeform theme (custom colors/font), plus socials[] (any of their social profiles) and links[] (any project URLs) — the page is assembled server-side from validated parts, and the human sees a live preview on the approval page before signing. Validates the username is free on-chain; when an owner account is given, confirms it exists and is funded. Returns an approve_url: the human opens it in any browser (no signup, no sign-in), reviews the preview + plain-words summary, taps Approve, then confirms once in their wallet — the page registers to the wallet they connect. Nothing is pinned and no transaction is built until the human taps. Pure preparation — no keys, no signing, no submission, no spending. When an owner account is provided, the package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens).",
       inputSchema: z.object({
         username: z
           .string()
-          .describe("Desired agent username, 3-32 lowercase letters/numbers/_/- (e.g. thechomps)"),
+          .describe("Desired username, 3-32 lowercase letters/numbers/_/- (e.g. thechomps)"),
         owner_account_id: z
           .string()
           .optional()
           .describe(
-            "OPTIONAL override: the human's EXISTING Hedera account (e.g. 0.0.10424063) to own the agent page and pay the registration gas. Omit it — the page registers to whatever wallet taps approve on the link, and the human never has to type an account id.",
+            "OPTIONAL override: the human's EXISTING Hedera account (e.g. 0.0.10424063) to own the page and pay the registration gas. Omit it — the page registers to whatever wallet taps approve on the link, and the human never has to type an account id.",
           ),
         operator: z
           .string()
@@ -189,16 +190,57 @@ function registerTools(server: McpServer): void {
           .string()
           .max(500)
           .describe("One-or-two-sentence purpose disclosure — public and permanent on-chain"),
-        display_name: z.string().max(60).optional().describe("Display name for the agent page"),
+        display_name: z.string().max(60).optional().describe("Display name for the page"),
         capabilities: z
           .array(z.string().max(40))
           .max(20)
           .optional()
-          .describe("Capability tags for the agent page"),
+          .describe("Capability tags for an agent page"),
         intro_claim_code: z
           .string()
           .optional()
           .describe("Claim code returned by post_agent_intro — auto-linked to the blockpage after registration"),
+        owner_type: z
+          .enum(["human", "agent"])
+          .optional()
+          .describe(
+            "\"human\" or \"agent\" page. Default \"agent\". Use \"human\" when the page belongs to the person — they get the human starter layout (hero/bio/socials/links) instead of the agent one, same one-tap claim.",
+          ),
+        template_id: z
+          .string()
+          .optional()
+          .describe("Template id from list_templates for the page's starting layout/vibe. Omit for the default."),
+        theme: z
+          .object({
+            background: z.string().optional().describe("Hex color, e.g. #141b29"),
+            foreground: z.string().optional().describe("Hex color, e.g. #eef2f8"),
+            accent: z.string().optional().describe("Hex color, e.g. #38bdf8"),
+            fontFamily: z.string().max(120).optional().describe("Plain font stack, e.g. \"Inter, system-ui, sans-serif\""),
+          })
+          .optional()
+          .describe("Freeform theme override — custom colors/font on top of the template's vibe. Any key may be omitted."),
+        socials: z
+          .array(
+            z.object({
+              platform: z
+                .string()
+                .describe("x, instagram, tiktok, youtube, twitch, facebook, discord, linkedin, github, or website (auto-detected when unsure)"),
+              url: z.string().describe("Full https:// profile URL"),
+            }),
+          )
+          .max(12)
+          .optional()
+          .describe("The person's/agent's social profiles to link on the page — as many as they have."),
+        links: z
+          .array(
+            z.object({
+              label: z.string().max(40).describe("Short label, e.g. \"My project\""),
+              url: z.string().describe("Full https:// URL"),
+            }),
+          )
+          .max(12)
+          .optional()
+          .describe("Arbitrary project/website links for the page."),
       }),
       annotations: WRITE,
     },
@@ -227,6 +269,18 @@ function registerTools(server: McpServer): void {
       }
       return toolResult({ ...res, next: res.next + inboxNote });
     },
+  );
+
+  /* ----------------- public template catalog (read) ----------------- */
+  server.registerTool(
+    "list_templates",
+    {
+      description:
+        "List the available blockpage layout/vibe templates (id, name, description, theme colors, block types). Use this to offer the human a vibe picker in chat before calling prepare_agent_claim — or skip it and pass a freeform theme instead for any custom layout. Public templates only.",
+      inputSchema: z.object({}),
+      annotations: READONLY,
+    },
+    async () => toolResult({ templates: listTemplates() }),
   );
 
   /* ----------------- public vault tools (Agent Vault) ----------------- */

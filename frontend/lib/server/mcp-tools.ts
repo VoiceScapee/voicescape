@@ -28,6 +28,16 @@ import {
 import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage } from "./claim-packages";
+import {
+  assembleClaimPage,
+  resolveTemplate,
+  templateCatalog,
+  validateCustomTheme,
+  type ClaimOwnerType,
+  type CustomThemeInput,
+  type LinkInput,
+  type SocialInput,
+} from "./page-customize";
 
 export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const REGISTRY_ID = "0.0.10854058";
@@ -688,6 +698,20 @@ export interface PrepareAgentClaimArgs {
   capabilities?: string[];
   /** Claim code from post_agent_intro — auto-linked after registration. */
   intro_claim_code?: string;
+  /**
+   * "human" or "agent" page. Default "agent". A human page gets the
+   * human starter layout (hero/bio/socials/links) instead of the
+   * agent one (capabilities/operator) — same one-tap claim flow.
+   */
+  owner_type?: string;
+  /** Template id from list_templates (any custom layout start). */
+  template_id?: string;
+  /** Freeform theme override — custom colors/font on the template's vibe. */
+  theme?: CustomThemeInput;
+  /** Social profiles to link: [{platform, url}]. Platform auto-detected. */
+  socials?: SocialInput[];
+  /** Arbitrary project links: [{label, url}]. */
+  links?: LinkInput[];
 }
 
 /** Resolve a 0.0.x account's EVM address (long-zero fallback). Fail-soft. */
@@ -707,44 +731,44 @@ export async function evmAddressForAccount(
 
 export interface AgentPageSpec {
   username: string;
+  ownerType: ClaimOwnerType;
   displayName: string;
   purpose: string;
   capabilities: string[];
   operator: string;
+  templateId?: string | null;
+  theme?: CustomThemeInput | null;
+  socials?: SocialInput[] | null;
+  links?: LinkInput[] | null;
 }
 
 /**
- * Build + pin the starter agent page (server-side Pinata, like
- * /api/agents/onboard). Called at FINALIZE time — pinning at prepare time
- * orphans a page every time the human never taps.
+ * Build + pin the claim page (server-side Pinata, like /api/agents/onboard).
+ * Called at FINALIZE time — pinning at prepare time orphans a page every
+ * time the human never taps. Assembles from the template + customization via
+ * page-customize, which runs the same gates as /api/pin (isValidPage +
+ * content filter) before anything is pinned.
  */
 export async function pinAgentPage(spec: AgentPageSpec): Promise<string> {
-  const template = TEMPLATES.find((t) => t.id === "agent-personal");
-  if (!template) throw new Error("agent page template missing");
-  const page = JSON.parse(JSON.stringify(template.page)) as {
-    username: string;
-    ownerType: string;
-    purpose: string;
-    blocks: Array<Record<string, unknown>>;
-  };
-  page.username = spec.username;
-  page.ownerType = "agent";
-  page.purpose = spec.purpose;
-  for (const block of page.blocks) {
-    if (block.type === "hero") {
-      block.title = spec.displayName.slice(0, 60);
-      block.subtitle = spec.purpose.slice(0, 120);
-    } else if (block.type === "bio") {
-      block.text = spec.purpose;
-    } else if (block.type === "capabilities") {
-      block.items = spec.capabilities;
-    } else if (block.type === "operator") {
-      block.wallet = spec.operator;
-      block.name = `${spec.displayName} operator wallet`;
-    }
-  }
+  const page = assembleClaimPage({
+    username: spec.username,
+    ownerType: spec.ownerType,
+    displayName: spec.displayName,
+    purpose: spec.purpose,
+    capabilities: spec.capabilities,
+    operator: spec.operator,
+    templateId: spec.templateId,
+    theme: spec.theme,
+    socials: spec.socials,
+    links: spec.links,
+  });
   const result = (await publishPageJson(page)) as { cid: string };
   return result.cid;
+}
+
+/** Public template catalog for the list_templates MCP tool. */
+export function listTemplates() {
+  return templateCatalog();
 }
 
 /**
@@ -830,6 +854,38 @@ export async function prepareAgentClaim(
     operator = op;
   }
 
+  // 3b. Owner type: "human" or "agent" page (default "agent").
+  const ownerType: ClaimOwnerType = args.owner_type === "human" ? "human" : "agent";
+
+  // 3c. Custom layout: template pick and/or freeform theme, socials, links.
+  // Validated now so the agent gets fast feedback; re-validated at finalize.
+  let templateId: string | null = null;
+  if (args.template_id !== undefined && args.template_id !== "") {
+    try {
+      resolveTemplate(args.template_id, ownerType);
+      templateId = args.template_id.trim().toLowerCase();
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "invalid template_id" };
+    }
+  }
+  try {
+    validateCustomTheme(args.theme ?? null);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "invalid theme" };
+  }
+  const normSocials = Array.isArray(args.socials)
+    ? args.socials
+        .filter((s) => s && typeof s.platform === "string" && typeof s.url === "string")
+        .map((s) => ({ platform: s.platform.slice(0, 40), url: s.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+  const normLinks = Array.isArray(args.links)
+    ? args.links
+        .filter((l) => l && typeof l.label === "string" && typeof l.url === "string")
+        .map((l) => ({ label: l.label.slice(0, 40), url: l.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+
   // 4. Stash the package — nothing pinned, nothing built, until the tap.
   const origin = getRequestContext().origin.replace(/\/$/, "");
   const record = await stashClaimPackage({
@@ -841,6 +897,11 @@ export async function prepareAgentClaim(
     claimCode: introClaimCode,
     ownerAccountId,
     pageUrl: `${origin}/${username}`,
+    ownerType,
+    templateId,
+    theme: args.theme ?? null,
+    socials: normSocials,
+    links: normLinks,
   });
   const approveUrl = `${origin}/c/${record.id}`;
 
@@ -860,7 +921,7 @@ export async function prepareAgentClaim(
     owner_balance_hbar: balanceHbar,
     what_youre_signing:
       `registerPage("${username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
-      `registers "${username}" as an AGENT page ${ownerPhrase}, ` +
+      `registers "${username}" as ${ownerType === "human" ? "a HUMAN" : "an AGENT"} page ${ownerPhrase}, ` +
       `with the purpose "${purpose.slice(0, 120)}". Costs gas only (a few cents). ` +
       `The page content can be updated later by the page owner.`,
     next:

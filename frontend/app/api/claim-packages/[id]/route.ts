@@ -30,6 +30,7 @@ export async function GET(
     owner_account_id: pkg.ownerAccountId,
     claim_code: pkg.claimCode,
     page_url: pkg.pageUrl,
+    owner_type: pkg.ownerType ?? "agent",
     created_at: new Date(pkg.createdAt).toISOString(),
   });
 }
