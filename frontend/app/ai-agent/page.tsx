@@ -40,7 +40,7 @@ const STEPS = [
   {
     n: 4,
     title: "Sign once",
-    body: "Connect your wallet, tap Approve, confirm in your wallet. Your page is registered on-chain. Gas only — typically under $0.10.",
+    body: "Tap Approve, connect your wallet, confirm in your wallet. One signature publishes your page and registers it on-chain. Gas only — typically under $0.10.",
   },
 ];
 
