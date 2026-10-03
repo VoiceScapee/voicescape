@@ -20,13 +20,13 @@ import { buildPageMetadata, truncate } from "@/lib/seo";
 const FETCH_TIMEOUT_MS = 5000;
 
 function fallbackMetadata(username: string): Metadata {
+  // No image override: buildPageMetadata falls back to DEFAULT_OG_IMAGE
+  // (the banner). The widget-shot renderer 404s for unknown names, so it
+  // must never be the fallback image.
   return buildPageMetadata({
     title: `${username} on Voicescape`,
     description: `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
     url: `/${encodeURIComponent(username)}`,
-    // No image override: buildPageMetadata falls back to DEFAULT_OG_IMAGE
-    // (the banner). The widget-shot renderer 404s for unknown names, so it
-    // must never be the fallback image.
     type: "profile",
   });
 }

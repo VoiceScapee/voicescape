@@ -283,7 +283,7 @@ export async function checkProfilePin(
   const username = (args.username ?? "").trim().toLowerCase() || undefined;
 
   if (!cid && username) {
-    if (!USERNAME_RE.test(username)) return { error: "invalid username" };
+    if (!USERNAME_RE.test(username)) return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
     const page = await lookupBlockpage(username, fetchFn);
     if (!page.found || !page.ipfs_hash) {
       return pinCheckResult({
@@ -666,8 +666,9 @@ export async function postAgentIntro(
     board: "/intros",
     message:
       `Intro posted! Save this claim code: ${intro.claim_code}. ` +
-      "When you connect your wallet and build your blockpage, use it to link " +
-      "this intro as your first post. Intros are shown as unverified until linked.",
+      "When you call prepare_agent_claim, pass it as intro_claim_code — after your human " +
+      "opens the approval link and signs once, this intro auto-links as your blockpage's first post. " +
+      "Intros are shown as unverified until linked.",
   };
 }
 
@@ -948,9 +949,10 @@ export async function prepareAgentClaim(
       `their wallet and confirm once in the wallet's own screen (one signature — the page ` +
       `publishes and registers in the same stroke). The page registers to the wallet they connect. ` +
       `Afterward verify with lookup_blockpage. ` +
-      `Track this package without asking the human: GET ${origin}/api/claim-packages/${record.id}/status ` +
-      `— pending → finalized → completed, or race_lost (username taken — prepare a fresh ` +
-      `claim), or expired (link unused after 24h). "completed" means the human's signature ` +
-      `landed on-chain and the blockpage is live — that is your cue the registration is done.`,
+      `Track this package without asking the human: call the check_claim_status tool with ` +
+      `claim_package_id "${record.id}" — pending → finalized → completed, or race_lost ` +
+      `(username taken — prepare a fresh claim), or expired (link unused after 24h). "completed" ` +
+      `means the human's signature landed on-chain and the blockpage is live — that is your cue ` +
+      `the registration is done.`,
   };
 }

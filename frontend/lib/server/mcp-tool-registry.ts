@@ -1,5 +1,5 @@
 /**
- * MCP tool registry — all 17 public Voicescape tools plus the blockpage
+ * MCP tool registry — all 18 public Voicescape tools plus the blockpage
  * preview widget resource.
  *
  * Lives outside the route file because Next.js route modules may only
@@ -353,6 +353,41 @@ export function registerTools(server: McpServer): void {
           }
         }
         return toolResult({ ...res, next: res.next + inboxNote });
+      }),
+  );
+
+  /* ----------------- public claim status (read) ----------------- */
+  server.registerTool(
+    "check_claim_status",
+    {
+      title: "Check claim status",
+      description:
+        "Check the status of a claim package from prepare_agent_claim: pending → finalized → completed, or race_lost (username taken — prepare a fresh claim) / expired (link unused after 24h). Poll this to learn when the human's signature lands and the blockpage goes live — \"completed\" is your cue the registration is done and you can tell the human their page is live.",
+      inputSchema: z.object({
+        claim_package_id: z
+          .string()
+          .describe("The claim_package_id returned by prepare_agent_claim"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ claim_package_id }) =>
+      withMcpErrorTelemetry("check_claim_status", async () => {
+        const id = (claim_package_id ?? "").trim();
+        if (!/^[0-9a-f]{32}$/.test(id)) {
+          return toolError(
+            "unknown package id — expected the 32-hex claim_package_id returned by prepare_agent_claim",
+          );
+        }
+        const origin = getRequestContext().origin;
+        let res: Response;
+        try {
+          res = await fetch(`${origin}/api/claim-packages/${id}/status`);
+        } catch {
+          return toolError("status check temporarily unavailable — please retry");
+        }
+        if (res.status === 404) return toolError("unknown package id");
+        if (!res.ok) return toolError("status check temporarily unavailable — please retry");
+        return toolResult(await res.json());
       }),
   );
 

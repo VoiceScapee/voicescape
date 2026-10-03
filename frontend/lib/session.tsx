@@ -97,6 +97,17 @@ export interface SessionContextValue {
   error: string | null;
   /** Connect (if needed) and complete the wallet sign-in (message or login transaction). */
   signIn: (adapterId?: WalletAdapterId) => Promise<StoredSession>;
+  /**
+   * Abort an in-flight signIn (the Hedera login polls the mirror for up to
+   * 2 minutes). No-op when nothing is signing. Cancellation is quiet — it
+   * returns to "connected", not an error state.
+   */
+  cancelSignIn: () => void;
+  /**
+   * Wall-clock ms when the current sign-in attempt started, or null when
+   * not signing. UIs render elapsed-time copy from this ("42s elapsed").
+   */
+  signInStartedAt: number | null;
   /** Clear the session and disconnect the wallet. */
   signOut: () => void;
   /** Headers to attach to authenticated API calls. {} when signed out. */
@@ -134,6 +145,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const signingRef = useRef(false);
+  /**
+   * Cancellation for the in-flight sign-in. signHederaLoginTx installs a
+   * closure here that flips its poll loop's cancelled flag; cancelSignIn
+   * invokes it. Cleared when the attempt settles.
+   */
+  const signInCancelRef = useRef<(() => void) | null>(null);
+  const [signInStartedAt, setSignInStartedAt] = useState<number | null>(null);
+  const cancelSignIn = useCallback(() => {
+    signInCancelRef.current?.();
+  }, []);
   /**
    * Fresh read of the session that never goes stale inside effects. The
    * account-sync effect below must see the session restored by the mount
@@ -288,9 +309,15 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
       if (walletRejected) throw walletRejected;
       // Reliable path: poll the mirror for our login memo. The user has up
-      // to 2 minutes to approve in the wallet.
+      // to 2 minutes to approve in the wallet. cancelSignIn() flips the
+      // flag below so the UI's Cancel button actually stops the wait.
+      let cancelled = false;
+      signInCancelRef.current = () => {
+        cancelled = true;
+      };
       const deadline = Date.now() + 120_000;
       for (;;) {
+        if (cancelled) throw new Error("Sign-in cancelled.");
         if (walletRejected) throw walletRejected;
         const found = await findLoginTxByMemo(accountId, commit);
         if (found) return { loginTxId: found, secret };
@@ -385,6 +412,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       signingRef.current = true;
       setError(null);
       setStatus("signing");
+      setSignInStartedAt(Date.now());
       try {
         let activeAdapter = adapterId;
         let activeAccount = account;
@@ -514,6 +542,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         throw e instanceof Error ? e : new Error(msg);
       } finally {
         signingRef.current = false;
+        signInCancelRef.current = null;
+        setSignInStartedAt(null);
       }
     },
     [adapterId, account, chain.chainId, signEvmMessage, signHederaLoginTx, wallet],
@@ -558,12 +588,14 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       account,
       error,
       signIn,
+      cancelSignIn,
+      signInStartedAt,
       signOut,
       authHeader,
       token,
       requireSession,
     }),
-    [status, session, signer, account, error, signIn, signOut, authHeader, token, requireSession],
+    [status, session, signer, account, error, signIn, cancelSignIn, signInStartedAt, signOut, authHeader, token, requireSession],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

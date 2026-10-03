@@ -55,6 +55,15 @@ export interface WalletState {
    */
   bootSettled: boolean;
   /**
+   * Result of the async in-app-browser probe (isHashPackInAppBrowserAsync),
+   * run once at boot. Null while the probe is still running. This is the
+   * single source of truth both boot and the header consume — the SYNC
+   * isHashPackInAppBrowser() returns false inside HashPack's iOS in-app
+   * browser (no injection, no UA signal), so the header must not rely on
+   * it or iOS users get the dead-end QR picker.
+   */
+  inAppBrowser: boolean | null;
+  /**
    * True after the user explicitly disconnected. Suppresses any
    * auto-connect UI until the user takes action again.
    */
@@ -1213,6 +1222,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [bootSettled, setBootSettled] = useState(false);
   const [userDisconnected, setUserDisconnected] = useState(false);
+  /**
+   * Single source of truth for in-app-browser detection (B8): the async
+   * probe runs once at boot and both the boot auto-connect and the header
+   * consume this value. Null while probing.
+   */
+  const [inAppBrowser, setInAppBrowser] = useState<boolean | null>(null);
   const senderGetter = React.useRef<(() => Promise<TxSender>) | null>(null);
 
   const connect = useCallback(async (adapterId: WalletAdapterId) => {
@@ -1341,6 +1356,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setIsConnecting(false);
         }
         const inApp = await isHashPackInAppBrowserAsync().catch(() => false);
+        // Store the probe result in context (B8): the header consumes this
+        // instead of the sync check, which is blind on iOS.
+        setInAppBrowser(inApp);
         if (inApp) {
           // Await the attempt (not fire-and-forget) so bootSettled only
           // flips once the auto-connect resolved or failed — the header
@@ -1365,8 +1383,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<WalletState>(
-    () => ({ account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, connect, disconnect, getTxSender }),
-    [account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, connect, disconnect, getTxSender],
+    () => ({ account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, inAppBrowser, connect, disconnect, getTxSender }),
+    [account, chainId, adapterName, isConnecting, error, bootSettled, userDisconnected, inAppBrowser, connect, disconnect, getTxSender],
   );
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

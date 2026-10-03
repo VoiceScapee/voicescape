@@ -10,7 +10,7 @@
  *   blockpage link unfurls (X summary_large_image center-crops portraits).
  *
  * Separate function from /api/mcp on purpose: the Chromium bundle stays
- * out of the MCP route so the other 17 tools never pay for it.
+ * out of the MCP route so the other tools never pay for it.
  *
  * Guards: username format validation, 10-minute KV cache keyed by
  * username+format, per-IP rate limit (10/hour) on cache MISSES only —
@@ -97,7 +97,7 @@ export async function GET(req: Request): Promise<Response> {
     };
     png = format === "og" ? await screenshotOgCard(data) : await screenshotBlockpageCard(data);
   } catch (e) {
-    console.error(JSON.stringify({ widget_shot: "render_failed", username, err: String(e).slice(0, 200) }));
+    console.error(JSON.stringify({ widget_shot: "render_failed", username, format, err: String(e).slice(0, 200) }));
     return Response.json({ error: "could not render preview — please retry" }, { status: 500 });
   }
 

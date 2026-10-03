@@ -55,6 +55,12 @@ export function buildPageMetadata(seo: PageSeo): Metadata {
       ? seo.image
       : origin + seo.image
     : origin + DEFAULT_OG_IMAGE;
+  const ogImage: { url: string; alt: string; width?: number; height?: number } = {
+    url: image,
+    alt: seo.title,
+  };
+  if (seo.imageWidth) ogImage.width = seo.imageWidth;
+  if (seo.imageHeight) ogImage.height = seo.imageHeight;
   return {
     title: seo.title,
     description: seo.description,
@@ -64,14 +70,7 @@ export function buildPageMetadata(seo: PageSeo): Metadata {
       url,
       siteName: "Voicescape",
       type: seo.type ?? "website",
-      images: [
-        {
-          url: image,
-          alt: seo.title,
-          ...(seo.imageWidth ? { width: seo.imageWidth } : {}),
-          ...(seo.imageHeight ? { height: seo.imageHeight } : {}),
-        },
-      ],
+      images: [ogImage],
     },
     twitter: {
       card: "summary_large_image",
