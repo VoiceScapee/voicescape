@@ -239,8 +239,17 @@ function TipBox({
     setError(null);
   };
 
+  const [priceFailed, setPriceFailed] = useState(false);
   useEffect(() => {
-    getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
+    getHbarUsdPrice()
+      .then((p) => {
+        setHbarPrice(p);
+        setPriceFailed(p === null);
+      })
+      .catch(() => {
+        setHbarPrice(null);
+        setPriceFailed(true);
+      });
   }, []);
 
   // Token mode: list the HTS tokens the connected wallet holds. Runs when
@@ -320,7 +329,9 @@ function TipBox({
   const railDisplay =
     hbarPrice && usdValid
       ? `≈ ${(usdNum / hbarPrice).toFixed(4)} ${chain.nativeCurrency.symbol}`
-      : `${chain.nativeCurrency.symbol} amount loading…`;
+      : priceFailed
+        ? "Price unavailable — HBAR mode works"
+        : `${chain.nativeCurrency.symbol} amount loading…`;
 
   // Breakdown math for the plain-words 98/2 panel. In HBAR mode the amount
   // is exact; in USD mode it's valid only when the HBAR price has loaded
@@ -353,8 +364,10 @@ function TipBox({
   const treasuryAmt = tinybars != null ? Number((tinybars * 2n) / 100n) / 1e8 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
   const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
-  // Hedera-side network fee (existing display value), passed through the
-  // i18n placeholder rather than hard-coded into JSX copy.
+  // Hedera-side network fee display. Grounded 2026-10-03: recent mainnet
+  // tipPage calls were charged 0.053–0.090 HBAR (mirror node charged_tx_fee),
+  // so 0.08 sits inside the observed range and the UI renders it with "≈".
+  // Passed through the i18n placeholder rather than hard-coded into JSX copy.
   const NETWORK_FEE_HBAR = "0.08";
 
   // One-tap fix for a stale WalletConnect session: clears the dead session
@@ -891,7 +904,9 @@ function TipBox({
                         ? `Swap & tip ≈ ${weiToHbar(quote.hbarOutWei).toFixed(4)} HBAR`
                         : "Enter an amount"
                     : !isHbar && !hbarPrice
-                    ? "Loading price…"
+                    ? priceFailed
+                      ? "Price unavailable"
+                      : "Loading price…"
                     : isHbar
                       ? t("tip.confirmCtaHbar").replace("{amount}", hbarValid ? String(hbarNum) : "0")
                       : t("tip.confirmCta").replace("{amount}", usdValid ? usdNum.toFixed(2) : "0.00")}

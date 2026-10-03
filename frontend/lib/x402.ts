@@ -184,9 +184,14 @@ let hbarPriceCache: { price: number; at: number } | null = null;
  * Approximate HBAR price in USD, for DISPLAY conversion only — never for
  * settlement (the 402's advertised amount is authoritative). Priority:
  * env override NEXT_PUBLIC_HBAR_USD_PRICE → Chainlink on-chain feed
- * (free, no key) → CoinGecko → 0.20 labeled fallback.
+ * (free, no key) → CoinGecko → null.
+ *
+ * Returns null when every source fails. Callers MUST NOT substitute a
+ * hardcoded guess: converting a user's "$5" at a stale price silently
+ * breaks their intent. USD flows disable themselves on null; HBAR flows
+ * are exact and unaffected.
  */
-export async function getHbarUsdPrice(): Promise<number> {
+export async function getHbarUsdPrice(): Promise<number | null> {
   const env = Number(process.env.NEXT_PUBLIC_HBAR_USD_PRICE);
   if (Number.isFinite(env) && env > 0) return env;
   const now = Date.now();
@@ -207,9 +212,9 @@ export async function getHbarUsdPrice(): Promise<number> {
       return p;
     }
   } catch {
-    // fall through to the labeled fallback
+    // fall through to null
   }
-  return 0.2;
+  return null;
 }
 
 /** Estimate USD cents for a rail amount. Returns null for unknown tokens. */
@@ -220,6 +225,7 @@ export async function railUsdCents(rail: Pick<X402Rail, "kind" | "amount">): Pro
     }
     if (rail.kind === "HBAR") {
       const price = await getHbarUsdPrice();
+      if (price === null) return null;
       return Math.round((Number(BigInt(rail.amount)) / 1e8) * price * 100);
     }
   } catch {

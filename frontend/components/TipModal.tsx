@@ -132,8 +132,17 @@ export default function TipModal({
   const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
   const chain = getActiveChain();
 
+  const [priceFailed, setPriceFailed] = useState(false);
   useEffect(() => {
-    getHbarUsdPrice().then(setPrice).catch(() => setPrice(null));
+    getHbarUsdPrice()
+      .then((p) => {
+        setPrice(p);
+        setPriceFailed(p === null);
+      })
+      .catch(() => {
+        setPrice(null);
+        setPriceFailed(true);
+      });
   }, []);
 
   // Mirror-node verdict landed — move to the matching end state.
@@ -172,7 +181,11 @@ export default function TipModal({
     // USD mode needs the price feed to convert; HBAR mode is exact.
     const p = price;
     if (!isHbar && p == null) {
-      setError("HBAR price is still loading — try again in a moment.");
+      setError(
+        priceFailed
+          ? "HBAR price is unavailable right now — switch to HBAR mode to tip the exact amount."
+          : "HBAR price is still loading — try again in a moment.",
+      );
       return;
     }
     // Guardrail: never prompt a wallet signature for a doomed tip. The
@@ -326,7 +339,9 @@ export default function TipModal({
                 ? `${hbarAmount} HBAR`
                 : price
                   ? `≈ ${(usd / price).toFixed(4)} HBAR`
-                  : "Loading HBAR price…"}
+                  : priceFailed
+                    ? "Price unavailable — HBAR mode works"
+                    : "Loading HBAR price…"}
             </p>
             <button
               type="button"

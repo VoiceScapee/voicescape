@@ -97,6 +97,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
+  const [priceFailed, setPriceFailed] = useState(false);
   const [buy, setBuy] = useState<BuyPhase>({ kind: "idle" });
   /** Success-receipt snapshots, captured at wallet approval like the tip flow. */
   const [buyApprovedAt, setBuyApprovedAt] = useState<number | null>(null);
@@ -173,7 +174,15 @@ export default function ListingDetailClient({ id }: { id: string }) {
 
   useEffect(() => {
     load();
-    getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
+    getHbarUsdPrice()
+      .then((p) => {
+        setHbarPrice(p);
+        setPriceFailed(p === null);
+      })
+      .catch(() => {
+        setHbarPrice(null);
+        setPriceFailed(true);
+      });
   }, [load]);
 
   // Fire-and-forget listing view for creator analytics (counts toward the
@@ -256,7 +265,12 @@ export default function ListingDetailClient({ id }: { id: string }) {
           "Blocked: this listing's payout address does not belong to the seller's registered page.",
         );
       }
-      if (!hbarPrice) throw new Error("HBAR price is still loading — try again in a moment.");
+      if (!hbarPrice)
+        throw new Error(
+          priceFailed
+            ? "HBAR price is unavailable right now — the USD price can't be converted. Try again in a moment."
+            : "HBAR price is still loading — try again in a moment.",
+        );
       // Server-side buy pre-check BEFORE any transaction is built or signed:
       // re-verifies the seller against the registry and returns the
       // canonical (alias-form) owner address to pay. A negative verdict

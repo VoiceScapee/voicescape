@@ -917,7 +917,7 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
 function AgentBanner({ meta }: { meta: RegistryMeta }) {
   const chain = getActiveChain();
   return (
-    <div className="pv-agent-banner" role="alert" aria-label="This is an agent page">
+    <div className="pv-agent-banner" role="status" aria-label="This is an agent page">
       <div className="pv-agent-hazard" aria-hidden="true" />
       <div className="pv-agent-body">
         <div className="pv-agent-badge">

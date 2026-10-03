@@ -27,6 +27,7 @@ export function HbarAmount({
         const [hbarUsd, rates] = await Promise.all([getHbarUsdPrice(), getFxRates()]);
         const n = typeof hbar === "string" ? Number(hbar) : hbar;
         if (!Number.isFinite(n)) return;
+        if (hbarUsd === null) return; // no price, no fiat figure — never a guess
         const str = formatLocalCurrency(n * hbarUsd, rates);
         if (alive) setFiat(str);
       } catch {
