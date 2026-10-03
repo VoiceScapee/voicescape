@@ -167,6 +167,7 @@ function ModNavLink({ pathname }: { pathname: string }) {
   if (!isMod) return null;
   const active = pathname === "/mod";
   const errorsActive = pathname === "/admin/errors";
+  const usageActive = pathname === "/admin/usage";
   return (
     <>
       <Link
@@ -182,6 +183,13 @@ function ModNavLink({ pathname }: { pathname: string }) {
         aria-current={errorsActive ? "page" : undefined}
       >
         🐛 Errors
+      </Link>
+      <Link
+        href="/admin/usage"
+        className={`th-nav-link${usageActive ? " is-active" : ""}`}
+        aria-current={usageActive ? "page" : undefined}
+      >
+        📊 Usage
       </Link>
     </>
   );
