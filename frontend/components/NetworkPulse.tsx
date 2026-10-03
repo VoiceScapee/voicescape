@@ -27,6 +27,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import {
   MIRROR_BLOCKS_URL,
   PULSE_POLL_MS,
@@ -113,7 +114,7 @@ export default function NetworkPulse() {
     const check = async (): Promise<boolean> => {
       let res: Response;
       try {
-        res = await fetch(MIRROR_BLOCKS_URL, { cache: "no-store" });
+        res = await fetchWithTimeout(MIRROR_BLOCKS_URL, 10_000, { cache: "no-store" });
       } catch {
         // Mirror unreachable: silent until blocks resume.
         if (!stopped) setSilent(true);

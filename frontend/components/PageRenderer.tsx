@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
 import { normalizeBlockForRender } from "@/lib/schema";
@@ -104,6 +105,9 @@ function MusicBlock({
       : undefined;
 
   if (tracks.length === 0) {
+    // No tracks and no user text: render nothing — a "Now vibing to" header
+    // with no music behind it is decorative, not content.
+    if (!block.title && !block.note) return null;
     return (
       <section className="pv-block pv-music pv-glass" aria-label="Music">
         <div className="pv-music-legacy">
@@ -268,7 +272,7 @@ function TipJarCard({
       return;
     }
     let cancelled = false;
-    fetch(`/api/earnings?address=${evm}`)
+    fetchWithTimeout(`/api/earnings?address=${evm}`, 10_000)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         if (!cancelled) setHbarAllTime(typeof d?.hbarAllTime === "string" ? d.hbarAllTime : null);
@@ -360,6 +364,7 @@ function TabsBlock({
 }) {
   const [active, setActive] = useState(0);
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const safeActive = Math.min(active, tabs.length - 1);
 
   const onKeyDown = (e: React.KeyboardEvent, i: number) => {
@@ -386,9 +391,9 @@ function TabsBlock({
             }}
             type="button"
             role="tab"
-            id={`pv-tab-${i}`}
+            id={`pv-tab-${uid}-${i}`}
             aria-selected={i === safeActive}
-            aria-controls={`pv-tabpanel-${i}`}
+            aria-controls={`pv-tabpanel-${uid}-${i}`}
             tabIndex={i === safeActive ? 0 : -1}
             className={`pv-tab${i === safeActive ? " is-active" : ""}`}
             onClick={() => setActive(i)}
@@ -402,8 +407,8 @@ function TabsBlock({
         <div
           key={i}
           role="tabpanel"
-          id={`pv-tabpanel-${i}`}
-          aria-labelledby={`pv-tab-${i}`}
+          id={`pv-tabpanel-${uid}-${i}`}
+          aria-labelledby={`pv-tab-${uid}-${i}`}
           hidden={i !== safeActive}
           className="pv-tabpanel"
         >
@@ -500,13 +505,15 @@ function BlockView({
     case "links":
       return (
         <section className="pv-block pv-links" aria-label="Links">
-          {block.items.map((item, i) => {
-            const url = safeExternalUrl(item.url);
+          {block.items
+            .filter((item) => safeExternalUrl(item.url))
+            .map((item, i) => {
+            const url = safeExternalUrl(item.url)!;
             return (
               <a
                 key={i}
                 className="pv-link-btn"
-                href={url ?? undefined}
+                href={url}
                 target="_blank"
                 rel="noreferrer"
                 onClick={(e) => {
@@ -622,10 +629,16 @@ function BlockView({
       );
       return (
         <section className="pv-block" aria-label="Gallery">
-          <div className={effect ? `${base} pv-gallery-${effect}` : base} aria-hidden="true">
+          <div className={effect ? `${base} pv-gallery-${effect}` : base}>
             {effect === "marquee" ? (
               <div className="pv-gallery-marquee-track">
-                {tiles.map((img, i) => renderTile(img, i))}
+                {tiles.map((img, i) => (
+                  // The marquee strip is doubled for a seamless loop — hide
+                  // the duplicate half from assistive tech.
+                  <div key={i} aria-hidden={i >= block.images.length || undefined}>
+                    {renderTile(img, i)}
+                  </div>
+                ))}
               </div>
             ) : (
               tiles.map((img, i) =>
@@ -879,8 +892,10 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
         <span>{block.title || "Book"}</span>
       </h2>
       <div className="pv-links">
-        {block.items.map((item, i) => (
-          <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url) ?? undefined} target="_blank" rel="noreferrer">
+        {block.items
+          .filter((item) => safeExternalUrl(item.url))
+          .map((item, i) => (
+          <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url)!} target="_blank" rel="noreferrer">
             <IconLink size={18} />
             <span className="pv-link-label">
               {item.label}

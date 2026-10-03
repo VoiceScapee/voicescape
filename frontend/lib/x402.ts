@@ -19,6 +19,7 @@
  */
 
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { fetchWithTimeout } from "./fetch-timeout";
 import type {
   PaymentRequirements,
   SelectPaymentRequirements,
@@ -254,11 +255,17 @@ export interface X402Probe {
  * we send an empty JSON object.
  */
 export async function probeX402(url: string): Promise<X402Probe> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: "{}",
-  });
+  // 15s: a dead/slow agent endpoint must not hang the pay modal on
+  // "reading payment terms" forever — the caller renders the error state.
+  const res = await fetchWithTimeout(
+    url,
+    15_000,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
   if (res.status !== 402) {
     const text = await res.text().catch(() => "");
     throw new Error(

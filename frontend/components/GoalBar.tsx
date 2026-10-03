@@ -21,8 +21,11 @@ export function GoalBar({
   ownerAddress: string;
 }) {
   const { t } = useLanguage();
-  const { goal, raised, reached } = useFundingGoal(username, ownerAddress);
+  const { goal, raised, reached, loading } = useFundingGoal(username, ownerAddress);
 
+  // While loading, render nothing — showing "0.0000 / target · 0%" before
+  // the on-chain total arrives is a fabricated number.
+  if (loading) return null;
   if (!goal) return null;
 
   const target = goal.targetHbar;
