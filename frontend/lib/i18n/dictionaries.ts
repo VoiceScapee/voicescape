@@ -407,7 +407,7 @@ const en = {
   "builder.brandEyebrow": "builder",
   "builder.brandTitle": "Make it yours",
   "builder.brandLede": "Pick a starting look, add your stuff, hit publish. You can change everything later — nothing is permanent until you say so.",
-  "builder.publishHelper": "Publishing is free — your wallet signs once, and only a tiny Hedera network fee applies. Nothing else moves until you approve. You can edit or unpublish anytime.",
+  "builder.publishHelper": "No platform fee — your wallet signs once, and only a tiny Hedera network fee applies. Nothing else moves until you approve. You can edit or unpublish anytime.",
   "builder.socialsTitle": "Socials",
   "builder.socialsDesc": "Link your profiles so visitors can find you everywhere.",
   "builder.socialsPlaceholder": "Paste a profile link…",

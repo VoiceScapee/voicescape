@@ -67,7 +67,7 @@ describe("human default", () => {
 
 describe("plain-language publish", () => {
   it("explains the signature moment without rail/gas/contract jargon", () => {
-    expect(builderSrc).toContain("Publishing is free — it registers");
+    expect(builderSrc).toContain("Publishing costs you nothing but the Hedera network fee");
     expect(builderSrc).toContain("only the tiny Hedera network fee");
   });
 
