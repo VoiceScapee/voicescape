@@ -17,7 +17,9 @@ import { getHederaPairing, requestWalletConnectUI, useWallet } from "@/lib/walle
 import { reportError } from "@/lib/report-error";
 import {
   submitPreparedTx,
+  hashscanTxUrl,
   NoWalletPairingError,
+  type PreparedTxPhase,
   type SubmitPreparedTxResult,
 } from "@/lib/prepared-tx";
 import {
@@ -37,7 +39,9 @@ type Phase =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "review" }
-  | { kind: "done"; linked: boolean };
+  // confirmed=false means the signature was submitted but the 2-minute
+  // mirror window expired without a receipt — never claim "on-chain".
+  | { kind: "done"; linked: boolean; confirmed: boolean; txId: string };
 
 export default function ClaimLinkPage() {
   const { id } = useParams<{ id: string }>();
@@ -50,38 +54,87 @@ export default function ClaimLinkPage() {
   const [intentApproved, setIntentApproved] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [signing, setSigning] = useState(false);
+  // Tracks the submit pipeline phase so copy stays honest: "check your
+  // wallet" during signing, "waiting on the network" during mirror poll.
+  const [txPhase, setTxPhase] = useState<PreparedTxPhase | null>(null);
   const signStarted = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchClaimSummary(id)
-      .then((s) => {
-        if (!cancelled) {
-          setSummary(s);
-          setPhase({ kind: "review" });
+    const load = async () => {
+      // Terminal state first: reopening a completed link skips review and
+      // renders done — re-signing an already-spent package fails confusingly.
+      let completedTxId: string | null = null;
+      let completedUsername: string | null = null;
+      try {
+        const stRes = await fetch(`/api/claim-packages/${encodeURIComponent(id)}/status`, {
+          cache: "no-store",
+        });
+        if (stRes.ok) {
+          const st = (await stRes.json()) as {
+            status?: string;
+            username?: string;
+            transaction_id?: string;
+          };
+          if (st?.status === "completed") {
+            completedTxId = st.transaction_id ?? "";
+            completedUsername = st.username ?? null;
+          }
         }
+      } catch {
+        // Status check is best-effort — fall through to the normal load.
+      }
+      try {
+        const s = await fetchClaimSummary(id);
+        if (cancelled) return;
+        setSummary(s);
+        setPhase(
+          completedTxId !== null || completedUsername !== null
+            ? { kind: "done", linked: false, confirmed: true, txId: completedTxId ?? "" }
+            : { kind: "review" },
+        );
         // Preview is best-effort — the text summary above is the decision
         // surface; a failed preview never blocks approval.
         fetchClaimPreview(id).then((p) => {
           if (!cancelled && p) setPreview(p as unknown as VoicescapePage);
         });
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          reportError(e, "claim-approve", {
-            action: "load-link",
-            walletState: accountId ? "connected" : "disconnected",
+      } catch (e) {
+        if (cancelled) return;
+        // The package record may be gone after completion — the status
+        // check above still lets us render an honest done screen.
+        if (completedUsername) {
+          setSummary({
+            username: completedUsername,
+            purpose: "",
+            display_name: completedUsername,
+            capabilities: [],
+            owner_account_id: null,
+            claim_code: null,
+            page_url: `${window.location.origin}/${encodeURIComponent(completedUsername)}`,
+            owner_type: "human",
+            created_at: "",
           });
-          setPhase({
-            kind: "error",
-            message: e instanceof ClaimLinkError ? e.message : "Couldn't load this approval link.",
-          });
+          setPhase({ kind: "done", linked: false, confirmed: true, txId: completedTxId ?? "" });
+          return;
         }
-      });
+        reportError(e, "claim-approve", {
+          action: "load-link",
+          walletState: accountId ? "connected" : "disconnected",
+        });
+        setPhase({
+          kind: "error",
+          message: e instanceof ClaimLinkError ? e.message : "Couldn't load this approval link.",
+        });
+      }
+    };
+    load();
     return () => {
       cancelled = true;
     };
-  }, [id, accountId]);
+    // Intentionally not depending on accountId: the summary doesn't change
+    // with the wallet, and re-running on connect used to clobber a "done"
+    // screen back to "review".
+  }, [id]);
 
   // The synthetic action behind the card. Pre-finalize, the owner is the
   // explicit override when the agent named one, otherwise the wallet the
@@ -121,13 +174,24 @@ export default function ClaimLinkPage() {
           e instanceof ClaimLinkError ? e.message : "Couldn't prepare the transaction — try again in a moment.",
         );
       });
+      // Upfront funding check: an empty wallet would burn the whole
+      // signature ceremony and fail on-chain. Fail fast with plain words.
+      if (fin.owner_funded === false) {
+        throw new Error(
+          "This wallet has no HBAR for the network gas fee (a few cents). Add a little HBAR and try again.",
+        );
+      }
       return submitPreparedTx(
         {
           transactionList: fin.unsignedTxBytes,
           signerAccountId: fin.signerAccountId,
           transactionId: fin.transactionId,
         },
-        { restoreIfMissing: true, expectedOwnerAccountId: fin.ownerAccountId },
+        {
+          restoreIfMissing: true,
+          expectedOwnerAccountId: fin.ownerAccountId,
+          onPhase: setTxPhase,
+        },
       );
     },
     [],
@@ -147,7 +211,10 @@ export default function ClaimLinkPage() {
         // Best-effort: the status endpoint also self-heals from the chain.
         reportClaimCompleted(id, result.txId).catch(() => {});
       }
-      setPhase({ kind: "done", linked });
+      // confirmed=false is NOT success: the signature was submitted but
+      // the 2-minute mirror window expired without a receipt. The done UI
+      // branches on this — never claim "on-chain" without confirmation.
+      setPhase({ kind: "done", linked, confirmed: result.confirmed, txId: result.txId });
     },
     [id, summary],
   );
@@ -160,12 +227,14 @@ export default function ClaimLinkPage() {
     if (phase.kind !== "review") return;
     signStarted.current = true;
     setSigning(true);
+    setTxPhase(null);
     setSignError(null);
     approve(action)
       .then((result) => onSettled(result))
       .catch((e) => {
         signStarted.current = false;
         setSigning(false);
+        setTxPhase(null);
         const message =
           e instanceof NoWalletPairingError
             ? "Wallet disconnected — reconnect and try again."
@@ -186,7 +255,10 @@ export default function ClaimLinkPage() {
         color: "#f2ecff",
       }}
     >
-      <WalletConnect />
+      {/* The wallet connects AFTER approve (Review → Approve → Connect →
+          Done) — showing the connect widget before the human has decided
+          invites connect-first and contradicts the order. */}
+      {intentApproved && <WalletConnect />}
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
         Voicescape · {summary?.owner_type === "human" ? "Blockpage" : "Agent"} claim approval
       </div>
@@ -361,7 +433,9 @@ export default function ClaimLinkPage() {
                 textAlign: "center",
               }}
             >
-              Check your wallet — confirm the signature to publish @{summary.username}…
+              {txPhase === "confirming"
+                ? `Signature sent — waiting for the network to confirm @${summary.username}…`
+                : `Check your wallet — confirm the signature to publish @${summary.username}…`}
             </div>
           )}
 
@@ -377,12 +451,14 @@ export default function ClaimLinkPage() {
                     // Wallet is paired but the sign failed — retry the ceremony.
                     signStarted.current = true;
                     setSigning(true);
+                    setTxPhase(null);
                     if (action) {
                       approve(action)
                         .then((result) => onSettled(result))
                         .catch((e) => {
                           signStarted.current = false;
                           setSigning(false);
+                          setTxPhase(null);
                           setSignError(e instanceof Error ? e.message : "Couldn't complete the signature — try again.");
                         });
                     }
@@ -408,27 +484,59 @@ export default function ClaimLinkPage() {
 
           {phase.kind === "done" && (
             <div style={{ border: "1px solid rgba(120,255,170,.35)", borderRadius: 12, padding: "16px 18px", background: "rgba(80,255,150,.06)" }}>
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>Registered 🎉</div>
-              <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.9 }}>
-                @{summary.username} is now on-chain.{" "}
-                {summary.claim_code &&
-                  (phase.linked
-                    ? "The agent's intro was linked to it."
-                    : "The agent can link its intro next.")}
-              </div>
-              <a
-                href={summary.page_url}
-                style={{ display: "inline-block", marginTop: 10, color: "#b45cf0", fontSize: 14, fontWeight: 700 }}
-              >
-                View the blockpage →
-              </a>
+              {phase.confirmed ? (
+                <>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Registered 🎉</div>
+                  <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.9 }}>
+                    @{summary.username} is now on-chain.{" "}
+                    {summary.claim_code &&
+                      (phase.linked
+                        ? "The agent's intro was linked to it."
+                        : "The agent can link its intro next.")}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>Signature submitted — waiting on the network</div>
+                  <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.9 }}>
+                    Your signature went through, but we couldn't confirm it
+                    on-chain within 2 minutes. It may still land — check the
+                    transaction below. If it never confirms, it's safe to try
+                    again; nothing was registered.
+                  </div>
+                </>
+              )}
+              {phase.txId && (
+                <div style={{ marginTop: 10, fontSize: 13, lineHeight: 1.6 }}>
+                  <div style={{ opacity: 0.65, fontSize: 12, marginBottom: 2 }}>Transaction</div>
+                  <a
+                    href={hashscanTxUrl(phase.txId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#b45cf0", fontWeight: 700, wordBreak: "break-all" }}
+                  >
+                    {phase.txId} ↗
+                  </a>
+                  <div style={{ opacity: 0.55, fontSize: 12, marginTop: 2 }}>
+                    Verify it yourself on HashScan
+                  </div>
+                </div>
+              )}
+              {phase.confirmed && (
+                <a
+                  href={summary.page_url}
+                  style={{ display: "inline-block", marginTop: 10, color: "#b45cf0", fontSize: 14, fontWeight: 700 }}
+                >
+                  View the blockpage →
+                </a>
+              )}
             </div>
           )}
 
           <p style={{ fontSize: 12.5, opacity: 0.55, marginTop: 18, lineHeight: 1.6 }}>
-            No signup, no sign-in. Tapping Approve records your decision —
-            nothing is signed until you connect your wallet and confirm in
-            the wallet's own screen. One signature publishes the blockpage
+            No signup, no sign-in. Tapping Approve is your go-ahead — nothing
+            is recorded or signed until you connect your wallet and confirm
+            in the wallet's own screen. One signature publishes the blockpage
             and registers it — done.
           </p>
         </>

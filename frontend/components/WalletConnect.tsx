@@ -45,8 +45,34 @@ function hasEvmProvider(): boolean {
   return w.ethereum !== undefined && w.ethereum !== null;
 }
 
-export function WalletConnect() {
-  const { account, isConnecting, error, bootSettled, userDisconnected, connect, disconnect } = useWallet();
+/**
+ * Elapsed-time + cancel for the wallet sign-in poll. The Hedera login
+ * watches the mirror for up to 2 minutes; without this the user stares at
+ * "Check your wallet…" with no sense of progress and no way out.
+ */
+function SignInProgress({ startedAt, onCancel }: { startedAt: number; onCancel: () => void }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = Math.max(0, Math.round((now - startedAt) / 1000));
+  return (
+    <div style={{ fontSize: 12, color: "var(--vs-muted)", width: "100%" }}>
+      Waiting for your wallet approval… {secs}s elapsed.
+      <button
+        onClick={onCancel}
+        className="vs-btn vs-btn-ghost"
+        style={{ padding: "4px 10px", fontSize: 12, marginLeft: 8 }}
+      >
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boolean } = {}) {
+  const { account, isConnecting, error, bootSettled, userDisconnected, inAppBrowser, connect, disconnect } = useWallet();
   const { t } = useLanguage();
   // SessionProvider is mounted at the root layout; when present the button
   // drives full sign-in, otherwise it degrades to connect-only.
@@ -71,7 +97,11 @@ export function WalletConnect() {
   // show "Connecting…" when the user explicitly disconnected or when boot
   // already settled with no attempt running — that was the unsolicited
   // frozen "Connecting…" state.
-  const inHashPackBrowser = isHashPackInAppBrowser();
+  // Single source of truth (B8): the async probe result stored in wallet
+  // context. The sync isHashPackInAppBrowser() is blind inside HashPack's
+  // iOS in-app browser, so while the probe is still running (null) we fall
+  // back to the sync signals rather than the dead-end QR picker.
+  const inHashPackBrowser = inAppBrowser ?? isHashPackInAppBrowser();
   const inAppState = resolveInAppHeaderState({
     inHashPackBrowser,
     account,
@@ -109,23 +139,32 @@ export function WalletConnect() {
     }
   }
 
-  // KISS: after the wallet connects — including the HashPack in-app
-  // browser auto-connect — request the 7-day session signature
-  // automatically, so connecting is one gesture instead of two. Requested
-  // once per connected account: if the user dismisses it they stay
-  // connected and publishing will prompt them once more (graceful, no loop).
+  // Two visible steps, not one surprise: connecting the wallet (step 1) is
+  // followed by a wallet signature for the 7-day session (step 2). The old
+  // code fired step 2 instantly, so the login prompt ambushed the user right
+  // after the pairing prompt — two app-switches disguised as one gesture.
+  // Now the step-2 copy below is on screen for a beat BEFORE the wallet
+  // prompt appears, and tip surfaces can opt out entirely via
+  // skipAutoSignIn (tipping never uses the session).
   const autoSignFor = useRef<string | null>(null);
+  const [autoSignArmed, setAutoSignArmed] = useState(false);
   useEffect(() => {
+    if (skipAutoSignIn) return;
     if (!session || session.status !== "connected" || !account) return;
     if (autoSignFor.current === account) return;
     autoSignFor.current = account;
     // Funnel telemetry: a wallet connection succeeded. Aggregate counter
     // only — recordConversionEvent never throws and never stores identity.
     recordConversionEvent("wallet_connected");
-    void session.signIn().catch(() => {
-      // Dismissal surfaces via session.error; the user can sign in later.
-    });
-  }, [session, account]);
+    setAutoSignArmed(true);
+    const t = setTimeout(() => {
+      setAutoSignArmed(false);
+      void session.signIn().catch(() => {
+        // Dismissal surfaces via session.error; the user can sign in later.
+      });
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [session, account, skipAutoSignIn]);
 
   // In-chat one-tap approvals (BuddyActionCard) live outside the wallet
   // provider, so they can't call connect() directly. When the pairing is
@@ -233,8 +272,20 @@ export function WalletConnect() {
   if (account) {
     // Same vanity-name preference as the authenticated branch above.
     const myUsername = getVanityName(account) ?? deriveUsername(account);
+    const signInStartedAt = session?.signInStartedAt ?? null;
+    const showProgress = signing && signInStartedAt !== null;
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        {/* Two-step sequence, always visible: step 1 done, step 2 pending.
+            The wallet's signature prompt never arrives as a surprise. */}
+        <div style={{ fontSize: 12, color: "var(--vs-muted)", width: "100%" }}>
+          <div>✓ Step 1 — wallet connected ({shortAccount(account)})</div>
+          <div>
+            {showProgress || autoSignArmed
+              ? "Step 2 — check your wallet to sign the login…"
+              : "Step 2 — sign the login request in your wallet"}
+          </div>
+        </div>
         {myUsername && (
           <Link
             href={`/${myUsername}`}
@@ -268,16 +319,23 @@ export function WalletConnect() {
             >
               {signing ? t("wallet.checkWallet") : t("wallet.signIn")}
             </button>
-            <div
-              style={{
-                fontSize: 11.5,
-                color: "var(--vs-muted)",
-                width: "100%",
-              }}
-            >
-              This proves you own the wallet — 1 tinybar to yourself, not a payment.
-              Sign once — you&apos;re signed in for 7 days.
-            </div>
+            {showProgress ? (
+              <SignInProgress
+                startedAt={signInStartedAt as number}
+                onCancel={() => session?.cancelSignIn()}
+              />
+            ) : (
+              <div
+                style={{
+                  fontSize: 11.5,
+                  color: "var(--vs-muted)",
+                  width: "100%",
+                }}
+              >
+                This proves you own the wallet — 1 tinybar to yourself, not a payment.
+                Sign once — you&apos;re signed in for 7 days.
+              </div>
+            )}
           </>
         ) : null}
         <button
@@ -325,6 +383,31 @@ export function WalletConnect() {
         >
           {t("wallet.connectHashPack")}
         </button>
+      </div>
+    );
+  }
+
+  // Anonymous: in-app browser with a failed attempt (B8). The generic
+  // QR/deep-link picker below cannot work inside the wallet app, so offer
+  // the explicit one-tap retry with the error visible instead of a dead end.
+  // resolveInAppHeaderState deliberately keeps error → "default" (its unit
+  // tests pin that), so this branch lives here in the component.
+  if (inHashPackBrowser && (error || signInError) && !account) {
+    return (
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button
+          onClick={() => void connect("hashpack").catch(() => {
+            // Failure surfaces via wallet.error below.
+          })}
+          disabled={isConnecting}
+          className="vs-btn vs-btn-primary"
+          style={{ padding: "9px 22px", fontSize: 14 }}
+        >
+          {t("wallet.connectHashPack")} — try again
+        </button>
+        <div style={{ color: "#f87171", fontSize: 12, width: "100%", maxWidth: 260 }}>
+          {signInError ?? error}
+        </div>
       </div>
     );
   }

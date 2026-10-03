@@ -32,6 +32,10 @@ export interface PageSeo {
   description: string;
   /** Relative path or absolute URL. Defaults to the Voicescape banner. */
   image?: string;
+  /** Explicit OG image dimensions (e.g. 1200x630). Scrapers use these to
+      avoid cropping; omit for the default banner. */
+  imageWidth?: number;
+  imageHeight?: number;
   /** Path on the site, e.g. "/alice" or "/chat/lobby". */
   url: string;
   type?: "website" | "profile" | "article";
@@ -51,6 +55,12 @@ export function buildPageMetadata(seo: PageSeo): Metadata {
       ? seo.image
       : origin + seo.image
     : origin + DEFAULT_OG_IMAGE;
+  const ogImage: { url: string; alt: string; width?: number; height?: number } = {
+    url: image,
+    alt: seo.title,
+  };
+  if (seo.imageWidth) ogImage.width = seo.imageWidth;
+  if (seo.imageHeight) ogImage.height = seo.imageHeight;
   return {
     title: seo.title,
     description: seo.description,
@@ -60,7 +70,7 @@ export function buildPageMetadata(seo: PageSeo): Metadata {
       url,
       siteName: "Voicescape",
       type: seo.type ?? "website",
-      images: [{ url: image, alt: seo.title }],
+      images: [ogImage],
     },
     twitter: {
       card: "summary_large_image",

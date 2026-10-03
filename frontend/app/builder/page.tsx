@@ -53,7 +53,7 @@ import {
   socialsUrls,
 } from "@/lib/quickbuild";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
-import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
+import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, requestWalletConnectUI, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -98,6 +98,48 @@ import "./builder.css";
 /* ---------------------------------------------------------------- */
 /* Helpers                                                          */
 /* ---------------------------------------------------------------- */
+
+/**
+ * B5 (flow audit 2026-10-02): local autosave for the builder canvas.
+ * A phone tab killed mid-design used to vaporize all work. The canvas now
+ * autosaves (debounced) to localStorage, restores on mount, and clears on
+ * successful publish. Local-only — never leaves the browser, never
+ * auto-publishes.
+ */
+const BUILDER_AUTOSAVE_KEY = "vs_builder_autosave";
+
+interface BuilderAutosave {
+  v: 1;
+  savedAt: number;
+  templateId: string;
+  username: string;
+  page: VoicescapePage;
+}
+
+function readBuilderAutosave(): BuilderAutosave | null {
+  try {
+    const raw = localStorage.getItem(BUILDER_AUTOSAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BuilderAutosave>;
+    if (parsed?.v !== 1 || typeof parsed.savedAt !== "number") return null;
+    if (typeof parsed.templateId !== "string" || !TEMPLATES.some((t) => t.id === parsed.templateId))
+      return null;
+    if (typeof parsed.username !== "string") return null;
+    if (!isValidPage(parsed.page)) return null;
+    return parsed as BuilderAutosave;
+  } catch {
+    return null;
+  }
+}
+
+/** Clear the autosave — called on successful publish. Never throws. */
+function clearBuilderAutosave(): void {
+  try {
+    localStorage.removeItem(BUILDER_AUTOSAVE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 function setBlock(blocks: Block[], index: number, next: Block): Block[] {
   const copy = [...blocks];
@@ -2242,6 +2284,7 @@ function PublishPanel({
   onUsernameChange,
   availability,
   liaisonAssisted,
+  onPublished,
 }: {
   page: VoicescapePage;
   onPageChange: (p: VoicescapePage) => void;
@@ -2258,6 +2301,8 @@ function PublishPanel({
    * hired help, never a custodian.
    */
   liaisonAssisted?: boolean;
+  /** Called once the publish lands (confirmed or tx-sent) — the builder clears its autosave. */
+  onPublished?: () => void;
 }) {
   const { account, connect, getTxSender } = useWallet();
   // Brand pass PORT-B: the only i18n in this file — the publish-helper line.
@@ -2545,6 +2590,10 @@ function PublishPanel({
       // Mark onboarding complete — the user has a page now, so the guided
       // onboarding will never show again for this browser.
       markPublished(target);
+      // The work is live — drop the local autosave so a later visit starts
+      // fresh instead of resurrecting the just-published draft.
+      clearBuilderAutosave();
+      onPublished?.();
       // One-time congrats card on Buddy's page (/forge): stash the claimed
       // username now that publish has landed on-chain. Best-effort — never
       // blocks publish.
@@ -2766,14 +2815,26 @@ function PublishPanel({
           Publishing registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
           Hedera. Your wallet will ask you to approve one transaction — nothing else happens.
         </p>
-        <button
-          type="button"
-          className="vs-btn vs-btn-primary"
-          onClick={() => publish()}
-          disabled={busy || !account || !usernameValid || availability === "taken"}
-        >
-          {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish page</>)}
-        </button>
+        {!account ? (
+          // No dead gray button: without a wallet the action is connecting,
+          // so say so and open the picker on tap.
+          <button
+            type="button"
+            className="vs-btn vs-btn-primary"
+            onClick={() => requestWalletConnectUI()}
+          >
+            <IconBolt size={16} /> Connect wallet to publish
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="vs-btn vs-btn-primary"
+            onClick={() => publish()}
+            disabled={busy || !usernameValid || availability === "taken"}
+          >
+            {busy ? "Publishing…" : (<><IconBolt size={16} /> Publish page</>)}
+          </button>
+        )}
       </div>
 
       {/* Brand pass PORT-B: plain-words publish promise from the approved mock. */}
@@ -2870,10 +2931,15 @@ function BuilderInner() {
   // No wallet session required to design: preview mode lets anyone build and
   // preview. The publish flow asks for the wallet signature when it matters.
   const { isAuthenticated, token } = useSession();
-  const [templateId, setTemplateId] = useState<string>(TEMPLATES[0].id);
-  const [page, setPage] = useState<VoicescapePage>(() =>
-    JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage,
+  const [templateId, setTemplateId] = useState<string>(
+    () => readBuilderAutosave()?.templateId ?? TEMPLATES[0].id,
   );
+  const [page, setPage] = useState<VoicescapePage>(() => {
+    const saved = readBuilderAutosave()?.page;
+    return saved
+      ? (JSON.parse(JSON.stringify(saved)) as VoicescapePage)
+      : (JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage);
+  });
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
@@ -2882,8 +2948,36 @@ function BuilderInner() {
   // before any wallet connects. The wallet-derived name (or a remembered
   // vanity name) only auto-fills while the visitor hasn't typed their own —
   // connecting a wallet never clobbers a chosen name.
-  const [username, setUsernameRaw] = useState("");
+  const [username, setUsernameRaw] = useState(() => readBuilderAutosave()?.username ?? "");
   const nameTouchedRef = useRef(false);
+  // A username restored from autosave counts as user-chosen — the wallet
+  // auto-fill must never clobber it.
+  useEffect(() => {
+    if (username) nameTouchedRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // B5: debounced autosave — a killed tab never loses canvas work.
+  // Local-only, never publishes. Stopped + cleared on successful publish.
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const autosaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autosaveStopped = useRef(false);
+  useEffect(() => {
+    if (autosaveStopped.current) return;
+    if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = setTimeout(() => {
+      try {
+        const payload: BuilderAutosave = { v: 1, savedAt: Date.now(), templateId, username, page };
+        localStorage.setItem(BUILDER_AUTOSAVE_KEY, JSON.stringify(payload));
+        setDraftSavedAt(Date.now());
+      } catch {
+        /* storage unavailable — builder works, just no autosave */
+      }
+    }, 1000);
+    return () => {
+      if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+    };
+  }, [page, templateId, username]);
   const setUsername = useCallback((v: string) => {
     nameTouchedRef.current = true;
     setUsernameRaw(v);
@@ -3284,6 +3378,16 @@ function BuilderInner() {
         <Link href="/" className="vb-logo-link" aria-label="Voicescape home">
           <Logo size={30} withWordmark />
         </Link>
+        {draftSavedAt && (
+          <span
+            className="vs-chip"
+            title={`Draft auto-saved ${new Date(draftSavedAt).toLocaleTimeString()} — safe to switch apps; your work is stored in this browser only and never published automatically.`}
+          >
+            <IconCheck size={14} />
+            <span className="vb-draft-chip-full">Draft saved</span>
+            <span className="vb-draft-chip-short">Saved</span>
+          </span>
+        )}
         {urlDraft?.ok && (
           <span
             className="vs-chip vb-draft-chip"
@@ -3566,6 +3670,11 @@ function BuilderInner() {
               onUsernameChange={setUsername}
               availability={nameAvailability}
               liaisonAssisted={liaisonDraftId !== null}
+              onPublished={() => {
+                // Stop the debounced autosave — the work is live.
+                autosaveStopped.current = true;
+                if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+              }}
             />
           )}
         </div>

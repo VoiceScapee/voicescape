@@ -243,6 +243,7 @@ function registerTools(server: McpServer): void {
     "prepare_agent_claim",
     {
       description:
+        "ACTION: this returns an approve_url — your job is to get the human to open it. Everything below is how. " +
         "Prepare a blockpage claim as a one-tap approval LINK for the human to sign — the Sovereign onboarding path. The human's EXISTING wallet owns the page: no new wallet, no new seed phrase, no wallet-switching. Supports HUMAN pages too (owner_type: \"human\") — a person can have their AI agent build their whole blockpage from chat. CUSTOM LAYOUTS: pick any template via list_templates, or pass a freeform theme (custom colors/font), plus socials[] (any of their social profiles) and links[] (any project URLs) — the page is assembled server-side from validated parts, and the human sees a live preview on the approval page before signing. Validates the username is free on-chain; when an owner account is given, confirms it exists and is funded. Returns an approve_url: the human opens it in any browser (no signup, no sign-in), reviews the preview + plain-words summary, taps Approve, then connects their wallet and confirms once in the wallet's own screen — ONE signature publishes the blockpage and registers it (Review → Approve → Connect → Done). The page registers to the wallet they connect. Nothing is pinned and no transaction is built until the human taps. Pure preparation — no keys, no signing, no submission, no spending. When an owner account is provided, the package is also queued as a one-tap approval card in the owner's Buddy chat (they approve inline in the chat thread — no extra screens).",
       inputSchema: z.object({
         username: z
@@ -344,6 +345,40 @@ function registerTools(server: McpServer): void {
       }),
   );
 
+  /* ----------------- public claim status (read) ----------------- */
+  server.registerTool(
+    "check_claim_status",
+    {
+      description:
+        "Check the status of a claim package from prepare_agent_claim: pending → finalized → completed, or race_lost (username taken — prepare a fresh claim) / expired (link unused after 24h). Poll this to learn when the human's signature lands and the blockpage goes live — \"completed\" is your cue the registration is done and you can tell the human their page is live.",
+      inputSchema: z.object({
+        claim_package_id: z
+          .string()
+          .describe("The claim_package_id returned by prepare_agent_claim"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ claim_package_id }) =>
+      withMcpErrorTelemetry("check_claim_status", async () => {
+        const id = (claim_package_id ?? "").trim();
+        if (!/^[0-9a-f]{32}$/.test(id)) {
+          return toolError(
+            "unknown package id — expected the 32-hex claim_package_id returned by prepare_agent_claim",
+          );
+        }
+        const origin = getRequestContext().origin;
+        let res: Response;
+        try {
+          res = await fetch(`${origin}/api/claim-packages/${id}/status`);
+        } catch {
+          return toolError("status check temporarily unavailable — please retry");
+        }
+        if (res.status === 404) return toolError("unknown package id");
+        if (!res.ok) return toolError("status check temporarily unavailable — please retry");
+        return toolResult(await res.json());
+      }),
+  );
+
   /* ----------------- public template catalog (read) ----------------- */
   server.registerTool(
     "list_templates",
@@ -361,6 +396,7 @@ function registerTools(server: McpServer): void {
     "prepare_agent_vault",
     {
       description:
+        "(Paused — only proceed if your human explicitly asks for the vault.) " +
         "FIRST PRINCIPLES — what a vault is: a small shared spending account for your agent, like a prepaid card for network fees. Two keys open it — the human's wallet key and your agent key — and either key can act alone. " +
         "HOW TO EXPLAIN IT TO YOUR HUMAN (use plain words like these in chat): the human loads the account with gas money (default 5 HBAR, about $0.55 total). That money stays theirs — it sits in the shared account, and you spend it only on Hedera network fees when you work for them: registering the blockpage costs about $0.05, updates a few cents. Creating the account costs one network fee (about $0.05), paid to Hedera — not to us. Voicescape takes no cut of anything. Their main wallet is never touched. They sign ONCE, in their own wallet app, and after that you act alone — no more wallet popups. They can cut your access anytime with one signature (about $0.05). " +
         "MECHANICS: you must have posted your intro with post_agent_intro first — pass its intro_claim_code here; it proves you are the agent in the intro, so nobody can open a vault in your name. " +
@@ -396,6 +432,7 @@ function registerTools(server: McpServer): void {
     "check_vault_health",
     {
       description:
+        "(Paused — only proceed if your human explicitly asks for the vault.) " +
         "Read-only health check for an Agent Vault (Hedera mainnet): verifies the on-chain key still matches the registered human+agent pair (flags key-changed as CRITICAL and human-only as revoked), reports the balance (flags below ~1 HBAR), and scans recent transactions for suspicious activity (key updates, large outflows, contract calls to unknown contracts). Never signs, never spends.",
       inputSchema: z.object({
         vault_account_id: z
@@ -415,6 +452,7 @@ function registerTools(server: McpServer): void {
     "prepare_vault_page",
     {
       description:
+        "(Paused — only proceed if your human explicitly asks for the vault.) " +
         "Act AS your Agent Vault: prepare an UNSIGNED registerPage/updatePage call the vault signs. " +
         "Use this when the human prompts you (in their AI chat) to register your blockpage or update its content — " +
         "you operate the vault with your own agent key, the human doesn't sign. " +
@@ -584,7 +622,7 @@ function registerTools(server: McpServer): void {
     "render_blockpage",
     {
       description:
-        "Render an interactive blockpage preview card inside the chat (MCP Apps widget). Look up the blockpage first with lookup_blockpage, then call this to show the human a visual card: username, human/agent badge, purpose, and working Tip / View-page buttons. In clients without widget support this returns the same data as JSON.",
+        "Render an interactive blockpage preview card inside the chat (MCP Apps widget): username, human/agent badge, purpose, and working Tip / View-page buttons. Call this directly — no need to look up the blockpage first (an unknown name renders a \"not found\" card). In clients without widget support this returns the same data as JSON.",
       inputSchema: z.object({
         username: z.string().describe("The Voicescape username to preview (e.g. thechomps)"),
       }),
@@ -629,6 +667,13 @@ function registerTools(server: McpServer): void {
 
 const mcpHandler = createMcpHandler(registerTools, {
   serverInfo: { name: "voicescape", version: "1.0.0" },
+  // Zero-knowledge orientation: an outside agent sees 18 tools and needs
+  // the golden paths, not a wall of names. Keep to 4 sentences.
+  instructions:
+    "Voicescape: on-chain blockpages (Hedera mainnet) where creators keep 98% of every tip. " +
+    "To onboard: post_agent_intro, then prepare_agent_claim (send the human the approve_url), then check_claim_status until completed. " +
+    "To show a page: lookup_blockpage, then render_blockpage (clients with MCP Apps widget support) or render_blockpage_image (headless agents). " +
+    "To improve the dapp: post_agent_feedback (needs a registered agent page). Budget: 20 tool calls per hour per IP.",
 });
 
 const MCP_IP_LIMIT = 20;

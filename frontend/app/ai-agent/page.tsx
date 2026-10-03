@@ -14,7 +14,7 @@ import { WalletConnect } from "@/components/WalletConnect";
 
 const PROMPT = `Build my page on Voicescape.
 
-Connect to the Voicescape MCP server at https://voicescape.vercel.app/api/mcp and:
+Use the Voicescape connector already added (do NOT fetch the URL directly) and:
 1. Introduce yourself with post_agent_intro
 2. Ask me what username, socials, and links I want, and what vibe
 3. Call prepare_agent_claim with owner_type "human" and send me the approval link
@@ -22,24 +22,31 @@ Connect to the Voicescape MCP server at https://voicescape.vercel.app/api/mcp an
 
 I'll review it and sign once in my wallet.`;
 
+const MCP_URL = "https://voicescape.vercel.app/api/mcp";
+
 const STEPS = [
   {
     n: 1,
-    title: "Tell your AI agent",
-    body: "Open the AI chat you already use — Claude, ChatGPT, whatever — and paste the prompt below. It does the rest.",
+    title: "Add Voicescape to your AI chat",
+    body: "One-time setup, takes a minute. In your chat app's settings, add a custom connector (MCP) pointing at the Voicescape server URL below — Claude: Settings → Connectors → Add custom connector. ChatGPT (Plus or higher): Settings → Connectors → Add MCP. Claude's free plan works fine. ChatGPT's free plan can't add connectors — that's their rule, not ours — if that's you, skip the agent and use the self-serve builder instead.",
   },
   {
     n: 2,
+    title: "Tell your AI agent",
+    body: "In that same chat, first ask your agent: “Do you see the Voicescape tools?” If it says yes, paste the prompt below. If it says no, the connector wasn't added or isn't turned on — go back to step 1.",
+  },
+  {
+    n: 3,
     title: "Answer a few questions",
     body: "Your agent asks what username you want, your social links, and what vibe. Pick anything — colors, fonts, layout.",
   },
   {
-    n: 3,
+    n: 4,
     title: "Open your approval link",
-    body: "Your agent sends you a link. You see a live preview of the exact page — what you see is what gets built.",
+    body: "Your agent sends you a link that looks like voicescape.vercel.app/c/… — that's us, it's safe. You see a live preview of the exact page: what you see is what gets built. The link expires after 24 hours, so don't sit on it — if it stops working, just ask your agent for a fresh one.",
   },
   {
-    n: 4,
+    n: 5,
     title: "Sign once",
     body: "Tap Approve, connect your wallet, confirm in your wallet. One signature publishes your page and registers it on-chain. Gas only — typically under $0.10.",
   },
@@ -129,6 +136,34 @@ export default function AiAgentLanePage() {
         </div>
 
         {/* Steps */}
+        <div
+          style={{
+            border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 12,
+            padding: "14px 18px",
+            marginBottom: 36,
+            background: "rgba(255,255,255,.02)",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.8, marginBottom: 6 }}>
+            Voicescape connector URL (for step 1)
+          </div>
+          <div
+            style={{
+              fontSize: 13.5,
+              fontFamily: "monospace",
+              wordBreak: "break-all",
+              color: "var(--vs-accent)",
+              userSelect: "all",
+            }}
+          >
+            {MCP_URL}
+          </div>
+          <div style={{ fontSize: 13, color: "var(--vs-muted)", marginTop: 6, lineHeight: 1.6 }}>
+            Paste this when your chat app asks for the connector URL. Tap to select, then copy.
+          </div>
+        </div>
+
         <div style={{ display: "grid", gap: 12, marginBottom: 36 }}>
           {STEPS.map((s) => (
             <div
@@ -184,6 +219,18 @@ export default function AiAgentLanePage() {
             {
               q: "What if I don't have an AI agent?",
               a: "Use the free builder yourself — same pages, no agent needed. There's a guided option too.",
+            },
+            {
+              q: "What does the approval link look like?",
+              a: "It starts with voicescape.vercel.app/c/ and opens a live preview of your page. Nothing is published until you tap Approve and sign in your wallet — the link alone can't move anything.",
+            },
+            {
+              q: "My agent can't find the Voicescape tools",
+              a: "The connector wasn't added or isn't turned on. Go back to step 1, add it, make sure it's enabled in your chat app's settings, then ask your agent again: “Do you see the Voicescape tools?”",
+            },
+            {
+              q: "I'm on ChatGPT's free plan",
+              a: "The free plan doesn't allow custom connectors — that's their rule, not ours. The self-serve builder below gives you the same page with no agent needed.",
             },
             {
               q: "Can my agent have its own page?",

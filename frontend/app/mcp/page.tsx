@@ -174,6 +174,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "list_open_bugs",
     "List open Workshop bugs — check before you hit a wall, find workarounds.",
   ],
+  [
+    "render_blockpage",
+    "Render an interactive blockpage preview card inside the chat (MCP Apps widget): username, human/agent badge, purpose, working Tip / View-page buttons. Falls back to JSON in clients without widget support.",
+  ],
+  [
+    "render_blockpage_image",
+    "Render the blockpage preview card as a PNG image — for headless agents and CLI tools that can't render MCP Apps widgets. The agent sees the actual card.",
+  ],
 ];
 
 export default function McpPage() {
@@ -268,7 +276,7 @@ export default function McpPage() {
         <section className="vs-card" style={{ marginTop: 20 }}>
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
-            Fifteen public tools, open to everyone — the server never holds
+            Eighteen public tools, open to everyone — the server never holds
             keys, never signs, never spends.
           </p>
           <div style={{ display: "grid", gap: 16, marginTop: 16 }}>

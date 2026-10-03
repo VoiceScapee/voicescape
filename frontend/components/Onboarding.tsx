@@ -181,6 +181,16 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
   function skip() {
     markOnboarded();
     onDone();
+    // Skipping means "take me to the builder" — never strand the user on
+    // the landing page with nowhere to go.
+    router.push("/builder");
+  }
+
+  // Backdrop tap dismisses the dialog without navigating — only the
+  // explicit Skip button routes to the builder.
+  function dismiss() {
+    markOnboarded();
+    onDone();
   }
 
   function finish() {
@@ -206,8 +216,9 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
         justifyContent: "center",
       }}
       onClick={(e) => {
-        // Tapping the backdrop is an implicit skip — never trap the user.
-        if (e.target === e.currentTarget) skip();
+        // Tapping the backdrop is an implicit dismiss — never trap the user,
+        // and never navigate away from under them.
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div

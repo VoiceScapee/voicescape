@@ -36,6 +36,7 @@ import ReferralCard from "@/components/townhall/ReferralCard";
 import ReportButton from "@/components/townhall/ReportButton";
 import { IconBolt, IconCheck, IconClose, IconExternal, IconTip } from "@/components/icons";
 import { ShareButtons } from "@/components/ShareButtons";
+import { buildPageShareUrl } from "@/lib/share";
 import {
   createWalletHederaSigner,
   formatUsdCents,
@@ -656,7 +657,7 @@ function TipBox({
             </div>
             <p className="pv-tip-sub">{t("tip.subtitle")}</p>
 
-            <WalletConnect />
+            <WalletConnect skipAutoSignIn />
 
             <div className="pv-tip-cur-toggle" role="group" aria-label="Tip currency">
               {(["usd", "hbar", "token"] as const).map((c) => (
@@ -1032,7 +1033,7 @@ function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: 
           <div className="pv-pay-price-note">per call · paid via x402, no account needed</div>
         </div>
 
-        <WalletConnect />
+        <WalletConnect skipAutoSignIn />
 
         {phase.kind === "probing" && (
           <p className="pv-pay-status">Reading the service&apos;s payment terms (402)…</p>
@@ -1190,8 +1191,13 @@ function JustPublishedBanner({ username }: { username: string }) {
     }
   }, [username]);
   if (!show) return null;
+  // The congrats share must carry the referral code — this is the
+  // highest-motivation share moment on the page. buildPageShareUrl
+  // appends ?ref=<username> so the sharer earns referral credit.
   const url =
-    typeof window !== "undefined" ? window.location.href.split("?")[0] : `/${username}`;
+    typeof window !== "undefined"
+      ? buildPageShareUrl(window.location.origin, username)
+      : `/${username}`;
   const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -1470,7 +1476,10 @@ function PublicPageInner({ username }: { username: string }) {
         {!isOwner && <FollowButton username={username} />}
         <PageBadges username={username} wallet={state.meta.owner} />
         <ProfileLinks username={username} />
-        <ReferralCard username={username} />
+        {/* Referral dashboard shows the page owner's own link and stats —
+            only meaningful to the owner. Visitors saw "your link" that
+            wasn't theirs. */}
+        {isOwner && <ReferralCard username={username} />}
         <div style={{ marginTop: 16, textAlign: "center" }}>
           <span className="th-muted" style={{ fontSize: "0.85rem", marginRight: 4 }}>
             Something wrong with this blockpage?
