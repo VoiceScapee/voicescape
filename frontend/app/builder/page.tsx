@@ -71,6 +71,7 @@ import {
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
 import { recordConversionEvent } from "@/lib/metrics";
+import { recordUsageEvent } from "@/lib/usage";
 import { reportError } from "@/lib/report-error";
 import { registerPage, updatePage, ZERO_ADDRESS, getRegistryAddress } from "@/lib/contracts";
 import {
@@ -2413,6 +2414,8 @@ function PublishPanel({
     if (!publishStartedFired.current) {
       publishStartedFired.current = true;
       recordConversionEvent("publish_started");
+      // Internal usage telemetry (founder eyes only).
+      recordUsageEvent("builder.publish_attempt");
     }
     try {
       // Stamp the page JSON with the derived username plus the informational
@@ -2512,6 +2515,8 @@ function PublishPanel({
       // Funnel telemetry: a blockpage was published. Aggregate counter
       // only — recordConversionEvent never throws and never affects publish.
       recordConversionEvent("page_published");
+      // Internal usage telemetry (founder eyes only).
+      recordUsageEvent("builder.publish_success");
       // Liaison loop-close: if this page came from Danny's draft, confirm
       // the publish with the server so the draft is deleted (the liaison
       // keeps no copy) and the completion is recorded. Best-effort — the
@@ -2603,6 +2608,8 @@ function PublishPanel({
       // show WHY publishes fail; plain-words copy for the phone user.
       reportError(e, "builder-publish", { action: "publish", walletState: account ? "connected" : "disconnected" });
       recordConversionEvent("publish_failed");
+      // Internal usage telemetry (founder eyes only): why publishes fail.
+      recordUsageEvent("builder.publish_failed", { detail: e instanceof Error ? e.message.slice(0, 120) : "unknown" });
       const stale = isStaleConnectionError(e instanceof Error ? e.message : String(e));
       setPublishStale(stale);
       setStatus({ kind: "err", text: `Publish failed: ${friendlyWalletError(e)}` });
@@ -2876,6 +2883,22 @@ function BuilderInner() {
   );
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
+
+  // Internal usage telemetry (founder eyes only): when the user reaches
+  // the Publish tab, snapshot the draft page so the founder dashboard can
+  // render exactly what their preview looked like. Anonymous — no wallet,
+  // IP, or username attached. Once per visit to the tab.
+  const previewSentRef = useRef(false);
+  useEffect(() => {
+    if (tab !== "publish") {
+      previewSentRef.current = false;
+      return;
+    }
+    if (previewSentRef.current) return;
+    previewSentRef.current = true;
+    recordUsageEvent("builder.preview", undefined, page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab ]);
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
 
   // Name-first claim (2026-09-28): the blockpage name is picked in step 1,
@@ -3057,6 +3080,8 @@ function BuilderInner() {
     // "Publish page" from the chat widget: open the builder on its Publish
     // tab so the visitor signs and publishes through the existing flow.
     if (consumeBuddyPublishIntent()) setTab("publish");
+    // Internal usage telemetry (founder eyes only): builder opened.
+    recordUsageEvent("builder.open");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -3521,7 +3546,11 @@ function BuilderInner() {
                   <button
                     type="button"
                     className="vs-btn vs-btn-primary"
-                    onClick={() => editPage((p) => ({ ...p, blocks: [...p.blocks, createDefaultBlock(addType, p.username)] }))}
+                    onClick={() => {
+                      editPage((p) => ({ ...p, blocks: [...p.blocks, createDefaultBlock(addType, p.username)] }));
+                      // Internal usage telemetry: block added (type only, no content).
+                      recordUsageEvent("builder.block_add", { detail: addType });
+                    }}
                   >
                     <IconPlus size={16} /> Add block
                   </button>
