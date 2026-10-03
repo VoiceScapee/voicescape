@@ -469,6 +469,7 @@
   font-weight: 700;
   font-size: 15px;
   padding: 12px 0;
+  min-height: 44px; /* reliable touch target on Pixel/mobile */
   cursor: pointer;
 }
 

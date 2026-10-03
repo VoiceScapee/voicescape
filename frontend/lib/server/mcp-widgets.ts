@@ -25,11 +25,20 @@ export const BLOCKPAGE_PREVIEW_URI = "ui://voicescape/blockpage-preview";
  * server-side screenshot path (render_blockpage_image) so headless agents
  * can see the same card as an image.
  */
-export function blockpagePreviewHtml(preload?: {
-  username: string;
-  owner_type: string;
-  purpose?: string | null;
-}): string {
+export function blockpagePreviewHtml(
+  preload?: {
+    username: string;
+    owner_type: string;
+    purpose?: string | null;
+  },
+  appOrigin = "https://voicescape.vercel.app",
+): string {
+  // Links must stay on our own https origin — never javascript: or a
+  // foreign host, even if a caller passes a bad value.
+  const safeOrigin =
+    typeof appOrigin === "string" && /^https:\/\/[^/\s]+$/.test(appOrigin)
+      ? appOrigin
+      : "https://voicescape.vercel.app";
   const preloadJson = preload
     ? JSON.stringify({
         username: preload.username,
@@ -72,6 +81,7 @@ export function blockpagePreviewHtml(preload?: {
     flex: 1; text-align: center; padding: 12px; border-radius: 10px;
     font-size: 14px; font-weight: 700; cursor: pointer; border: none;
     text-decoration: none; display: inline-block;
+    min-height: 44px; line-height: 20px; /* 44px touch target (Pixel/mobile) */
   }
   .btn.primary { background: linear-gradient(135deg, #7b3ff2, #b45cf0); color: #fff; }
   .btn.ghost { background: rgba(255,255,255,.08); color: #f2eefc; border: 1px solid rgba(255,255,255,.15); }
@@ -85,7 +95,7 @@ export function blockpagePreviewHtml(preload?: {
 window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
 (function () {
   var card = document.getElementById('card');
-  var appOrigin = 'https://voicescape.vercel.app';
+  var appOrigin = __APP_ORIGIN__;
   var data = null;
 
   function esc(s) {
@@ -117,7 +127,13 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
 
   function openLink(url) {
     // MCP Apps bridge: ask the host to open the link (wallet handoff for tips).
+    // Only our own https origin ever leaves the widget — a compromised or
+    // spoofed data payload cannot redirect the user elsewhere.
+    if (typeof url !== 'string' || url.indexOf(appOrigin + '/') !== 0) return;
     if (window.parent !== window) {
+      // Target is the host frame (Claude, ChatGPT, …): its origin is not
+      // knowable in advance, so '*' is required here. The payload carries
+      // no sensitive data — just the URL to open, already origin-pinned.
       window.parent.postMessage({
         jsonrpc: '2.0', id: Date.now(),
         method: 'ui/openLink', params: { url: url }
@@ -145,8 +161,12 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
   // MCP Apps bridge handshake
   var initialized = false;
   window.addEventListener('message', function (event) {
+    // Only the embedding host frame may drive the widget — ignore stray
+    // messages from any other window.
+    if (event.source !== window.parent) return;
     var msg = event.data;
     if (!msg || typeof msg !== 'object') return;
+    if (msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') return;
     // Host delivering the tool result
     if (msg.method === 'ui/notifications/tool-result' && msg.params) {
       handleToolResult(msg.params.result || msg.params);
@@ -172,5 +192,6 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
 })();
 </script>
 </body>
-</html>`.replace("__PRELOAD_JSON__", () => preloadJson);
+</html>`.replace("__PRELOAD_JSON__", () => preloadJson)
+    .replace("__APP_ORIGIN__", () => JSON.stringify(safeOrigin));
 }

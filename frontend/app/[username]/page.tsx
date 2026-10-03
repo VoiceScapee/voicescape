@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, use, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, use, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
@@ -83,6 +83,29 @@ type LoadState =
 const TIP_PRESETS_USD = ["0.10", "1", "5", "10", "25"];
 const TIP_PRESETS_HBAR = ["1", "5", "10", "25", "50"];
 
+/**
+ * Dialog accessibility: Escape closes the modal, focus moves into it on
+ * open and returns to the previously focused element on close. Without
+ * this, an aria-modal dialog is a broken promise to assistive tech —
+ * keyboard users could tab behind the modal.
+ */
+function useDialogA11y(onClose: () => void) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const prev = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      prev?.focus?.();
+    };
+  }, [onClose]);
+  return dialogRef;
+}
+
 function TipBox({
   username,
   paused,
@@ -98,6 +121,7 @@ function TipBox({
 }) {
   const { account, connect, getTxSender } = useWallet();
   const { session, signOut } = useSession();
+  const dialogRef = useDialogA11y(onClose);
   const { t } = useLanguage();
   const [usd, setUsd] = useState("5");
   // Visitor-chosen tip mode: USD (converted to HBAR at send time), HBAR
@@ -215,8 +239,17 @@ function TipBox({
     setError(null);
   };
 
+  const [priceFailed, setPriceFailed] = useState(false);
   useEffect(() => {
-    getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
+    getHbarUsdPrice()
+      .then((p) => {
+        setHbarPrice(p);
+        setPriceFailed(p === null);
+      })
+      .catch(() => {
+        setHbarPrice(null);
+        setPriceFailed(true);
+      });
   }, []);
 
   // Token mode: list the HTS tokens the connected wallet holds. Runs when
@@ -296,7 +329,9 @@ function TipBox({
   const railDisplay =
     hbarPrice && usdValid
       ? `≈ ${(usdNum / hbarPrice).toFixed(4)} ${chain.nativeCurrency.symbol}`
-      : `${chain.nativeCurrency.symbol} amount loading…`;
+      : priceFailed
+        ? "Price unavailable — HBAR mode works"
+        : `${chain.nativeCurrency.symbol} amount loading…`;
 
   // Breakdown math for the plain-words 98/2 panel. In HBAR mode the amount
   // is exact; in USD mode it's valid only when the HBAR price has loaded
@@ -314,12 +349,25 @@ function TipBox({
       ? `${hbarInput} HBAR`
       : "?"
     : `$${usdValid ? usdNum.toFixed(2) : "?"}`;
-  const toCreatorAmt = hbarAmt != null ? hbarAmt * 0.98 : null;
-  const treasuryAmt = hbarAmt != null ? hbarAmt * 0.02 : null;
+  // Integer tinybar math for every 98/2 display — settlement stays
+  // exact in the contract; what we show must be computed the way the
+  // contract computes it, never via float rounding.
+  const split98_2 = (hbar: number): { creator: number; treasury: number } => {
+    const tiny = BigInt(Math.round(hbar * 1e8));
+    return {
+      creator: Number((tiny * 98n) / 100n) / 1e8,
+      treasury: Number((tiny * 2n) / 100n) / 1e8,
+    };
+  };
+  const tinybars = hbarAmt != null ? BigInt(Math.round(hbarAmt * 1e8)) : null;
+  const toCreatorAmt = tinybars != null ? Number((tinybars * 98n) / 100n) / 1e8 : null;
+  const treasuryAmt = tinybars != null ? Number((tinybars * 2n) / 100n) / 1e8 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
   const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
-  // Hedera-side network fee (existing display value), passed through the
-  // i18n placeholder rather than hard-coded into JSX copy.
+  // Hedera-side network fee display. Grounded 2026-10-03: recent mainnet
+  // tipPage calls were charged 0.053–0.090 HBAR (mirror node charged_tx_fee),
+  // so 0.08 sits inside the observed range and the UI renders it with "≈".
+  // Passed through the i18n placeholder rather than hard-coded into JSX copy.
   const NETWORK_FEE_HBAR = "0.08";
 
   // One-tap fix for a stale WalletConnect session: clears the dead session
@@ -403,13 +451,13 @@ function TipBox({
         isHbar
           ? [
               { label: "You sent", value: `${hbarNum} HBAR` },
-              { label: `${username} gets (98%)`, value: `${(sendHbar * 0.98).toFixed(4)} HBAR` },
-              { label: "Treasury gets (2%)", value: `${(sendHbar * 0.02).toFixed(4)} HBAR` },
+              { label: `${username} gets (98%)`, value: `${split98_2(sendHbar).creator.toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `${split98_2(sendHbar).treasury.toFixed(4)} HBAR` },
             ]
           : [
               { label: "You sent", value: `$${usdNum.toFixed(2)} (≈ ${sendHbar.toFixed(4)} HBAR)` },
-              { label: `${username} gets (98%)`, value: `≈ ${(sendHbar * 0.98).toFixed(4)} HBAR` },
-              { label: "Treasury gets (2%)", value: `≈ ${(sendHbar * 0.02).toFixed(4)} HBAR` },
+              { label: `${username} gets (98%)`, value: `≈ ${split98_2(sendHbar).creator.toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${split98_2(sendHbar).treasury.toFixed(4)} HBAR` },
             ],
       );
       setShareHbar(sendHbar.toFixed(4));
@@ -526,8 +574,8 @@ function TipBox({
           value: `${formatTokenAmount(amountIn, token.decimals)} ${token.symbol} → ≈ ${weiToHbar(q.hbarOutWei).toFixed(4)} HBAR`,
         },
         { label: "You sent", value: `≈ ${tipHbar.toFixed(4)} HBAR` },
-        { label: `${username} gets (98%)`, value: `≈ ${(tipHbar * 0.98).toFixed(4)} HBAR` },
-        { label: "Treasury gets (2%)", value: `≈ ${(tipHbar * 0.02).toFixed(4)} HBAR` },
+        { label: `${username} gets (98%)`, value: `≈ ${split98_2(tipHbar).creator.toFixed(4)} HBAR` },
+        { label: "Treasury gets (2%)", value: `≈ ${split98_2(tipHbar).treasury.toFixed(4)} HBAR` },
       ]);
       setShareHbar(tipHbar.toFixed(4));
       const hash = await tipPage(username, tipWei, sender);
@@ -555,6 +603,8 @@ function TipBox({
       role="dialog"
       aria-modal="true"
       aria-label={`Tip ${username}`}
+      ref={dialogRef}
+      tabIndex={-1}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -741,7 +791,11 @@ function TipBox({
                         </div>
                         <div className="pv-tip-break-row">
                           <span>{t("tip.creatorGets").replace("{name}", username)}</span>
-                          <span>≈ {(weiToHbar(quote.hbarOutWei) * 0.98).toFixed(4)} HBAR</span>
+                          <span>≈ {split98_2(weiToHbar(quote.hbarOutWei)).creator.toFixed(4)} HBAR</span>
+                        </div>
+                        <div className="pv-tip-break-row">
+                          <span>{t("tip.treasuryGets")}</span>
+                          <span>≈ {split98_2(weiToHbar(quote.hbarOutWei)).treasury.toFixed(4)} HBAR</span>
                         </div>
                         <div className="pv-tip-break-row pv-tip-break-fee">
                           <span>{t("tip.networkFee").replace("{fee}", NETWORK_FEE_HBAR)}</span>
@@ -850,7 +904,9 @@ function TipBox({
                         ? `Swap & tip ≈ ${weiToHbar(quote.hbarOutWei).toFixed(4)} HBAR`
                         : "Enter an amount"
                     : !isHbar && !hbarPrice
-                    ? "Loading price…"
+                    ? priceFailed
+                      ? "Price unavailable"
+                      : "Loading price…"
                     : isHbar
                       ? t("tip.confirmCtaHbar").replace("{amount}", hbarValid ? String(hbarNum) : "0")
                       : t("tip.confirmCta").replace("{amount}", usdValid ? usdNum.toFixed(2) : "0.00")}
@@ -925,6 +981,7 @@ type PayPhase =
   | { kind: "error"; message: string };
 
 function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: () => void }) {
+  const dialogRef = useDialogA11y(onClose);
   const [phase, setPhase] = useState<PayPhase>({ kind: "probing" });
   const [rail, setRail] = useState<X402Rail | null>(null);
   const [params, setParams] = useState("{}");
@@ -1009,6 +1066,8 @@ function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: 
       role="dialog"
       aria-modal="true"
       aria-label={`Pay for ${service.name}`}
+      ref={dialogRef}
+      tabIndex={-1}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -1085,7 +1144,7 @@ function ServicePayModal({ service, onClose }: { service: ServiceItem; onClose: 
 
         {phase.kind === "done" && (
           <div className="pv-pay-result">
-            <div className="pv-pay-status is-ok">✅ Payment settled{phase.settleTxId ? " — service responded:" : " — service responded:"}</div>
+            <div className="pv-pay-status is-ok">✅ Payment settled — service responded:</div>
             {phase.settleTxId && (
               <a
                 className="pv-review-tx vs-mono"

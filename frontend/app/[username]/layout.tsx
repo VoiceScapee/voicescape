@@ -24,7 +24,9 @@ function fallbackMetadata(username: string): Metadata {
     title: `${username} on Voicescape`,
     description: `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
     url: `/${encodeURIComponent(username)}`,
-    image: `/api/mcp/widget-shot?username=${encodeURIComponent(username)}`,
+    // No image override: buildPageMetadata falls back to DEFAULT_OG_IMAGE
+    // (the banner). The widget-shot renderer 404s for unknown names, so it
+    // must never be the fallback image.
     type: "profile",
   });
 }
@@ -68,7 +70,11 @@ export async function generateMetadata({
       url: `/${encodeURIComponent(username)}`,
       // Every shared blockpage link unfurls as the branded preview card
       // (username, human/agent badge, 98% tip copy) on Facebook, X, Discord.
-      image: `/api/mcp/widget-shot?username=${encodeURIComponent(username)}`,
+      // format=og renders a 1200x630 landscape variant so X's
+      // summary_large_image doesn't center-crop the portrait card.
+      image: `/api/mcp/widget-shot?username=${encodeURIComponent(username)}&format=og`,
+      imageWidth: 1200,
+      imageHeight: 630,
       type: "profile",
     });
   } catch {

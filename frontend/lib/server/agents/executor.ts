@@ -6,7 +6,7 @@
  * deterministic rule-based parser for the three supported operations. The
  * server NEVER signs — it builds the transaction, freezes it with the
  * user's account as payer, and returns the serialized bytes. The human
- * signs via their wallet (HashConnect); nothing moves without their
+ * signs via their wallet (@hashgraph/hedera-wallet-connect); nothing moves without their
  * explicit approval.
  *
  * Supported operations:

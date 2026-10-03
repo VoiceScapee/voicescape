@@ -15,6 +15,19 @@ export const TIPSENT_TOPIC =
 
 /** 1 HBAR = 100,000,000 tinybar. */
 const TINYBAR_PER_HBAR = 100_000_000;
+const TINYBAR_PER_HBAR_BI = 100_000_000n;
+
+/**
+ * Format a whole-tinybar bigint as an exact HBAR string — pure integer
+ * math, no float dust (e.g. 98_000_000n -> "0.98"). Prefer this over
+ * float division anywhere a raw tinybar value is displayed.
+ */
+export function formatTinybarAsHbar(tinybar: bigint): string {
+  const whole = tinybar / TINYBAR_PER_HBAR_BI;
+  const frac = tinybar % TINYBAR_PER_HBAR_BI;
+  if (frac === 0n) return whole.toString();
+  return `${whole}.${frac.toString().padStart(8, "0").replace(/0+$/, "")}`;
+}
 
 export interface TipEvent {
   /** Tipper's EVM address (lowercased). */

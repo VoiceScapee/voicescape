@@ -190,6 +190,7 @@
   justify-content: center;
   gap: 8px;
   padding: 10px 8px;
+  min-height: 44px; /* phone thumb target */
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -546,6 +547,7 @@ select.vs-input option {
   align-items: center;
   gap: 6px;
   padding: 7px 12px;
+  min-height: 44px; /* phone thumb target */
   border-radius: 999px;
   border: 1px solid rgba(130, 89, 239, 0.45);
   background: rgba(130, 89, 239, 0.1);
@@ -732,6 +734,7 @@ select.vs-input option {
 .vb-draft-bar-actions .vs-btn {
   padding: 8px 14px;
   font-size: 13px;
+  min-height: 44px; /* phone thumb target — Apply/Discard are high-consequence */
 }
 
 .vb-draft-badge {
@@ -1221,6 +1224,8 @@ select.vs-input option {
   font-size: 15px;
   cursor: pointer;
   padding: 6px;
+  min-width: 44px; /* phone thumb target */
+  min-height: 44px; /* phone thumb target */
   line-height: 1;
 }
 @media (max-width: 640px) {

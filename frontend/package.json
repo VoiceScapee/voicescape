@@ -30,7 +30,7 @@
     "@walletconnect/utils": "^2.24.0",
     "@x402/core": "^2.25.0",
     "@x402/fetch": "^2.25.0",
-    "@x402/hedera": "^2.25.0",
+    "@x402/hedera": "^2.28.0",
     "ethers": "^6.17.0",
     "ioredis": "^5.11.1",
     "mcp-handler": "^2.2.0",

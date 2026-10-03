@@ -252,8 +252,12 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
   const { getActiveChain } = await import("./chains");
   const chain = getActiveChain();
   const networkClient = Client.forMainnet(); // mainnet only — no testnet
-  tx.setTransactionId(TransactionId.generate(payer));
-  tx.freezeWith(networkClient);
+  try {
+    tx.setTransactionId(TransactionId.generate(payer));
+    tx.freezeWith(networkClient);
+  } finally {
+    networkClient.close(); // never leak the gRPC client per town-hall write
+  }
   const txId = tx.transactionId?.toString() ?? "";
   // DAppConnector signs AND executes via the wallet (HIP-820).
   const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");

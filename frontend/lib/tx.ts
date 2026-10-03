@@ -154,7 +154,7 @@ const REGISTRY_IFACE = new ethers.Interface(REGISTRY_ABI);
 const TIPS_IFACE = new ethers.Interface(TIPS_ABI);
 
 /* ------------------------------------------------------------------ */
-/* Hedera implementation (@hiero-ledger/sdk + HashConnect)                 */
+/* Hedera implementation (@hiero-ledger/sdk + hedera-wallet-connect)          */
 /* ------------------------------------------------------------------ */
 
 const HEDERA_WRITE_GAS = 600_000;

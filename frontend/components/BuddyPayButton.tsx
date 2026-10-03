@@ -36,6 +36,7 @@ type PayState =
 
 export default function BuddyPayButton({ onPaid }: { onPaid: () => void }) {
   const [state, setState] = useState<PayState>("idle");
+  const [receiptHash, setReceiptHash] = useState<string | null>(null);
 
   async function pay() {
     setState("checking");
@@ -70,8 +71,9 @@ export default function BuddyPayButton({ onPaid }: { onPaid: () => void }) {
         getActiveChain()
       );
       setState("signing");
+      let txHash: string | null = null;
       try {
-        await tipPage(BUDDY_PAGE_USERNAME, BUILD_PAYMENT_WEI, sender);
+        txHash = await tipPage(BUDDY_PAGE_USERNAME, BUILD_PAYMENT_WEI, sender);
       } catch (e) {
         if (e instanceof WalletTimeoutError) {
           // Wallet went silent after approval — the money may have moved.
@@ -81,6 +83,7 @@ export default function BuddyPayButton({ onPaid }: { onPaid: () => void }) {
           throw e;
         }
       }
+      if (txHash) setReceiptHash(txHash);
       setState("submitted");
       onPaid();
     } catch (e) {
@@ -120,12 +123,24 @@ export default function BuddyPayButton({ onPaid }: { onPaid: () => void }) {
       </button>
       <div style={{ marginTop: 6, fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)", lineHeight: 1.5 }}>
         {state === "submitted"
-          ? "Tip submitted — I'll detect it on-chain shortly (can take a minute). Nothing more to tap."
-          : "One-time payment for your custom blockpage build. Sent to Buddy's forge page — 98/2 split enforced on-chain."}
+          ? "Payment submitted — I'll detect it on-chain shortly (can take a minute). Nothing more to tap."
+          : "One-time payment for your custom blockpage build, plus a tiny Hedera network fee. Sent to Buddy's forge page — 98/2 split enforced on-chain."}
       </div>
       {typeof state === "object" && (
         <div style={{ marginTop: 6, fontSize: 12, color: "#ff9d9d", lineHeight: 1.5 }}>
           {state.error}
+        </div>
+      )}
+      {receiptHash && (
+        <div style={{ marginTop: 6, fontSize: 12 }}>
+          <a
+            href={`${getActiveChain().blockExplorer}/transaction/${receiptHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#8fd6ff", textDecoration: "underline" }}
+          >
+            View payment on HashScan →
+          </a>
         </div>
       )}
     </div>

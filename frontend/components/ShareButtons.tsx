@@ -16,8 +16,11 @@ import {
  *   WhatsApp, SMS, and every other app on the device.
  * - Everywhere: direct X / Facebook share links + copy link as fallback.
  *
- * Every shared URL carries ?ref=<username> so the sharer earns referral
- * credit when someone joins Voicescape through the link.
+ * Every shared URL carries ?ref=<username> so the PAGE OWNER earns referral
+ * credit when someone joins Voicescape through the link. (The ref is the
+ * page being shared, not the person tapping share — crediting the actual
+ * sharer would need their identity threaded through; that's a product
+ * call, not a bug.)
  */
 export function ShareButtons({ username }: { username: string }) {
   const [copied, setCopied] = useState(false);

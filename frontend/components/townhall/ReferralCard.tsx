@@ -13,6 +13,7 @@ import type { ReferralStatsView } from "@/lib/server/townhall/types";
  */
 export default function ReferralCard({ username }: { username: string }) {
   const [stats, setStats] = useState<ReferralStatsView | null>(null);
+  const [failed, setFailed] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -22,7 +23,8 @@ export default function ReferralCard({ username }: { username: string }) {
         if (live) setStats(d);
       })
       .catch(() => {
-        if (live) setStats({ username, totalReferrals: 0, referredUsernames: [] });
+        // Never fabricate a zero: a failed fetch means "unknown", not "none".
+        if (live) setFailed(true);
       });
     return () => {
       live = false;
@@ -74,8 +76,13 @@ export default function ReferralCard({ username }: { username: string }) {
       </div>
       <div className="th-row" style={{ gap: 16, marginTop: 10, fontSize: 13 }}>
         <span>
-          <strong>{stats ? stats.totalReferrals : "…"}</strong>{" "}
+          <strong>{stats ? stats.totalReferrals : failed ? "—" : "…"}</strong>{" "}
           <span className="th-muted">referral{stats && stats.totalReferrals === 1 ? "" : "s"}</span>
+          {failed && !stats && (
+            <span className="th-muted" style={{ marginLeft: 8 }}>
+              stats unavailable — try again later
+            </span>
+          )}
         </span>
       </div>
       {stats && stats.referredUsernames.length > 0 && (

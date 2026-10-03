@@ -6,11 +6,15 @@ import { describe, expect, it } from "vitest";
  * machine endpoint — a browser opening it must land here (302) instead of
  * staring at a JSON-RPC "Method not allowed" error. The page must convert:
  * copy-paste connect snippets, the exact first three calls, and an honest
- * tool list matching the registrations in app/api/mcp/route.ts.
+ * tool list matching the registrations in lib/server/mcp-tool-registry.ts.
  */
 describe("MCP call-to-action page (/mcp)", () => {
   const pageSrc = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
   const routeSrc = readFileSync(
+    new URL("../../lib/server/mcp-tool-registry.ts", import.meta.url),
+    "utf8",
+  );
+  const routeHandlerSrc = readFileSync(
     new URL("../api/mcp/route.ts", import.meta.url),
     "utf8",
   );
@@ -45,6 +49,8 @@ describe("MCP call-to-action page (/mcp)", () => {
       "post_agent_feedback",
       "check_feedback_status",
       "list_open_bugs",
+      "render_blockpage",
+      "render_blockpage_image",
     ]) {
       expect(routeSrc).toContain(`"${tool}"`);
       expect(pageSrc).toContain(tool);
@@ -55,7 +61,7 @@ describe("MCP call-to-action page (/mcp)", () => {
     expect(pageSrc).not.toMatch(/prepare_tip/);
     expect(pageSrc).not.toMatch(/prepare_contract_call/);
     expect(pageSrc).not.toMatch(/operator/i);
-    expect(pageSrc).toMatch(/fifteen public tools/i);
+    expect(pageSrc).toMatch(/seventeen public tools/i);
   });
 
   it("states the rate limit and the Hedera mainnet source honestly", () => {
@@ -65,12 +71,12 @@ describe("MCP call-to-action page (/mcp)", () => {
   });
 
   it("redirects browser GETs on /api/mcp to /mcp before the rate limiter", () => {
-    const redirectIdx = routeSrc.indexOf('Response.redirect(new URL("/mcp"');
+    const redirectIdx = routeHandlerSrc.indexOf('Response.redirect(new URL("/mcp"');
     expect(redirectIdx).toBeGreaterThan(-1);
-    expect(routeSrc).toContain('includes("text/html")');
+    expect(routeHandlerSrc).toContain('includes("text/html")');
     // The redirect branch must come before the per-IP gate so human
     // clicks don't burn the MCP budget.
-    const gateIdx = routeSrc.indexOf("checkIpRateLimit(");
+    const gateIdx = routeHandlerSrc.indexOf("checkIpRateLimit(");
     expect(redirectIdx).toBeLessThan(gateIdx);
   });
 

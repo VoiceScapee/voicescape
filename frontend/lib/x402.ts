@@ -11,14 +11,15 @@
  *     vibecode endpoint per AI edit (the loop closes: agents pay for their
  *     own edits through this flow).
  *
- * Signing is wallet-backed (HashConnect), never raw keys: we implement the
+ * Signing is wallet-backed (@hashgraph/hedera-wallet-connect), never raw keys: we implement the
  * @x402/hedera ClientHederaSigner interface over the paired wallet. The
  * mechanics mirror @x402/hedera's createClientHederaSigner (partially-signed
  * TransferTransaction, buyer signature only, facilitator feePayer as payer)
- * — verified against @x402/hedera@2.25.0 sources (read-only).
+ * — verified against @x402/hedera@2.28.0 sources (read-only).
  */
 
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
+import { fetchWithTimeout } from "./fetch-timeout";
 import type {
   PaymentRequirements,
   SelectPaymentRequirements,
@@ -183,9 +184,14 @@ let hbarPriceCache: { price: number; at: number } | null = null;
  * Approximate HBAR price in USD, for DISPLAY conversion only — never for
  * settlement (the 402's advertised amount is authoritative). Priority:
  * env override NEXT_PUBLIC_HBAR_USD_PRICE → Chainlink on-chain feed
- * (free, no key) → CoinGecko → 0.20 labeled fallback.
+ * (free, no key) → CoinGecko → null.
+ *
+ * Returns null when every source fails. Callers MUST NOT substitute a
+ * hardcoded guess: converting a user's "$5" at a stale price silently
+ * breaks their intent. USD flows disable themselves on null; HBAR flows
+ * are exact and unaffected.
  */
-export async function getHbarUsdPrice(): Promise<number> {
+export async function getHbarUsdPrice(): Promise<number | null> {
   const env = Number(process.env.NEXT_PUBLIC_HBAR_USD_PRICE);
   if (Number.isFinite(env) && env > 0) return env;
   const now = Date.now();
@@ -206,9 +212,9 @@ export async function getHbarUsdPrice(): Promise<number> {
       return p;
     }
   } catch {
-    // fall through to the labeled fallback
+    // fall through to null
   }
-  return 0.2;
+  return null;
 }
 
 /** Estimate USD cents for a rail amount. Returns null for unknown tokens. */
@@ -219,6 +225,7 @@ export async function railUsdCents(rail: Pick<X402Rail, "kind" | "amount">): Pro
     }
     if (rail.kind === "HBAR") {
       const price = await getHbarUsdPrice();
+      if (price === null) return null;
       return Math.round((Number(BigInt(rail.amount)) / 1e8) * price * 100);
     }
   } catch {
@@ -254,11 +261,17 @@ export interface X402Probe {
  * we send an empty JSON object.
  */
 export async function probeX402(url: string): Promise<X402Probe> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: "{}",
-  });
+  // 15s: a dead/slow agent endpoint must not hang the pay modal on
+  // "reading payment terms" forever — the caller renders the error state.
+  const res = await fetchWithTimeout(
+    url,
+    15_000,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    },
+  );
   if (res.status !== 402) {
     const text = await res.text().catch(() => "");
     throw new Error(
