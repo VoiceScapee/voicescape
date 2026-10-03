@@ -46,7 +46,10 @@ export const TREASURY_ID = "0.0.10424063";
 export const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
 
 const FETCH_TIMEOUT_MS = 10_000;
-const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
+export const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
+
+/** Human-readable username rule, shared by the MCP surface for fail-fast errors. */
+export const USERNAME_RULE = "3-32 lowercase letters, numbers, _ or -";
 
 const RESOLVE_IFACE = new ethers.Interface([
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
