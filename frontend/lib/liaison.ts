@@ -129,12 +129,14 @@ export function liaisonForwardReserveHbar(env: Record<string, string | undefined
 }
 
 /**
- * Forwardable balance (tinybar) above which a sweep fires (default 0 —
- * forward everything above the reserve). Env-tunable.
+ * Forwardable balance (tinybar) above which a sweep fires. Default 0.01
+ * HBAR — a transfer fee is ~$0.0001, so forwarding dust below this would
+ * spend more on the fee than it moves (a net loss; the economics invariant
+ * is that the platform never loses money on user actions). Env-tunable.
  */
 export function liaisonForwardThresholdHbar(env: Record<string, string | undefined> = process.env): number {
   const raw = Number(env.LIAISON_FORWARD_THRESHOLD_HBAR);
-  return Number.isFinite(raw) && raw >= 0 ? raw : 0;
+  return Number.isFinite(raw) && raw >= 0 ? raw : 0.01;
 }
 
 /**
