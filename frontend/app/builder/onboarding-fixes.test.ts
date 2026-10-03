@@ -67,9 +67,8 @@ describe("human default", () => {
 
 describe("plain-language publish", () => {
   it("explains the signature moment without rail/gas/contract jargon", () => {
-    expect(builderSrc).toContain(
-      "Your wallet will ask you to approve one transaction — a tiny Hedera network fee"
-    );
+    expect(builderSrc).toContain("Publishing is free — it registers");
+    expect(builderSrc).toContain("only the tiny Hedera network fee");
   });
 
   it("mentions the email path for wallet newcomers", () => {

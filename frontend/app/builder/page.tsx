@@ -2805,8 +2805,8 @@ function PublishPanel({
 
       <div className="vb-pub-actions">
         <p className="vb-info-hint" style={{ marginBottom: 8 }}>
-          Publishing registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
-          Hedera. Your wallet will ask you to approve one transaction — a tiny Hedera network fee
+          Publishing is free — it registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
+          Hedera. Your wallet will ask you to approve one transaction; only the tiny Hedera network fee
           (a few cents of HBAR) applies, nothing else moves. (Arrived via a referral link? One more
           signature may follow for the referral record.)
         </p>
