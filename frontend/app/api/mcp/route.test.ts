@@ -80,4 +80,23 @@ describe("MCP tool surface", () => {
       await client.close();
     }
   });
+
+  it("declares _meta.ui.csp on the widget resource", async () => {
+    const client = await connectedClient();
+    try {
+      const { resources } = await client.listResources();
+      const widget = resources.find((r) => r.uri === "ui://voicescape/blockpage-preview");
+      expect(widget?.mimeType).toBe("text/html;profile=mcp-app");
+      const meta = widget?._meta as { ui?: { csp?: string } } | undefined;
+      expect(meta?.ui?.csp).toContain("default-src 'none'");
+      expect(meta?.ui?.csp).toContain("script-src 'unsafe-inline'");
+      // The read payload carries the same declaration.
+      const read = await client.readResource({ uri: "ui://voicescape/blockpage-preview" });
+      const contents = read.contents[0] as { _meta?: { ui?: { csp?: string } }; text?: string };
+      expect(contents._meta?.ui?.csp).toBe(meta?.ui?.csp);
+      expect(contents.text).toContain("<!DOCTYPE html>");
+    } finally {
+      await client.close();
+    }
+  });
 });

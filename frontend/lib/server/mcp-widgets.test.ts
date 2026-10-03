@@ -5,7 +5,7 @@
  * handling, no signing), and carries the MCP Apps MIME profile.
  */
 import { describe, expect, it } from "vitest";
-import { BLOCKPAGE_PREVIEW_URI, blockpagePreviewHtml } from "./mcp-widgets";
+import { BLOCKPAGE_PREVIEW_URI, WIDGET_CSP, blockpagePreviewHtml } from "./mcp-widgets";
 
 describe("blockpage preview widget", () => {
   it("uses the ui:// scheme", () => {
@@ -28,9 +28,14 @@ describe("blockpage preview widget", () => {
     expect(html).not.toContain("mnemonic");
   });
 
-  it("hands money actions off via openLink (wallet stays the authority)", () => {
+  it("hands money actions off via ui/open-link (wallet stays the authority)", () => {
     const html = blockpagePreviewHtml();
-    expect(html).toContain("ui/openLink");
+    // SEP-1865 uses kebab-case; the old camelCase ui/openLink is silently
+    // ignored by spec-compliant hosts, which broke Tip/View buttons.
+    expect(html).toContain("ui/open-link");
+    // No camelCase method call remains — the comment may name it, the
+    // postMessage payload must not.
+    expect(html).not.toContain("method: 'ui/openLink'");
     expect(html).toContain("98% of tips go to the creator");
   });
 
@@ -76,5 +81,42 @@ describe("blockpage preview widget", () => {
   it("meets the 44px touch target on widget buttons", () => {
     const html = blockpagePreviewHtml();
     expect(html).toContain("min-height: 44px");
+  });
+
+  it("completes the SEP-1865 initialize lifecycle", () => {
+    const html = blockpagePreviewHtml();
+    // Widget announces itself, then waits for the host's answer before
+    // declaring readiness — the initialized notification must not fire
+    // before the host responds to ui/initialize.
+    expect(html).toContain("method: 'ui/initialize'");
+    expect(html).toContain("msg.id === INIT_ID");
+    expect(html).toContain("method: 'ui/notifications/initialized'");
+  });
+
+  it("reports dynamic sizing to the host", () => {
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("ResizeObserver");
+    expect(html).toContain("ui/notifications/size-changed");
+  });
+
+  it("listens for tool-input and host-context notifications", () => {
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("ui/notifications/tool-input");
+    expect(html).toContain("ui/notifications/host-context-changed");
+  });
+
+  it("surfaces tool errors honestly instead of a dead card", () => {
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("result.isError === true");
+  });
+
+  it("declares a restrictive widget CSP for _meta.ui.csp", () => {
+    // Self-contained widget: inline script/style only, no network, no
+    // images, no forms — the policy must reflect that, explicitly.
+    expect(WIDGET_CSP).toContain("default-src 'none'");
+    expect(WIDGET_CSP).toContain("script-src 'unsafe-inline'");
+    expect(WIDGET_CSP).toContain("style-src 'unsafe-inline'");
+    expect(WIDGET_CSP).toContain("connect-src 'none'");
+    expect(WIDGET_CSP).not.toContain("http");
   });
 });
