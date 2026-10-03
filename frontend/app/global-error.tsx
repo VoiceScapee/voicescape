@@ -5,7 +5,14 @@
  * fails. Next.js requires this file to define its own <html> and <body>;
  * it cannot use the app's providers, so it stays minimal and dependency-free
  * (no imports from @/lib — reporting here must not risk another crash).
+ *
+ * The crash IS still reported to /api/client-error, via an inline
+ * zero-dependency sendBeacon below (no @/lib imports — only React and
+ * browser builtins). Root-layout crashes are the most severe client
+ * failures; leaving them invisible was a blind spot.
  */
+import { useEffect } from "react";
+
 export default function GlobalError({
   error,
   reset,
@@ -13,6 +20,42 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    try {
+      // Inline, dependency-free, privacy-safe report. Mirrors the rules in
+      // lib/report-error.ts without importing it: message only (scrubbed of
+      // anything shaped like a wallet address / account ID), pathname only,
+      // component tag, error name, Next.js digest for correlation.
+      // sendBeacon is fire-and-forget so telemetry can never break this
+      // last-resort UI, and the whole block is wrapped so reporting can
+      // never throw into the boundary.
+      const rawMsg =
+        (error && typeof error.message === "string" && error.message) || "root layout crash";
+      const msg = rawMsg
+        .replace(/0x[a-fA-F0-9]{8,}/g, "0x…")
+        .replace(/\b\d{1,10}\.\d{1,10}\.\d{1,10}\b/g, "0.0.…")
+        .trim()
+        .replace(/\s+/g, " ")
+        .slice(0, 200);
+      if (!msg || typeof window === "undefined") return;
+      const page = (window.location.pathname || "/").split("?")[0].split("#")[0] || "/";
+      const digest =
+        error && typeof error.digest === "string" && /^[a-zA-Z0-9_-]{1,40}$/.test(error.digest)
+          ? error.digest
+          : null;
+      const payload = JSON.stringify({
+        message: digest ? `${msg} (digest ${digest})` : msg,
+        page,
+        component: "global-error-boundary",
+        ...(error && error.name ? { name: String(error.name).slice(0, 40) } : {}),
+      });
+      if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+        navigator.sendBeacon("/api/client-error", new Blob([payload], { type: "application/json" }));
+      }
+    } catch {
+      /* reporting must never break the last-resort UI */
+    }
+  }, [error]);
   return (
     <html lang="en">
       <body
