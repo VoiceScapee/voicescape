@@ -13,9 +13,13 @@ import ExternalLink from "./ExternalLink";
 import { deriveUsername, getVanityName } from "@/lib/identity";
 import { NotificationBell } from "./NotificationBell";
 import {
+  hasInjectedHederaWallet,
   isHashPackInAppBrowser,
+  isMobileUserAgent,
+  isPairingCancelled,
   OPEN_WALLET_CONNECT_EVENT,
   resolveInAppHeaderState,
+  shouldSuggestWalletInstall,
   useWallet,
   WALLET_ADAPTERS,
   type WalletAdapterId,
@@ -57,6 +61,14 @@ export function WalletConnect() {
     session = null;
   }
   const [showOptions, setShowOptions] = useState(false);
+  // No-wallet pre-flight (desktop): when no wallet extension is installed,
+  // opening the QR pairing modal is a dead end — every option funnels into
+  // the same modal and it waits forever. Show install guidance instead,
+  // with an explicit "show the QR code anyway" escape hatch for people
+  // pairing from a phone wallet.
+  const [showNoWalletHelp, setShowNoWalletHelp] = useState(false);
+  const [pendingAdapter, setPendingAdapter] = useState<WalletAdapterId | null>(null);
+  const [qrBypass, setQrBypass] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const chain = getActiveChain();
   const options = WALLET_ADAPTERS.filter((a) => a.chains.includes(chain.key));
@@ -87,17 +99,51 @@ export function WalletConnect() {
   // picker that can't work inside the wallet app.
   const showInAppRetry = inAppState === "retry";
 
-  async function handlePick(adapterId: WalletAdapterId) {
+  async function runPick(adapterId: WalletAdapterId) {
     setShowOptions(false);
-    if (session) {
-      try {
-        await session.signIn(adapterId);
-      } catch {
-        // Error surfaces via session.error.
+    setShowNoWalletHelp(false);
+    try {
+      if (session) {
+        try {
+          await session.signIn(adapterId);
+        } catch {
+          // Error surfaces via session.error.
+        }
+      } else {
+        await connect(adapterId);
       }
-    } else {
-      await connect(adapterId);
+    } catch (e) {
+      // A dismissed pairing modal is a deliberate cancel — the button
+      // already reset quietly inside connect()/signIn; nothing to show.
+      if (!isPairingCancelled(e)) throw e;
     }
+  }
+
+  async function handlePick(adapterId: WalletAdapterId) {
+    // Desktop with no wallet installed: say so plainly instead of opening
+    // the identical dead-end modal — unless the user explicitly asked for
+    // the QR code (they may be pairing from their phone).
+    if (
+      !qrBypass &&
+      shouldSuggestWalletInstall({
+        isMobile: isMobileUserAgent(),
+        inHashPackBrowser: isHashPackInAppBrowser(),
+        hasInjectedWallet: hasInjectedHederaWallet(),
+      })
+    ) {
+      setPendingAdapter(adapterId);
+      setShowNoWalletHelp(true);
+      return;
+    }
+    await runPick(adapterId);
+  }
+
+  function handleShowQrAnyway() {
+    const adapter = pendingAdapter;
+    setQrBypass(true);
+    setPendingAdapter(null);
+    if (adapter) void runPick(adapter);
+    else setShowNoWalletHelp(false);
   }
 
   async function handleSignIn() {
@@ -140,13 +186,19 @@ export function WalletConnect() {
   // Close the wallet picker when clicking outside or pressing Escape.
   useEffect(() => {
     if (!showOptions) return;
+    const closePicker = () => {
+      setShowOptions(false);
+      setShowNoWalletHelp(false);
+      setPendingAdapter(null);
+      setQrBypass(false);
+    };
     const onDown = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setShowOptions(false);
+        closePicker();
       }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowOptions(false);
+      if (e.key === "Escape") closePicker();
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -355,33 +407,81 @@ export function WalletConnect() {
             boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
           }}
         >
-          {options.map((o) => (
-            <button
-              key={o.id}
-              onClick={() => void handlePick(o.id)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "10px 12px",
-                textAlign: "left",
-                cursor: "pointer",
-                background: "none",
-                border: "none",
-                borderRadius: 8,
-                color: "var(--vs-text)",
-                fontFamily: "var(--vs-font)",
-                fontSize: 14,
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(130,89,239,0.15)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "none";
-              }}
-            >
-              {o.name}
-            </button>
-          ))}
+          {showNoWalletHelp ? (
+            <div style={{ padding: "10px 12px" }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                You&apos;ll need a Hedera wallet to connect
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--vs-muted)", marginBottom: 10 }}>
+                Voicescape signs you in with your wallet — no passwords. No
+                wallet app was found in this browser, so the pairing screen
+                would just wait forever.
+              </div>
+              <ExternalLink
+                href="https://www.hashpack.app"
+                className="vs-btn vs-btn-primary"
+                style={{
+                  display: "block",
+                  textAlign: "center",
+                  padding: "9px 12px",
+                  fontSize: 13,
+                  textDecoration: "none",
+                  marginBottom: 8,
+                }}
+              >
+                Get HashPack (free)
+              </ExternalLink>
+              <div style={{ fontSize: 12, color: "var(--vs-muted)" }}>
+                HashPack is free and takes about 2 minutes to set up.
+              </div>
+              <button
+                onClick={handleShowQrAnyway}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  marginTop: 10,
+                  padding: "8px 12px",
+                  background: "none",
+                  border: "1px solid var(--vs-border)",
+                  borderRadius: 8,
+                  color: "var(--vs-accent)",
+                  fontFamily: "var(--vs-font)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                I have a wallet on my phone — show the QR code
+              </button>
+            </div>
+          ) : (
+            options.map((o) => (
+              <button
+                key={o.id}
+                onClick={() => void handlePick(o.id)}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  padding: "10px 12px",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  background: "none",
+                  border: "none",
+                  borderRadius: 8,
+                  color: "var(--vs-text)",
+                  fontFamily: "var(--vs-font)",
+                  fontSize: 14,
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(130,89,239,0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "none";
+                }}
+              >
+                {o.name}
+              </button>
+            ))
+          )}
           <div
             className="vs-mono"
             style={{ padding: "8px 12px", fontSize: 11, color: "var(--vs-muted)" }}

@@ -113,6 +113,49 @@ export function isHashPackInAppBrowser(): boolean {
 }
 
 /**
+ * Signals used to detect a wallet browser extension's injected provider.
+ * Pure function of its inputs so it can be unit-tested without a DOM.
+ */
+export function detectInjectedHederaWallet(signals: {
+  hashpack?: unknown;
+  blade?: unknown;
+}): boolean {
+  return signals.hashpack != null || signals.blade != null;
+}
+
+/**
+ * True when a Hedera wallet extension has injected its provider into this
+ * page (HashPack exposes `window.hashpack`; Blade exposes `window.blade`).
+ * Used for the desktop no-wallet pre-flight: with no injected provider and
+ * no in-app browser, the QR pairing modal is a dead end, so the picker
+ * shows install guidance instead of opening it. Mobile is exempt — the
+ * modal deep-links straight into the wallet app there, no extension needed.
+ */
+export function hasInjectedHederaWallet(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as { hashpack?: unknown; blade?: unknown };
+  return detectInjectedHederaWallet({ hashpack: w.hashpack, blade: w.blade });
+}
+
+/**
+ * Pure decision logic for the desktop no-wallet pre-flight. Returns true
+ * when opening the QR pairing modal would be a dead end: a desktop
+ * browser, not inside a wallet's in-app browser, and no wallet extension
+ * injected — every picker option funnels into the same modal and it would
+ * wait forever. Mobile is exempt: the modal deep-links straight into the
+ * wallet app there, no extension needed.
+ *
+ * Extracted pure so the "no dead-end modal" rule is unit-tested.
+ */
+export function shouldSuggestWalletInstall(opts: {
+  isMobile: boolean;
+  inHashPackBrowser: boolean;
+  hasInjectedWallet: boolean;
+}): boolean {
+  return !opts.isMobile && !opts.inHashPackBrowser && !opts.hasInjectedWallet;
+}
+
+/**
  * True on a mobile user agent (phone/tablet). Used to decide whether the
  * iframe-channel probe is worth the wait: on desktop the WalletConnect
  * modal is always the right fallback, so we skip the probe and show it
@@ -174,6 +217,31 @@ export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
 }
 
 /**
+ * Thrown when the user closes the WalletConnect pairing modal themselves
+ * (X / Escape / click-outside) before approving. A deliberate cancel, not
+ * a failure — callers must reset quietly: no error banner, no failure
+ * telemetry. The button simply returns to "Connect".
+ */
+export class PairingCancelledError extends Error {
+  constructor() {
+    super("Pairing cancelled");
+    this.name = "PairingCancelledError";
+  }
+}
+
+/**
+ * True when an error means the user dismissed the pairing modal
+ * themselves — either the library's "User rejected pairing" (thrown when
+ * openModal() is called with throwErrorOnReject=true and the modal closes)
+ * or our own PairingCancelledError. Never true for real failures.
+ */
+export function isPairingCancelled(e: unknown): boolean {
+  if (e instanceof PairingCancelledError) return true;
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  return /user rejected pairing/i.test(msg);
+}
+
+/**
  * Friendly copy for known transient wallet-library errors.
  *
  * Diagnosis (2026-09-13): no app code invokes `.call()` — the
@@ -185,6 +253,12 @@ export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
  */
 export function friendlyWalletError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e ?? "Failed to connect wallet");
+  // A dismissed pairing modal is a deliberate cancel, not a declined
+  // transaction — keep it calm and specific, and check BEFORE the generic
+  // "user rejected" mapping below (which talks about transactions).
+  if (isPairingCancelled(e)) {
+    return "Connection closed before your wallet approved it — try again when you're ready.";
+  }
   if (/cannot read propert\w+ of undefined \(reading ['"]call['"]\)/i.test(msg)) {
     return "HashPack didn't finish initializing — reopen or reconnect HashPack, then try again.";
   }
@@ -467,6 +541,15 @@ function dropConnector(): void {
   _initialized = false;
   hcAccountId = null;
   hcSessionAccount = null;
+  // Every DAppConnector build appends a fresh `wcm-modal` element to
+  // document.body (the library's initUi is not idempotent), so rebuilding
+  // the connector — e.g. on every explicit connect tap — leaked modal
+  // instances: two stacked "Connect your wallet" modals ended up in the
+  // accessibility tree and the stale one obscured the live modal's X
+  // button. Remove them here so at most one modal element ever exists.
+  if (typeof document !== "undefined") {
+    document.querySelectorAll("wcm-modal").forEach((el) => el.remove());
+  }
 }
 
 /** Record the pairing's full HIP-30 identity for change detection. */
@@ -634,8 +717,14 @@ async function buildConnector(): Promise<DAppConnector> {
   // only pair on Hedera mainnet.
   // Official SDK LedgerId via dynamic import: keeps the SDK out of the
   // wallet connection chunk (see NOTE above). DAppConnector only calls
-  // toString() on the ledger id.
-  const { LedgerId } = await import("@hiero-ledger/sdk");
+  // toString() on the ledger id. Bounded like the wallet-library import
+  // above — an unbounded import here used to hang the page-load restore
+  // forever with the header stuck on "Connecting…".
+  const { LedgerId } = await withTimeout(
+    import("@hiero-ledger/sdk"),
+    30_000,
+    "Wallet library failed to load. Check your connection and try again.",
+  );
   const ledgerId = LedgerId.MAINNET as unknown as never;
 
   return new DAppConnectorClass(
@@ -829,6 +918,52 @@ export async function rewakeHederaPairing(
 }
 
 /**
+ * How long the QR pairing modal waits for the wallet to approve before
+ * giving up with a visible error. Two minutes: enough to grab your phone,
+ * scan, and approve — short enough that nobody stares at a silent spinner.
+ */
+export const MODAL_PAIRING_TIMEOUT_MS = 120_000;
+
+/**
+ * Open the WalletConnect QR pairing modal and wait for approval.
+ *
+ * Two fixes over the old bare `connector.openModal()` call:
+ *
+ * 1. throwErrorOnReject=true: closing the modal (X / Escape / click-outside)
+ *    now rejects immediately with "User rejected pairing" instead of
+ *    hanging until the timeout — the old behavior left the header stuck on
+ *    "Connecting…" for up to 3 minutes after the user dismissed the modal.
+ *    Callers translate that into a quiet cancel via isPairingCancelled().
+ * 2. On timeout the modal is closed programmatically, so the user actually
+ *    sees the error + retry UI instead of a dead modal sitting open.
+ */
+async function openPairingModal(
+  connector: DAppConnector,
+): Promise<Awaited<ReturnType<DAppConnector["openModal"]>>> {
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try {
+      connector.walletConnectModal.closeModal();
+    } catch {
+      /* best effort — the timeout error below is what matters */
+    }
+  }, MODAL_PAIRING_TIMEOUT_MS);
+  try {
+    return await connector.openModal(undefined, true);
+  } catch (e) {
+    if (timedOut) {
+      throw new Error(
+        "No wallet approved the connection in time. Keep your wallet open and nearby, then try again.",
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
  *
  * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
@@ -963,12 +1098,11 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // (init() already ran once above — shared by both flows.)
   let session;
   try {
-    session = await withTimeout(
-      connector.openModal(),
-      180_000,
-      "The wallet pairing screen timed out. Try again.",
-    );
+    session = await openPairingModal(connector);
   } catch (modalErr) {
+    // A dismissed modal is a deliberate cancel, not a failure — propagate
+    // it untouched so connect() can reset quietly (no error banner).
+    if (isPairingCancelled(modalErr)) throw modalErr;
     const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
     // "Failed to publish custom payload" is a WalletConnect relay rejection —
     // usually an invalid/rate-limited project ID or relay outage. Surface that
@@ -1099,6 +1233,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return result.account;
     } catch (e) {
       senderGetter.current = null;
+      // Clean up a half-opened Hedera session on failure.
+      await disconnectHedera();
+      if (isPairingCancelled(e)) {
+        // The user closed the pairing modal themselves — reset to the
+        // Connect button quietly. No error banner (the dismissal was
+        // deliberate), no failure telemetry (nothing failed).
+        throw new PairingCancelledError();
+      }
       // Report the reason (not just a failed attempt) so the founder
       // dashboard can show WHY connections fail; fail-silent by design.
       // walletState is "disconnected" — pairing never completed.
@@ -1109,8 +1251,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // copy; everything else passes through unchanged.
       const msg = friendlyWalletError(e);
       setError(msg);
-      // Clean up a half-opened Hedera session on failure.
-      await disconnectHedera();
       // Re-throw so callers get the actual error immediately (React state
       // updates are async, so reading wallet.error right after connect()
       // would see the stale null value).

@@ -35,7 +35,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { friendlyWalletError, getHederaPairing, isStaleConnectionError, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
+import { friendlyWalletError, getHederaPairing, isPairingCancelled, isStaleConnectionError, PairingCancelledError, useWallet, WALLET_ADAPTERS, type WalletAdapterId } from "./wallet";
 import { getActiveChain } from "./chains";
 import { setAuthHeaderProvider } from "./auth-client";
 import { reportError } from "./report-error";
@@ -477,6 +477,16 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
         return created;
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Sign-in failed.";
+        // The pairing modal was dismissed before approval — a deliberate
+        // cancel, not a failure. Back to the pre-sign-in state quietly: no
+        // error banner, no failure telemetry.
+        if (isPairingCancelled(e)) {
+          setError(null);
+          setSessionBoth(null);
+          writeStored(null);
+          setStatus(account ? "connected" : "anonymous");
+          throw e instanceof Error ? e : new PairingCancelledError();
+        }
         // Report the reason (not just a failed attempt) so the founder
         // dashboard can show WHY sign-ins fail; fail-silent by design.
         // The wallet is connected at this point (it just signed the login
