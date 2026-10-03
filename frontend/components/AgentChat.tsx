@@ -28,6 +28,7 @@ import BuddyPayButton from "./BuddyPayButton";
 import BuddyActionCard from "./BuddyActionCard";
 import BuddyDashboard from "./BuddyDashboard";
 import { submitPreparedTx, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
+import { recordUsageEvent } from "@/lib/usage";
 import { finalizeClaimPackage, ClaimLinkError } from "@/lib/claim-link";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
@@ -564,6 +565,8 @@ export default function AgentChat() {
       return;
     }
     everOpenedRef.current = true;
+    // Internal usage telemetry (founder eyes only): widget opened.
+    recordUsageEvent("buddy.open");
     inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -904,6 +907,7 @@ export default function AgentChat() {
         // instead of a synchronous build. Drive start -> poll -> deliver.
         const jobToken = b?.buildJob?.token;
         if (typeof jobToken === "string" && jobToken) {
+          recordUsageEvent("buddy.build_started");
           void driveBuildJob(jobToken);
         }
         // A free mock arrived: validate client-side too, then show it in
@@ -954,8 +958,11 @@ export default function AgentChat() {
           fallback: fallback || undefined,
         },
       ]);
+      // Internal usage telemetry: message outcome.
+      recordUsageEvent(failed ? "buddy.message_failed" : "buddy.message_sent");
     } catch {
       const timedOut = ctrl.signal.aborted;
+      recordUsageEvent("buddy.message_failed", { detail: timedOut ? "timeout" : "network" });
       setMsgs((prev) => [
         ...prev,
         {
