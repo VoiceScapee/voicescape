@@ -76,19 +76,30 @@ function SnapshotCard({ snap }: { snap: PreviewSnapshot }) {
 }
 
 export default function UsageDashboard() {
-  const { isAuthenticated } = useSession();
+  const { isAuthenticated, authHeader } = useSession();
   const [data, setData] = useState<UsageData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    void fetch("/api/admin/usage")
+    void fetch("/api/admin/usage", { headers: { ...authHeader() } })
       .then(async (r) => {
-        if (!r.ok) throw new Error(r.status === 403 ? "not a founder wallet" : `HTTP ${r.status}`);
+        if (!r.ok) {
+          const body = (await r.json().catch(() => ({}))) as { error?: string };
+          throw new Error(
+            r.status === 403
+              ? "Founders only — this wallet isn't on the founder list."
+              : r.status === 401
+                ? "Session expired — reconnect your wallet and reload."
+                : typeof body.error === "string"
+                  ? body.error
+                  : `HTTP ${r.status}`,
+          );
+        }
         setData(await r.json());
       })
       .catch((e) => setError(e instanceof Error ? e.message : "failed to load"));
-  }, [isAuthenticated]);
+  }, [isAuthenticated, authHeader]);
 
   return (
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 20px 64px", color: "#f2ecff" }}>
