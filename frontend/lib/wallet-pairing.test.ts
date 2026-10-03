@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  decidePairingChannel,
+  detectHashPackInAppBrowser,
   detectInjectedHederaWallet,
   friendlyWalletError,
+  IN_APP_HANDSHAKE_FAILED_COPY,
+  IN_APP_MODAL_BLOCKED_COPY,
   isPairingCancelled,
   PairingCancelledError,
   shouldSuggestWalletInstall,
@@ -89,5 +93,111 @@ describe("friendlyWalletError — pairing cancel copy", () => {
   it("maps a dismissed pairing modal to calm copy, not a declined-transaction message", () => {
     expect(friendlyWalletError(new PairingCancelledError())).toBe(calm);
     expect(friendlyWalletError(new Error("User rejected pairing"))).toBe(calm);
+  });
+});
+
+describe("detectHashPackInAppBrowser — redundant in-app signals", () => {
+  const androidChromeUA =
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
+  const desktopUA =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+  it("detects window.hashpack injection", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: true,
+        userAgent: desktopUA,
+      }),
+    ).toBe(true);
+  });
+
+  it("detects a hashpack user agent", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: false,
+        userAgent: "Mozilla/5.0 HashPack/1.2.3",
+      }),
+    ).toBe(true);
+  });
+
+  it("treats iframed-on-mobile as in-app (HashPack Android dApp browser iframes with no injection and no UA signal)", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: false,
+        userAgent: androidChromeUA,
+        isIframed: true,
+        isMobile: true,
+      }),
+    ).toBe(true);
+  });
+
+  it("does NOT treat an iframed desktop page as in-app (embeds are not wallets)", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: false,
+        userAgent: desktopUA,
+        isIframed: true,
+        isMobile: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a plain external mobile browser (deep-link modal path stays intact)", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: false,
+        userAgent: androidChromeUA,
+        isIframed: false,
+        isMobile: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a plain desktop browser", () => {
+    expect(
+      detectHashPackInAppBrowser({
+        hasInjectedHashpack: false,
+        userAgent: desktopUA,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("decidePairingChannel — never the modal inside a wallet app", () => {
+  it("routes to the iframe channel when the library discovered an iframe extension at init", () => {
+    expect(
+      decidePairingChannel({ iframeDiscoveredAtInit: true, inAppDetected: false }),
+    ).toBe("iframe");
+  });
+
+  it("routes to the iframe channel when any in-app signal fired", () => {
+    expect(
+      decidePairingChannel({ iframeDiscoveredAtInit: false, inAppDetected: true }),
+    ).toBe("iframe");
+  });
+
+  it("routes to the iframe channel when both fired", () => {
+    expect(
+      decidePairingChannel({ iframeDiscoveredAtInit: true, inAppDetected: true }),
+    ).toBe("iframe");
+  });
+
+  it("routes to the modal ONLY when nothing in-app was detected (desktop / external mobile browser)", () => {
+    expect(
+      decidePairingChannel({ iframeDiscoveredAtInit: false, inAppDetected: false }),
+    ).toBe("modal");
+  });
+});
+
+describe("in-app pairing failure copy — plain words, actionable", () => {
+  it("handshake failure tells the user to reopen from the dApp browser or use a regular browser", () => {
+    expect(IN_APP_HANDSHAKE_FAILED_COPY).toMatch(/dApp browser/i);
+    expect(IN_APP_HANDSHAKE_FAILED_COPY).toMatch(/regular browser/i);
+    expect(IN_APP_HANDSHAKE_FAILED_COPY).toMatch(/WalletConnect/i);
+  });
+
+  it("modal-blocked copy explains why the pairing screen can't open in-app", () => {
+    expect(IN_APP_MODAL_BLOCKED_COPY).toMatch(/built-in browser/i);
+    expect(IN_APP_MODAL_BLOCKED_COPY).toMatch(/dApp browser/i);
   });
 });

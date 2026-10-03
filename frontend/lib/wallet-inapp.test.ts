@@ -8,6 +8,13 @@
  * iPhone ("Tap 'Open' to continue..."). The fix probes the iframe
  * postMessage channel (`hedera-iframe-query` → `hedera-iframe-response`),
  * the same platform-agnostic handshake DAppConnector uses.
+ *
+ * Follow-up (2026-10-03): HashPack's Android dApp browser iframes the
+ * page with no injection and no "hashpack" UA, and the probe only asked
+ * window.parent — every signal missed and the deep-link modal ran as a
+ * guaranteed dead end (self-pairing). The probe now asks BOTH the page's
+ * own window (injected bridge) and the parent frame, and iframed-on-
+ * mobile counts as an in-app signal.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -105,11 +112,32 @@ describe("isMobileUserAgent", () => {
 type FakeWindow = {
   hashpack?: unknown;
   parent: { postMessage: (msg: unknown, target: string) => void };
+  postMessage: (msg: unknown, target: string) => void;
   addEventListener: (type: string, cb: (e: { data: unknown }) => void) => void;
   removeEventListener: (type: string, cb: (e: { data: unknown }) => void) => void;
   emitMessage: (data: unknown) => void;
   listenerCount: () => number;
 };
+
+/**
+ * Answer the iframe probe the way a wallet container would. Extracted so
+ * both the page-window post (injected bridge, e.g. HashPack Android) and
+ * the parent-frame post (the library's extensionQuery target) behave the
+ * same in tests, mirroring the production probe which now asks both.
+ */
+function maybeAnswerProbe(
+  fake: FakeWindow,
+  answerProbe: boolean | undefined,
+) {
+  if (answerProbe) {
+    queueMicrotask(() =>
+      fake.emitMessage({
+        type: "hedera-iframe-response",
+        metadata: { name: "HashPack", id: "hashpack" },
+      }),
+    );
+  }
+}
 
 /** Minimal window stub with a controllable message bus. */
 function stubWindow(opts: { hashpack?: unknown; answerProbe?: boolean } = {}): FakeWindow {
@@ -119,15 +147,12 @@ function stubWindow(opts: { hashpack?: unknown; answerProbe?: boolean } = {}): F
     parent: {
       postMessage: () => {
         // Simulate the wallet's in-app container answering the query.
-        if (opts.answerProbe) {
-          queueMicrotask(() =>
-            fake.emitMessage({
-              type: "hedera-iframe-response",
-              metadata: { name: "HashPack", id: "hashpack" },
-            }),
-          );
-        }
+        maybeAnswerProbe(fake, opts.answerProbe);
       },
+    },
+    postMessage: () => {
+      // The probe also asks the page's own window (injected bridge).
+      maybeAnswerProbe(fake, opts.answerProbe);
     },
     addEventListener: (_type, cb) => {
       listeners.add(cb);
