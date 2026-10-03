@@ -1,0 +1,104 @@
+/**
+ * Anonymous MCP visitor stats (Brandon 2026-10-01: "tell me how many agents
+ * are actually visiting the mcp").
+ *
+ * Every tool call increments three aggregate counters in KV — no IPs, no
+ * arguments, no wallet data, nothing that identifies anyone:
+ *
+ *   - mcp:stats:calls:total            all-time-ish (30d rolling TTL)
+ *   - mcp:stats:calls:tool:{name}      per-tool totals
+ *   - mcp:stats:calls:day:{YYYY-MM-DD}  per-day totals (last 30 days)
+ *
+ * 30-day TTL on every key: the numbers describe recent activity, and stale
+ * keys evaporate on their own. Best-effort — recording never throws and
+ * never changes what the agent receives.
+ */
+import { getKvStore, type KvStore } from "./store";
+
+const PREFIX = "mcp:stats:calls";
+const TTL_MS = 30 * 24 * 3_600_000;
+
+function dayKey(d = new Date()): string {
+  return d.toISOString().slice(0, 10);
+}
+
+export interface McpUsageStats {
+  /** Total tool calls in the rolling 30-day window. */
+  total: number;
+  /** Calls per tool name. */
+  byTool: Record<string, number>;
+  /** Calls per day (YYYY-MM-DD), last 30 days. */
+  byDay: Record<string, number>;
+}
+
+/** Record one anonymous tool call. Never throws. */
+export async function recordMcpToolCall(
+  toolName: string,
+  deps: { store?: KvStore } = {},
+): Promise<void> {
+  const name = String(toolName || "unknown").replace(/[^a-zA-Z0-9_]/g, "").slice(0, 40) || "unknown";
+  try {
+    const store = deps.store ?? getKvStore();
+    await Promise.all([
+      store.incr(`${PREFIX}:total`, TTL_MS),
+      store.incr(`${PREFIX}:tool:${name}`, TTL_MS),
+      store.incr(`${PREFIX}:day:${dayKey()}`, TTL_MS),
+    ]);
+  } catch {
+    /* stats are best-effort — a KV outage must never break the MCP */
+  }
+}
+
+/** Read the aggregate stats. Missing keys read as 0. Never throws. */
+export async function getMcpUsageStats(
+  deps: { store?: KvStore } = {},
+): Promise<McpUsageStats> {
+  const empty: McpUsageStats = { total: 0, byTool: {}, byDay: {} };
+  try {
+    const store = deps.store ?? getKvStore();
+    const totalRaw = await store.get(`${PREFIX}:total`);
+    const stats: McpUsageStats = {
+      total: totalRaw ? parseInt(totalRaw, 10) || 0 : 0,
+      byTool: {},
+      byDay: {},
+    };
+    // Last 30 days of day-keys.
+    const days: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(Date.now() - i * 86_400_000);
+      days.push(dayKey(d));
+    }
+    const dayVals = await Promise.all(days.map((k) => store.get(`${PREFIX}:day:${k}`)));
+    dayVals.forEach((v, i) => {
+      const n = v ? parseInt(v, 10) || 0 : 0;
+      if (n > 0) stats.byDay[days[i]] = n;
+    });
+    return stats;
+  } catch {
+    return empty;
+  }
+}
+
+/**
+ * Read per-tool counters for a known tool list. The MCP route passes its
+ * registered tool names so the response only names real tools.
+ */
+export async function getMcpToolCounts(
+  toolNames: string[],
+  deps: { store?: KvStore } = {},
+): Promise<Record<string, number>> {
+  const out: Record<string, number> = {};
+  for (const t of toolNames) out[t] = 0;
+  try {
+    const store = deps.store ?? getKvStore();
+    const vals = await Promise.all(
+      toolNames.map((t) => store.get(`${PREFIX}:tool:${t}`)),
+    );
+    toolNames.forEach((t, i) => {
+      out[t] = vals[i] ? parseInt(vals[i] as string, 10) || 0 : 0;
+    });
+  } catch {
+    /* fall through with zeros */
+  }
+  return out;
+}

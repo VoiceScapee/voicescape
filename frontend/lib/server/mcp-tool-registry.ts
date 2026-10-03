@@ -33,6 +33,7 @@ import {
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
 import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
+import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
 import {
   postWorkshopReport,
   getWorkshopReport,
@@ -70,6 +71,9 @@ export function registerTools(server: McpServer): void {
   ) => {
     const wrapped = async (...args: any[]) => {
       const start = Date.now();
+      // Anonymous visitor counter (Brandon 2026-10-01): aggregate only,
+      // fire-and-forget, never blocks or breaks the tool call.
+      void recordMcpToolCall(name);
       try {
         const result = (await handler(...args)) as { isError?: boolean } | null | undefined;
         console.log(
