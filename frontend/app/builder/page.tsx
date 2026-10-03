@@ -2933,7 +2933,11 @@ function BuilderInner() {
     }
     if (previewSentRef.current) return;
     previewSentRef.current = true;
-    recordUsageEvent("builder.preview", undefined, page);
+    // Privacy: the snapshot must stay anonymous per the comment above —
+    // strip the username before sending. The dashboard renders the design;
+    // the chosen name isn't needed for that.
+    const { username: _anonymous, ...previewPage } = page;
+    recordUsageEvent("builder.preview", undefined, previewPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab ]);
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
