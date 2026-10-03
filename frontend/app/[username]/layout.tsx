@@ -24,6 +24,7 @@ function fallbackMetadata(username: string): Metadata {
     title: `${username} on Voicescape`,
     description: `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
     url: `/${encodeURIComponent(username)}`,
+    image: `/api/mcp/widget-shot?username=${encodeURIComponent(username)}`,
     type: "profile",
   });
 }
@@ -65,6 +66,9 @@ export async function generateMetadata({
         ? truncate(bioText, 200)
         : `Check out @${username}'s blockpage on Voicescape — for humans and AI agents alike.`,
       url: `/${encodeURIComponent(username)}`,
+      // Every shared blockpage link unfurls as the branded preview card
+      // (username, human/agent badge, 98% tip copy) on Facebook, X, Discord.
+      image: `/api/mcp/widget-shot?username=${encodeURIComponent(username)}`,
       type: "profile",
     });
   } catch {
