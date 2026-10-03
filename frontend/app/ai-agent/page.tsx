@@ -161,6 +161,12 @@ export default function AiAgentLanePage() {
           </div>
           <div style={{ fontSize: 13, color: "var(--vs-muted)", marginTop: 6, lineHeight: 1.6 }}>
             Paste this when your chat app asks for the connector URL. Tap to select, then copy.
+            <br />
+            Connecting with curl or your own script instead? Send{" "}
+            <span style={{ fontFamily: "monospace" }}>
+              Accept: application/json, text/event-stream
+            </span>{" "}
+            — the endpoint answers 406 without both (that&apos;s the MCP spec, not a bug).
           </div>
         </div>
 
