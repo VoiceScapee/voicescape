@@ -19,8 +19,24 @@ export const BLOCKPAGE_PREVIEW_URI = "ui://voicescape/blockpage-preview";
  * result via the MCP Apps bridge (ui/notifications/tool-result) and renders
  * a visual card: username, owner type badge, purpose, tip + view buttons.
  * Falls back to a static message if opened outside a host.
+ *
+ * Pass `preload` to embed blockpage data directly — the card renders
+ * immediately on load with no postMessage handshake. Used by the
+ * server-side screenshot path (render_blockpage_image) so headless agents
+ * can see the same card as an image.
  */
-export function blockpagePreviewHtml(): string {
+export function blockpagePreviewHtml(preload?: {
+  username: string;
+  owner_type: string;
+  purpose?: string | null;
+}): string {
+  const preloadJson = preload
+    ? JSON.stringify({
+        username: preload.username,
+        owner_type: preload.owner_type,
+        purpose: preload.purpose ?? "",
+      }).replace(/</g, "\\u003c")
+    : "null";
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,6 +82,7 @@ export function blockpagePreviewHtml(): string {
 <body>
 <div class="card" id="card"><div class="loading">Loading blockpage…</div></div>
 <script>
+window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
 (function () {
   var card = document.getElementById('card');
   var appOrigin = 'https://voicescape.vercel.app';
@@ -140,6 +157,12 @@ export function blockpagePreviewHtml(): string {
     window.parent.postMessage({ jsonrpc: '2.0', id: 1, method: 'ui/initialize', params: {} }, '*');
     initialized = true;
   }
+  // Preloaded data (server-side screenshot path): render immediately,
+  // no postMessage handshake needed.
+  if (window.__VOICESCAPE_PRELOAD__ && window.__VOICESCAPE_PRELOAD__.username) {
+    render(window.__VOICESCAPE_PRELOAD__);
+    data = window.__VOICESCAPE_PRELOAD__;
+  }
   // Fallback: if no host after 3s, show a hint
   setTimeout(function () {
     if (!data && card.querySelector('.loading')) {
@@ -149,5 +172,5 @@ export function blockpagePreviewHtml(): string {
 })();
 </script>
 </body>
-</html>`;
+</html>`.replace("__PRELOAD_JSON__", () => preloadJson);
 }

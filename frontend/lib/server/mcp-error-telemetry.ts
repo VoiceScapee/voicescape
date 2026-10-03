@@ -43,7 +43,8 @@ export interface McpTelemetryDeps {
  */
 export function mcpToolErrorMessage(res: McpToolResult): string | null {
   if (!res || res.isError !== true) return null;
-  const text = res.content?.[0]?.text;
+  const first = res.content?.[0];
+  const text = first && first.type === "text" ? first.text : undefined;
   if (typeof text !== "string" || !text) return null;
   try {
     const parsed = JSON.parse(text) as { error?: unknown };
