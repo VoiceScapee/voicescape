@@ -284,6 +284,30 @@ export function isPairingCancelled(e: unknown): boolean {
 }
 
 /**
+ * Human fallback when a wallet call rejects with something that carries
+ * no usable message. Never String() an unknown object here — that
+ * renders as "[object Object]" in the UI (pilot recording, 2026-10-03).
+ */
+const WALLET_ERROR_FALLBACK = "Couldn't connect to your wallet — please try again.";
+
+/**
+ * Extract a human-readable message from anything a wallet call can
+ * reject with. WalletConnect's SignClient rejects with PLAIN OBJECTS
+ * ({code, message}), not Errors — e.g. when a pairing dies while
+ * approval() pends. Prefer a real message field; never leak the object
+ * form to the user.
+ */
+function walletRejectionMessage(e: unknown): string {
+  if (e instanceof Error) return e.message || WALLET_ERROR_FALLBACK;
+  if (typeof e === "string") return e || WALLET_ERROR_FALLBACK;
+  if (e !== null && typeof e === "object") {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  return WALLET_ERROR_FALLBACK;
+}
+
+/**
  * Friendly copy for known transient wallet-library errors.
  *
  * Diagnosis (2026-09-13): no app code invokes `.call()` — the
@@ -294,7 +318,7 @@ export function isPairingCancelled(e: unknown): boolean {
  * the actual recovery step. Unknown errors pass through unchanged.
  */
 export function friendlyWalletError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e ?? "Failed to connect wallet");
+  const msg = walletRejectionMessage(e);
   // A dismissed pairing modal is a deliberate cancel, not a declined
   // transaction — keep it calm and specific, and check BEFORE the generic
   // "user rejected" mapping below (which talks about transactions).
@@ -608,6 +632,50 @@ async function disconnectHedera(): Promise<void> {
     }
   }
   dropConnector();
+}
+
+/**
+ * Best-effort cleanup of stale WalletConnect *sessions* after a fresh
+ * pairing succeeds — preserves the old "fresh pairing" intent surgically,
+ * without the pairing-murder side effect. Disconnects every session
+ * EXCEPT the newly approved one (matched by topic). Pending *pairings*
+ * are NEVER touched: deleting a pairing kills the wallet's approval
+ * sheet mid-flight ("Pair with dApp" vanishing before the user can
+ * approve). If the new session's topic is unknown, does nothing rather
+ * than risk disconnecting the just-approved session.
+ *
+ * Exported (no DOM) so the sessions-only cleanup contract is unit-tested.
+ */
+export async function disconnectStaleSessions(
+  connector: DAppConnector,
+  keepTopic: string | null,
+): Promise<void> {
+  if (!keepTopic) return;
+  try {
+    const client = connector.walletConnectClient;
+    if (!client) return;
+    const sessions = client.session.getAll() ?? [];
+    for (const s of sessions) {
+      if (s.topic && s.topic !== keepTopic) {
+        try {
+          await connector.disconnect(s.topic);
+        } catch {
+          /* best effort — the new pairing already succeeded */
+        }
+      }
+    }
+  } catch {
+    /* best effort — never fail a successful pairing over cleanup */
+  }
+}
+
+/** Topic of an approved WalletConnect session struct, or null if unknown. Exported for tests. */
+export function sessionTopic(session: unknown): string | null {
+  if (session !== null && typeof session === "object") {
+    const t = (session as { topic?: unknown }).topic;
+    if (typeof t === "string" && t) return t;
+  }
+  return null;
 }
 
 /**
@@ -1060,9 +1128,19 @@ export const IN_APP_MODAL_BLOCKED_COPY =
  * the pairing happens via the iframe callback instead of a QR modal.
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // Explicit user connect = fresh pairing. Drop any existing connector
-  // first (silent restore is for page-load only, never for a tap).
-  await disconnectHedera();
+  // Explicit user connect = fresh pairing intent. Drop the LOCAL
+  // connector state only — NEVER delete relay pairings here.
+  //
+  // Pairing-murder fix (2026-10-03): this used to call disconnectHedera(),
+  // whose disconnectAll() deletes live WalletConnect pairings on the
+  // relay. Any second trigger (double-tap, impatient re-tap, boot
+  // auto-connect racing a manual tap) deleted the pending proposal out
+  // from under the wallet — HashPack's "Pair with dApp" sheet vanished
+  // before the user could approve, indistinguishable from "the wallet
+  // auto-canceled". Relay state is now left untouched: a pending proposal
+  // survives a failed/retried attempt, and an approval that lands late
+  // still reaches the session store for restore to pick up.
+  dropConnector();
 
   const connector = await getConnector();
 
@@ -1186,6 +1264,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
       throw new Error("Pairing succeeded but no Hedera account was returned.");
     }
     hcAccountId = accountId;
+    // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
+    // pairings now that the new one succeeded — sessions only, never
+    // pending pairings (see disconnectStaleSessions).
+    await disconnectStaleSessions(connector, sessionTopic(session));
     trackSessionAccount(session);
     return accountId;
   }
@@ -1212,7 +1294,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     // A dismissed modal is a deliberate cancel, not a failure — propagate
     // it untouched so connect() can reset quietly (no error banner).
     if (isPairingCancelled(modalErr)) throw modalErr;
-    const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    // walletRejectionMessage (not String()): the SignClient can reject
+    // with a plain {code, message} object — String(obj) would render as
+    // "[object Object]" in the UI.
+    const msg = walletRejectionMessage(modalErr);
     // "Failed to publish custom payload" is a WalletConnect relay rejection —
     // usually an invalid/rate-limited project ID or relay outage. Surface that
     // specifically instead of the generic fallback advice.
@@ -1231,6 +1316,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     throw new Error("Pairing succeeded but no Hedera account was returned.");
   }
   hcAccountId = accountId;
+  // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
+  // pairings now that the new one succeeded — sessions only, never
+  // pending pairings (see disconnectStaleSessions).
+  await disconnectStaleSessions(connector, sessionTopic(session));
   trackSessionAccount(session);
   return accountId;
 }
@@ -1287,6 +1376,41 @@ const ADAPTERS: Record<WalletAdapterId, WalletAdapter> = {
 /* React context + hook                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Shares one in-flight async attempt across concurrent callers.
+ *
+ * Pairing-murder fix (2026-10-03): a second connect() while one is
+ * already running must not start a second pairing — concurrent pairings
+ * orphan each other's proposals, and cleanup of the loser used to delete
+ * the live proposal on the relay (HashPack's "Pair with dApp" sheet
+ * vanishing before the user could approve). Concurrent callers share the
+ * in-flight attempt's promise; once it settles, the next call starts
+ * fresh (retries keep working).
+ *
+ * Exported (pure, no DOM) so the single-flight contract is unit-tested.
+ */
+export class SingleFlight<T> {
+  private current: Promise<T> | null = null;
+
+  run(start: () => Promise<T>): Promise<T> {
+    if (this.current) return this.current;
+    const attempt = start();
+    this.current = attempt;
+    const clear = () => {
+      if (this.current === attempt) this.current = null;
+    };
+    // Both handlers provided: the derived promise never rejects, so no
+    // unhandled-rejection noise.
+    attempt.then(clear, clear);
+    return attempt;
+  }
+
+  /** Whether an attempt is currently in flight. */
+  get inFlight(): boolean {
+    return this.current !== null;
+  }
+}
+
 /** localStorage key remembering which adapter last paired (HashPack/Blade/WC). */
 const ADAPTER_STORAGE_KEY = "vs-wallet-adapter-v1";
 
@@ -1329,51 +1453,67 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
    */
   const [inAppBrowser, setInAppBrowser] = useState<boolean | null>(null);
   const senderGetter = React.useRef<(() => Promise<TxSender>) | null>(null);
+  /**
+   * In-flight guard for connect(): concurrent invocations share the one
+   * live pairing attempt (SingleFlight) instead of starting a second
+   * one. Set when the attempt starts, cleared when it settles — a retry
+   * after failure/success starts fresh.
+   */
+  const connectFlight = React.useRef(new SingleFlight<string>()).current;
 
-  const connect = useCallback(async (adapterId: WalletAdapterId) => {
-    setIsConnecting(true);
-    setError(null);
-    setUserDisconnected(false);
-    try {
-      const chain = getActiveChain();
-      const adapter = ADAPTERS[adapterId];
-      const result = await adapter.connect(chain);
-      senderGetter.current = result.getTxSender;
-      setAccount(result.account);
-      setChainId(result.chainId);
-      setAdapterName(adapterId);
-      // Remember which adapter paired, so a page reload can restore the
-      // same pairing silently (and show the right wallet label).
-      writeStoredAdapterId(adapterId);
-      return result.account;
-    } catch (e) {
-      senderGetter.current = null;
-      // Clean up a half-opened Hedera session on failure.
-      await disconnectHedera();
-      if (isPairingCancelled(e)) {
-        // The user closed the pairing modal themselves — reset to the
-        // Connect button quietly. No error banner (the dismissal was
-        // deliberate), no failure telemetry (nothing failed).
-        throw new PairingCancelledError();
-      }
-      // Report the reason (not just a failed attempt) so the founder
-      // dashboard can show WHY connections fail; fail-silent by design.
-      // walletState is "disconnected" — pairing never completed.
-      reportError(e, "wallet-connect", { action: "pair-wallet", walletState: "disconnected" });
-      recordConversionEvent("wallet_connect_failed");
-      // Map known transient wallet-library TypeErrors (e.g. the
-      // hedera-wallet-connect "reading 'call'" init race) to actionable
-      // copy; everything else passes through unchanged.
-      const msg = friendlyWalletError(e);
-      setError(msg);
-      // Re-throw so callers get the actual error immediately (React state
-      // updates are async, so reading wallet.error right after connect()
-      // would see the stale null value).
-      throw new Error(msg);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
+  const connect = useCallback(
+    (adapterId: WalletAdapterId): Promise<string> =>
+      connectFlight.run(async (): Promise<string> => {
+        setIsConnecting(true);
+        setError(null);
+        setUserDisconnected(false);
+        try {
+          const chain = getActiveChain();
+          const adapter = ADAPTERS[adapterId];
+          const result = await adapter.connect(chain);
+          senderGetter.current = result.getTxSender;
+          setAccount(result.account);
+          setChainId(result.chainId);
+          setAdapterName(adapterId);
+          // Remember which adapter paired, so a page reload can restore the
+          // same pairing silently (and show the right wallet label).
+          writeStoredAdapterId(adapterId);
+          return result.account;
+        } catch (e) {
+          senderGetter.current = null;
+          // Local-only cleanup on failure — NEVER delete relay pairings
+          // here (pairing-murder fix, 2026-10-03): the user may still
+          // approve the pending sheet, and the approval then lands in the
+          // session store for restore to pick up. disconnectAll() deletes
+          // pending pairings, which is what made HashPack's "Pair with
+          // dApp" sheet vanish mid-approval.
+          dropConnector();
+          if (isPairingCancelled(e)) {
+            // The user closed the pairing modal themselves — reset to the
+            // Connect button quietly. No error banner (the dismissal was
+            // deliberate), no failure telemetry (nothing failed).
+            throw new PairingCancelledError();
+          }
+          // Report the reason (not just a failed attempt) so the founder
+          // dashboard can show WHY connections fail; fail-silent by design.
+          // walletState is "disconnected" — pairing never completed.
+          reportError(e, "wallet-connect", { action: "pair-wallet", walletState: "disconnected" });
+          recordConversionEvent("wallet_connect_failed");
+          // Map known transient wallet-library TypeErrors (e.g. the
+          // hedera-wallet-connect "reading 'call'" init race) to actionable
+          // copy; everything else passes through unchanged.
+          const msg = friendlyWalletError(e);
+          setError(msg);
+          // Re-throw so callers get the actual error immediately (React state
+          // updates are async, so reading wallet.error right after connect()
+          // would see the stale null value).
+          throw new Error(msg);
+        } finally {
+          setIsConnecting(false);
+        }
+      }),
+    [],
+  );
 
   const disconnect = useCallback(async () => {
     if (adapterName) {
