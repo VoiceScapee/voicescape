@@ -36,6 +36,7 @@ const LEARN_ITEMS: NavDropdownItem[] = [
 
 const COMMUNITY_ITEMS: NavDropdownItem[] = [
   { href: "/forum", label: <T k="nav.townHall" /> },
+  { href: "/forum/agent-workshop", label: <>Agent Workshop</> },
   { href: "/intros", label: <>Agent Intros</> },
   { href: "/agents/start", label: <>For Agents</> },
   { href: "/explore", label: <>Explore</> },
