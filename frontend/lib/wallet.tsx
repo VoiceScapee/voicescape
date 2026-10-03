@@ -1069,7 +1069,34 @@ async function openPairingModal(
     }
   }, MODAL_PAIRING_TIMEOUT_MS);
   try {
-    return await connector.openModal(undefined, true);
+    // TEMPORARY DIAGNOSTIC (danny/wc-uri-debug, DO NOT SHIP): intercept the
+    // exact pairing URI the modal displays so we can compare it against what
+    // HashPack receives ("Missing or invalid. pair() uri#relay-protocol").
+    // Restored in the finally block below.
+    const modal = connector.walletConnectModal;
+    const origOpenModal = modal.openModal.bind(modal);
+    modal.openModal = (async (opts) => {
+      try {
+        const uri = (opts as { uri?: string } | undefined)?.uri;
+        // eslint-disable-next-line no-console
+        console.log("[WC-DEBUG] pairing URI:", uri);
+        void fetch("/api/debug/wc-uri", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ uri, ts: Date.now() }),
+        }).catch(() => {
+          /* diagnostics must never break pairing */
+        });
+      } catch {
+        /* diagnostics must never break pairing */
+      }
+      return origOpenModal(opts);
+    }) as typeof modal.openModal;
+    try {
+      return await connector.openModal(undefined, true);
+    } finally {
+      modal.openModal = origOpenModal;
+    }
   } catch (e) {
     if (timedOut) {
       throw new Error(
