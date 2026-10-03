@@ -93,31 +93,57 @@ export const WALLET_ADAPTERS: { id: WalletAdapterId; name: string; chains: strin
 export function detectHashPackInAppBrowser(signals: {
   hasInjectedHashpack: boolean;
   userAgent: string;
+  /**
+   * window.self !== window.top — the page is running inside an iframe.
+   * On a phone this is a strong wallet-container signal: HashPack's
+   * Android dApp browser iframes the page without injecting
+   * window.hashpack or setting a "hashpack" user agent, so without this
+   * signal detection misses it and the deep-link modal runs as a
+   * guaranteed dead end (self-pairing). Desktop iframes are just embeds,
+   * never wallet containers, so this signal only counts on mobile.
+   */
+  isIframed?: boolean;
+  isMobile?: boolean;
 }): boolean {
   if (signals.hasInjectedHashpack) return true;
-  return /hashpack/i.test(signals.userAgent);
+  if (/hashpack/i.test(signals.userAgent)) return true;
+  if (signals.isMobile && signals.isIframed) return true;
+  return false;
 }
 
 /**
  * True when the page is running inside HashPack's in-app browser (or the
- * HashPack extension has injected its provider). HashPack injects
- * `window.hashpack` there; the user agent is checked as a secondary
- * signal. In that environment the wallet is one tap away — the QR pairing
- * modal is never useful, and the app auto-connects on mount instead of
- * waiting for the user to pick a wallet.
+ * HashPack extension has injected its provider). Signals, in order:
+ * window.hashpack injection, a "hashpack" user agent, and — on mobile
+ * only — running inside an iframe (HashPack's Android dApp browser
+ * iframes the page with neither injection nor UA signal). In that
+ * environment the wallet is one tap away — the QR pairing modal is never
+ * useful, and the app auto-connects on mount instead of waiting for the
+ * user to pick a wallet.
  *
- * NOTE: HashPack's iOS in-app browser provides NEITHER signal (no
- * `window.hashpack` injection, no "hashpack" in the WKWebView user agent),
- * so this returns false there. Use `isHashPackInAppBrowserAsync()` when
- * you need a reliable answer on iOS.
+ * NOTE: HashPack's iOS in-app browser provides NONE of the sync signals
+ * (no `window.hashpack` injection, no "hashpack" in the WKWebView user
+ * agent, and the iframing behavior is unverified there), so this still
+ * returns false there. Use `isHashPackInAppBrowserAsync()` when you need
+ * a reliable answer on iOS.
  */
 export function isHashPackInAppBrowser(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as unknown as { hashpack?: unknown };
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+  // Comparing window.self to window.top is safe cross-origin (no property
+  // access on the foreign frame); only property reads would throw.
+  let isIframed = false;
+  try {
+    isIframed = window.self !== window.top;
+  } catch {
+    isIframed = false;
+  }
   return detectHashPackInAppBrowser({
     hasInjectedHashpack: w.hashpack !== undefined && w.hashpack !== null,
     userAgent: ua,
+    isIframed,
+    isMobile: isMobileUserAgent(ua),
   });
 }
 
@@ -178,12 +204,12 @@ export function isMobileUserAgent(ua?: string): boolean {
 
 /**
  * Probe for a wallet in-app browser via the iframe postMessage channel.
- * Posts `hedera-iframe-query` to the parent frame and waits for a
- * `hedera-iframe-response` — the same handshake DAppConnector uses for
- * in-app discovery, so it's platform-agnostic: it works in HashPack's iOS
- * in-app browser, which provides no `window.hashpack` injection or UA
- * signal. Resolves true when a wallet answers, false on timeout. Never
- * rejects.
+ * Posts `hedera-iframe-query` to both the page's own window and the
+ * parent frame, and waits for a `hedera-iframe-response` — the same
+ * handshake DAppConnector uses for in-app discovery, so it's
+ * platform-agnostic: it works in HashPack's iOS in-app browser, which
+ * provides no `window.hashpack` injection or UA signal. Resolves true
+ * when a wallet answers, false on timeout. Never rejects.
  */
 export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -215,8 +241,15 @@ export function probeInAppWallet(timeoutMs: number): Promise<boolean> {
     };
     window.addEventListener("message", onMessage);
     try {
-      // The wallet's in-app container answers from the parent frame.
-      // A top-level page posts to itself — harmless, nothing answers.
+      // The wallet's in-app container may listen on the page's own window
+      // (injected bridge — this is how HashPack's Android dApp browser
+      // answers) or on the parent frame (the wallet library's own
+      // extensionQuery() posts the iframe query to window.parent). Ask
+      // BOTH: our listener only reacts to hedera-iframe-response, so the
+      // self-post is harmless. Posting only to window.parent missed
+      // HashPack Android entirely — the page hung on the pairing screen
+      // until the modal timeout (2026-10-03 pilot recording).
+      window.postMessage({ type: "hedera-iframe-query" }, "*");
       window.parent.postMessage({ type: "hedera-iframe-query" }, "*");
     } catch {
       cleanup();
@@ -251,6 +284,30 @@ export function isPairingCancelled(e: unknown): boolean {
 }
 
 /**
+ * Human fallback when a wallet call rejects with something that carries
+ * no usable message. Never String() an unknown object here — that
+ * renders as "[object Object]" in the UI (pilot recording, 2026-10-03).
+ */
+const WALLET_ERROR_FALLBACK = "Couldn't connect to your wallet — please try again.";
+
+/**
+ * Extract a human-readable message from anything a wallet call can
+ * reject with. WalletConnect's SignClient rejects with PLAIN OBJECTS
+ * ({code, message}), not Errors — e.g. when a pairing dies while
+ * approval() pends. Prefer a real message field; never leak the object
+ * form to the user.
+ */
+function walletRejectionMessage(e: unknown): string {
+  if (e instanceof Error) return e.message || WALLET_ERROR_FALLBACK;
+  if (typeof e === "string") return e || WALLET_ERROR_FALLBACK;
+  if (e !== null && typeof e === "object") {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  return WALLET_ERROR_FALLBACK;
+}
+
+/**
  * Friendly copy for known transient wallet-library errors.
  *
  * Diagnosis (2026-09-13): no app code invokes `.call()` — the
@@ -261,7 +318,7 @@ export function isPairingCancelled(e: unknown): boolean {
  * the actual recovery step. Unknown errors pass through unchanged.
  */
 export function friendlyWalletError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e ?? "Failed to connect wallet");
+  const msg = walletRejectionMessage(e);
   // A dismissed pairing modal is a deliberate cancel, not a declined
   // transaction — keep it calm and specific, and check BEFORE the generic
   // "user rejected" mapping below (which talks about transactions).
@@ -578,6 +635,50 @@ async function disconnectHedera(): Promise<void> {
 }
 
 /**
+ * Best-effort cleanup of stale WalletConnect *sessions* after a fresh
+ * pairing succeeds — preserves the old "fresh pairing" intent surgically,
+ * without the pairing-murder side effect. Disconnects every session
+ * EXCEPT the newly approved one (matched by topic). Pending *pairings*
+ * are NEVER touched: deleting a pairing kills the wallet's approval
+ * sheet mid-flight ("Pair with dApp" vanishing before the user can
+ * approve). If the new session's topic is unknown, does nothing rather
+ * than risk disconnecting the just-approved session.
+ *
+ * Exported (no DOM) so the sessions-only cleanup contract is unit-tested.
+ */
+export async function disconnectStaleSessions(
+  connector: DAppConnector,
+  keepTopic: string | null,
+): Promise<void> {
+  if (!keepTopic) return;
+  try {
+    const client = connector.walletConnectClient;
+    if (!client) return;
+    const sessions = client.session.getAll() ?? [];
+    for (const s of sessions) {
+      if (s.topic && s.topic !== keepTopic) {
+        try {
+          await connector.disconnect(s.topic);
+        } catch {
+          /* best effort — the new pairing already succeeded */
+        }
+      }
+    }
+  } catch {
+    /* best effort — never fail a successful pairing over cleanup */
+  }
+}
+
+/** Topic of an approved WalletConnect session struct, or null if unknown. Exported for tests. */
+export function sessionTopic(session: unknown): string | null {
+  if (session !== null && typeof session === "object") {
+    const t = (session as { topic?: unknown }).topic;
+    if (typeof t === "string" && t) return t;
+  }
+  return null;
+}
+
+/**
  * Access the live Hedera pairing for wallet-backed flows that need more
  * than contract calls — e.g. signing x402 payment transactions or direct
  * token transfers. Returns null when no Hedera wallet is paired.
@@ -689,13 +790,22 @@ async function waitForIframeExtension(
     );
     if (ext) return { id: ext.id };
     if (Date.now() >= deadline) {
-      throw new Error(
-        "HashPack did not respond. Make sure you opened this page inside HashPack's built-in browser (tap the globe icon in HashPack), not in Chrome or Safari.",
-      );
+      throw new Error(IN_APP_HANDSHAKE_FAILED_COPY);
     }
     await new Promise((r) => setTimeout(r, 250));
   }
 }
+
+/**
+ * Shown when the page is inside a wallet's in-app browser (or iframed on
+ * a phone) but the wallet's built-in connector never answered the iframe
+ * handshake. Fail fast with plain words — NEVER fall through to the
+ * WalletConnect deep-link modal here: inside the wallet app the wc: link
+ * is intercepted by the host wallet itself (self-pairing can never
+ * complete), so the modal would just hang until its timeout.
+ */
+export const IN_APP_HANDSHAKE_FAILED_COPY =
+  "We couldn't reach HashPack's built-in connector. Close this page and reopen it from HashPack's dApp browser (the globe icon), then try again — or open this page in your phone's regular browser and use the WalletConnect option there.";
 
 /**
  * Build (but do not init) a DAppConnector for the active chain. Shared by
@@ -973,6 +1083,43 @@ async function openPairingModal(
 }
 
 /**
+ * Pairing channels for connectHederaWallet().
+ */
+export type PairingChannel = "iframe" | "modal";
+
+/**
+ * Pure routing decision for wallet pairing. Extracted so the
+ * "never-modal-inside-a-wallet-app" invariant is unit-tested.
+ *
+ * - "iframe": an in-app wallet was discovered (the library's init-time
+ *   iframe discovery, or ANY in-app signal fired — injection, UA,
+ *   iframed-on-mobile, or the iframe-channel probe). Pair via the iframe
+ *   postMessage channel. The WalletConnect deep-link modal is NEVER used
+ *   here: inside a wallet app the wc: link is intercepted by the host
+ *   wallet itself — self-pairing can never complete, and the user hangs
+ *   until the modal timeout (pilot recording, 2026-10-03).
+ * - "modal": standard WalletConnect QR/deep-link modal — desktop, or an
+ *   external mobile browser where the modal deep-links into the wallet
+ *   app (that path works).
+ */
+export function decidePairingChannel(opts: {
+  iframeDiscoveredAtInit: boolean;
+  inAppDetected: boolean;
+}): PairingChannel {
+  return opts.iframeDiscoveredAtInit || opts.inAppDetected ? "iframe" : "modal";
+}
+
+/**
+ * Last line of defense, shown if the deep-link pairing modal was about
+ * to open from inside a wallet's in-app browser. Unreachable in the
+ * normal flow — the channel choice above routes in-app users to the
+ * iframe channel — it exists so a future detection regression can never
+ * silently resurrect the self-pairing dead end.
+ */
+export const IN_APP_MODAL_BLOCKED_COPY =
+  "You're already inside a wallet's built-in browser, so the pairing screen can't open here. Close this page and reopen it from the wallet's dApp browser (the globe icon), then connect again.";
+
+/**
  * Pair a Hedera wallet through DAppConnector (@hashgraph/hedera-wallet-connect).
  *
  * Flow: construct DAppConnector with dapp metadata + ledger id + WalletConnect
@@ -981,9 +1128,19 @@ async function openPairingModal(
  * the pairing happens via the iframe callback instead of a QR modal.
  */
 async function connectHederaWallet(chain: ChainConfig): Promise<string> {
-  // Explicit user connect = fresh pairing. Drop any existing connector
-  // first (silent restore is for page-load only, never for a tap).
-  await disconnectHedera();
+  // Explicit user connect = fresh pairing intent. Drop the LOCAL
+  // connector state only — NEVER delete relay pairings here.
+  //
+  // Pairing-murder fix (2026-10-03): this used to call disconnectHedera(),
+  // whose disconnectAll() deletes live WalletConnect pairings on the
+  // relay. Any second trigger (double-tap, impatient re-tap, boot
+  // auto-connect racing a manual tap) deleted the pending proposal out
+  // from under the wallet — HashPack's "Pair with dApp" sheet vanished
+  // before the user could approve, indistinguishable from "the wallet
+  // auto-canceled". Relay state is now left untouched: a pending proposal
+  // survives a failed/retried attempt, and an approval that lands late
+  // still reaches the session store for restore to pick up.
+  dropConnector();
 
   const connector = await getConnector();
 
@@ -1042,8 +1199,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   //
   // Inside a wallet's in-app browser a QR/deep-link pairing modal is
   // useless — it can't be completed from within the wallet app itself (on
-  // iPhone it hangs on "Tap 'Open' to continue..."). The pairing happens
-  // via the iframe postMessage channel instead.
+  // iPhone it hangs on "Tap 'Open' to continue..."; on Android the wc:
+  // link is intercepted by the host wallet and the self-pairing sheet
+  // flashes and vanishes). The pairing happens via the iframe postMessage
+  // channel instead.
   //
   // FIX for HashPack iOS (2026-09-11): the synchronous in-app signals
   // (window.hashpack injection, user agent) catch Android and desktop, but
@@ -1053,12 +1212,19 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // platform-agnostic — if a wallet answers hedera-iframe-query, we're
   // inside its in-app browser no matter what the UA says. Desktop skips
   // the probe so the modal appears without delay.
+  //
+  // FIX for HashPack Android (2026-10-03): the dApp browser iframes the
+  // page with no injection and no hashpack UA, and our probe only asked
+  // window.parent — every signal missed, so the modal ran as a guaranteed
+  // dead end. Detection is now redundant (injection + UA + iframed-on-
+  // mobile + probe to both window and window.parent), and the routing
+  // below NEVER opens the modal when any in-app signal fires.
   let useIframeFlow = iframeDiscoveredAtInit;
   if (!useIframeFlow) {
     useIframeFlow = await isHashPackInAppBrowserAsync();
   }
 
-  if (useIframeFlow) {
+  if (decidePairingChannel({ iframeDiscoveredAtInit, inAppDetected: useIframeFlow }) === "iframe") {
     let session: { namespaces?: Record<string, { accounts?: string[] }> };
     if (iframeDiscoveredAtInit) {
       // init()'s internal checkIframeConnect() already started pairing
@@ -1098,6 +1264,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
       throw new Error("Pairing succeeded but no Hedera account was returned.");
     }
     hcAccountId = accountId;
+    // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
+    // pairings now that the new one succeeded — sessions only, never
+    // pending pairings (see disconnectStaleSessions).
+    await disconnectStaleSessions(connector, sessionTopic(session));
     trackSessionAccount(session);
     return accountId;
   }
@@ -1105,6 +1275,18 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   // Standard flow: open the QR pairing modal.
   // Note: if a desktop extension is present, the modal offers it directly.
   // (init() already ran once above — shared by both flows.)
+  //
+  // LAST LINE OF DEFENSE: never open the deep-link modal from inside a
+  // wallet's in-app browser. The wc: link is intercepted by the host
+  // wallet itself — self-pairing can never complete, and the user hangs
+  // on "Check your wallet…" until the modal timeout (pilot recording,
+  // 2026-10-03). The channel choice above should already have routed
+  // in-app users to the iframe flow; this guard makes the invariant
+  // explicit so a future detection regression can't silently resurrect
+  // the dead end.
+  if (isHashPackInAppBrowser()) {
+    throw new Error(IN_APP_MODAL_BLOCKED_COPY);
+  }
   let session;
   try {
     session = await openPairingModal(connector);
@@ -1112,7 +1294,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     // A dismissed modal is a deliberate cancel, not a failure — propagate
     // it untouched so connect() can reset quietly (no error banner).
     if (isPairingCancelled(modalErr)) throw modalErr;
-    const msg = modalErr instanceof Error ? modalErr.message : String(modalErr);
+    // walletRejectionMessage (not String()): the SignClient can reject
+    // with a plain {code, message} object — String(obj) would render as
+    // "[object Object]" in the UI.
+    const msg = walletRejectionMessage(modalErr);
     // "Failed to publish custom payload" is a WalletConnect relay rejection —
     // usually an invalid/rate-limited project ID or relay outage. Surface that
     // specifically instead of the generic fallback advice.
@@ -1131,6 +1316,10 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     throw new Error("Pairing succeeded but no Hedera account was returned.");
   }
   hcAccountId = accountId;
+  // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
+  // pairings now that the new one succeeded — sessions only, never
+  // pending pairings (see disconnectStaleSessions).
+  await disconnectStaleSessions(connector, sessionTopic(session));
   trackSessionAccount(session);
   return accountId;
 }
@@ -1187,6 +1376,41 @@ const ADAPTERS: Record<WalletAdapterId, WalletAdapter> = {
 /* React context + hook                                                 */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Shares one in-flight async attempt across concurrent callers.
+ *
+ * Pairing-murder fix (2026-10-03): a second connect() while one is
+ * already running must not start a second pairing — concurrent pairings
+ * orphan each other's proposals, and cleanup of the loser used to delete
+ * the live proposal on the relay (HashPack's "Pair with dApp" sheet
+ * vanishing before the user could approve). Concurrent callers share the
+ * in-flight attempt's promise; once it settles, the next call starts
+ * fresh (retries keep working).
+ *
+ * Exported (pure, no DOM) so the single-flight contract is unit-tested.
+ */
+export class SingleFlight<T> {
+  private current: Promise<T> | null = null;
+
+  run(start: () => Promise<T>): Promise<T> {
+    if (this.current) return this.current;
+    const attempt = start();
+    this.current = attempt;
+    const clear = () => {
+      if (this.current === attempt) this.current = null;
+    };
+    // Both handlers provided: the derived promise never rejects, so no
+    // unhandled-rejection noise.
+    attempt.then(clear, clear);
+    return attempt;
+  }
+
+  /** Whether an attempt is currently in flight. */
+  get inFlight(): boolean {
+    return this.current !== null;
+  }
+}
+
 /** localStorage key remembering which adapter last paired (HashPack/Blade/WC). */
 const ADAPTER_STORAGE_KEY = "vs-wallet-adapter-v1";
 
@@ -1229,51 +1453,67 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
    */
   const [inAppBrowser, setInAppBrowser] = useState<boolean | null>(null);
   const senderGetter = React.useRef<(() => Promise<TxSender>) | null>(null);
+  /**
+   * In-flight guard for connect(): concurrent invocations share the one
+   * live pairing attempt (SingleFlight) instead of starting a second
+   * one. Set when the attempt starts, cleared when it settles — a retry
+   * after failure/success starts fresh.
+   */
+  const connectFlight = React.useRef(new SingleFlight<string>()).current;
 
-  const connect = useCallback(async (adapterId: WalletAdapterId) => {
-    setIsConnecting(true);
-    setError(null);
-    setUserDisconnected(false);
-    try {
-      const chain = getActiveChain();
-      const adapter = ADAPTERS[adapterId];
-      const result = await adapter.connect(chain);
-      senderGetter.current = result.getTxSender;
-      setAccount(result.account);
-      setChainId(result.chainId);
-      setAdapterName(adapterId);
-      // Remember which adapter paired, so a page reload can restore the
-      // same pairing silently (and show the right wallet label).
-      writeStoredAdapterId(adapterId);
-      return result.account;
-    } catch (e) {
-      senderGetter.current = null;
-      // Clean up a half-opened Hedera session on failure.
-      await disconnectHedera();
-      if (isPairingCancelled(e)) {
-        // The user closed the pairing modal themselves — reset to the
-        // Connect button quietly. No error banner (the dismissal was
-        // deliberate), no failure telemetry (nothing failed).
-        throw new PairingCancelledError();
-      }
-      // Report the reason (not just a failed attempt) so the founder
-      // dashboard can show WHY connections fail; fail-silent by design.
-      // walletState is "disconnected" — pairing never completed.
-      reportError(e, "wallet-connect", { action: "pair-wallet", walletState: "disconnected" });
-      recordConversionEvent("wallet_connect_failed");
-      // Map known transient wallet-library TypeErrors (e.g. the
-      // hedera-wallet-connect "reading 'call'" init race) to actionable
-      // copy; everything else passes through unchanged.
-      const msg = friendlyWalletError(e);
-      setError(msg);
-      // Re-throw so callers get the actual error immediately (React state
-      // updates are async, so reading wallet.error right after connect()
-      // would see the stale null value).
-      throw new Error(msg);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
+  const connect = useCallback(
+    (adapterId: WalletAdapterId): Promise<string> =>
+      connectFlight.run(async (): Promise<string> => {
+        setIsConnecting(true);
+        setError(null);
+        setUserDisconnected(false);
+        try {
+          const chain = getActiveChain();
+          const adapter = ADAPTERS[adapterId];
+          const result = await adapter.connect(chain);
+          senderGetter.current = result.getTxSender;
+          setAccount(result.account);
+          setChainId(result.chainId);
+          setAdapterName(adapterId);
+          // Remember which adapter paired, so a page reload can restore the
+          // same pairing silently (and show the right wallet label).
+          writeStoredAdapterId(adapterId);
+          return result.account;
+        } catch (e) {
+          senderGetter.current = null;
+          // Local-only cleanup on failure — NEVER delete relay pairings
+          // here (pairing-murder fix, 2026-10-03): the user may still
+          // approve the pending sheet, and the approval then lands in the
+          // session store for restore to pick up. disconnectAll() deletes
+          // pending pairings, which is what made HashPack's "Pair with
+          // dApp" sheet vanish mid-approval.
+          dropConnector();
+          if (isPairingCancelled(e)) {
+            // The user closed the pairing modal themselves — reset to the
+            // Connect button quietly. No error banner (the dismissal was
+            // deliberate), no failure telemetry (nothing failed).
+            throw new PairingCancelledError();
+          }
+          // Report the reason (not just a failed attempt) so the founder
+          // dashboard can show WHY connections fail; fail-silent by design.
+          // walletState is "disconnected" — pairing never completed.
+          reportError(e, "wallet-connect", { action: "pair-wallet", walletState: "disconnected" });
+          recordConversionEvent("wallet_connect_failed");
+          // Map known transient wallet-library TypeErrors (e.g. the
+          // hedera-wallet-connect "reading 'call'" init race) to actionable
+          // copy; everything else passes through unchanged.
+          const msg = friendlyWalletError(e);
+          setError(msg);
+          // Re-throw so callers get the actual error immediately (React state
+          // updates are async, so reading wallet.error right after connect()
+          // would see the stale null value).
+          throw new Error(msg);
+        } finally {
+          setIsConnecting(false);
+        }
+      }),
+    [],
+  );
 
   const disconnect = useCallback(async () => {
     if (adapterName) {
