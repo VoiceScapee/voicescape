@@ -314,8 +314,11 @@ function TipBox({
       ? `${hbarInput} HBAR`
       : "?"
     : `$${usdValid ? usdNum.toFixed(2) : "?"}`;
-  const toCreatorAmt = hbarAmt != null ? hbarAmt * 0.98 : null;
-  const treasuryAmt = hbarAmt != null ? hbarAmt * 0.02 : null;
+  // Integer tinybar math for the pre-tip 98/2 display — settlement stays
+  // exact in the contract; the preview must not drift via float rounding.
+  const tinybars = hbarAmt != null ? BigInt(Math.round(hbarAmt * 1e8)) : null;
+  const toCreatorAmt = tinybars != null ? Number((tinybars * 98n) / 100n) / 1e8 : null;
+  const treasuryAmt = tinybars != null ? Number((tinybars * 2n) / 100n) / 1e8 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
   const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
   // Hedera-side network fee (existing display value), passed through the

@@ -52,24 +52,20 @@ function useChunkErrorRecovery() {
 }
 
 /**
- * Registers the PWA service worker (production only). The worker caches
- * static assets and page shells for installability/offline; it never
- * touches /api/* or cross-origin traffic.
+ * Service-worker stewardship.
+ *
+ * The ONLY worker is the push-notification worker at /sw.js (registered on
+ * demand by TipPushToggle when the user enables tip notifications). It is
+ * deliberately cache-free — an earlier caching worker caused stale-chunk
+ * incidents, and /sw.js cleans up any caches it finds on activate.
+ *
+ * Do NOT blanket-unregister workers here: a previous version did, and it
+ * silently killed the push worker (and its subscription) on every page
+ * load, so users who enabled tip notifications stopped receiving them.
  */
 function useServiceWorker() {
-  React.useEffect(() => {
-    // Service worker disabled: it was causing stale chunk caching issues.
-    // Unregister any existing service worker.
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      navigator.serviceWorker.getRegistrations().then((regs) => {
-        regs.forEach((r) => r.unregister());
-      });
-      // Clear all caches
-      if ("caches" in window) {
-        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
-      }
-    }
-  }, []);
+  // No-op by design — see above. The push worker is managed by TipPushToggle.
+  React.useEffect(() => {}, []);
 }
 
 /**

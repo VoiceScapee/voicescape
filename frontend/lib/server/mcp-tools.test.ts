@@ -674,6 +674,57 @@ describe("prepare_agent_claim tool", () => {
     expect(res.next).toMatch(/approval link/);
   });
 
+  it("rejects non-https URLs in socials/links", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      {
+        username: "urlbot",
+        purpose: "url validation test",
+        socials: [{ platform: "x", url: "javascript:alert(1)" }],
+      },
+      fetchFn,
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/https/);
+  });
+
+  it("rejects data: URLs in links", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      {
+        username: "urlbot2",
+        purpose: "url validation test",
+        links: [{ label: "x", url: "data:text/html,<h1>hi</h1>" }],
+      },
+      fetchFn,
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/https/);
+  });
+
+  it("accepts https URLs in socials/links", async () => {
+    const fetchFn = (async (url: string) => {
+      if (url.includes("/contracts/call")) return ok({ result: "0x" });
+      throw new Error("unexpected fetch " + url);
+    }) as unknown as typeof fetch;
+    const res = await prepareAgentClaim(
+      {
+        username: "urlbot3",
+        purpose: "url validation test",
+        socials: [{ platform: "x", url: "https://x.com/example" }],
+        links: [{ label: "site", url: "https://example.com/page" }],
+      },
+      fetchFn,
+    );
+    expect("error" in res).toBe(false);
+  });
+
   it("skips the account check when no owner override is given", async () => {
     let accountsHit = 0;
     const fetchFn = (async (url: string) => {

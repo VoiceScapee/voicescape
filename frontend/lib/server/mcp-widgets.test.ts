@@ -45,4 +45,36 @@ describe("blockpage preview widget", () => {
     const html = blockpagePreviewHtml();
     expect(html).toContain("MCP Apps client");
   });
+
+  it("pins widget links to the given https origin", () => {
+    const html = blockpagePreviewHtml(undefined, "https://preview.example.com");
+    expect(html).toContain("https://preview.example.com");
+    expect(html).not.toContain("https://voicescape.vercel.app");
+  });
+
+  it("rejects non-https or foreign origins, falling back to production", () => {
+    for (const bad of ["javascript:alert(1)", "http://evil.com", "https://evil.com/x", ""]) {
+      const html = blockpagePreviewHtml(undefined, bad);
+      expect(html).toContain("https://voicescape.vercel.app");
+      expect(html).not.toContain("javascript:");
+    }
+  });
+
+  it("validates incoming bridge messages (source + shape)", () => {
+    const html = blockpagePreviewHtml();
+    // Only the embedding host frame may drive the widget.
+    expect(html).toContain("event.source !== window.parent");
+    // Messages must be JSON-RPC 2.0 with a method string.
+    expect(html).toContain("msg.jsonrpc !== '2.0'");
+  });
+
+  it("never opens a link off the pinned origin", () => {
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("url.indexOf(appOrigin + '/') !== 0");
+  });
+
+  it("meets the 44px touch target on widget buttons", () => {
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("min-height: 44px");
+  });
 });

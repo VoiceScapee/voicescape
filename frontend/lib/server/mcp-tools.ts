@@ -892,6 +892,14 @@ export async function prepareAgentClaim(
         .map((l) => ({ label: l.label.slice(0, 40), url: l.url.slice(0, 500) }))
         .slice(0, 12)
     : null;
+  // Claim-prep URLs land on a public blockpage — https only, so a
+  // javascript: or data: URL can never be smuggled into the page.
+  const badUrl = [...(normSocials ?? []), ...(normLinks ?? [])].find(
+    (e) => !/^https:\/\/[^/\s]+\.[^/\s]+/.test(e.url.trim()),
+  );
+  if (badUrl) {
+    return { error: `invalid url "${badUrl.url.slice(0, 80)}" — links must be https:// URLs` };
+  }
 
   // 4. Stash the package — nothing pinned, nothing built, until the tap.
   const origin = getRequestContext().origin.replace(/\/$/, "");

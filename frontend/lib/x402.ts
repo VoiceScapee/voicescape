@@ -11,11 +11,11 @@
  *     vibecode endpoint per AI edit (the loop closes: agents pay for their
  *     own edits through this flow).
  *
- * Signing is wallet-backed (HashConnect), never raw keys: we implement the
+ * Signing is wallet-backed (@hashgraph/hedera-wallet-connect), never raw keys: we implement the
  * @x402/hedera ClientHederaSigner interface over the paired wallet. The
  * mechanics mirror @x402/hedera's createClientHederaSigner (partially-signed
  * TransferTransaction, buyer signature only, facilitator feePayer as payer)
- * — verified against @x402/hedera@2.25.0 sources (read-only).
+ * — verified against @x402/hedera@2.28.0 sources (read-only).
  */
 
 import { x402Client, wrapFetchWithPayment } from "@x402/fetch";
