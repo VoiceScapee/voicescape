@@ -41,6 +41,7 @@ import {
 } from "@/lib/server/agent-workshop";
 import {
   BLOCKPAGE_PREVIEW_URI,
+  WIDGET_CSP,
   blockpagePreviewHtml,
 } from "@/lib/server/mcp-widgets";
 
@@ -99,16 +100,22 @@ export function registerTools(server: McpServer): void {
   // MCP Apps UI resources: interactive widgets rendered inside AI chat
   // clients (Claude, ChatGPT). The HTML is sandboxed by the host — no keys,
   // no signing, no wallet APIs. Widgets are display + decision; the wallet
-  // stays the authority via openLink handoffs.
+  // stays the authority via ui/open-link handoffs. _meta.ui.csp declares the
+  // widget's Content Security Policy explicitly (SEP-1865).
   server.registerResource(
     "blockpage-preview",
     BLOCKPAGE_PREVIEW_URI,
-    { mimeType: "text/html;profile=mcp-app", title: "Blockpage preview" },
+    {
+      mimeType: "text/html;profile=mcp-app",
+      title: "Blockpage preview",
+      _meta: { ui: { csp: WIDGET_CSP } },
+    },
     async (uri) => ({
       contents: [
         {
           uri: uri.href,
           mimeType: "text/html;profile=mcp-app",
+          _meta: { ui: { csp: WIDGET_CSP } },
           text: blockpagePreviewHtml(),
         },
       ],
