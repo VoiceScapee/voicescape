@@ -19,27 +19,35 @@ import { LanguageProvider } from "@/lib/i18n/LanguageContext";
  * load (usually because the browser cached HTML from an old build), force
  * a hard reload with cache bypass instead of showing a broken page.
  * This is critical for HashPack's in-app browser which caches aggressively.
+ *
+ * The failure is reported to /api/client-error BEFORE the reload (the
+ * reload destroys the evidence). Without this, chunk-load spikes — the
+ * exact class HashPack's aggressive caching produces — are invisible on
+ * the founder dashboard.
  */
 function useChunkErrorRecovery() {
   React.useEffect(() => {
+    const recover = (msg: string) => {
+      // Report first: the reload below wipes this page's JS state.
+      // sendBeacon survives the navigation, so the report still lands.
+      reportError(new Error(msg), "chunk-recovery", { action: "chunk-reload" });
+      // Prevent infinite reload loops: only retry once per session.
+      if (!sessionStorage.getItem("vs-chunk-recovery")) {
+        sessionStorage.setItem("vs-chunk-recovery", "1");
+        window.location.reload();
+      }
+    };
     const onError = (e: ErrorEvent) => {
       const msg = e.message || "";
       if (msg.includes("Loading chunk") && msg.includes("failed")) {
-        // Prevent infinite reload loops: only retry once per session.
-        if (!sessionStorage.getItem("vs-chunk-recovery")) {
-          sessionStorage.setItem("vs-chunk-recovery", "1");
-          window.location.reload();
-        }
+        recover(msg);
       }
     };
     // Also catch unhandled promise rejections (dynamic imports).
     const onRejection = (e: PromiseRejectionEvent) => {
       const msg = String(e.reason?.message || e.reason || "");
       if (msg.includes("Loading chunk") && msg.includes("failed")) {
-        if (!sessionStorage.getItem("vs-chunk-recovery")) {
-          sessionStorage.setItem("vs-chunk-recovery", "1");
-          window.location.reload();
-        }
+        recover(msg);
       }
     };
     window.addEventListener("error", onError);
@@ -88,6 +96,7 @@ function useReferralCapture() {
 }
 
 import { firstStackFrame } from "@/lib/client-error-frame";
+import { reportError } from "@/lib/report-error";
 
 /**
  * Privacy-first client error reporting.
