@@ -70,6 +70,7 @@ import {
   setByokKey,
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { recordConversionEvent } from "@/lib/metrics";
 import { recordUsageEvent } from "@/lib/usage";
 import { reportError } from "@/lib/report-error";
@@ -1283,7 +1284,7 @@ function useUsernameAvailability(name: string, account: string | null): NameAvai
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/resolve?username=${encodeURIComponent(candidate)}`, {
+        const res = await fetchWithTimeout(`/api/resolve?username=${encodeURIComponent(candidate)}`, 10_000, {
           cache: "no-store",
         });
         if (cancelled) return;
@@ -1372,6 +1373,20 @@ function UsernameField({
       {!valid && username.length > 0 && (
         <div className="vb-username-hint">Use 3–24 lowercase letters, numbers, or hyphens.</div>
       )}
+      {/* aria-live: the emoji status is aria-hidden; announce checking as text. */}
+      <div
+        aria-live="polite"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {valid && availability === "checking" ? "Checking name availability…" : ""}
+      </div>
       {valid && availability === "available" && (
         <div className="vb-username-hint" style={{ color: "var(--vs-ok, #4ade80)" }}>
           ✅ <span className="vs-mono">/{trimmed}</span> is available — it&apos;s yours when you publish.
@@ -1499,9 +1514,11 @@ function HashpackProfileImport({
   const load = async () => {
     setState("loading");
     try {
-      const res = await fetch(`/api/hashpack-profile?account=${encodeURIComponent(account)}`, {
-        cache: "no-store",
-      });
+      const res = await fetchWithTimeout(
+        `/api/hashpack-profile?account=${encodeURIComponent(account)}`,
+        10_000,
+        { cache: "no-store" },
+      );
       if (!res.ok) throw new Error("lookup failed");
       const data = (await res.json()) as HashpackProfile;
       if (!data.username && !data.bio && !data.twitterHandle) {
@@ -1683,6 +1700,8 @@ function TemplatePicker({
 interface ChatMessage {
   role: "user" | "assistant" | "error";
   text: string;
+  /** Optional verification link rendered under the bubble (e.g. HashScan receipt). */
+  link?: { href: string; label: string };
 }
 
 const SUGGESTIONS = [
@@ -1911,6 +1930,9 @@ function VibecodeChat({
         {
           role: "assistant",
           text: `Paid edit settled${settleTxId ? ` (tx ${settleTxId.slice(0, 20)}…)` : ""} Review the draft in the preview pane, then Apply or Discard.`,
+          link: settleTxId
+            ? { href: `${getActiveChain().blockExplorer}/transaction/${settleTxId}`, label: "View on HashScan →" }
+            : undefined,
         },
       ]);
       setX402Pending(null);
@@ -1989,6 +2011,18 @@ function VibecodeChat({
             }`}
           >
             {m.text}
+            {m.link && (
+              <div style={{ marginTop: 6 }}>
+                <a
+                  href={m.link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#8fd6ff", textDecoration: "underline", fontSize: 13 }}
+                >
+                  {m.link.label}
+                </a>
+              </div>
+            )}
           </div>
         ))}
         {loading && (
@@ -2437,9 +2471,8 @@ function PublishPanel({
       // 1. Pin page JSON to IPFS (server-side via Pinata)
       setStatus({ kind: "info", text: "Pinning page to IPFS…" });
       const ipfsHash = await pinPageJson(JSON.stringify(stamped));
-      // 2. Register or update on-chain with the connected wallet. Each name
-      // gets one tx; the custom name is a second registry entry pointing at
-      // the same content.
+      // 2. Register or update on-chain with the connected wallet — one tx
+      // registers (or updates) the single chosen name; no second entry.
       const sender = await getTxSender();
       const ownerFlag = ownerType === "agent" ? 1 : 0;
       const publishName = async (name: string): Promise<string> => {
@@ -2448,7 +2481,7 @@ function PublishPanel({
         // If you don't own it, the transaction reverts.
         let exists = false;
         try {
-          const res = await fetch(`/api/resolve?username=${encodeURIComponent(name)}`, {
+          const res = await fetchWithTimeout(`/api/resolve?username=${encodeURIComponent(name)}`, 10_000, {
             cache: "no-store",
           });
           exists = res.ok;
@@ -2496,9 +2529,11 @@ function PublishPanel({
       let confirmed = false;
       for (let i = 0; i < 10; i++) {
         try {
-          const res = await fetch(`/api/resolve?username=${encodeURIComponent(target)}`, {
-            cache: "no-store",
-          });
+          const res = await fetchWithTimeout(
+            `/api/resolve?username=${encodeURIComponent(target)}`,
+            10_000,
+            { cache: "no-store" },
+          );
           if (res.ok) {
             const data = (await res.json()) as { ipfsHash?: string };
             if (data.ipfsHash === ipfsHash) {
@@ -2526,7 +2561,7 @@ function PublishPanel({
         try {
           const t = token();
           if (t) {
-            const cr = await fetch("/api/liaison/publish-confirm", {
+            const cr = await fetchWithTimeout("/api/liaison/publish-confirm", 10_000, {
               method: "POST",
               headers: { "content-type": "application/json", "x-vs-session": t },
               body: JSON.stringify({ username: target, txHash: hash }),
@@ -2771,7 +2806,9 @@ function PublishPanel({
       <div className="vb-pub-actions">
         <p className="vb-info-hint" style={{ marginBottom: 8 }}>
           Publishing registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
-          Hedera. Your wallet will ask you to approve one transaction — nothing else happens.
+          Hedera. Your wallet will ask you to approve one transaction — a tiny Hedera network fee
+          (a few cents of HBAR) applies, nothing else moves. (Arrived via a referral link? One more
+          signature may follow for the referral record.)
         </p>
         <button
           type="button"
@@ -2975,7 +3012,7 @@ function BuilderInner() {
     const t = token();
     if (!t) return;
     let live = true;
-    fetch("/api/liaison/draft", {
+    fetchWithTimeout("/api/liaison/draft", 10_000, {
       headers: { "x-vs-session": t },
       cache: "no-store",
     })
@@ -3005,7 +3042,7 @@ function BuilderInner() {
     const t = token();
     if (!t) return;
     try {
-      const res = await fetch("/api/liaison/draft", {
+      const res = await fetchWithTimeout("/api/liaison/draft", 10_000, {
         headers: { "x-vs-session": t },
         cache: "no-store",
       });
@@ -3159,7 +3196,7 @@ function BuilderInner() {
       return;
     }
     let live = true;
-    fetch(draftFileUrl(name))
+    fetchWithTimeout(draftFileUrl(name), 15_000)
       .then((r) => {
         if (!r.ok) throw new Error("not found");
         return r.json();
@@ -3238,8 +3275,9 @@ function BuilderInner() {
       try {
         const username = await fetchRegisteredUsername(account);
         if (!live || !username) return;
-        const res = await fetch(
+        const res = await fetchWithTimeout(
           `/api/resolve?username=${encodeURIComponent(username)}`,
+          10_000,
           { cache: "no-store" },
         );
         if (!live || !res.ok) return;
@@ -3397,7 +3435,7 @@ function BuilderInner() {
               <span className="vb-tutorial-num">1</span>
               <div>
                 <strong>Name it</strong>
-                <span>Pick your blockpage name — see instantly if it&apos;s free.</span>
+                <span>Pick your blockpage name — see instantly if it&apos;s available.</span>
               </div>
             </div>
             <div className="vb-tutorial-step">
@@ -3604,7 +3642,9 @@ function BuilderInner() {
           {aiDraft ? (
             <div className="vb-draft-wrap">
               <div className="vb-draft-inner">
-                <div className="vb-draft-bar vs-glass">
+                {/* role="status": announce the draft arrival to screen readers — the
+                    pane swaps without moving focus, so SR users need the cue. */}
+                <div className="vb-draft-bar vs-glass" role="status">
                   <span className="vb-draft-bar-text">
                     <IconSpark size={16} /> Previewing AI changes
                   </span>

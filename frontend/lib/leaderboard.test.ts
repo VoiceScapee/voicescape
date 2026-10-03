@@ -8,6 +8,7 @@ import {
   aggregateWeeklyTips,
   decodeTipSentLog,
   filterHumanCreators,
+  formatTinybarAsHbar,
   TIPSENT_TOPIC,
   type TipEvent,
 } from "./leaderboard";
@@ -186,5 +187,17 @@ describe("filterHumanCreators", () => {
     ];
     const kept = filterHumanCreators(leaders);
     expect(kept.map((l) => l.recipient)).toEqual(["0x1", "0x3"]);
+  });
+});
+
+describe("formatTinybarAsHbar", () => {
+  it("formats whole HBAR with no fraction", () => {
+    expect(formatTinybarAsHbar(100_000_000n)).toBe("1");
+    expect(formatTinybarAsHbar(0n)).toBe("0");
+  });
+  it("formats fractional HBAR with exact integer math", () => {
+    expect(formatTinybarAsHbar(98_000_000n)).toBe("0.98");
+    expect(formatTinybarAsHbar(1n)).toBe("0.00000001");
+    expect(formatTinybarAsHbar(123_456_789n)).toBe("1.23456789");
   });
 });

@@ -29,6 +29,7 @@ import BuddyActionCard from "./BuddyActionCard";
 import BuddyDashboard from "./BuddyDashboard";
 import { submitPreparedTx, type SubmitPreparedTxResult } from "@/lib/prepared-tx";
 import { recordUsageEvent } from "@/lib/usage";
+import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { finalizeClaimPackage, ClaimLinkError } from "@/lib/claim-link";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
@@ -378,7 +379,7 @@ export default function AgentChat() {
       const headers = authed();
       if (!headers) return;
       try {
-        const res = await fetch("/api/agents/proposals", { headers });
+        const res = await fetchWithTimeout("/api/agents/proposals", 10_000, { headers });
         if (!res.ok || stop) return;
         const data = (await res.json()) as { proposals?: PendingAction[] };
         const list = Array.isArray(data.proposals) ? data.proposals : [];
@@ -403,7 +404,7 @@ export default function AgentChat() {
       const headers = authed();
       if (!headers) return;
       try {
-        const res = await fetch("/api/agents/overview", { headers });
+        const res = await fetchWithTimeout("/api/agents/overview", 10_000, { headers });
         if (!res.ok || stop) return;
         const data = (await res.json()) as AgentOverview;
         if (data && typeof data === "object") setOverview(data);
@@ -621,7 +622,7 @@ export default function AgentChat() {
   }
   async function queryCredit(): Promise<boolean> {
     try {
-      const res = await fetch("/api/agent/chat/build-credit", {
+      const res = await fetchWithTimeout("/api/agent/chat/build-credit", 10_000, {
         headers: { ...sessionHeader() },
         // The endpoint is read-only but answers about a live payment —
         // never serve it from cache.
@@ -1088,8 +1089,10 @@ export default function AgentChat() {
               style={{
                 marginLeft: "auto",
                 flex: "none",
-                width: 30,
-                height: 30,
+                width: 44,
+                height: 44,
+                minWidth: 44,
+                minHeight: 44,
                 borderRadius: "50%",
                 border: "1px solid rgba(255, 255, 255, 0.14)",
                 background: "transparent",
@@ -1528,6 +1531,7 @@ export default function AgentChat() {
                   onClick={() => void sendMessage(chip)}
                   style={{
                     padding: "8px 14px",
+                    minHeight: 44,
                     borderRadius: 999,
                     border: "1px solid rgba(130, 89, 239, 0.55)",
                     background: "rgba(130, 89, 239, 0.14)",
@@ -1597,6 +1601,7 @@ export default function AgentChat() {
                       onClick={() => startCreditPoll()}
                       style={{
                         padding: "9px 14px",
+                        minHeight: 44,
                         borderRadius: 10,
                         border: "1px solid rgba(130, 89, 239, 0.4)",
                         cursor: "pointer",
@@ -1755,6 +1760,7 @@ export default function AgentChat() {
                 border: "none",
                 cursor: "pointer",
                 padding: "0 16px",
+                minHeight: 44,
                 fontSize: 14,
                 fontWeight: 700,
                 color: "#fff",
