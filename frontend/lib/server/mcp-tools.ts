@@ -84,13 +84,20 @@ export function getRequestContext(): McpRequestContext {
 export interface McpToolResult {
   // Index signature required by the MCP SDK's CallToolResult shape.
   [key: string]: unknown;
-  content: Array<{ type: "text"; text: string }>;
+  content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }>;
   isError?: boolean;
 }
 
 /** Wrap a plain object as an MCP text result (JSON, pretty-printed). */
 export function toolResult(obj: unknown): McpToolResult {
   return { content: [{ type: "text", text: JSON.stringify(obj, null, 2) }] };
+}
+
+/** Wrap a PNG buffer as an MCP image result (base64 data URI payload). */
+export function imageResult(png: Buffer): McpToolResult {
+  return {
+    content: [{ type: "image", data: png.toString("base64"), mimeType: "image/png" }],
+  };
 }
 
 /** Wrap a plain error message as an MCP error result. Never throws. */

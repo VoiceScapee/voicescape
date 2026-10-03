@@ -473,8 +473,20 @@ describe("search_agents", () => {
 describe("toolResult", () => {
   it("serializes objects as JSON text content", () => {
     const r = toolResult({ a: 1 });
-    expect(r.content[0].type).toBe("text");
-    expect(JSON.parse(r.content[0].text)).toEqual({ a: 1 });
+    const first = r.content[0];
+    expect(first.type).toBe("text");
+    expect(first.type === "text" && JSON.parse(first.text)).toEqual({ a: 1 });
+  });
+
+  it("imageResult wraps a PNG buffer as base64 image content", async () => {
+    const { imageResult } = await import("./mcp-tools");
+    const r = imageResult(Buffer.from([0x89, 0x50]));
+    const first = r.content[0];
+    expect(first.type).toBe("image");
+    if (first.type === "image") {
+      expect(first.mimeType).toBe("image/png");
+      expect(first.data).toBe(Buffer.from([0x89, 0x50]).toString("base64"));
+    }
   });
 });
 

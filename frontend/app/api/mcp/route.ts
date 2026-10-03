@@ -21,8 +21,10 @@ import { getKvStore } from "@/lib/server/store";
 import { recordClientError } from "@/lib/server/client-errors";
 import {
   requestContextStorage,
+  getRequestContext,
   toolResult,
   toolError,
+  imageResult,
   lookupBlockpage,
   verifyTip,
   treasuryStats,
@@ -595,6 +597,33 @@ function registerTools(server: McpServer): void {
     },
     async ({ username }) =>
       withMcpErrorTelemetry("render_blockpage", async () => toolResult(await lookupBlockpage(username))),
+  );
+
+  server.registerTool(
+    "render_blockpage_image",
+    {
+      description:
+        "Render the blockpage preview card as a PNG image. Use this when the chat client cannot render MCP Apps widgets (headless agents, CLI tools, raw HTTP) — the agent SEES the actual card (username, human/agent badge, purpose, Tip / View-page buttons) as an image instead of JSON. Prefer render_blockpage in clients with widget support.",
+      inputSchema: z.object({
+        username: z.string().describe("The Voicescape username to preview (e.g. thechomps)"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ username }) =>
+      withMcpErrorTelemetry("render_blockpage_image", async () => {
+        const origin = getRequestContext().origin;
+        let res: Response;
+        try {
+          res = await fetch(
+            `${origin}/api/mcp/widget-shot?username=${encodeURIComponent(username.trim())}`,
+          );
+        } catch {
+          return toolError("preview renderer temporarily unavailable — please retry");
+        }
+        if (res.status === 404) return toolError(`blockpage not found: ${username.trim()}`);
+        if (!res.ok) return toolError("could not render preview — please retry");
+        return imageResult(Buffer.from(await res.arrayBuffer()));
+      }),
   );
 }
 
