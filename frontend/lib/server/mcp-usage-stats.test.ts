@@ -8,6 +8,7 @@ import {
   recordMcpToolCall,
   getMcpUsageStats,
   getMcpToolCounts,
+  KNOWN_MCP_TOOLS,
 } from "./mcp-usage-stats";
 
 function fakeStore() {
@@ -77,5 +78,27 @@ describe("mcp-usage-stats", () => {
     const s = await getMcpUsageStats({ store: broken });
     expect(s.total).toBe(0);
     expect(await getMcpToolCounts(["x"], { store: broken })).toEqual({ x: 0 });
+  });
+
+  it("KNOWN_MCP_TOOLS matches the tools the registry actually registers", async () => {
+    const { registerTools } = await import("./mcp-tool-registry");
+    const names: string[] = [];
+    const stub = {
+      registerTool: (name: string) => {
+        names.push(name);
+      },
+      registerResource: () => {},
+    };
+    registerTools(stub as never);
+    expect([...names].sort()).toEqual([...KNOWN_MCP_TOOLS].sort());
+  });
+
+  it("getMcpUsageStats reports per-tool counts for tools with calls", async () => {
+    const { store } = fakeStore();
+    await recordMcpToolCall("verify_tip", { store });
+    await recordMcpToolCall("verify_tip", { store });
+    await recordMcpToolCall("lookup_blockpage", { store });
+    const s = await getMcpUsageStats({ store });
+    expect(s.byTool).toEqual({ verify_tip: 2, lookup_blockpage: 1 });
   });
 });
