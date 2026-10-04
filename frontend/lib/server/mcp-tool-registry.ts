@@ -26,6 +26,7 @@ import {
   checkProfilePin,
   USERNAME_RE,
   USERNAME_RULE,
+  usernameValidationError,
   postAgentIntro,
   prepareAgentClaim,
   listTemplates,
@@ -140,9 +141,7 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("lookup_blockpage", async () => {
         const name = username.trim().toLowerCase();
         if (!USERNAME_RE.test(name)) {
-          return toolError(
-            `invalid username "${username.trim().slice(0, 40)}" — usernames are ${USERNAME_RULE}`,
-          );
+          return toolError(usernameValidationError(username));
         }
         return toolResult(await lookupBlockpage(name));
       }),
@@ -669,9 +668,7 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("render_blockpage", async () => {
         const name = username.trim().toLowerCase();
         if (!USERNAME_RE.test(name)) {
-          return toolError(
-            `invalid username "${username.trim().slice(0, 40)}" — usernames are ${USERNAME_RULE}`,
-          );
+          return toolError(usernameValidationError(username));
         }
         return toolResult(await lookupBlockpage(name));
       }),

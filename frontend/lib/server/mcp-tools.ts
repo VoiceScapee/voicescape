@@ -58,6 +58,38 @@ export const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 /** Human-readable username rule, shared by the MCP surface for fail-fast errors. */
 export const USERNAME_RULE = "3-32 lowercase letters, numbers, _ or -";
 
+/**
+ * Diagnose why a username failed validation, with a concrete fix.
+ * Agents stuck retrying the same invalid name get an explicit
+ * "do not retry this value" signal plus a usable alternative —
+ * a bare rule restatement doesn't break retry loops.
+ */
+export function usernameValidationError(raw: unknown): string {
+  const input = String(raw ?? "").slice(0, 40);
+  const name = input.trim().toLowerCase();
+  const rule = USERNAME_RULE;
+  if (!name) {
+    return `invalid username "" — empty. Pick a name like "my-agent" (${rule}). Do not retry an empty username.`;
+  }
+  if (name.length < 3) {
+    return (
+      `invalid username "${input}" — too short (${name.length} chars, minimum 3). ` +
+      `Try "${name}-agent" or "my-${name}-bot" (${rule}). ` +
+      `Do not retry "${input}" — it will never validate.`
+    );
+  }
+  if (name.length > 32) {
+    return (
+      `invalid username "${input}" — too long (${name.length} chars, maximum 32). ` +
+      `Shorten it (${rule}). Do not retry "${input}" — it will never validate.`
+    );
+  }
+  return (
+    `invalid username "${input}" — bad characters. Only ${rule} allowed ` +
+    `(no spaces, no uppercase). Do not retry "${input}" — it will never validate.`
+  );
+}
+
 const RESOLVE_IFACE = new ethers.Interface([
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
 ]);
@@ -290,7 +322,7 @@ export async function checkProfilePin(
   const username = (args.username ?? "").trim().toLowerCase() || undefined;
 
   if (!cid && username) {
-    if (!USERNAME_RE.test(username)) return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
+    if (!USERNAME_RE.test(username)) return { error: usernameValidationError(args.username) };
     const page = await lookupBlockpage(username, fetchFn);
     if (!page.found || !page.ipfs_hash) {
       return pinCheckResult({
@@ -812,7 +844,7 @@ export async function prepareAgentClaim(
 ): Promise<AgentClaimPackage | { error: string }> {
   const username = (args.username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
-    return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
+    return { error: usernameValidationError(args.username) };
   }
   // owner_account_id is an OPTIONAL override. Default: the wallet that
   // taps approve on the link owns the page.

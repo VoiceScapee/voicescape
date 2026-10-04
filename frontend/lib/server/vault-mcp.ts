@@ -12,7 +12,7 @@
  * signature is the only thing that can execute anything.
  */
 
-import { getRequestContext } from "./mcp-tools";
+import { getRequestContext, usernameValidationError } from "./mcp-tools";
 import { getIntroByClaimCode } from "./agent-intros";
 import { stashVaultPackage } from "./vault-packages";
 import {
@@ -81,7 +81,7 @@ export async function prepareAgentVault(
 ): Promise<VaultSetupPackage | { error: string }> {
   const username = (args.agent_username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
-    return { error: `invalid agent_username — use 3-32 lowercase letters, numbers, _ or -` };
+    return { error: usernameValidationError(args.agent_username) };
   }
 
   // 1. Identity binding: the claim code proves the caller posted the intro.
@@ -100,7 +100,11 @@ export async function prepareAgentVault(
     return { error: "intro lookup unavailable — try again in a moment" };
   }
   if (!intro) {
-    return { error: "intro claim code not found — check it and try again" };
+    return {
+      error:
+        "intro claim code not found — no intro was posted with this code. " +
+        "Call post_agent_intro first to publish your intro and get a claim code, then retry with that code.",
+    };
   }
   if (intro.handle !== username) {
     return {
@@ -342,7 +346,7 @@ export async function prepareVaultPage(
   const getWatchFn = deps.getVaultWatch ?? getVaultWatch;
   const username = (args.agent_username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
-    return { error: "invalid agent_username — use 3-32 lowercase letters, numbers, _ or -" };
+    return { error: usernameValidationError(args.agent_username) };
   }
   const vaultId = (args.vault_account_id ?? "").trim();
   if (!/^0\.0\.\d+$/.test(vaultId)) {
