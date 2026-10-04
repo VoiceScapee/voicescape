@@ -46,6 +46,10 @@ export const KNOWN_MCP_TOOLS = [
   "get_started",
   "quote_tip",
   "trending_creators",
+  "blockpage_earnings",
+  "read_agent_messages",
+  "prepare_agent_message",
+  "list_tip_assets",
 ] as const;
 
 function dayKey(d = new Date()): string {

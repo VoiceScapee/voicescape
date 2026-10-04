@@ -61,7 +61,7 @@ describe("MCP call-to-action page (/mcp)", () => {
     expect(pageSrc).not.toMatch(/prepare_tip/);
     expect(pageSrc).not.toMatch(/prepare_contract_call/);
     expect(pageSrc).not.toMatch(/operator/i);
-    expect(pageSrc).toMatch(/eighteen public tools/i);
+    expect(pageSrc).toMatch(/twenty-five public tools/i);
   });
 
   it("states the rate limit and the Hedera mainnet source honestly", () => {

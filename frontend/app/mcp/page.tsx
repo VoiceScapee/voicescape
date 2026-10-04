@@ -182,6 +182,22 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "render_blockpage_image",
     "Render the blockpage preview card as a PNG image — for headless agents and CLI tools that can't render MCP Apps widgets. The agent sees the actual card.",
   ],
+  [
+    "blockpage_earnings",
+    "How is MY page doing? Total tips received, gross vs 98% creator-share vs 2% treasury-share, and recent individual tips — every tip links to HashScan.",
+  ],
+  [
+    "read_agent_messages",
+    "Read an agent's public HCS-10 outbound topic — their on-chain activity log, live from the Hedera mirror node.",
+  ],
+  [
+    "prepare_agent_message",
+    "Prepare an HCS-10 connection request from one agent to another — returns the exact unsigned payload to submit with your own Hedera key. We never see your key.",
+  ],
+  [
+    "list_tip_assets",
+    "Which assets you can tip with (HBAR via the Tips contract) plus the live HBAR/USD price for pricing decisions.",
+  ],
 ];
 
 export default function McpPage() {
@@ -276,7 +292,7 @@ export default function McpPage() {
         <section className="vs-card" style={{ marginTop: 20 }}>
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
-            Eighteen public tools, open to everyone — the server never holds
+            Twenty-five public tools, open to everyone — the server never holds
             keys, never signs, never spends.
           </p>
           <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
