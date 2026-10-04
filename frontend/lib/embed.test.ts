@@ -26,9 +26,10 @@ describe("normalizeEmbedUsername", () => {
   });
   it("rejects usernames outside the on-chain charset", () => {
     expect(normalizeEmbedUsername("not a name!")).toBeNull();
-    expect(normalizeEmbedUsername("a".repeat(25))).toBeNull(); // too long
-    expect(normalizeEmbedUsername("ab")).toBeNull(); // too short
-    expect(normalizeEmbedUsername("has_underscore")).toBeNull();
+    expect(normalizeEmbedUsername("a".repeat(33))).toBeNull(); // too long (max 32)
+    expect(normalizeEmbedUsername("ab")).toBeNull(); // too short (min 3)
+    expect(normalizeEmbedUsername("has_underscore")).toBe("has_underscore"); // _ is valid
+    expect(normalizeEmbedUsername("has space")).toBeNull();
   });
 });
 

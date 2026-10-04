@@ -18,6 +18,8 @@ import {
   tinybarToHbar,
   HASHSCAN_TX_BASE,
   TIPS_CONTRACT_ID,
+  topicToAddress,
+  decodeTipSentData,
   type ProofErrorKind,
 } from "../tx-proof";
 import { TIPS_ABI } from "../tx";
@@ -1324,25 +1326,6 @@ export interface BlockpageEarnings {
   note: string;
 }
 
-/** Decode a TipSent log's data words: (gross tipped, treasury fee) in tinybar. */
-function decodeTipSentLogData(data: unknown): { gross: bigint; fee: bigint } | null {
-  if (typeof data !== "string" || !/^0x[0-9a-fA-F]{128,}$/.test(data)) return null;
-  try {
-    const gross = BigInt("0x" + data.slice(2, 66));
-    const fee = BigInt("0x" + data.slice(66, 130));
-    if (gross <= 0n || fee < 0n) return null;
-    return { gross, fee };
-  } catch {
-    return null;
-  }
-}
-
-/** Extract a 0x EVM address from a 32-byte log topic. */
-function logTopicToEvmAddress(topic: unknown): string | null {
-  if (typeof topic !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(topic)) return null;
-  return "0x" + topic.slice(-40).toLowerCase();
-}
-
 /**
  * Per-blockpage tip earnings: "how is MY page doing?"
  *
@@ -1391,15 +1374,15 @@ export async function blockpageEarnings(
     ) {
       continue;
     }
-    const decoded = decodeTipSentLogData(log.data);
-    const recipient = logTopicToEvmAddress(topics[3]);
+    const decoded = decodeTipSentData(log.data);
+    const recipient = topicToAddress(topics[3]);
     if (!decoded || !recipient || recipient !== ownerEvm) continue;
     totalGross += decoded.gross;
     totalFee += decoded.fee;
     const txHash = typeof log.transaction_hash === "string" ? log.transaction_hash : "";
     mine.push({
       timestamp: typeof log.consensus_timestamp === "string" ? log.consensus_timestamp : "",
-      from_evm: logTopicToEvmAddress(topics[1]) ?? "",
+      from_evm: topicToAddress(topics[1]) ?? "",
       gross_hbar: tinybarToHbar(decoded.gross),
       creator_hbar: tinybarToHbar(decoded.gross - decoded.fee),
       transaction_id: txHash,
