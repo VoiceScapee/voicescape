@@ -193,7 +193,7 @@ export function buildVaultSweepTx(input: VaultSweepInput): BuiltUnsignedTx {
 export interface VaultRegisterPageInput {
   /** The vault account — payer AND page owner (msg.sender on-chain). */
   vaultAccountId: string;
-  /** 3-24 chars, lowercase; the server verifies it is still free. */
+  /** 3-32 chars, lowercase; the server verifies it is still free. */
   username: string;
   /** Pinned starter-page CID. */
   ipfsCid: string;
@@ -210,14 +210,14 @@ export interface VaultUpdatePageInput {
   ipfsCid: string;
 }
 
-const USERNAME_RE = /^[a-z0-9_-]{3,24}$/;
+const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 /** CIDs the dapp pins (v0 Qm… / v1 bafy…). Length-checked, not exhaustive. */
 const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|bafy[a-z2-7]{55,})$/;
 
 function checkPageInput(username: string, ipfsCid: string, what: string): void {
   const name = username.trim().toLowerCase();
   if (!USERNAME_RE.test(name)) {
-    throw new Error(`${what}: username must be 3-24 lowercase letters, numbers, _ or -`);
+    throw new Error(`${what}: username must be 3-32 lowercase letters, numbers, _ or -`);
   }
   if (!CID_RE.test(ipfsCid.trim())) {
     throw new Error(`${what}: ipfs_cid doesn't look like a pinned IPFS CID`);

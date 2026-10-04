@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
   }
   if (customUsername && !isValidUsername(customUsername)) {
     return NextResponse.json(
-      { error: `invalid username "${customUsername}" — use 3-24 lowercase letters, numbers, or hyphens` },
+      { error: `invalid username "${customUsername}" — use 3-32 lowercase letters, numbers, _ or -` },
       { status: 400 },
     );
   }

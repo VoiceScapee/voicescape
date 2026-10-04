@@ -28,8 +28,8 @@ describe("deriveUsername", () => {
   });
 
   it("returns null when the derived name would be too long", () => {
-    // user- + 20 digits = 25 chars > 24-char username cap
-    expect(deriveUsername("0.0.12345678901234567890")).toBeNull();
+    // user- + 28 digits = 33 chars > 32-char on-chain username cap
+    expect(deriveUsername("0.0.1234567890123456789012345678")).toBeNull();
   });
 });
 
@@ -61,11 +61,12 @@ describe("isValidUsername", () => {
   it("matches the on-chain charset rules", () => {
     expect(isValidUsername("0xcreator")).toBe(true);
     expect(isValidUsername("user-10424063")).toBe(true);
+    expect(isValidUsername("with_underscore")).toBe(true); // _ allowed on-chain
+    expect(isValidUsername("a".repeat(32))).toBe(true); // 32-char max
     expect(isValidUsername("ab")).toBe(false); // too short
-    expect(isValidUsername("a".repeat(25))).toBe(false); // too long
+    expect(isValidUsername("a".repeat(33))).toBe(false); // too long
     expect(isValidUsername("UPPER")).toBe(false);
     expect(isValidUsername("with space")).toBe(false);
-    expect(isValidUsername("with_underscore")).toBe(false);
   });
 });
 
