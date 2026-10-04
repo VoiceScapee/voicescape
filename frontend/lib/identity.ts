@@ -10,7 +10,7 @@
  * later — never a blocker to getting a page live.
  */
 
-const USERNAME_RE = /^[a-z0-9-]{3,24}$/;
+const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 const ACCOUNT_ID_RE = /^0\.0\.\d{1,20}$/;
 
 /** True when the value fits the on-chain username charset (lowercase). */

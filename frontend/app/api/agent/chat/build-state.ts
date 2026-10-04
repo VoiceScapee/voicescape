@@ -35,7 +35,7 @@ export type BuildState = {
 };
 
 /** Same rule as lib/identity.ts isValidUsername — the on-chain charset. */
-const USERNAME_RE = /^[a-z0-9-]{3,24}$/;
+const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 const BIO_MIN = 4;
 const BIO_MAX = 280;
 const VIBE_MIN = 3;
@@ -72,7 +72,7 @@ const NON_ANSWER_RE =
  * slot stayed empty and the flow derailed on the next turn.
  */
 const USERNAME_PHRASE_RE =
-  /^(?:name(?: is)?|call me|my name is|username:?)\s+([a-z0-9-]{3,24})$/i;
+  /^(?:name(?: is)?|call me|my name is|username:?)\s+([a-z0-9_-]{3,32})$/i;
 
 function getSecret(): string {
   return (process.env.SESSION_SECRET ?? "").trim();

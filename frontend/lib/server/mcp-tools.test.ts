@@ -20,6 +20,7 @@ import {
   trendingCreators,
   requestContextStorage,
   toolResult,
+  usernameValidationError,
   MIRROR_BASE,
   TREASURY_ID,
 } from "./mcp-tools";
@@ -894,5 +895,28 @@ describe("trending_creators", () => {
     expect("error" in r).toBe(false);
     if ("error" in r) return;
     expect(r.window).toBe("7d");
+  });
+});
+
+describe("usernameValidationError", () => {
+  it("diagnoses too-short names with a concrete alternative", () => {
+    const msg = usernameValidationError("ab");
+    expect(msg).toMatch(/too short/);
+    expect(msg).toMatch(/ab-agent/);
+    expect(msg).toMatch(/Do not retry "ab"/);
+  });
+  it("diagnoses too-long names", () => {
+    const msg = usernameValidationError("a".repeat(40));
+    expect(msg).toMatch(/too long/);
+    expect(msg).toMatch(/Do not retry/);
+  });
+  it("diagnoses bad characters", () => {
+    const msg = usernameValidationError("BAD NAME!");
+    expect(msg).toMatch(/bad characters/);
+    expect(msg).toMatch(/Do not retry/);
+  });
+  it("handles empty input", () => {
+    expect(usernameValidationError("")).toMatch(/empty/);
+    expect(usernameValidationError(undefined)).toMatch(/empty/);
   });
 });
