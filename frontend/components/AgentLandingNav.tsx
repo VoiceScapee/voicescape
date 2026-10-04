@@ -32,6 +32,7 @@ export default function AgentLandingNav({ current }: { current: string }) {
       }}
     >
       <div
+        className="vs-no-scrollbar"
         style={{
           maxWidth: 720,
           margin: "0 auto",
@@ -40,6 +41,8 @@ export default function AgentLandingNav({ current }: { current: string }) {
           gap: 6,
           overflowX: "auto",
           whiteSpace: "nowrap",
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
         }}
       >
         {LINKS.map((l) => {

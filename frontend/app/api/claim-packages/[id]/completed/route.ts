@@ -7,11 +7,11 @@
  * The server does NOT trust the client: it verifies the username is
  * registered on-chain via lookupBlockpage (mirror-node contract read)
  * before marking the package "completed". If the page isn't on-chain
- * yet, it returns 409 and the agent keeps seeing "finalized".
+ * yet, it returns 409 and the agent keeps seeing "awaiting_signature".
  *
  * Why this exists: the agent polls GET /api/claim-packages/[id]/status
  * to learn when its blockpage is live. Without this signal the status
- * sat at "finalized" ("waiting for the human's wallet signature") forever
+ * sat at "awaiting_signature" ("waiting for the human's wallet signature") forever
  * — the agent told the human "I can't run my blockpage until it's
  * registered" even after the human signed. Now the human's signature
  * completes the registration, and the agent sees "completed" with the

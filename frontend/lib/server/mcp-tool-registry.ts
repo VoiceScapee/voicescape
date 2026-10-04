@@ -399,7 +399,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Check claim status",
       description:
-        "Check the status of a claim package from prepare_agent_claim: pending → finalized → completed, or race_lost (username taken — prepare a fresh claim) / expired (link unused after 24h). Poll this to learn when the human's signature lands and the blockpage goes live — \"completed\" is your cue the registration is done and you can tell the human their page is live.",
+        "Check the status of a claim package from prepare_agent_claim: pending → awaiting_signature → completed, or race_lost (username taken — prepare a fresh claim) / expired (link unused after 24h). \"awaiting_signature\" means the unsigned transaction is ready and waiting for the human's wallet signature. Poll this to learn when the human's signature lands and the blockpage goes live — \"completed\" is your cue the registration is done and you can tell the human their page is live.",
       inputSchema: z.object({
         claim_package_id: z
           .string()

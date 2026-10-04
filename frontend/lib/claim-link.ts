@@ -156,7 +156,7 @@ export async function linkIntroAfterClaim(
 /**
  * Best-effort: after the wallet's signature confirms on-chain, tell the
  * server the claim completed so the agent polling the package status sees
- * "completed" (with the live page URL) instead of waiting on "finalized"
+ * "completed" (with the live page URL) instead of waiting on "awaiting_signature"
  * forever. The server verifies the transaction on the mirror node before
  * marking it — the client's word alone isn't enough. Never throws.
  */

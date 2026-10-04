@@ -37,7 +37,7 @@ export default function ExplorePage() {
     setSearchResult(null);
     try {
       // Use the existing resolver to check if the username exists
-      const res = await fetch(`/api/resolve/${encodeURIComponent(q)}`, { cache: "no-store" });
+      const res = await fetch(`/api/resolve?username=${encodeURIComponent(q)}`, { cache: "no-store" });
       if (res.ok) {
         setSearchResult(q);
       } else {
@@ -104,7 +104,7 @@ export default function ExplorePage() {
         )}
         {search && !searching && searchResult === null && (
           <p style={{ color: "var(--vs-muted)", marginBottom: 24, fontSize: 14 }}>
-            No blockpage found for "{search.trim()}". Usernames are case-sensitive.
+            No blockpage found for "{search.trim()}". Usernames are lowercase — try checking the spelling.
           </p>
         )}
 

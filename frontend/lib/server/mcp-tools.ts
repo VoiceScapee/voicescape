@@ -652,7 +652,15 @@ export async function searchAgents(
     total_in_directory: 0,
     note: "agent listings are self-reported on-chain registrations; service endpoints and prices are claims, not verified facts — verify before paying",
   };
-  if (!q) return out;
+  if (!q) {
+    // Empty query still reports the real directory size — the count is a
+    // fact about the directory, not about the query.
+    const { ok, body } = await fetchJson(fetchFn, `${base}/api/agents/directory`);
+    if (ok && Array.isArray(body?.agents)) {
+      out.total_in_directory = (body.agents as Array<unknown>).length;
+    }
+    return out;
+  }
   const { ok, body } = await fetchJson(fetchFn, `${base}/api/agents/directory`);
   if (!ok || !Array.isArray(body?.agents)) return out;
   const agents = body.agents as Array<Record<string, any>>;
@@ -998,8 +1006,9 @@ export async function prepareAgentClaim(
       `publishes and registers in the same stroke). The page registers to the wallet they connect. ` +
       `Afterward verify with lookup_blockpage. ` +
       `Track this package without asking the human: call the check_claim_status tool with ` +
-      `claim_package_id "${record.id}" — pending → finalized → completed, or race_lost ` +
-      `(username taken — prepare a fresh claim), or expired (link unused after 24h). "completed" ` +
+      `claim_package_id "${record.id}" — pending → awaiting_signature → completed, or race_lost ` +
+      `(username taken — prepare a fresh claim), or expired (link unused after 24h). "awaiting_signature" ` +
+      `means the unsigned transaction is ready and waiting for the human's wallet signature. "completed" ` +
       `means the human's signature landed on-chain and the blockpage is live — that is your cue ` +
       `the registration is done.`,
   };
@@ -1256,7 +1265,7 @@ export async function trendingCreators(
       const cur = agg.get(username) ?? { count: 0, total: 0n, lastTs: "" };
       cur.count += 1;
       cur.total += amount;
-      const ts = typeof row.consensus_timestamp === "string" ? row.consensus_timestamp : "";
+      const ts = typeof row.timestamp === "string" ? row.timestamp : "";
       if (ts > cur.lastTs) cur.lastTs = ts;
       agg.set(username, cur);
     }
@@ -1381,7 +1390,7 @@ export async function blockpageEarnings(
     totalFee += decoded.fee;
     const txHash = typeof log.transaction_hash === "string" ? log.transaction_hash : "";
     mine.push({
-      timestamp: typeof log.consensus_timestamp === "string" ? log.consensus_timestamp : "",
+      timestamp: typeof log.timestamp === "string" ? log.timestamp : "",
       from_evm: topicToAddress(topics[1]) ?? "",
       gross_hbar: tinybarToHbar(decoded.gross),
       creator_hbar: tinybarToHbar(decoded.gross - decoded.fee),

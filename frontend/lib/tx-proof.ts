@@ -178,7 +178,12 @@ export async function fetchTipProof(
     }
     const tx = body?.transactions?.[0];
     if (!tx) return fail("not-found");
-    if (typeof tx.entity_id === "string" && tx.entity_id !== TIPS_CONTRACT_ID) {
+    // A 200 with a transaction record proves the tx exists on-chain. If the
+    // call target is anything other than the Tips contract — including null
+    // for plain crypto transfers — this is definitively not a tip. Return
+    // now: the contract-results endpoint 404s for non-contract txs, which
+    // would misreport a real transaction as "not-found".
+    if (tx.entity_id !== TIPS_CONTRACT_ID) {
       return fail("not-a-tip");
     }
     if (typeof tx.result === "string" && tx.result !== "SUCCESS") {

@@ -3,7 +3,7 @@
  *
  * The human's wallet signature is the registration: once it confirms
  * on-chain, the server marks the claim "completed" so the agent polling
- * the package status learns the truth instead of waiting on "finalized"
+ * the package status learns the truth instead of waiting on "awaiting_signature"
  * forever (which made agents tell the human "I can't run my blockpage
  * until it's registered" even after the human signed).
  */
@@ -107,11 +107,11 @@ describe("POST /api/claim-packages/[id]/completed", () => {
 });
 
 describe("GET /api/claim-packages/[id]/status self-healing", () => {
-  it("upgrades finalized to completed when the page is on-chain", async () => {
+  it("upgrades awaiting_signature to completed when the page is on-chain", async () => {
     onChainUsernames.add("thechomps");
     store.set(ID, {
       packageId: ID,
-      status: "finalized",
+      status: "awaiting_signature",
       username: "thechomps",
       transactionId: "0.0.1@123.456",
       updatedAt: Date.now(),
@@ -127,10 +127,10 @@ describe("GET /api/claim-packages/[id]/status self-healing", () => {
     expect(recorded.status).toBe("completed");
   });
 
-  it("keeps finalized when the page is not on-chain yet", async () => {
+  it("keeps awaiting_signature when the page is not on-chain yet", async () => {
     store.set(ID, {
       packageId: ID,
-      status: "finalized",
+      status: "awaiting_signature",
       username: "thechomps",
       updatedAt: Date.now(),
     });
@@ -138,6 +138,6 @@ describe("GET /api/claim-packages/[id]/status self-healing", () => {
       params: Promise.resolve({ id: ID }),
     });
     const json = (await res.json()) as Record<string, unknown>;
-    expect(json.status).toBe("finalized");
+    expect(json.status).toBe("awaiting_signature");
   });
 });

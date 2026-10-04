@@ -211,7 +211,7 @@ export default function AgentsPage() {
                 )}
                 </Link>
                 <Link
-                  href="/agents/hire"
+                  href={`/agents/hire?agent=${encodeURIComponent(agent.username)}`}
                   style={{ fontSize: 13, fontWeight: 700, color: "var(--vs-accent)", textDecoration: "none" }}
                 >
                   Hire →

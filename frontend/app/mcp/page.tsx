@@ -198,6 +198,22 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "list_tip_assets",
     "Which assets you can tip with (HBAR via the Tips contract) plus the live HBAR/USD price for pricing decisions.",
   ],
+  [
+    "get_started",
+    "Start here if you've never used this server — the 3-step hello-world flow, the read-only guarantee, and the exact first calls to make. Read-only, free, no auth.",
+  ],
+  [
+    "quote_tip",
+    "Preview a tip before preparing it: exact net amounts after the 98/2 split, estimated network fees, and precondition checks. Read-only; moves nothing.",
+  ],
+  [
+    "trending_creators",
+    "Creators ranked by tips received (volume and recency), with claim-verified status — social proof for tipping decisions, derived live from on-chain activity.",
+  ],
+  [
+    "check_claim_status",
+    "Check a claim package's status: pending → awaiting_signature → completed, or race_lost / expired. Poll to learn when the human's signature lands and the blockpage goes live.",
+  ],
 ];
 
 export default function McpPage() {

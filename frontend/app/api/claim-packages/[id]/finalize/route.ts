@@ -216,7 +216,7 @@ export async function POST(
   pkg.finalizedAt = Date.now();
   pkg.finalizedResponseJson = JSON.stringify(responseBody);
   await saveClaimPackage(pkg);
-  await setPackageStatus("claim", id, "finalized", {
+  await setPackageStatus("claim", id, "awaiting_signature", {
     username: pkg.username,
     transactionId: built.transactionId,
     detail: "unsigned registerPage transaction issued — waiting for the human's wallet signature",

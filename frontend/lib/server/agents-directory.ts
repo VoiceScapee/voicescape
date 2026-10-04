@@ -504,7 +504,7 @@ async function buildFreshDirectory(
     agents,
     honesty: {
       reputation:
-        "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions. Separately, verified reviews (verifiedReviews) ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
+        "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions. Separately, verified reviews ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
       listing:
         "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
       services:

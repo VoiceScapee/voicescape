@@ -28,15 +28,33 @@ function fakeStore() {
 const ID = "a".repeat(32);
 
 describe("package-status", () => {
+  it("normalizes legacy 'finalized' records to 'awaiting_signature' on read", async () => {
+    const { store, map } = fakeStore();
+    // Simulate a record written before the rename: raw JSON with the old status.
+    map.set(`package-status:claim:${ID}`, {
+      value: JSON.stringify({
+        packageId: ID,
+        kind: "claim",
+        status: "finalized",
+        updatedAt: Date.now(),
+        username: "thechomps",
+      }),
+      ttlMs: 7 * 24 * 3_600_000,
+    });
+    const rec = await getPackageStatus("claim", ID, store);
+    expect(rec?.status).toBe("awaiting_signature");
+    expect(rec?.username).toBe("thechomps");
+  });
+
   it("round-trips a status record with a 7-day TTL", async () => {
     const { store, map } = fakeStore();
-    await setPackageStatus("claim", ID, "finalized", {
+    await setPackageStatus("claim", ID, "awaiting_signature", {
       username: "thechomps",
       transactionId: "0.0.1@2.3",
       detail: "unsigned tx issued",
     }, store);
     const rec = await getPackageStatus("claim", ID, store);
-    expect(rec?.status).toBe("finalized");
+    expect(rec?.status).toBe("awaiting_signature");
     expect(rec?.username).toBe("thechomps");
     expect(rec?.transactionId).toBe("0.0.1@2.3");
     expect(rec?.kind).toBe("claim");
@@ -55,8 +73,8 @@ describe("package-status", () => {
     const { store } = fakeStore();
     expect(await getPackageStatus("claim", "b".repeat(32), store)).toBeNull();
     expect(await getPackageStatus("claim", "not-an-id", store)).toBeNull();
-    await setPackageStatus("claim", "not-an-id", "finalized", {}, store); // no-op
-    await setPackageStatus("claim", ID, "finalized", {}, {
+    await setPackageStatus("claim", "not-an-id", "awaiting_signature", {}, store); // no-op
+    await setPackageStatus("claim", ID, "awaiting_signature", {}, {
       ...store,
       set: async () => { throw new Error("kv down"); },
     }); // never throws
@@ -64,7 +82,7 @@ describe("package-status", () => {
 
   it("overwrites with the latest terminal state", async () => {
     const { store } = fakeStore();
-    await setPackageStatus("claim", ID, "finalized", {}, store);
+    await setPackageStatus("claim", ID, "awaiting_signature", {}, store);
     await setPackageStatus("claim", ID, "completed", { detail: "intro linked" }, store);
     const rec = await getPackageStatus("claim", ID, store);
     expect(rec?.status).toBe("completed");
