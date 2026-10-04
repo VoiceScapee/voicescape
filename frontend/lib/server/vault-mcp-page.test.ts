@@ -96,7 +96,7 @@ const base = {
 describe("prepareVaultPage validation", () => {
   it("rejects bad agent usernames, vault ids, missing claim codes, bad actions", async () => {
     const r1 = await prepareVaultPage({ ...base, action: "register", agent_username: "AB" }, fetch, deps);
-    expect("error" in r1 && r1.error).toMatch(/invalid agent_username/);
+    expect("error" in r1 && r1.error).toMatch(/invalid username "AB"/);
 
     const r2 = await prepareVaultPage({ ...base, action: "register", vault_account_id: "x" }, fetch, deps);
     expect("error" in r2 && r2.error).toMatch(/0\.0\.x/);

@@ -122,13 +122,14 @@ export function computeSplitFromGross(grossTinybar: bigint): {
   return { creator: grossTinybar - fee, fee };
 }
 
-function topicToAddress(topic: unknown): string | null {
+/** Extract a 0x EVM address from a 32-byte log topic. */
+export function topicToAddress(topic: unknown): string | null {
   if (typeof topic !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(topic)) return null;
   return "0x" + topic.slice(-40).toLowerCase();
 }
 
 /** Decode the TipSent data words: (gross tipped, treasury fee) in tinybar. */
-function decodeTipSentData(data: unknown): { gross: bigint; fee: bigint } | null {
+export function decodeTipSentData(data: unknown): { gross: bigint; fee: bigint } | null {
   if (typeof data !== "string" || !/^0x[0-9a-fA-F]{128,}$/.test(data)) return null;
   try {
     const gross = BigInt("0x" + data.slice(2, 66));
