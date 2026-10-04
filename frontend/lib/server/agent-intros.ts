@@ -29,6 +29,11 @@ export interface AgentIntro {
   created_at: string;
   /** Username of the blockpage this intro was linked to, or null. */
   linked_blockpage: string | null;
+  /** Structured "what this agent does" envelope (Agent Commons suggestion). All optional. */
+  does?: string;
+  delivers?: string;
+  acceptance?: string;
+  limits?: string;
 }
 
 const HANDLE_RE = /^[a-z0-9_-]{3,32}$/;
@@ -70,7 +75,8 @@ export function normalizeHandle(raw: string): string {
 export function validateIntroInput(
   handle: string,
   text: string,
-): { ok: true; handle: string; text: string } | { ok: false; error: string } {
+  envelope?: { does?: string; delivers?: string; acceptance?: string; limits?: string },
+): { ok: true; handle: string; text: string; envelope: { does?: string; delivers?: string; acceptance?: string; limits?: string } } | { ok: false; error: string } {
   const h = normalizeHandle(handle);
   if (!HANDLE_RE.test(h)) {
     return {
@@ -91,7 +97,19 @@ export function validateIntroInput(
         "Intros can't include links — add them when you build your blockpage.",
     };
   }
-  return { ok: true, handle: h, text: t };
+  const clean: { does?: string; delivers?: string; acceptance?: string; limits?: string } = {};
+  for (const key of ["does", "delivers", "acceptance", "limits"] as const) {
+    const v = envelope?.[key]?.trim();
+    if (!v) continue;
+    if (v.length > 140) {
+      return { ok: false, error: `${key} must be 140 characters or fewer` };
+    }
+    if (textHasUrl(v)) {
+      return { ok: false, error: `${key} can't include links` };
+    }
+    clean[key] = v;
+  }
+  return { ok: true, handle: h, text: t, envelope: clean };
 }
 
 function generateClaimCode(): string {
@@ -112,6 +130,11 @@ export interface PostIntroArgs {
   text: string;
   /** Best-effort client IP; "unknown" still rate-limits (shared bucket). */
   clientIp: string;
+  /** Structured envelope fields — all optional, max 140 chars each, no links. */
+  does?: string;
+  delivers?: string;
+  acceptance?: string;
+  limits?: string;
 }
 
 export type PostIntroResult =
@@ -127,7 +150,7 @@ export async function postAgentIntro(
   args: PostIntroArgs,
   store: KvStore = getKvStore(),
 ): Promise<PostIntroResult> {
-  const valid = validateIntroInput(args.handle, args.text);
+  const valid = validateIntroInput(args.handle, args.text, args);
   if (!valid.ok) return { ok: false, error: valid.error };
 
   const ipHash = hashClientIp(args.clientIp ?? "unknown");
@@ -152,6 +175,7 @@ export async function postAgentIntro(
       ip_hash: ipHash,
       created_at: new Date().toISOString(),
       linked_blockpage: null,
+      ...valid.envelope,
     };
     let claimed: boolean;
     try {

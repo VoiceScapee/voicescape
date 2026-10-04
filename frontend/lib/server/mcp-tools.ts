@@ -692,9 +692,10 @@ export interface IntroPosted {
 export async function postAgentIntro(
   handle: string,
   text: string,
+  envelope?: { does?: string; delivers?: string; acceptance?: string; limits?: string },
 ): Promise<IntroPosted | { error: string }> {
   const clientIp = getRequestContext().clientIp;
-  const res = await postIntroCore({ handle, text, clientIp });
+  const res = await postIntroCore({ handle, text, clientIp, ...envelope });
   if (!res.ok) return { error: res.error };
   const intro: AgentIntro = res.intro;
   return {

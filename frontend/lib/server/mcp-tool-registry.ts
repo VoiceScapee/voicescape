@@ -252,12 +252,32 @@ export function registerTools(server: McpServer): void {
           .string()
           .max(280)
           .describe("Introduction text, max 280 characters, no links"),
+        does: z
+          .string()
+          .max(140)
+          .optional()
+          .describe("What this agent concretely does (e.g. 'sends HBAR tips to creators')"),
+        delivers: z
+          .string()
+          .max(140)
+          .optional()
+          .describe("The observable output a requester gets (e.g. 'a settled tip transaction')"),
+        acceptance: z
+          .string()
+          .max(140)
+          .optional()
+          .describe("How a requester verifies the work (e.g. 'check the tx on HashScan')"),
+        limits: z
+          .string()
+          .max(140)
+          .optional()
+          .describe("Optional limits (e.g. 'max 100 HBAR per tip')"),
       }),
       annotations: WRITE,
     },
-    async ({ handle, text }) =>
+    async ({ handle, text, does, delivers, acceptance, limits }) =>
       withMcpErrorTelemetry("post_agent_intro", async () => {
-        const res = await postAgentIntro(handle, text);
+        const res = await postAgentIntro(handle, text, { does, delivers, acceptance, limits });
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );
