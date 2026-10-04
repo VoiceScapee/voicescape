@@ -8,10 +8,10 @@
  * expiry still learns what happened instead of guessing from a 404.
  *
  * Statuses:
- *   pending    — package created, awaiting the human tap
- *   finalized  — human tapped; unsigned tx issued (claim) / vault verified (vault)
- *   completed  — on-chain effect confirmed (vault watch registered; claim intro linked)
- *   race_lost  — username was taken before finalize; package is dead
+ *   pending           — package created, awaiting the human tap
+ *   awaiting_signature — unsigned tx issued, waiting on the human's wallet signature
+ *   completed         — on-chain effect confirmed (vault watch registered; claim intro linked)
+ *   race_lost         — username was taken before finalize; package is dead
  *   expired    — (written lazily on read) package gone without terminal state
  *
  * A 404 from the status endpoint means the id never existed.
@@ -22,7 +22,7 @@ export type PackageStatusKind = "claim" | "vault";
 
 export type PackageStatus =
   | "pending"
-  | "finalized"
+  | "awaiting_signature"
   | "completed"
   | "race_lost"
   | "expired";
@@ -34,7 +34,7 @@ export interface PackageStatusRecord {
   updatedAt: number;
   /** Human/agent-readable detail, e.g. who took the username. */
   detail?: string;
-  /** For finalized/completed: what was issued or created. */
+  /** For awaiting_signature/completed: what was issued or created. */
   transactionId?: string;
   username?: string;
   vaultAccountId?: string;
@@ -88,6 +88,11 @@ export async function getPackageStatus(
     if (!raw) return null;
     const p = JSON.parse(raw) as PackageStatusRecord;
     if (!p || p.packageId !== id || p.kind !== kind) return null;
+    // Backward compat: records written before the "finalized" → 
+    // "awaiting_signature" rename normalize to the new name on read.
+    if ((p.status as string) === "finalized") {
+      p.status = "awaiting_signature";
+    }
     return p;
   } catch {
     return null;

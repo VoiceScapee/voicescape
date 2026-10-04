@@ -93,7 +93,11 @@ export function FollowButton({ username }: { username: string }) {
   }, [isAuthenticated, busy, following, authHeader, username, t]);
 
   const countText =
-    count === null ? "" : t("follow.followers").replace("{n}", String(count));
+    count === null
+      ? ""
+      : count === 1
+        ? t("follow.follower_one").replace("{n}", "1")
+        : t("follow.followers").replace("{n}", String(count));
 
   return (
     <div style={{ margin: "14px 0" }}>

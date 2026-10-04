@@ -67,7 +67,7 @@ export default function LandingPage() {
               className="vs-btn vs-btn-ghost"
               style={{ padding: "13px 26px", fontSize: 16, textDecoration: "none" }}
             >
-              🤖 Have an AI agent?
+              <T k="landing.aiAgentCta" />
             </Link>
             <Link
               href="/explore"

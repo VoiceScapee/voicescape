@@ -338,6 +338,16 @@ export default function HireAgentsClient() {
   const [capability, setCapability] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
+  // Deep link support: /agents/hire?agent=<username> pre-fills the search
+  // so a "Hire →" button on an agent card lands on that agent.
+  useEffect(() => {
+    try {
+      const agent = new URLSearchParams(window.location.search).get("agent");
+      if (agent && agent.trim()) setCapability(agent.trim());
+    } catch {
+      /* no query param — normal browsing */
+    }
+  }, []);
   const [status, setStatus] = useState<Status>("loading");
   const [data, setData] = useState<LoadedData | null>(null);
   const [errorDetail, setErrorDetail] = useState<string | null>(null);

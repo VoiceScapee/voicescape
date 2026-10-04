@@ -1437,3 +1437,9 @@ a {
     display: none;
   }
 }
+
+/* Hide scrollbars on horizontal scroll containers (e.g. AgentLandingNav)
+   while keeping them scrollable — no native scrollbar pill on desktop. */
+.vs-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

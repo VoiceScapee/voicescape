@@ -2,12 +2,12 @@
  * GET /api/claim-packages/[id]/status — agent-pollable package status.
  *
  * Lets the AGENT learn what happened to its claim package without the
- * human relaying it: pending → finalized → completed, or race_lost /
+ * human relaying it: pending → awaiting_signature → completed, or race_lost /
  * expired. A 404 here means the id never existed; a well-formed id with
  * no status record and no live package means it expired silently after
  * the 24h TTL (reported as expired so the agent stops guessing).
  *
- * Self-healing: a "finalized" record means the unsigned tx was issued and
+ * Self-healing: an "awaiting_signature" record means the unsigned tx was issued and
  * we're waiting on the human's signature. If the page is now registered
  * on-chain (the human signed but the completion signal never arrived —
  * closed tab, failed request), this endpoint upgrades the record to
@@ -28,10 +28,10 @@ export async function GET(
   const { id } = await params;
   const recorded = await getPackageStatus("claim", id);
   if (recorded) {
-    // Self-heal: "finalized" waits on the human's signature. If the page
+    // Self-heal: "awaiting_signature" waits on the human's signature. If the page
     // is on-chain now, the human signed and the completion signal was
     // lost — upgrade to "completed" so the agent stops waiting.
-    if (recorded.status === "finalized" && recorded.username) {
+    if (recorded.status === "awaiting_signature" && recorded.username) {
       try {
         const lookup = await lookupBlockpage(recorded.username);
         if (lookup.found) {

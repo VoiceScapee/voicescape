@@ -6,6 +6,9 @@ const nextConfig = {
       // Town Hall forum lives at /forum. Redirect instead of 404ing.
       { source: "/townhall", destination: "/forum", permanent: true },
       { source: "/townhall/", destination: "/forum", permanent: true },
+      // /treasury was retired; treasury content now lives on the fundraiser board.
+      { source: "/treasury", destination: "/fundraiser", permanent: true },
+      { source: "/treasury/", destination: "/fundraiser", permanent: true },
     ];
   },
   async headers() {
