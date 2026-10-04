@@ -956,3 +956,301 @@ export async function prepareAgentClaim(
       `the registration is done.`,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: get_started (first-run onboarding)                     */
+/* ------------------------------------------------------------------ */
+
+export interface GetStarted {
+  server: string;
+  what_this_is: string;
+  guarantees: string[];
+  hello_world: Array<{ step: number; action: string; tool: string; example_args: Record<string, string> }>;
+  docs: Record<string, string>;
+}
+
+/** Static orientation payload — no chain reads, no auth. */
+export function getStarted(): GetStarted {
+  return {
+    server: "Voicescape MCP — on-chain agent blockpages and 98/2 tipping on Hedera mainnet",
+    what_this_is:
+      "A read-only window into Voicescape plus unsigned-transaction preparation. " +
+      "Agents look things up, verify payments, and prepare claims — a human always " +
+      "signs in their own wallet.",
+    guarantees: [
+      "Read-only public surface: lookups and verifications never move funds.",
+      "This server never holds keys, never signs, never spends.",
+      "Write paths prepare UNSIGNED transactions and return a one-tap approval link; the human reviews and signs once in their own wallet.",
+      "Tips split 98/2 atomically on-chain (98% creator, 2% treasury) — enforced by the contract, not by us.",
+    ],
+    hello_world: [
+      {
+        step: 1,
+        action: "Look up a blockpage to see the data shape",
+        tool: "lookup_blockpage",
+        example_args: { username: "thechomps" },
+      },
+      {
+        step: 2,
+        action: "Verify a tip transaction against the mirror node",
+        tool: "verify_tip",
+        example_args: { transaction_id: "0.0.10424063@1790769243.014218142" },
+      },
+      {
+        step: 3,
+        action: "Preview a tip's exact split and settlement preconditions",
+        tool: "quote_tip",
+        example_args: { recipient: "thechomps", amount_hbar: "1" },
+      },
+    ],
+    docs: {
+      setup: "https://voicescape.vercel.app/ai-agent",
+      mcp_url: "https://voicescape.vercel.app/api/mcp",
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: quote_tip (fee preview + settlement preconditions)     */
+/* ------------------------------------------------------------------ */
+
+export interface QuoteTipArgs {
+  recipient: string;
+  amount_hbar: string;
+  asset?: string;
+}
+
+export interface TipQuote {
+  recipient: string;
+  recipient_account: string | null;
+  asset: string;
+  gross_hbar: string;
+  creator_net_hbar: string;
+  treasury_fee_hbar: string;
+  est_network_fee_hbar: string;
+  prerequisites: {
+    recipient_exists: boolean;
+    token_associated: boolean;
+    amount_valid: boolean;
+  };
+  can_settle: boolean;
+  blockers: string[];
+  note: string;
+}
+
+const ACCOUNT_RE = /^0\.0\.\d+$/;
+/** Conservative network-fee estimate for a tip-sized transaction. */
+const EST_TIP_FEE_HBAR = "0.001";
+
+function parseHbarToTinybar(s: string): bigint | null {
+  const m = s.trim().match(/^(\d+)(?:\.(\d{1,8}))?$/);
+  if (!m) return null;
+  try {
+    return BigInt(m[1]) * 100_000_000n + BigInt((m[2] ?? "").padEnd(8, "0"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Preview a tip: exact 98/2 split plus settlement preconditions.
+ * Read-only — resolves the recipient, checks the account exists on the
+ * mirror node, and (for HTS token tips) that the token is associated.
+ * Never prepares, never signs.
+ */
+export async function quoteTip(
+  args: QuoteTipArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<TipQuote> {
+  const asset = (args.asset ?? "HBAR").trim().toUpperCase();
+  const blockers: string[] = [];
+  const prerequisites = { recipient_exists: false, token_associated: false, amount_valid: false };
+
+  const grossTinybar = parseHbarToTinybar(args.amount_hbar ?? "");
+  if (grossTinybar === null || grossTinybar <= 0n) {
+    blockers.push(`amount_hbar "${args.amount_hbar}" is not a positive HBAR amount`);
+  } else {
+    prerequisites.amount_valid = true;
+  }
+
+  // Resolve recipient -> 0.0.x account.
+  let recipientAccount: string | null = null;
+  const recip = (args.recipient ?? "").trim().toLowerCase();
+  if (USERNAME_RE.test(recip)) {
+    const lookup = await lookupBlockpage(recip, fetchFn);
+    if (lookup.found && lookup.owner_account) recipientAccount = lookup.owner_account;
+    else blockers.push(`blockpage "${recip}" is not registered on-chain`);
+  } else if (ACCOUNT_RE.test(args.recipient.trim())) {
+    recipientAccount = args.recipient.trim();
+  } else {
+    blockers.push(`recipient "${args.recipient}" is neither a valid username nor a 0.0.x account id`);
+  }
+
+  // Account existence + token association via the mirror node.
+  if (recipientAccount) {
+    const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${recipientAccount}`);
+    if (ok && body && typeof body.account === "string") {
+      prerequisites.recipient_exists = true;
+    } else {
+      blockers.push(`account ${recipientAccount} not found on Hedera mainnet`);
+    }
+    if (asset === "HBAR") {
+      // HBAR needs no token association.
+      prerequisites.token_associated = true;
+    } else if (/^0\.0\.\d+$/.test(asset)) {
+      const { ok: tokOk, body: tokBody } = await fetchJson(
+        fetchFn,
+        `${MIRROR_BASE}/accounts/${recipientAccount}/tokens?token.id=${asset}`,
+      );
+      const tokens = tokOk && tokBody && Array.isArray(tokBody.tokens) ? tokBody.tokens : [];
+      if (tokens.some((t: any) => t?.token_id === asset)) {
+        prerequisites.token_associated = true;
+      } else {
+        blockers.push(
+          `account ${recipientAccount} is not associated with token ${asset} — a tip in ${asset} cannot land until the recipient associates it in their wallet`,
+        );
+      }
+    } else {
+      blockers.push(`asset "${args.asset}" is not HBAR or a 0.0.x token id`);
+    }
+  }
+
+  const gross = grossTinybar ?? 0n;
+  const treasury = (gross * 2n) / 100n;
+  const creator = gross - treasury;
+  const canSettle =
+    blockers.length === 0 &&
+    prerequisites.amount_valid &&
+    prerequisites.recipient_exists &&
+    prerequisites.token_associated;
+
+  return {
+    recipient: args.recipient,
+    recipient_account: recipientAccount,
+    asset,
+    gross_hbar: tinybarToHbar(gross),
+    creator_net_hbar: tinybarToHbar(creator),
+    treasury_fee_hbar: tinybarToHbar(treasury),
+    est_network_fee_hbar: EST_TIP_FEE_HBAR,
+    prerequisites,
+    can_settle: canSettle,
+    blockers,
+    note:
+      "98/2 split is enforced atomically by the Tips contract; the network fee is a conservative estimate paid to Hedera, not to Voicescape. " +
+      "Settled tips are final and irreversible.",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: trending_creators (reputation-ranked discovery)        */
+/* ------------------------------------------------------------------ */
+
+export interface TrendingCreator {
+  username: string;
+  tip_count: number;
+  total_tips_hbar: string;
+  last_tip_at: string;
+  claim_verified: boolean;
+  purpose: string | null;
+}
+
+export interface TrendingCreators {
+  creators: TrendingCreator[];
+  window: string;
+  computed_at: string;
+  truncated: boolean;
+  note: string;
+}
+
+const TRENDING_WINDOWS: Record<string, number> = { "7d": 7 * 86400, "30d": 30 * 86400 };
+
+/**
+ * Creators ranked by tips received (volume, then recency) over a window,
+ * derived live from Tips-contract activity. Read-only.
+ */
+export async function trendingCreators(
+  limit: number,
+  window: string,
+  fetchFn: FetchFn = fetch,
+): Promise<TrendingCreators | { error: string }> {
+  const n = Math.floor(limit);
+  if (!Number.isFinite(n) || n < 1 || n > 50) {
+    return { error: "limit must be an integer between 1 and 50" };
+  }
+  const windowSecs = TRENDING_WINDOWS[window] ?? TRENDING_WINDOWS["7d"];
+  const windowKey = TRENDING_WINDOWS[window] ? window : "7d";
+  const startTs = Math.floor(Date.now() / 1000) - windowSecs;
+
+  // Aggregate tipPage(string username) calls over the window.
+  const agg = new Map<string, { count: number; total: bigint; lastTs: string }>();
+  let truncated = false;
+  let url: string | null =
+    `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results` +
+    `?timestamp=gte:${startTs}&limit=100&order=desc`;
+  let pages = 0;
+  while (url && pages < 5) {
+    pages += 1;
+    const { ok, body } = await fetchJson(fetchFn, url);
+    if (!ok || !Array.isArray(body?.results)) break;
+    for (const row of body.results as Array<Record<string, any>>) {
+      if (row.error_message) continue;
+      const params: string = typeof row.function_parameters === "string" ? row.function_parameters : "";
+      if (params.slice(0, 10).toLowerCase() !== TIPPAGE_SELECTOR) continue;
+      let username: string;
+      try {
+        const decoded = TIPS_IFACE.decodeFunctionData("tipPage", params);
+        username = String(decoded[0] ?? "").toLowerCase();
+      } catch {
+        continue;
+      }
+      if (!USERNAME_RE.test(username)) continue;
+      const amount = BigInt(Math.round(Number(row.amount ?? 0)));
+      const cur = agg.get(username) ?? { count: 0, total: 0n, lastTs: "" };
+      cur.count += 1;
+      cur.total += amount;
+      const ts = typeof row.consensus_timestamp === "string" ? row.consensus_timestamp : "";
+      if (ts > cur.lastTs) cur.lastTs = ts;
+      agg.set(username, cur);
+    }
+    const next = body?.links?.next;
+    url = typeof next === "string" && next.length > 0 ? `${MIRROR_BASE}${next}` : null;
+    if (url) truncated = true; // more pages existed than we show individually
+  }
+
+  const ranked = [...agg.entries()]
+    .sort((a, b) => {
+      if (a[1].total !== b[1].total) return a[1].total > b[1].total ? -1 : 1;
+      return b[1].lastTs.localeCompare(a[1].lastTs);
+    })
+    .slice(0, n);
+
+  const creators: TrendingCreator[] = [];
+  for (const [username, stats] of ranked) {
+    // Best-effort claim verification via the on-chain registry.
+    let verified = false;
+    let purpose: string | null = null;
+    try {
+      const lookup = await lookupBlockpage(username, fetchFn);
+      verified = lookup.found;
+      purpose = lookup.found ? (lookup.purpose ?? null) : null;
+    } catch {
+      /* fail-soft: unverified */
+    }
+    creators.push({
+      username,
+      tip_count: stats.count,
+      total_tips_hbar: tinybarToHbar(stats.total),
+      last_tip_at: stats.lastTs,
+      claim_verified: verified,
+      purpose,
+    });
+  }
+
+  return {
+    creators,
+    window: windowKey,
+    computed_at: new Date().toISOString(),
+    truncated,
+    note: "Ranked by tip volume, then recency, from live Tips-contract activity. For fuzzy name/purpose search use search_agents; for one exact page use lookup_blockpage.",
+  };
+}

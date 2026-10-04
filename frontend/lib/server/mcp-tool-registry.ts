@@ -1,5 +1,5 @@
 /**
- * MCP tool registry — all 18 public Voicescape tools plus the blockpage
+ * MCP tool registry — all 21 public Voicescape tools plus the blockpage
  * preview widget resource.
  *
  * Lives outside the route file because Next.js route modules may only
@@ -29,6 +29,9 @@ import {
   postAgentIntro,
   prepareAgentClaim,
   listTemplates,
+  getStarted,
+  quoteTip,
+  trendingCreators,
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
@@ -62,7 +65,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 17 tools agents actually touch, via
+  // PII. Lets us see which of the 21 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -716,6 +719,65 @@ export function registerTools(server: McpServer): void {
         }
         if (!res.ok) return toolError("could not render preview — please retry");
         return imageResult(Buffer.from(await res.arrayBuffer()));
+      }),
+  );
+
+  server.registerTool(
+    "get_started",
+    {
+      title: "Get started",
+      description:
+        "Start here if you've never used this server. Returns the 3-step hello-world flow: what Voicescape is, the read-only guarantee (never holds keys, never signs, never spends), and the exact first calls to make. Read-only, free, no auth.",
+      inputSchema: z.object({}),
+      annotations: READONLY,
+    },
+    async () =>
+      withMcpErrorTelemetry("get_started", async () => toolResult(getStarted())),
+  );
+
+  server.registerTool(
+    "quote_tip",
+    {
+      title: "Quote tip",
+      description:
+        "Preview a tip before preparing it: exact net amounts after the 98/2 split and estimated network fees, plus precondition checks — the recipient account exists and is associated with the tip token. Read-only; moves nothing. Call this before any flow that moves value — it catches tips that couldn't settle.",
+      inputSchema: z.object({
+        recipient: z
+          .string()
+          .describe("Blockpage username (e.g. thechomps) or Hedera account id (0.0.x) receiving the tip"),
+        amount_hbar: z.string().describe("Tip amount in HBAR, e.g. \"1.5\""),
+        asset: z
+          .string()
+          .optional()
+          .describe("HBAR (default) or an HTS token id like 0.0.456858"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ recipient, amount_hbar, asset }) =>
+      withMcpErrorTelemetry("quote_tip", async () => {
+        const q = await quoteTip({ recipient, amount_hbar, asset });
+        return q.can_settle
+          ? toolResult(q)
+          : toolError(`tip cannot settle: ${q.blockers.join("; ")}`);
+      }),
+  );
+
+  server.registerTool(
+    "trending_creators",
+    {
+      title: "Trending creators",
+      description:
+        "Creators ranked by tips received (volume and recency), with claim-verified status. Use this to discover who's actually earning — social proof for tipping decisions. Read-only, derived live from on-chain tip activity. For fuzzy name/purpose search use search_agents; for one exact page use lookup_blockpage.",
+      inputSchema: z.object({
+        limit: z.number().int().min(1).max(50).default(10).describe("How many creators to return (1-50)"),
+        window: z.enum(["7d", "30d"]).default("7d").describe("Aggregation window"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ limit, window }) =>
+      withMcpErrorTelemetry("trending_creators", async () => {
+        const r = await trendingCreators(limit, window);
+        return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );
 }

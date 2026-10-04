@@ -15,6 +15,9 @@ import {
   checkProfilePin,
   postAgentIntro,
   prepareAgentClaim,
+  getStarted,
+  quoteTip,
+  trendingCreators,
   requestContextStorage,
   toolResult,
   MIRROR_BASE,
@@ -767,5 +770,129 @@ describe("prepare_agent_claim tool", () => {
     });
     expect("error" in res).toBe(true);
     if ("error" in res) expect(res.error).toMatch(/operator/);
+  });
+});
+
+describe("get_started", () => {
+  it("returns the onboarding payload with no network", async () => {
+    const g = getStarted();
+    expect(g.guarantees.length).toBeGreaterThan(0);
+    expect(g.guarantees.join(" ")).toMatch(/never.*sign/i);
+    expect(g.hello_world).toHaveLength(3);
+    expect(g.hello_world[0].tool).toBe("lookup_blockpage");
+    expect(g.docs.mcp_url).toContain("/api/mcp");
+  });
+});
+
+describe("quote_tip", () => {
+  const TIP_IFACE = new ethers.Interface(["function tipPage(string username) payable"]);
+
+  function accountFetch(accountExists: boolean, tokens: string[] = []) {
+    return mockFetch([
+      [/accounts\/0\.0\.123\/tokens/, () => ok({ tokens: tokens.map((t) => ({ token_id: t })) })],
+      [/accounts\/0\.0\.123$/, () =>
+        accountExists ? ok({ account: "0.0.123" }) : notFound],
+    ]);
+  }
+
+  it("quotes exact 98/2 split for a valid HBAR tip", async () => {
+    const q = await quoteTip(
+      { recipient: "0.0.123", amount_hbar: "10" },
+      accountFetch(true),
+    );
+    expect(q.can_settle).toBe(true);
+    expect(q.blockers).toEqual([]);
+    expect(q.gross_hbar).toBe("10");
+    expect(q.creator_net_hbar).toBe("9.8");
+    expect(q.treasury_fee_hbar).toBe("0.2");
+    expect(q.prerequisites).toEqual({
+      recipient_exists: true,
+      token_associated: true, // HBAR needs no association
+      amount_valid: true,
+    });
+  });
+
+  it("blocks unknown recipients and bad amounts", async () => {
+    const q1 = await quoteTip({ recipient: "0.0.123", amount_hbar: "0" }, accountFetch(true));
+    expect(q1.can_settle).toBe(false);
+    expect(q1.blockers.join(" ")).toMatch(/positive/);
+
+    const q2 = await quoteTip({ recipient: "0.0.999", amount_hbar: "1" }, mockFetch([
+      [/accounts\/0\.0\.999$/, () => notFound],
+    ]));
+    expect(q2.can_settle).toBe(false);
+    expect(q2.blockers.join(" ")).toMatch(/not found/);
+  });
+
+  it("blocks unassociated token tips — the unsettleable case", async () => {
+    const q = await quoteTip(
+      { recipient: "0.0.123", amount_hbar: "5", asset: "0.0.456858" },
+      accountFetch(true, []), // token NOT associated
+    );
+    expect(q.can_settle).toBe(false);
+    expect(q.prerequisites.token_associated).toBe(false);
+    expect(q.blockers.join(" ")).toMatch(/not associated/);
+
+    const q2 = await quoteTip(
+      { recipient: "0.0.123", amount_hbar: "5", asset: "0.0.456858" },
+      accountFetch(true, ["0.0.456858"]),
+    );
+    expect(q2.can_settle).toBe(true);
+  });
+
+  it("resolves usernames via the registry", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc1230000000000000000000000000000000001$/, () => ok({ account: "0.0.777" })],
+      [/accounts\/0\.0\.777$/, () => ok({ account: "0.0.777" })],
+    ]);
+    const q = await quoteTip({ recipient: "alice", amount_hbar: "2" }, fetchFn);
+    expect(q.recipient_account).toBe("0.0.777");
+    expect(q.can_settle).toBe(true);
+  });
+});
+
+describe("trending_creators", () => {
+  const TIP_IFACE = new ethers.Interface(["function tipPage(string username) payable"]);
+  const tipParams = (u: string) => TIP_IFACE.encodeFunctionData("tipPage", [u]);
+
+  function trendingFetch() {
+    return mockFetch([
+      [/contracts\/0\.0\.10854060\/results/, () =>
+        ok({
+          results: [
+            { function_parameters: tipParams("alice"), amount: 200_000_000, consensus_timestamp: "1790000003.0", error_message: "" },
+            { function_parameters: tipParams("bob"), amount: 500_000_000, consensus_timestamp: "1790000002.0", error_message: "" },
+            { function_parameters: tipParams("alice"), amount: 100_000_000, consensus_timestamp: "1790000001.0", error_message: "" },
+            { function_parameters: "0xdeadbeef", amount: 0, consensus_timestamp: "1790000000.0", error_message: "revert" },
+          ],
+          links: { next: null },
+        })],
+      [/contracts\/call/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0x/, () => ok({ account: "0.0.1" })],
+    ]);
+  }
+
+  it("ranks by volume then recency", async () => {
+    const r = await trendingCreators(10, "7d", trendingFetch());
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.creators).toHaveLength(2);
+    expect(r.creators[0].username).toBe("bob"); // 5 HBAR > 3 HBAR
+    expect(r.creators[0].total_tips_hbar).toBe("5");
+    expect(r.creators[1].username).toBe("alice");
+    expect(r.creators[1].tip_count).toBe(2);
+    expect(r.creators[1].total_tips_hbar).toBe("3");
+    expect(r.window).toBe("7d");
+  });
+
+  it("rejects bad limits and windows fall back to 7d", async () => {
+    expect(await trendingCreators(0, "7d", mockFetch([]))).toEqual({
+      error: "limit must be an integer between 1 and 50",
+    });
+    const r = await trendingCreators(5, "bogus", trendingFetch());
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.window).toBe("7d");
   });
 });
