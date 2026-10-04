@@ -21,6 +21,7 @@ export async function GET(): Promise<Response> {
   return NextResponse.json({
     window_days: 30,
     tool_calls_total: usage.total,
+    tool_calls_by_tool: usage.byTool,
     tool_calls_by_day: usage.byDay,
     introductions_total: intros.length,
     updated_at: new Date().toISOString(),

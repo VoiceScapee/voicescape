@@ -18,6 +18,36 @@ import { getKvStore, type KvStore } from "./store";
 const PREFIX = "mcp:stats:calls";
 const TTL_MS = 30 * 24 * 3_600_000;
 
+/**
+ * Canonical MCP tool names. Must match the tools registered in
+ * mcp-tool-registry.ts — parity is enforced by mcp-usage-stats.test.ts.
+ * Only used to read back the per-tool counters that recordMcpToolCall
+ * writes; a tool with no calls simply reports nothing.
+ */
+export const KNOWN_MCP_TOOLS = [
+  "lookup_blockpage",
+  "verify_tip",
+  "treasury_stats",
+  "recent_tips",
+  "search_agents",
+  "check_profile_pin",
+  "post_agent_intro",
+  "prepare_agent_claim",
+  "check_claim_status",
+  "list_templates",
+  "prepare_agent_vault",
+  "check_vault_health",
+  "prepare_vault_page",
+  "post_agent_feedback",
+  "check_feedback_status",
+  "list_open_bugs",
+  "render_blockpage",
+  "render_blockpage_image",
+  "get_started",
+  "quote_tip",
+  "trending_creators",
+] as const;
+
 function dayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
@@ -62,6 +92,14 @@ export async function getMcpUsageStats(
       byTool: {},
       byDay: {},
     };
+    // Per-tool totals — only tools with calls appear.
+    const toolVals = await Promise.all(
+      KNOWN_MCP_TOOLS.map((t) => store.get(`${PREFIX}:tool:${t}`)),
+    );
+    toolVals.forEach((v, i) => {
+      const n = v ? parseInt(v, 10) || 0 : 0;
+      if (n > 0) stats.byTool[KNOWN_MCP_TOOLS[i]] = n;
+    });
     // Last 30 days of day-keys.
     const days: string[] = [];
     for (let i = 0; i < 30; i++) {
