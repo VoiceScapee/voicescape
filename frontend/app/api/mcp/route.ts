@@ -7,8 +7,10 @@
  * rate-limited intro-posting tool. No auth, no keys, no signing.
  * The server never holds keys, never signs, never spends.
  *
- * Per-IP rate limit: 20 requests/hour across this route (shared
- * fixed-window limiter from lib/server/rate-limit).
+ * Per-IP rate limit: two tiers — 100/hour for read-only tools
+ * (lookup, verify, search, etc.), 20/hour for write tools (intros,
+ * claims, vaults, feedback). Shared fixed-window limiter from
+ * lib/server/rate-limit, bucketed separately per tier.
  */
 
 export const runtime = "nodejs";
@@ -25,8 +27,48 @@ const mcpHandler = createMcpHandler(registerTools, {
   instructions: SERVER_INSTRUCTIONS,
 });
 
-const MCP_IP_LIMIT = 20;
+const MCP_IP_LIMIT_WRITE = 20;
+const MCP_IP_LIMIT_READ = 100;
 const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
+
+/**
+ * Tools that only read public data — generous limits for legitimate
+ * agent exploration. Write tools (intros, claims, vaults, feedback)
+ * stay strict — that's where spam/abuse matters.
+ */
+const READONLY_TOOLS = new Set([
+  "lookup_blockpage",
+  "verify_tip",
+  "treasury_stats",
+  "recent_tips",
+  "search_agents",
+  "check_profile_pin",
+  "check_claim_status",
+  "list_templates",
+  "check_vault_health",
+  "check_feedback_status",
+  "list_open_bugs",
+  "render_blockpage",
+  "render_blockpage_image",
+  "get_started",
+  "quote_tip",
+  "trending_creators",
+]);
+
+/**
+ * Extract the tool name from a JSON-RPC tools/call request body.
+ * Returns null for non-tool calls (initialize, tools/list, etc.)
+ * or unparseable bodies — those get the stricter write-tier limit
+ * as the safe default.
+ */
+function toolNameFromBody(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as { method?: unknown; params?: unknown };
+  if (b.method !== "tools/call") return null;
+  const params = b.params as { name?: unknown } | null;
+  if (!params || typeof params.name !== "string") return null;
+  return params.name;
+}
 
 async function handle(req: Request): Promise<Response> {
   // A browser (or a curious agent) opening the endpoint URL directly gets
@@ -43,12 +85,27 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // Per-IP gate first — cheap, before any MCP protocol work.
+  // Two tiers: read-only tools get 100/hour (generous for legitimate
+  // agent exploration), write tools stay at 20/hour (abuse prevention).
+  // The tool name comes from the JSON-RPC body for tools/call requests.
+  let toolName: string | null = null;
+  if (req.method === "POST") {
+    try {
+      const body = await req.clone().json();
+      toolName = toolNameFromBody(body);
+    } catch {
+      /* not JSON — safe default below */
+    }
+  }
+  const isReadonly = toolName !== null && READONLY_TOOLS.has(toolName);
+  const limit = isReadonly ? MCP_IP_LIMIT_READ : MCP_IP_LIMIT_WRITE;
+  const bucket = isReadonly ? "mcp-read" : "mcp-write";
   let rl;
   try {
     rl = await checkIpRateLimit(
       clientIpFromHeaders(req.headers),
-      "mcp",
-      MCP_IP_LIMIT,
+      bucket,
+      limit,
       MCP_IP_WINDOW_MS,
     );
   } catch {
@@ -70,7 +127,7 @@ async function handle(req: Request): Promise<Response> {
     }
     const retryAfterSec = Math.max(1, Math.ceil((rl.retryAfterMs ?? 60_000) / 1000));
     const body = {
-      error: "MCP rate limit exceeded: 20 requests/hour per IP",
+      error: `MCP rate limit exceeded: ${limit} requests/hour per IP for ${isReadonly ? "read-only" : "write"} tools`,
       limit: rl.limit,
       retryAfterMs: rl.retryAfterMs,
     };

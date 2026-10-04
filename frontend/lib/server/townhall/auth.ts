@@ -564,22 +564,43 @@ interface MirrorAccountResponse {
 
 async function defaultFetchAccountKey(accountId: string): Promise<AccountKey | null> {
   const url = `${mirrorBaseUrl()}/api/v1/accounts/${encodeURIComponent(accountId)}`;
-  let res: Response;
-  try {
-    res = await fetch(url);
-  } catch {
-    return null;
+  // Retry with timeout: mirror node flakes shouldn't kill sign-in for users
+  // on slow networks. 3 attempts, 8s timeout each, exponential backoff.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let res: Response;
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        res = await fetch(url, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    }
+    if (!res.ok) {
+      if (attempt < 2 && res.status >= 500) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return null;
+    }
+    let json: MirrorAccountResponse;
+    try {
+      json = (await res.json()) as MirrorAccountResponse;
+    } catch {
+      return null;
+    }
+    const keyHex = json.key?.key;
+    if (!keyHex || !/^[0-9a-fA-F]+$/.test(keyHex)) return null;
+    return { keyHex, keyType: json.key?._type ?? "UNKNOWN" };
   }
-  if (!res.ok) return null;
-  let json: MirrorAccountResponse;
-  try {
-    json = (await res.json()) as MirrorAccountResponse;
-  } catch {
-    return null;
-  }
-  const keyHex = json.key?.key;
-  if (!keyHex || !/^[0-9a-fA-F]+$/.test(keyHex)) return null;
-  return { keyHex, keyType: json.key?._type ?? "UNKNOWN" };
+  return null;
 }
 
 /**
