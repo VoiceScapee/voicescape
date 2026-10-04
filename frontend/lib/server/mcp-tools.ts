@@ -46,10 +46,16 @@ export const TREASURY_ID = "0.0.10424063";
 export const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
 
 const FETCH_TIMEOUT_MS = 10_000;
-export const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
+/**
+ * MCP username validation — MUST match the on-chain registry rules exactly.
+ * On-chain (identity.ts): /^[a-z0-9-]{3,24}$/ — 3-24 chars, lowercase
+ * letters, numbers, hyphens only (NO underscores). A mismatch here lets
+ * agents pass MCP validation then fail at the on-chain claim step.
+ */
+export const USERNAME_RE = /^[a-z0-9-]{3,24}$/;
 
 /** Human-readable username rule, shared by the MCP surface for fail-fast errors. */
-export const USERNAME_RULE = "3-32 lowercase letters, numbers, _ or -";
+export const USERNAME_RULE = "3-24 lowercase letters, numbers, or hyphens (no underscores, no spaces)";
 
 const RESOLVE_IFACE = new ethers.Interface([
   "function resolvePage(string username) view returns (address owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
@@ -283,7 +289,7 @@ export async function checkProfilePin(
   const username = (args.username ?? "").trim().toLowerCase() || undefined;
 
   if (!cid && username) {
-    if (!USERNAME_RE.test(username)) return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
+    if (!USERNAME_RE.test(username)) return { error: `invalid username "${args.username}" — must be 3-24 lowercase letters, numbers, or hyphens (no underscores, no spaces, no uppercase). Valid examples: "my-agent", "agent007", "cool-bot-2". This matches the on-chain registry rules.` };
     const page = await lookupBlockpage(username, fetchFn);
     if (!page.found || !page.ipfs_hash) {
       return pinCheckResult({
@@ -805,7 +811,7 @@ export async function prepareAgentClaim(
 ): Promise<AgentClaimPackage | { error: string }> {
   const username = (args.username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
-    return { error: `invalid username "${args.username}" — use 3-32 lowercase letters, numbers, _ or -` };
+    return { error: `invalid username "${args.username}" — must be 3-24 lowercase letters, numbers, or hyphens (no underscores, no spaces, no uppercase). Valid examples: "my-agent", "agent007", "cool-bot-2". This matches the on-chain registry rules.` };
   }
   // owner_account_id is an OPTIONAL override. Default: the wallet that
   // taps approve on the link owns the page.

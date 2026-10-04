@@ -36,7 +36,7 @@ describe("MCP tool surface", () => {
       const res = await callTool(client, "lookup_blockpage", { username: "BAD NAME!" });
       expect(res.isError).toBe(true);
       const text = res.content[0]?.text ?? "";
-      expect(text).toMatch(/3-32 lowercase/);
+      expect(text).toMatch(/3-24 lowercase/);
     } finally {
       await client.close();
     }
