@@ -8,6 +8,7 @@ import {
   IN_APP_HANDSHAKE_FAILED_COPY,
   IN_APP_MODAL_BLOCKED_COPY,
   isPairingCancelled,
+  isValidPairingUri,
   PairingCancelledError,
   sessionTopic,
   shouldSuggestWalletInstall,
@@ -394,5 +395,44 @@ describe("friendlyWalletError — plain-object rejections never render [object O
     for (const input of inputs) {
       expect(friendlyWalletError(input)).not.toContain("[object Object]");
     }
+  });
+});
+
+describe("isValidPairingUri", () => {
+  const good =
+    "wc:80f98563557e75b2486c33386905d51e80f98563557e75b2486c33386905d51e" +
+    "@2?expiryTimestamp=1789500000&relay-protocol=irn" +
+    "&symKey=abc123abc123abc123abc123abc123abc123abc123abc123abc123abc123abcd";
+
+  it("accepts a well-formed WalletConnect v2 URI", () => {
+    expect(isValidPairingUri(good)).toBe(true);
+  });
+
+  it("rejects the truncated URI from the 2026-10-03 HashPack failure", () => {
+    // HashPack echoed the topic but rejected on the missing relay param —
+    // the query string was cut off in the copy/paste handoff.
+    expect(isValidPairingUri("wc:80f98563557e75b2486c33386905d51e")).toBe(false);
+    expect(
+      isValidPairingUri(
+        "wc:80f98563557e75b2486c33386905d51e80f98563557e75b2486c33386905d51e@2",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects URIs with a short topic or wrong version", () => {
+    expect(
+      isValidPairingUri("wc:80f98563@2?relay-protocol=irn&symKey=abc"),
+    ).toBe(false);
+    expect(
+      isValidPairingUri(
+        "wc:80f98563557e75b2486c33386905d51e80f98563557e75b2486c33386905d51e" +
+          "@1?relay-protocol=irn&symKey=abc",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects non-wc strings and empty input", () => {
+    expect(isValidPairingUri("")).toBe(false);
+    expect(isValidPairingUri("https://example.com")).toBe(false);
   });
 });

@@ -1044,6 +1044,81 @@ export async function rewakeHederaPairing(
 export const MODAL_PAIRING_TIMEOUT_MS = 120_000;
 
 /**
+ * How long the mobile deep-link flow waits for the wallet to approve
+ * before falling back to the QR modal. 90 seconds: enough to switch to
+ * the wallet app and approve — if the deep link didn't open anything,
+ * the user is still on this page and gets the QR instead of a hang.
+ */
+export const DEEP_LINK_PAIRING_TIMEOUT_MS = 90_000;
+
+/**
+ * Validates a WalletConnect v2 pairing URI.
+ *
+ * Defense-in-depth: the @walletconnect libraries always generate
+ * well-formed URIs (`wc:<64-hex-topic>@2?...&relay-protocol=irn&...`),
+ * but this makes it a verified invariant instead of an assumption.
+ * A malformed URI — e.g. truncated in a copy/paste handoff, the
+ * "Missing or invalid. pair() uri#relay-protocol" failure seen
+ * 2026-10-03 — fails fast here instead of showing a broken QR or
+ * deep-linking nowhere.
+ */
+export function isValidPairingUri(uri: string): boolean {
+  return /^wc:[0-9a-f]{64}@2\?.*relay-protocol=irn/.test(uri);
+}
+
+/**
+ * Mobile-first pairing: deep-link directly into the wallet app instead
+ * of showing a QR code for manual copy/paste.
+ *
+ * Why: the manual copy/paste handoff is where truncated URIs caused
+ * "Missing or invalid. pair() uri#relay-protocol" failures in HashPack
+ * (2026-10-03). Deep-linking passes the full URI to the OS, which hands
+ * it to the wallet app intact — no clipboard, no truncation.
+ *
+ * Flow: generate the pairing URI via connector.connect(), validate it,
+ * then navigate to the `wc:` URI so the OS opens the wallet app. The
+ * approval still arrives via the WalletConnect relay, so the page stays
+ * put and the session resolves normally. If the deep link doesn't lead
+ * to an approval in time (no wallet app handled it), fall back to the
+ * QR modal.
+ *
+ * Only used on mobile outside a wallet in-app browser — the iframe
+ * channel handles in-app pairing, and desktop keeps the QR modal.
+ */
+async function openDeepLinkPairing(
+  connector: DAppConnector,
+): Promise<Awaited<ReturnType<DAppConnector["openModal"]>>> {
+  let session: Awaited<ReturnType<DAppConnector["openModal"]>>;
+  try {
+    session = await withTimeout(
+      connector.connect((uri: string) => {
+        if (!isValidPairingUri(uri)) {
+          throw new Error(
+            "The wallet pairing code failed a safety check. " +
+              "Please try again, or open this page in your wallet's built-in browser.",
+          );
+        }
+        // Hand the full URI to the OS — it opens the wallet app with the
+        // pairing intact. The approval arrives via the relay; this page
+        // stays open waiting for it.
+        window.location.href = uri;
+      }),
+      DEEP_LINK_PAIRING_TIMEOUT_MS,
+      "The wallet app did not respond to the pairing request.",
+    );
+  } catch (e) {
+    // Deep link didn't produce an approval (no wallet app handled the
+    // wc: URI, or the user didn't approve in time) — fall back to the
+    // QR modal rather than leaving the user hanging.
+    if (e instanceof Error && /did not respond to the pairing request/.test(e.message)) {
+      return await openPairingModal(connector);
+    }
+    throw e;
+  }
+  return session;
+}
+
+/**
  * Open the WalletConnect QR pairing modal and wait for approval.
  *
  * Two fixes over the old bare `connector.openModal()` call:
@@ -1068,6 +1143,22 @@ async function openPairingModal(
       /* best effort — the timeout error below is what matters */
     }
   }, MODAL_PAIRING_TIMEOUT_MS);
+  // Intercept the modal open to validate the pairing URI before it is
+  // shown. The DAppConnector passes the exact URI it will render as the
+  // QR code — if it ever fails validation, fail loudly here instead of
+  // showing a broken QR (defense-in-depth; the library cannot produce a
+  // bad URI, but this makes it a verified invariant).
+  const modal = connector.walletConnectModal;
+  const origOpenModal = modal.openModal.bind(modal);
+  modal.openModal = ((opts: { uri: string }) => {
+    if (!isValidPairingUri(opts.uri)) {
+      throw new Error(
+        "The wallet pairing code failed a safety check. " +
+          "Please try again, or open this page in your wallet's built-in browser.",
+      );
+    }
+    return origOpenModal(opts);
+  }) as typeof modal.openModal;
   try {
     return await connector.openModal(undefined, true);
   } catch (e) {
@@ -1079,6 +1170,9 @@ async function openPairingModal(
     throw e;
   } finally {
     clearTimeout(timer);
+    // Restore the original modal open — the interception was only for
+    // this pairing attempt's validation.
+    modal.openModal = origOpenModal;
   }
 }
 
@@ -1287,9 +1381,18 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
   if (isHashPackInAppBrowser()) {
     throw new Error(IN_APP_MODAL_BLOCKED_COPY);
   }
+  // Mobile deep-link-first: on a phone outside a wallet's in-app browser,
+  // skip the QR modal and deep-link straight into the wallet app. This
+  // eliminates the manual copy/paste step where truncated URIs caused
+  // "Missing or invalid. pair() uri#relay-protocol" failures (2026-10-03).
+  // Desktop keeps the QR modal. Falls back to the modal automatically if
+  // the deep link doesn't produce an approval in time.
+  const useDeepLinkFirst = isMobileUserAgent();
   let session;
   try {
-    session = await openPairingModal(connector);
+    session = useDeepLinkFirst
+      ? await openDeepLinkPairing(connector)
+      : await openPairingModal(connector);
   } catch (modalErr) {
     // A dismissed modal is a deliberate cancel, not a failure — propagate
     // it untouched so connect() can reset quietly (no error banner).
