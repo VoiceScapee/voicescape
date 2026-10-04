@@ -18,6 +18,10 @@ import {
   getStarted,
   quoteTip,
   trendingCreators,
+  blockpageEarnings,
+  readAgentMessages,
+  prepareAgentMessage,
+  listTipAssets,
   requestContextStorage,
   toolResult,
   usernameValidationError,
@@ -918,5 +922,277 @@ describe("usernameValidationError", () => {
   it("handles empty input", () => {
     expect(usernameValidationError("")).toMatch(/empty/);
     expect(usernameValidationError(undefined)).toMatch(/empty/);
+  });
+});
+/* ------------------------- blockpage_earnings ------------------------- */
+
+describe("blockpage_earnings", () => {
+  const OWNER_EVM = "0xabc1230000000000000000000000000000000001";
+  const OWNER_ACCT = "0.0.99999";
+
+  function earningsFetch() {
+    return mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: OWNER_ACCT })],
+      [/accounts\/0\.0\.99999$/, () => ok({ account: OWNER_ACCT, evm_address: OWNER_EVM })],
+      [
+        /results\/logs/,
+        () =>
+          ok({
+            logs: [
+              {
+                // TipSent paying the owner — should be counted.
+                topics: [
+                  TIPSENT_TOPIC,
+                  addrTopic("0x1111111111111111111111111111111111111111"),
+                  addrTopic("0x2222222222222222222222222222222222222222"),
+                  addrTopic(OWNER_EVM),
+                ],
+                data: "0x" + pad32(100_000_000n) + pad32(2_000_000n),
+                consensus_timestamp: "1790769255.000001045",
+                transaction_hash:
+                  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              },
+              {
+                // TipSent paying someone else — must be excluded.
+                topics: [
+                  TIPSENT_TOPIC,
+                  addrTopic("0x1111111111111111111111111111111111111111"),
+                  addrTopic("0x2222222222222222222222222222222222222222"),
+                  addrTopic("0x9999999999999999999999999999999999999999"),
+                ],
+                data: "0x" + pad32(50_000_000n) + pad32(1_000_000n),
+                consensus_timestamp: "1790769256.000001045",
+                transaction_hash:
+                  "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              },
+              {
+                // Non-TipSent log — must be excluded.
+                topics: [addrTopic("0x1111111111111111111111111111111111111111")],
+                data: "0x" + pad32(1n),
+                consensus_timestamp: "1790769257.000001045",
+                transaction_hash:
+                  "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              },
+            ],
+          }),
+      ],
+    ]);
+  }
+
+  it("sums only TipSent events paying the page owner", async () => {
+    const r = await blockpageEarnings("forge", 10, earningsFetch());
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.username).toBe("forge");
+    expect(r.owner_account).toBe(OWNER_ACCT);
+    expect(r.tip_count).toBe(1);
+    expect(r.total_gross_hbar).toBe("1");
+    expect(r.total_creator_hbar).toBe("0.98");
+    expect(r.total_treasury_hbar).toBe("0.02");
+    expect(r.recent_tips).toHaveLength(1);
+    expect(r.recent_tips[0].gross_hbar).toBe("1");
+    expect(r.recent_tips[0].hashscan).toContain("hashscan.io");
+  });
+
+  it("rejects invalid usernames without hitting the network", async () => {
+    const r = await blockpageEarnings("ab", 10, mockFetch([]));
+    expect("error" in r).toBe(true);
+  });
+
+  it("errors honestly for unregistered pages", async () => {
+    const fetchFn = mockFetch([[/contracts\/call$/, () => ok({ result: "0x" })]]);
+    const r = await blockpageEarnings("no-such-user", 10, fetchFn);
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toMatch(/not registered/);
+  });
+
+  it("returns zeroed totals when no tips found", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: OWNER_ACCT })],
+      [/accounts\/0\.0\.99999$/, () => ok({ account: OWNER_ACCT, evm_address: OWNER_EVM })],
+      [/results\/logs/, () => ok({ logs: [] })],
+    ]);
+    const r = await blockpageEarnings("forge", 10, fetchFn);
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.tip_count).toBe(0);
+    expect(r.total_gross_hbar).toBe("0");
+  });
+});
+
+/* ------------------------- read_agent_messages ------------------------- */
+
+describe("read_agent_messages", () => {
+  const OWNER_ACCT = "0.0.99999";
+  const OUTBOUND_TOPIC = "0.0.77777";
+
+  function inboxFetch() {
+    return mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: OWNER_ACCT })],
+      [
+        /transactions\?account\.id=0\.0\.99999/,
+        () =>
+          ok({
+            transactions: [
+              { entity_id: OUTBOUND_TOPIC },
+              { entity_id: "0.0.88888" },
+            ],
+          }),
+      ],
+      [/topics\/0\.0\.77777$/, () => ok({ topic_id: OUTBOUND_TOPIC, memo: "hcs-10:1:0:1" })],
+      [/topics\/0\.0\.88888$/, () => ok({ topic_id: "0.0.88888", memo: "not an hcs-10 memo" })],
+      [
+        /topics\/0\.0\.77777\/messages/,
+        () =>
+          ok({
+            messages: [
+              {
+                consensus_timestamp: "1790769255.000001045",
+                sequence_number: 42,
+                message: Buffer.from(
+                  JSON.stringify({ p: "hcs-10", op: "message", data: "hello agents" }),
+                ).toString("base64"),
+              },
+              {
+                consensus_timestamp: "1790769256.000001045",
+                sequence_number: 43,
+                message: Buffer.from("plain text update").toString("base64"),
+              },
+            ],
+          }),
+      ],
+    ]);
+  }
+
+  it("reads messages from the agent's HCS-10 outbound topic", async () => {
+    const r = await readAgentMessages("forge", 10, inboxFetch());
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.outbound_topic_id).toBe(OUTBOUND_TOPIC);
+    expect(r.messages).toHaveLength(2);
+    expect(r.messages[0].hcs10_op).toBe("message");
+    expect(r.messages[0].message_text).toContain("hello agents");
+    expect(r.messages[1].hcs10_op).toBeNull();
+    expect(r.messages[1].message_text).toBe("plain text update");
+  });
+
+  it("returns honest empty when no outbound topic exists", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: OWNER_ACCT })],
+      [/transactions\?account\.id=/, () => ok({ transactions: [] })],
+    ]);
+    const r = await readAgentMessages("forge", 10, fetchFn);
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.outbound_topic_id).toBeNull();
+    expect(r.messages).toEqual([]);
+    expect(r.note).toMatch(/no HCS-10 outbound topic/);
+  });
+
+  it("rejects invalid usernames", async () => {
+    const r = await readAgentMessages("ab", 10, mockFetch([]));
+    expect("error" in r).toBe(true);
+  });
+});
+
+/* ------------------------- prepare_agent_message ------------------------- */
+
+describe("prepare_agent_message", () => {
+  const RECIP_ACCT = "0.0.99999";
+  const SENDER_ACCT = "0.0.11111";
+  const RECIP_INBOUND = "0.0.55555";
+  const SENDER_INBOUND = "0.0.66666";
+
+  function messageFetch() {
+    return mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: RECIP_ACCT })],
+      [
+        /transactions\?account\.id=0\.0\.99999/,
+        () => ok({ transactions: [{ entity_id: RECIP_INBOUND }] }),
+      ],
+      [
+        /transactions\?account\.id=0\.0\.11111/,
+        () => ok({ transactions: [{ entity_id: SENDER_INBOUND }] }),
+      ],
+      [/topics\/0\.0\.55555$/, () => ok({ topic_id: RECIP_INBOUND, memo: "hcs-10:1:0:0" })],
+      [/topics\/0\.0\.66666$/, () => ok({ topic_id: SENDER_INBOUND, memo: "hcs-10:1:0:0" })],
+    ]);
+  }
+
+  it("builds an unsigned HCS-10 connection_request payload", async () => {
+    // Sender "sender-agent" resolves via a second contracts/call; override
+    // the generic mock by matching sender lookups first is complex, so we
+    // pass the sender as a raw account id here.
+    const r = await prepareAgentMessage("forge", SENDER_ACCT, "hello from a fellow agent", messageFetch());
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.recipient_username).toBe("forge");
+    expect(r.recipient_inbound_topic).toBe(RECIP_INBOUND);
+    expect(r.sender_account).toBe(SENDER_ACCT);
+    expect(r.sender_inbound_topic).toBe(SENDER_INBOUND);
+    expect(r.submit_to_topic).toBe(RECIP_INBOUND);
+    expect(r.hcs10_payload.p).toBe("hcs-10");
+    expect(r.hcs10_payload.op).toBe("connection_request");
+    expect(r.hcs10_payload.operator_id).toBe(`${SENDER_INBOUND}@${SENDER_ACCT}`);
+    expect(r.hcs10_payload.data).toBe("hello from a fellow agent");
+    expect(r.instructions).toMatch(/UNSIGNED/);
+  });
+
+  it("refuses empty messages", async () => {
+    const r = await prepareAgentMessage("forge", SENDER_ACCT, "   ", mockFetch([]));
+    expect("error" in r).toBe(true);
+  });
+
+  it("errors honestly when the recipient has no inbound topic", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: RECIP_ACCT })],
+      [/transactions\?account\.id=/, () => ok({ transactions: [] })],
+    ]);
+    const r = await prepareAgentMessage("forge", SENDER_ACCT, "hi", fetchFn);
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toMatch(/no HCS-10 inbound topic/);
+  });
+
+  it("refuses self-messages", async () => {
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok({ account: RECIP_ACCT })],
+    ]);
+    const r = await prepareAgentMessage("forge", RECIP_ACCT, "hi", fetchFn);
+    expect("error" in r).toBe(true);
+    if ("error" in r) expect(r.error).toMatch(/same account/);
+  });
+});
+
+/* ------------------------- list_tip_assets ------------------------- */
+
+describe("list_tip_assets", () => {
+  it("lists HBAR as the tip rail with live price", async () => {
+    const fetchFn = mockFetch([
+      [
+        /network\/exchangerate/,
+        () => ok({ current_rate: { cent_equivalent: 240000, hbar_equivalent: 30000 } }),
+      ],
+    ]);
+    const r = await listTipAssets(fetchFn);
+    expect(r.assets).toHaveLength(2);
+    expect(r.assets[0].asset).toBe("HBAR");
+    expect(r.assets[0].split).toMatch(/98%/);
+    expect(r.assets[1].asset).toBe("USDC");
+    expect(r.assets[1].rail).toMatch(/NOT for tips/);
+    expect(r.hbar_usd).toBe("0.080000");
+  });
+
+  it("stays fail-soft when the price feed is down", async () => {
+    const fetchFn = mockFetch([[/network\/exchangerate/, () => notFound]]);
+    const r = await listTipAssets(fetchFn);
+    expect(r.hbar_usd).toBeNull();
+    expect(r.assets).toHaveLength(2);
   });
 });
