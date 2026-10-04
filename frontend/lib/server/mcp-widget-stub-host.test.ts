@@ -155,6 +155,16 @@ describe("stub host: widget protocol", () => {
       const initMsg = msgs.find((m) => m.method === "ui/initialize");
       expect(initMsg!.id).toBe(INIT_ID);
 
+      // 4. Bridge-state diagnostics progress to live.
+      const bridgeState = await frame!.evaluate(
+        () => (window as any).__VOICESCAPE_BRIDGE_STATE__,
+      );
+      expect(bridgeState).toBe("live");
+      const diagEl = await frame!.$("#bridgeDiag");
+      expect(diagEl, "diagnostic footer missing").toBeTruthy();
+      expect(await diagEl!.evaluate((el: any) => el.textContent)).toContain(
+        "bridge: live",
+      );
       // 3. Both buttons emitted kebab-case ui/open-link with origin-pinned URLs.
       const opens = msgs.filter((m) => m.method === "ui/open-link");
       expect(opens.length).toBeGreaterThanOrEqual(2);

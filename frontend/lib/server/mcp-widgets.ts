@@ -108,10 +108,11 @@ export function blockpagePreviewHtml(
   .btn.ghost { background: rgba(255,255,255,.08); color: #f2eefc; border: 1px solid rgba(255,255,255,.15); }
   .meta { font-size: 11px; opacity: .5; margin-top: 14px; text-align: center; }
   .loading { text-align: center; opacity: .6; font-size: 14px; }
+  .diag { font-size: 10px; opacity: .35; margin-top: 8px; text-align: center; font-family: monospace; }
 </style>
 </head>
 <body>
-<div class="card" id="card"><div class="loading">Loading blockpage…</div></div>
+<div class="card" id="card"><div class="loading">Loading blockpage…</div><div class="diag" id="bridgeDiag">bridge: starting</div></div>
 <script>
 window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
 (function () {
@@ -137,7 +138,10 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
         '<a class="btn primary" href="#" id="tipBtn">Tip</a>' +
         '<a class="btn ghost" href="#" id="viewBtn">View page</a>' +
       '</div>' +
-      '<div class="meta">98% of tips go to the creator · verified on Hedera</div>';
+      '<div class="meta">98% of tips go to the creator · verified on Hedera</div>' +
+      // Diagnostics footer: only when embedded in a real host (never in the
+      // server-side screenshot path, which renders top-level).
+      (window.parent !== window ? '<div class="diag" id="bridgeDiag">bridge: ' + esc(bridgeState) + '</div>' : '');
     document.getElementById('viewBtn').addEventListener('click', function (e) {
       e.preventDefault(); openLink(pageUrl);
     });
@@ -154,6 +158,19 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
   var bridgeReady = false;
   var hostContext = null;
   var lastSizeKey = '';
+
+  // Bridge-state diagnostics (molt's tester-experience ask): the widget always
+  // knows exactly where the handshake stands. Surface it as a subtle footer
+  // line plus a window global, so a tester can distinguish "bridge broken"
+  // from "host not rendering" without guessing.
+  // States: starting -> waiting for host… -> host connected -> live.
+  var bridgeState = 'starting';
+  function setBridgeState(s) {
+    bridgeState = s;
+    window.__VOICESCAPE_BRIDGE_STATE__ = s;
+    var el = document.getElementById('bridgeDiag');
+    if (el) el.textContent = 'bridge: ' + s;
+  }
 
   function postToHost(msg) {
     if (window.parent === window) return;
@@ -212,6 +229,7 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
       data = parsed && parsed.data ? parsed.data : parsed;
       if (data && data.username) {
         render(data);
+        setBridgeState('live');
         reportSize();
       } else {
         card.innerHTML = '<div class="loading">Blockpage not found.</div>';
@@ -234,6 +252,9 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
       if (!msg.error) {
         bridgeReady = true;
         postToHost({ jsonrpc: '2.0', method: 'ui/notifications/initialized' });
+        setBridgeState('host connected');
+      } else {
+        setBridgeState('host refused handshake');
       }
       return;
     }
@@ -252,6 +273,7 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
   // Announce readiness: the full initialize lifecycle starts here.
   if (window.parent !== window) {
     postToHost({ jsonrpc: '2.0', id: INIT_ID, method: 'ui/initialize', params: {} });
+    setBridgeState('waiting for host…');
     // Keep the frame sized to the content as it changes.
     if (typeof ResizeObserver !== 'undefined') {
       new ResizeObserver(function () { reportSize(); }).observe(card);
