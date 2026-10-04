@@ -150,7 +150,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Verify tip",
       description:
-        "Verify a Hedera transaction against the Voicescape Tips contract (0.0.10854060). Confirms the call target and consensus success, then decodes the on-chain TipSent event into the exact 98/2 split (creator share, treasury share). Accepts 0.0.x@seconds.nanos and 0.0.x-seconds-nanos forms. A Tips-contract call without a TipSent event (e.g. a marketplace purchase) is reported as not-a-tip, never a fabricated split.",
+        "Verify a Hedera tip transaction LIVE against the Hedera mainnet mirror node — independently re-verifiable via the returned HashScan link, no trust in our reader required. Confirms the call targeted the Voicescape Tips contract (0.0.10854060) with consensus success, then decodes the on-chain TipSent event into the exact 98/2 split (creator share, treasury share). Accepts 0.0.x@seconds.nanos and 0.0.x-seconds-nanos forms. A Tips-contract call without a TipSent event (e.g. a marketplace purchase) is reported as not-a-tip, never a fabricated split.",
       inputSchema: z.object({
         transaction_id: z
           .string()
