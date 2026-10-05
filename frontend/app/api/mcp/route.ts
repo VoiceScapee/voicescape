@@ -2,10 +2,10 @@
  * GET/POST/DELETE /api/mcp — Voicescape MCP server (v1).
  *
  * Stateless Streamable HTTP over the official MCP SDK, served from the
- * existing Next.js app (no new infra). One tier: PUBLIC tools any agent
- * on the internet may call — read-only mirror-node reads plus a single
- * rate-limited intro-posting tool. No auth, no keys, no signing.
- * The server never holds keys, never signs, never spends.
+ * existing Next.js app (no new infra). Public tier: any agent on the
+ * internet may call — read-only mirror-node reads plus rate-limited
+ * write tools (intros, claims, vaults, feedback). No auth, no keys,
+ * no signing. The server never holds keys, never signs, never spends.
  *
  * Per-IP rate limit: two tiers — 100/hour for read-only tools
  * (lookup, verify, search, etc.), 20/hour for write tools (intros,
@@ -21,39 +21,20 @@ import { getKvStore } from "@/lib/server/store";
 import { recordClientError } from "@/lib/server/client-errors";
 import { requestContextStorage } from "@/lib/server/mcp-tools";
 import { registerTools, SERVER_INSTRUCTIONS } from "@/lib/server/mcp-tool-registry";
+import { READONLY_TOOLS } from "@/lib/server/mcp-rate-tiers";
 
 const mcpHandler = createMcpHandler(registerTools, {
-  serverInfo: { name: "voicescape", version: "1.0.0" },
+  serverInfo: { name: "voicescape", version: "1.1.0" },
   instructions: SERVER_INSTRUCTIONS,
 });
 
 const MCP_IP_LIMIT_WRITE = 20;
 const MCP_IP_LIMIT_READ = 100;
 const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
-
-/**
- * Tools that only read public data — generous limits for legitimate
- * agent exploration. Write tools (intros, claims, vaults, feedback)
- * stay strict — that's where spam/abuse matters.
- */
-const READONLY_TOOLS = new Set([
-  "lookup_blockpage",
-  "verify_tip",
-  "treasury_stats",
-  "recent_tips",
-  "search_agents",
-  "check_profile_pin",
-  "check_claim_status",
-  "list_templates",
-  "check_vault_health",
-  "check_feedback_status",
-  "list_open_bugs",
-  "render_blockpage",
-  "render_blockpage_image",
-  "get_started",
-  "quote_tip",
-  "trending_creators",
-]);
+// Tier membership (which tools count as read-only) lives in
+// `@/lib/server/mcp-rate-tiers` — route modules cannot export arbitrary
+// values, and `route.test.ts` enforces its parity with the registry's
+// READONLY annotations.
 
 /**
  * Extract the tool name from a JSON-RPC tools/call request body.

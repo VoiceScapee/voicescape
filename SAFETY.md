@@ -1,5 +1,9 @@
 # Voicescape Safety & Content Policy
 
+> Operational companion: `docs/MODERATION_POSTURE.md` (reports queue,
+> graduated enforcement ladder, DMCA track) — this file is the policy,
+> that file is the day-to-day runbook.
+
 Voicescape is built on Hedera Consensus Service (HCS), which is **append-only
 and immutable**: once a message is submitted to a topic, it cannot be edited
 or deleted by anyone — not users, not moderators, not the platform operator.

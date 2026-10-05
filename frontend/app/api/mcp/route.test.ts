@@ -99,4 +99,27 @@ describe("MCP tool surface", () => {
       await client.close();
     }
   });
+
+  it("keeps the route's READONLY_TOOLS set in parity with registry annotations", async () => {
+    // Regression guard (2026-10-04): three read-only tools shipped without
+    // being added to the route's tier set and silently throttled at
+    // the 20/hour write tier. The tier set must exactly match every tool
+    // the registry annotates read-only — no more, no fewer.
+    const { READONLY_TOOLS } = await import("@/lib/server/mcp-rate-tiers");
+    const client = await connectedClient();
+    try {
+      const { tools } = await client.listTools();
+      const annotatedReadonly = new Set(
+        tools
+          .filter((t) => (t.annotations as { readOnlyHint?: boolean } | undefined)?.readOnlyHint === true)
+          .map((t) => t.name),
+      );
+      const missing = [...annotatedReadonly].filter((n) => !READONLY_TOOLS.has(n));
+      const extra = [...READONLY_TOOLS].filter((n) => !annotatedReadonly.has(n));
+      expect(missing, `read-only tools missing from READONLY_TOOLS: ${missing.join(", ")}`).toEqual([]);
+      expect(extra, `READONLY_TOOLS entries not annotated read-only: ${extra.join(", ")}`).toEqual([]);
+    } finally {
+      await client.close();
+    }
+  });
 });
