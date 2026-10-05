@@ -84,7 +84,10 @@ describe("robots()", () => {
     const rules = Array.isArray(r.rules) ? r.rules : [r.rules];
     const rule = rules[0];
     expect(rule.userAgent).toBe("*");
-    expect(rule.allow).toBe("/");
+    // /api/mcp is deliberately allowed: it answers plain GETs with a
+    // machine-readable "this is an MCP endpoint" pointer instead of a
+    // ROBOTS_DISALLOWED wall for fetch tools.
+    expect(rule.allow).toEqual(["/", "/api/mcp"]);
     const disallow = rule.disallow as string[];
     expect(disallow).toContain("/api/");
     expect(disallow).toContain("/mod");
