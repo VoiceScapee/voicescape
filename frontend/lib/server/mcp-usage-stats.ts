@@ -43,6 +43,7 @@ export const KNOWN_MCP_TOOLS = [
   "list_open_bugs",
   "render_blockpage",
   "render_blockpage_image",
+  "review_agent_tipping",
   "get_started",
   "quote_tip",
   "trending_creators",
