@@ -77,10 +77,14 @@ export async function POST(
     return fail("link-invalid", "this approval link is invalid or expired — ask your agent for a fresh one", 404);
   }
 
-  // Idempotent replay: a double-tap/double-submit returns the SAME unsigned
-  // transaction instead of building a second one. The package is single-use
-  // in effect — one transaction id ever leaves this endpoint per package.
-  if (pkg.finalizedResponseJson) {
+  // Idempotent replay for true double-taps: if a finalize completed less
+  // than 60s ago, return the SAME unsigned transaction instead of building
+  // a second one (the wallet prompt from the first tap may still be open).
+  // Beyond that the frozen transaction is expiring — Hedera txs die 120s
+  // after valid-start — so a retry ("Try signing again") MUST mint a fresh
+  // transaction. Replaying a stale tx guarantees the wallet never prompts
+  // and the user is stuck in a dead retry loop (2026-10-04 tester report).
+  if (pkg.finalizedResponseJson && pkg.finalizedAt && Date.now() - pkg.finalizedAt < 60_000) {
     try {
       return NextResponse.json(JSON.parse(pkg.finalizedResponseJson));
     } catch {
@@ -210,9 +214,9 @@ export async function POST(
     status_url: `/api/claim-packages/${id}/status`,
   };
 
-  // Single-use in effect: cache the response so a replay returns the same
-  // transaction id instead of minting a second one. The package itself
-  // still expires on its 24h TTL; the intro-link deletes it on completion.
+  // Cache the response for double-tap idempotency (replayed only when
+  // fresh — see above). Rebuilding on every retry is what keeps "Try
+  // signing again" working after a wallet timeout.
   pkg.finalizedAt = Date.now();
   pkg.finalizedResponseJson = JSON.stringify(responseBody);
   await saveClaimPackage(pkg);

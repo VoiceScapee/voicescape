@@ -378,7 +378,7 @@ export function buildRegisterTransaction(
   if (!ctx.registryContractAddress || !/^0x[0-9a-fA-F]{40}$/.test(ctx.registryContractAddress)) {
     throw new Error("invalid registry contract address");
   }
-  if (!op.username || op.username.length < 3 || op.username.length > 24) {
+  if (!op.username || op.username.length < 3 || op.username.length > 32) {
     throw new Error("invalid username");
   }
   if (!op.ipfsHash || op.ipfsHash.trim() === "") {
