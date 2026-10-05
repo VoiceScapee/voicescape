@@ -154,6 +154,19 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
   var bridgeReady = false;
   var hostContext = null;
   var lastSizeKey = '';
+  // Widget-instance id for open-link delivery diagnostics (yuigui's
+  // suggestion): the server mints one per render_blockpage call and the
+  // widget appends it to every open-link URL, so the server can tell an
+  // issued widget that was never visited (host dropped the open-link)
+  // from one that completed the round trip.
+  var widgetId = null;
+  // Outbound call log: every ui/open-link the widget fires is recorded
+  // here (and exposed for debugging) — the widget's own record of what
+  // it asked the host to do.
+  var callLog = [];
+  try {
+    window.__VOICESCAPE_CALL_LOG__ = callLog;
+  } catch (e) { /* sandboxed without window access */ }
 
   function postToHost(msg) {
     if (window.parent === window) return;
@@ -183,13 +196,25 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
     // Only our own https origin ever leaves the widget — a compromised or
     // spoofed data payload cannot redirect the user elsewhere.
     if (typeof url !== 'string' || url.indexOf(appOrigin + '/') !== 0) return;
+    // Append the widget-instance id so the server can correlate this
+    // open-link with the subsequent page visit (delivery diagnostics).
+    var finalUrl = url;
+    if (widgetId) {
+      finalUrl += (url.indexOf('?') === -1 ? '?' : '&') + 'wid=' + encodeURIComponent(widgetId);
+    }
+    // Log the outbound call: the widget's own record of what it asked
+    // the host to do. If the host silently drops it, this log + the
+    // missing server-side visit is the tell.
+    try {
+      callLog.push({ method: 'ui/open-link', url: finalUrl, ts: Date.now() });
+    } catch (e) { /* log is best-effort */ }
     if (window.parent !== window) {
       postToHost({
         jsonrpc: '2.0', id: 'open-link-' + Date.now(),
-        method: 'ui/open-link', params: { url: url }
+        method: 'ui/open-link', params: { url: finalUrl }
       });
     } else {
-      window.open(url, '_blank');
+      window.open(finalUrl, '_blank');
     }
   }
 
@@ -210,6 +235,10 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
       var parsed = JSON.parse(text);
       // unwrap toolResult envelope if present
       data = parsed && parsed.data ? parsed.data : parsed;
+      // Widget-instance id for delivery diagnostics (see openLink).
+      if (data && typeof data._wid === 'string' && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(data._wid)) {
+        widgetId = data._wid;
+      }
       if (data && data.username) {
         render(data);
         reportSize();

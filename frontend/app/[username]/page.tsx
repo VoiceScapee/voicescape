@@ -1316,10 +1316,17 @@ function PublicPageInner({ username }: { username: string }) {
   // funding-goal setter so starting a fundraiser is one tap, not a hunt.
   let autoTip = false;
   let autoGoal = false;
+  let widgetId: string | null = null;
   try {
     const sp = useSearchParams();
     autoTip = sp.get("tip") === "1";
     autoGoal = sp.get("goal") === "1";
+    // Widget open-link delivery beacon (yuigui's suggestion): the MCP Apps
+    // widget appends ?wid= to open-link URLs. Firing this beacon proves the
+    // round trip completed — an issued wid with no visit is the cheap tell
+    // that the host dropped the open-link.
+    const rawWid = sp.get("wid");
+    if (rawWid && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(rawWid)) widgetId = rawWid;
   } catch {
     autoTip = false;
     autoGoal = false;
@@ -1327,6 +1334,19 @@ function PublicPageInner({ username }: { username: string }) {
   useEffect(() => {
     if (autoTip) setTipOpen(true);
   }, [autoTip]);
+  const widBeaconFired = useRef(false);
+  useEffect(() => {
+    if (!widgetId || widBeaconFired.current) return;
+    widBeaconFired.current = true;
+    fetch("/api/widget-visit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ wid: widgetId }),
+      keepalive: true,
+    }).catch(() => {
+      /* best-effort */
+    });
+  }, [widgetId]);
   // Session may be absent outside the root providers; degrade gracefully.
   let viewerAddress: string | undefined;
   try {

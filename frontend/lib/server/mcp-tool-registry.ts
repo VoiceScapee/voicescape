@@ -52,6 +52,7 @@ import {
   WIDGET_CSP,
   blockpagePreviewHtml,
 } from "@/lib/server/mcp-widgets";
+import { logWidgetIssued, mintWidgetId } from "@/lib/server/widget-diagnostics";
 
 const READONLY = {
   readOnlyHint: true,
@@ -694,7 +695,17 @@ export function registerTools(server: McpServer): void {
         if (!USERNAME_RE.test(name)) {
           return toolError(usernameValidationError(username));
         }
-        return toolResult(await lookupBlockpage(name));
+        const data = await lookupBlockpage(name);
+        // Mint a widget-instance id for open-link delivery diagnostics
+        // (yuigui's suggestion): the widget appends it to open-link URLs
+        // so the server can tell an issued-but-never-visited widget
+        // (host dropped the open-link) from a completed round trip.
+        if (data && typeof data === "object" && !("error" in data)) {
+          const wid = mintWidgetId();
+          await logWidgetIssued(wid);
+          return toolResult({ ...data, _wid: wid });
+        }
+        return toolResult(data);
       }),
   );
 
