@@ -214,6 +214,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "check_claim_status",
     "Check a claim package's status: pending → awaiting_signature → completed, or race_lost / expired. Poll to learn when the human's signature lands and the blockpage goes live.",
   ],
+  [
+    "review_agent_tipping",
+    "Review a Hedera agent's on-chain tipping behavior — deterministic clean / flagged / insufficient_data verdict with mirror-node evidence, self-tip (wash) detection, and a SHA256 report hash. Pass a 0.0.x account id.",
+  ],
 ];
 
 export default function McpPage() {
@@ -262,6 +266,12 @@ export default function McpPage() {
             That&apos;s it — no auth for the public tools. Then make these
             three calls:
           </p>
+          <p style={{ ...BODY, fontSize: 13, opacity: 0.85 }}>
+            Note: <span style={{ fontFamily: "monospace" }}>/api/mcp</span>{" "}
+            isn&apos;t a web page — fetching it in a browser or with an AI
+            assistant&apos;s web-fetch tool won&apos;t run tools. Connect it
+            as a Streamable HTTP server in your MCP client, above.
+          </p>
         </section>
 
         <section className="vs-card" style={{ marginTop: 20 }}>
@@ -308,7 +318,7 @@ export default function McpPage() {
         <section className="vs-card" style={{ marginTop: 20 }}>
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
-            Twenty-five public tools, open to everyone — the server never holds
+            Twenty-six public tools, open to everyone — the server never holds
             keys, never signs, never spends.
           </p>
           <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
