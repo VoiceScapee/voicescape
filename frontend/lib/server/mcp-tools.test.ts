@@ -24,7 +24,9 @@ import {
   listTipAssets,
   requestContextStorage,
   toolResult,
+  toolError,
   usernameValidationError,
+  usernameValidationIssue,
   MIRROR_BASE,
   TREASURY_ID,
 } from "./mcp-tools";
@@ -922,6 +924,57 @@ describe("usernameValidationError", () => {
   it("handles empty input", () => {
     expect(usernameValidationError("")).toMatch(/empty/);
     expect(usernameValidationError(undefined)).toMatch(/empty/);
+  });
+});
+
+describe("usernameValidationIssue", () => {
+  it("returns a machine-readable payload for too-short names", () => {
+    const issue = usernameValidationIssue("ab");
+    expect(issue.code).toBe("USERNAME_TOO_SHORT");
+    expect(issue.retryable).toBe(false);
+    expect(issue.suggestions).toEqual(["ab-agent", "my-ab-bot"]);
+    expect(issue.message).toBe(usernameValidationError("ab"));
+  });
+  it("codes every failure mode with retryable false", () => {
+    for (const [input, code] of [
+      ["", "USERNAME_EMPTY"],
+      ["a".repeat(40), "USERNAME_TOO_LONG"],
+      ["BAD NAME!", "USERNAME_BAD_CHARACTERS"],
+    ] as const) {
+      const issue = usernameValidationIssue(input);
+      expect(issue.code).toBe(code);
+      expect(issue.retryable).toBe(false);
+      expect(issue.suggestions.length).toBeGreaterThan(0);
+      for (const s of issue.suggestions) {
+        expect(s).toMatch(/^[a-z0-9_-]{3,32}$/);
+      }
+    }
+  });
+});
+
+describe("toolError with opts", () => {
+  it("serializes code, retryable and suggestions for machines", () => {
+    const issue = usernameValidationIssue("ab");
+    const res = toolError(issue.message, {
+      code: issue.code,
+      retryable: issue.retryable,
+      suggestions: issue.suggestions,
+    });
+    expect(res.isError).toBe(true);
+    const first = res.content[0];
+    if (first.type !== "text") throw new Error("expected text content");
+    const body = JSON.parse(first.text);
+    expect(body.error).toBe(issue.message);
+    expect(body.code).toBe("USERNAME_TOO_SHORT");
+    expect(body.retryable).toBe(false);
+    expect(body.suggestions).toEqual(["ab-agent", "my-ab-bot"]);
+  });
+  it("stays prose-only when no opts are given", () => {
+    const res = toolError("something broke");
+    const first = res.content[0];
+    if (first.type !== "text") throw new Error("expected text content");
+    const body = JSON.parse(first.text);
+    expect(body).toEqual({ error: "something broke" });
   });
 });
 /* ------------------------- blockpage_earnings ------------------------- */

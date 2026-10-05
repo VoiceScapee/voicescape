@@ -73,29 +73,67 @@ export const USERNAME_RULE = "3-32 lowercase letters, numbers, _ or -";
  * a bare rule restatement doesn't break retry loops.
  */
 export function usernameValidationError(raw: unknown): string {
+  return usernameValidationIssue(raw).message;
+}
+
+/**
+ * Machine-readable username validation failure.
+ *
+ * Same rules as usernameValidationError, but returns the structured payload
+ * an agent can act on: a stable `code`, `retryable: false` (retrying the
+ * same input will never succeed), and concrete `suggestions` it can try
+ * instead of looping on the rejected value.
+ */
+export function usernameValidationIssue(raw: unknown): {
+  message: string;
+  code: string;
+  retryable: false;
+  suggestions: string[];
+} {
   const input = String(raw ?? "").slice(0, 40);
   const name = input.trim().toLowerCase();
   const rule = USERNAME_RULE;
   if (!name) {
-    return `invalid username "" — empty. Pick a name like "my-agent" (${rule}). Do not retry an empty username.`;
+    return {
+      message:
+        `invalid username "" — empty. Pick a name like "my-agent" (${rule}). ` +
+        `Do not retry an empty username.`,
+      code: "USERNAME_EMPTY",
+      retryable: false,
+      suggestions: ["my-agent", "agent-1"],
+    };
   }
   if (name.length < 3) {
-    return (
-      `invalid username "${input}" — too short (${name.length} chars, minimum 3). ` +
-      `Try "${name}-agent" or "my-${name}-bot" (${rule}). ` +
-      `Do not retry "${input}" — it will never validate.`
-    );
+    return {
+      message:
+        `invalid username "${input}" — too short (${name.length} chars, minimum 3). ` +
+        `Try "${name}-agent" or "my-${name}-bot" (${rule}). ` +
+        `Do not retry "${input}" — it will never validate.`,
+      code: "USERNAME_TOO_SHORT",
+      retryable: false,
+      suggestions: [`${name}-agent`, `my-${name}-bot`],
+    };
   }
   if (name.length > 32) {
-    return (
-      `invalid username "${input}" — too long (${name.length} chars, maximum 32). ` +
-      `Shorten it (${rule}). Do not retry "${input}" — it will never validate.`
-    );
+    return {
+      message:
+        `invalid username "${input}" — too long (${name.length} chars, maximum 32). ` +
+        `Shorten it (${rule}). Do not retry "${input}" — it will never validate.`,
+      code: "USERNAME_TOO_LONG",
+      retryable: false,
+      suggestions: [name.slice(0, 32)],
+    };
   }
-  return (
-    `invalid username "${input}" — bad characters. Only ${rule} allowed ` +
-    `(no spaces, no uppercase). Do not retry "${input}" — it will never validate.`
-  );
+  const cleaned = name.replace(/[^a-z0-9_-]/g, "").slice(0, 32);
+  const suggestion = cleaned.length >= 3 ? cleaned : `${cleaned || "agent"}-agent`;
+  return {
+    message:
+      `invalid username "${input}" — bad characters. Only ${rule} allowed ` +
+      `(no spaces, no uppercase). Do not retry "${input}" — it will never validate.`,
+    code: "USERNAME_BAD_CHARACTERS",
+    retryable: false,
+    suggestions: [suggestion],
+  };
 }
 
 const RESOLVE_IFACE = new ethers.Interface([
@@ -150,10 +188,25 @@ export function imageResult(png: Buffer): McpToolResult {
   };
 }
 
-/** Wrap a plain error message as an MCP error result. Never throws. */
-export function toolError(message: string): McpToolResult {
+/** Wrap a plain error message as an MCP error result. Never throws.
+ *
+ * Machines read errors too: `opts.code` gives the failure a stable
+ * machine-readable name, `opts.retryable: false` tells an agent the request
+ * will never succeed no matter how often it retries, and
+ * `opts.suggestions` offers actionable alternatives it can pick from
+ * programmatically. Fields are omitted when not provided, so existing
+ * prose-only callers are unaffected.
+ */
+export function toolError(
+  message: string,
+  opts?: { code?: string; retryable?: boolean; suggestions?: string[] },
+): McpToolResult {
+  const body: Record<string, unknown> = { error: message };
+  if (opts?.code) body.code = opts.code;
+  if (opts?.retryable !== undefined) body.retryable = opts.retryable;
+  if (opts?.suggestions?.length) body.suggestions = opts.suggestions;
   return {
-    content: [{ type: "text", text: JSON.stringify({ error: message }, null, 2) }],
+    content: [{ type: "text", text: JSON.stringify(body, null, 2) }],
     isError: true,
   };
 }

@@ -26,7 +26,7 @@ import {
   checkProfilePin,
   USERNAME_RE,
   USERNAME_RULE,
-  usernameValidationError,
+  usernameValidationIssue,
   postAgentIntro,
   prepareAgentClaim,
   listTemplates,
@@ -147,7 +147,12 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("lookup_blockpage", async () => {
         const name = username.trim().toLowerCase();
         if (!USERNAME_RE.test(name)) {
-          return toolError(usernameValidationError(username));
+          const issue = usernameValidationIssue(username);
+          return toolError(issue.message, {
+            code: issue.code,
+            retryable: issue.retryable,
+            suggestions: issue.suggestions,
+          });
         }
         return toolResult(await lookupBlockpage(name));
       }),
@@ -711,7 +716,12 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("render_blockpage", async () => {
         const name = username.trim().toLowerCase();
         if (!USERNAME_RE.test(name)) {
-          return toolError(usernameValidationError(username));
+          const issue = usernameValidationIssue(username);
+          return toolError(issue.message, {
+            code: issue.code,
+            retryable: issue.retryable,
+            suggestions: issue.suggestions,
+          });
         }
         const data = await lookupBlockpage(name);
         // Mint a widget-instance id for open-link delivery diagnostics
