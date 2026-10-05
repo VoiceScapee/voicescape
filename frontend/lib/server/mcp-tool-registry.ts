@@ -39,6 +39,7 @@ import {
   listTipAssets,
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
+import { reviewAgentTipping } from "@/lib/server/mcp-review";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
 import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
@@ -167,6 +168,23 @@ export function registerTools(server: McpServer): void {
     },
     async ({ transaction_id }) =>
       withMcpErrorTelemetry("verify_tip", async () => toolResult(await verifyTip(transaction_id))),
+  );
+
+  server.registerTool(
+    "review_agent_tipping",
+    {
+      title: "Review agent tipping",
+      description:
+        "Return a deterministic verdict (clean / flagged / insufficient_data) over a Hedera agent's on-chain tipping behavior, with mirror-node evidence for every claim. Checks tip volume, self-tip rate (wash detection), and history depth. Includes a SHA256 report hash and a prepared unsigned HCS attestation transaction the caller signs to commit the review publicly. Pass a 0.0.x account id.",
+      inputSchema: z.object({
+        subject: z
+          .string()
+          .describe("Hedera account id to review, e.g. 0.0.10424063"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ subject }) =>
+      withMcpErrorTelemetry("review_agent_tipping", async () => toolResult(await reviewAgentTipping(subject))),
   );
 
   server.registerTool(
