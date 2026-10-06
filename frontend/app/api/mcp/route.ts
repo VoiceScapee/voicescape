@@ -89,10 +89,16 @@ async function handle(req: Request): Promise<Response> {
   // agent exploration), write tools stay at 20/hour (abuse prevention).
   // The tool name comes from the JSON-RPC body for tools/call requests.
   let toolName: string | null = null;
+  let requestId: string | number | null = null;
   if (req.method === "POST") {
     try {
       const body = await req.clone().json();
       toolName = toolNameFromBody(body);
+      // Thread the JSON-RPC request id into the tool context so
+      // render_blockpage can expose it as the invocation correlation
+      // key in widget diagnostics (autonomaavalix's ask, 2026-10-06).
+      const rid = (body as { id?: unknown })?.id;
+      if (typeof rid === "string" || typeof rid === "number") requestId = rid;
     } catch {
       /* not JSON — safe default below */
     }
@@ -161,6 +167,7 @@ async function handle(req: Request): Promise<Response> {
   const ctx = {
     origin: new URL(req.url).origin,
     clientIp: clientIpFromHeaders(req.headers),
+    requestId,
   };
   return requestContextStorage.run(ctx, () => mcpHandler(req));
 }

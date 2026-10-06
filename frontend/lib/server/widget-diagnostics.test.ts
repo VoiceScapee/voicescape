@@ -41,7 +41,7 @@ describe("widget issuance/visit tracking", () => {
     expect(await wasWidgetIssued(wid, store)).toBe(false);
     await logWidgetIssued(wid, store);
     expect(await wasWidgetIssued(wid, store)).toBe(true);
-    await logWidgetVisit(wid, store);
+    await logWidgetVisit(wid, undefined, store);
     const stats = await getWidgetStats(store);
     expect(stats.issued).toBe(1);
     expect(stats.visited).toBe(1);
@@ -50,7 +50,7 @@ describe("widget issuance/visit tracking", () => {
   it("ignores invalid wids", async () => {
     const store = createMemoryKvStore();
     await logWidgetIssued("junk", store);
-    await logWidgetVisit("junk", store);
+    await logWidgetVisit("junk", undefined, store);
     expect(await wasWidgetIssued("junk", store)).toBe(false);
     const stats = await getWidgetStats(store);
     expect(stats.issued).toBe(0);
@@ -60,7 +60,7 @@ describe("widget issuance/visit tracking", () => {
   it("visit without issuance still counts (beacon is best-effort)", async () => {
     const store = createMemoryKvStore();
     const wid = mintWidgetId();
-    await logWidgetVisit(wid, store);
+    await logWidgetVisit(wid, undefined, store);
     const stats = await getWidgetStats(store);
     expect(stats.visited).toBe(1);
   });

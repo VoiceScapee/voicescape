@@ -59,11 +59,17 @@ export async function logWidgetIssued(
 /** Record that a browser visited a page carrying this widget id. */
 export async function logWidgetVisit(
   wid: string,
+  iid?: string,
   store: KvStore = getKvStore(),
 ): Promise<void> {
   if (!isWidgetId(wid)) return;
   try {
     await store.set(`${WID_PREFIX}${wid}${VISITED_SUFFIX}`, "1", WID_TTL_MS);
+    // Invocation correlation key (autonomaavalix's ask, 2026-10-06):
+    // stored alongside the visit so receipt rows join without inferring.
+    if (iid) {
+      await store.set(`${WID_PREFIX}${wid}:iid`, iid, WID_TTL_MS);
+    }
     await bumpCounter(store, STATS_VISITED_KEY);
   } catch {
     /* best-effort */

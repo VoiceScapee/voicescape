@@ -152,6 +152,13 @@ export interface McpRequestContext {
   origin: string;
   /** Best-effort client IP (see lib/server/rate-limit.ts trust order). */
   clientIp: string;
+  /**
+   * JSON-RPC request id of the current tools/call (if any). Threaded
+   * through to render_blockpage's widget diagnostics so independent
+   * observers can join beacon rows against the caller's request log
+   * without inferring batching (autonomaavalix's ask, 2026-10-06).
+   */
+  requestId: string | number | null;
 }
 
 export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
@@ -159,6 +166,7 @@ export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
 const DEFAULT_CONTEXT: McpRequestContext = {
   origin: "https://voicescape.vercel.app",
   clientIp: "unknown",
+  requestId: null,
 };
 
 export function getRequestContext(): McpRequestContext {
