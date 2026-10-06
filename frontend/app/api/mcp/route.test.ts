@@ -117,3 +117,30 @@ describe("MCP tool surface", () => {
     }
   });
 });
+
+describe("GET /api/mcp fetch-tool pointer", () => {
+  it("answers a non-HTML GET with a machine-readable connect pointer", async () => {
+    const { GET } = await import("./route");
+    const res = await GET(
+      new Request("https://voicescape.vercel.app/api/mcp", {
+        headers: { accept: "*/*" },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, string>;
+    expect(body.mcp).toMatch(/not a web page/);
+    expect(body.docs).toBe("https://voicescape.vercel.app/mcp");
+    expect(body.claude_code).toContain("claude mcp add");
+  });
+
+  it("still redirects browser GETs to the docs page", async () => {
+    const { GET } = await import("./route");
+    const res = await GET(
+      new Request("https://voicescape.vercel.app/api/mcp", {
+        headers: { accept: "text/html" },
+      }),
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("https://voicescape.vercel.app/mcp");
+  });
+});

@@ -84,6 +84,23 @@ async function handle(req: Request): Promise<Response> {
     return Response.redirect(new URL("/mcp", req.url), 302);
   }
 
+  // A fetch tool or curious agent (Accept: */*, application/json, curl)
+  // hitting the endpoint URL directly gets a machine-readable pointer
+  // instead of a JSON-RPC "Method not allowed" — the endpoint only runs
+  // tools over POST. This runs before the rate limiter so curious fetches
+  // don't burn the MCP budget, and it never interferes with real MCP
+  // clients, which only ever POST here.
+  if (req.method === "GET") {
+    const origin = new URL(req.url).origin;
+    return Response.json({
+      mcp: "This is a Streamable HTTP MCP server endpoint — not a web page.",
+      how_to_connect: `Add it to your MCP client as a Streamable HTTP server: ${origin}/api/mcp`,
+      claude_code: `claude mcp add --transport http voicescape ${origin}/api/mcp`,
+      docs: `${origin}/mcp`,
+      note: "This endpoint speaks JSON-RPC over POST. Fetching it with a browser or an assistant's web-fetch tool won't run tools — connect it in an MCP client instead.",
+    });
+  }
+
   // Per-IP gate first — cheap, before any MCP protocol work.
   // Two tiers: read-only tools get 100/hour (generous for legitimate
   // agent exploration), write tools stay at 20/hour (abuse prevention).
