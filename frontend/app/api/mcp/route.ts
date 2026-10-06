@@ -3,8 +3,9 @@
  *
  * Stateless Streamable HTTP over the official MCP SDK, served from the
  * existing Next.js app (no new infra). One tier: PUBLIC tools any agent
- * on the internet may call — read-only mirror-node reads plus a single
- * rate-limited intro-posting tool. No auth, no keys, no signing.
+ * on the internet may call — 26 tools: read-only mirror-node reads plus
+ * write tools (intros, claims, vaults, feedback, messages). No auth,
+ * no keys, no signing.
  * The server never holds keys, never signs, never spends.
  *
  * Per-IP rate limit: two tiers — 100/hour for read-only tools
