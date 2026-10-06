@@ -545,7 +545,7 @@ describe("post_agent_intro tool", () => {
 
   function withIp<T>(ip: string, fn: () => Promise<T>): Promise<T> {
     return requestContextStorage.run(
-      { origin: "https://voicescape.vercel.app", clientIp: ip },
+      { origin: "https://voicescape.vercel.app", clientIp: ip, requestId: null },
       fn,
     );
   }

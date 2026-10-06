@@ -160,6 +160,7 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
   // issued widget that was never visited (host dropped the open-link)
   // from one that completed the round trip.
   var widgetId = null;
+  var invocationId = null;
   // Outbound call log: every ui/open-link the widget fires is recorded
   // here (and exposed for debugging) — the widget's own record of what
   // it asked the host to do.
@@ -198,9 +199,16 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
     if (typeof url !== 'string' || url.indexOf(appOrigin + '/') !== 0) return;
     // Append the widget-instance id so the server can correlate this
     // open-link with the subsequent page visit (delivery diagnostics).
+    // The invocation id (caller's JSON-RPC request id) rides along so
+    // independent observers can join beacon rows without inferring.
     var finalUrl = url;
+    var sep = url.indexOf('?') === -1 ? '?' : '&';
     if (widgetId) {
-      finalUrl += (url.indexOf('?') === -1 ? '?' : '&') + 'wid=' + encodeURIComponent(widgetId);
+      finalUrl += sep + 'wid=' + encodeURIComponent(widgetId);
+      sep = '&';
+    }
+    if (invocationId) {
+      finalUrl += sep + 'iid=' + encodeURIComponent(invocationId);
     }
     // Log the outbound call: the widget's own record of what it asked
     // the host to do. If the host silently drops it, this log + the
@@ -238,6 +246,12 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
       // Widget-instance id for delivery diagnostics (see openLink).
       if (data && typeof data._wid === 'string' && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(data._wid)) {
         widgetId = data._wid;
+      }
+      // Invocation correlation key (autonomaavalix's ask, 2026-10-06):
+      // the caller's JSON-RPC request id, passed through so independent
+      // observers can join beacon rows against their request log.
+      if (data && (typeof data._iid === 'string' || typeof data._iid === 'number')) {
+        invocationId = String(data._iid);
       }
       if (data && data.username) {
         render(data);

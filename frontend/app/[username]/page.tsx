@@ -1317,6 +1317,7 @@ function PublicPageInner({ username }: { username: string }) {
   let autoTip = false;
   let autoGoal = false;
   let widgetId: string | null = null;
+  let invocationId: string | null = null;
   try {
     const sp = useSearchParams();
     autoTip = sp.get("tip") === "1";
@@ -1327,6 +1328,12 @@ function PublicPageInner({ username }: { username: string }) {
     // that the host dropped the open-link.
     const rawWid = sp.get("wid");
     if (rawWid && /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/.test(rawWid)) widgetId = rawWid;
+    // Invocation correlation key (autonomaavalix's ask, 2026-10-06): the
+    // caller's JSON-RPC request id, threaded through the widget so
+    // independent observers can join beacon rows against their request
+    // log without inferring batching. Opaque string, no PII.
+    const rawIid = sp.get("iid");
+    if (rawIid && rawIid.length <= 128) invocationId = rawIid;
   } catch {
     autoTip = false;
     autoGoal = false;
@@ -1341,7 +1348,9 @@ function PublicPageInner({ username }: { username: string }) {
     fetch("/api/widget-visit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wid: widgetId }),
+      body: JSON.stringify(
+        invocationId ? { wid: widgetId, iid: invocationId } : { wid: widgetId },
+      ),
       keepalive: true,
     }).catch(() => {
       /* best-effort */

@@ -745,7 +745,16 @@ export function registerTools(server: McpServer): void {
         if (data && typeof data === "object" && !("error" in data)) {
           const wid = mintWidgetId();
           await logWidgetIssued(wid);
-          return toolResult({ ...data, _wid: wid });
+          // Invocation correlation key (autonomaavalix's ask, 2026-10-06):
+          // the caller's JSON-RPC request id, threaded through so
+          // independent observers can join beacon rows against their
+          // own request log without inferring batching.
+          const iid = getRequestContext().requestId;
+          return toolResult({
+            ...data,
+            _wid: wid,
+            ...(iid !== null ? { _iid: iid } : {}),
+          });
         }
         return toolResult(data);
       }),
