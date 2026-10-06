@@ -31,6 +31,13 @@ import {
 export const HCS27_PROTOCOL = "hcs-27";
 export const VOICESCAPE_AUDIT_TYPE = "voicescape-audit-v1";
 
+/**
+ * Voicescape HCS-27 transparency log topic (mainnet).
+ * Created 2026-10-06. Memo: hcs-27:0:86400:0
+ * Verify: https://hashscan.io/mainnet/topic/0.0.10908357
+ */
+export const VOICESCAPE_HCS27_TOPIC = "0.0.10908357";
+
 /** Topic memo for HCS-27 checkpoint topics. */
 export function hcs27TopicMemo(ttlSeconds: number = 86400): string {
   return `hcs-27:0:${ttlSeconds}:0`;
