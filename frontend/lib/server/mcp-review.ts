@@ -58,8 +58,8 @@ export interface TippingReview {
   attestation_note: string;
 }
 
-/** Recommended HCS topic for review attestations (caller may use their own). */
-export const REVIEW_ATTESTATION_TOPIC = "0.0.0"; // placeholder until topic is created
+/** HCS topic for review attestations ("Voicescape review attestations"). */
+export const REVIEW_ATTESTATION_TOPIC = "0.0.10908351";
 
 /**
  * Brandon's public treasury — receives the 2% tip cut. Excluded when
@@ -363,5 +363,70 @@ export async function reviewAgentTipping(
     attestation_note: attestationTx
       ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor"
       : "attestation topic not yet configured — verdict and evidence above are still fully verifiable via the mirror node",
+  };
+}
+
+/**
+ * Cross-ledger receipt profile (arion interop).
+ *
+ * Maps our TippingReview to the shared minimal profile agreed with arion:
+ * {subject, procedure, signer, digest+alg, verdict_enum, scope,
+ *  evidence[]{ref, anchor}, observed_at, schema_id}
+ *
+ * Our existing fields are kept intact — this is an additional projection,
+ * not a rename. Existing consumers are unaffected.
+ */
+export const CROSS_LEDGER_SCHEMA_ID = "voicescape.tipping_review.v1";
+
+export interface CrossLedgerEvidence {
+  ref: string;
+  anchor: string;
+}
+
+export interface CrossLedgerProfile {
+  subject: string;
+  procedure: string;
+  signer: string;
+  digest: string;
+  digest_alg: "SHA-256";
+  verdict_enum: TippingVerdict;
+  scope: "high" | "medium" | "low";
+  evidence: CrossLedgerEvidence[];
+  observed_at: string;
+  schema_id: typeof CROSS_LEDGER_SCHEMA_ID;
+}
+
+export function toCrossLedgerProfile(review: TippingReview): CrossLedgerProfile {
+  return {
+    subject: review.subject_account ?? review.subject,
+    procedure: review.review_type,
+    signer: review.reviewer,
+    digest: review.report_hash,
+    digest_alg: "SHA-256",
+    verdict_enum: review.verdict,
+    scope: review.confidence,
+    evidence: review.evidence.map((e) => ({
+      ref: e.transaction_id,
+      anchor: e.hashscan,
+    })),
+    observed_at: review.checked_at,
+    schema_id: CROSS_LEDGER_SCHEMA_ID,
+  };
+}
+
+/**
+ * Build an HCS-27 transparency-log entry from a review's cross-ledger profile.
+ * The entry's canonical hash becomes a Merkle leaf; the checkpoint root is
+ * published to the HCS-27 topic. This is the on-chain anchor for review
+ * attestations — no custom topic needed.
+ */
+export function reviewToHCS27Entry(profile: CrossLedgerProfile): Record<string, unknown> {
+  return {
+    schema_id: profile.schema_id,
+    subject: profile.subject,
+    digest: profile.digest,
+    digest_alg: profile.digest_alg,
+    verdict_enum: profile.verdict_enum,
+    observed_at: profile.observed_at,
   };
 }

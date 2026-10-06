@@ -3,6 +3,9 @@ import {
   reviewAgentTipping,
   hashReport,
   buildAttestationTx,
+  toCrossLedgerProfile,
+  reviewToHCS27Entry,
+  type TippingReview,
 } from "./mcp-review";
 
 function mockFetch(responses: Record<string, any>) {
@@ -212,5 +215,59 @@ describe("reviewAgentTipping", () => {
     const tx = await buildAttestationTx("0.0.12345", "abc123", "0.0.1", "clean");
     // May be null if SDK freeze needs network; just check it doesn't throw.
     expect(tx === null || typeof tx === "string").toBe(true);
+  });
+});
+
+describe("cross-ledger profile (arion interop)", () => {
+  const mkReview = (): TippingReview => ({
+    subject: "0.0.123",
+    subject_account: "0.0.123",
+    review_type: "tipping_behavior",
+    verdict: "clean",
+    confidence: "high",
+    summary: "test",
+    tips_analyzed: 5,
+    total_tipped_hbar: "10",
+    self_tip_count: 0,
+    evidence: [
+      {
+        transaction_id: "0.0.123@1234567890.000000000",
+        amount_hbar: "2",
+        recipient: "0.0.456",
+        consensus_timestamp: "1234567890.000000000",
+        hashscan: "https://hashscan.io/mainnet/transaction/0.0.123@1234567890.000000000",
+        self_tip: false,
+      },
+    ],
+    checked_at: "2026-10-06T00:00:00.000Z",
+    reviewer: "io.github.VoiceScapee/voicescape",
+    report_hash: "abc123",
+    attestation_tx_base64: null,
+    attestation_note: "test",
+  });
+
+  it("maps to the shared profile shape", () => {
+    const p = toCrossLedgerProfile(mkReview());
+    expect(p.subject).toBe("0.0.123");
+    expect(p.procedure).toBe("tipping_behavior");
+    expect(p.signer).toBe("io.github.VoiceScapee/voicescape");
+    expect(p.digest).toBe("abc123");
+    expect(p.digest_alg).toBe("SHA-256");
+    expect(p.verdict_enum).toBe("clean");
+    expect(p.scope).toBe("high");
+    expect(p.schema_id).toBe("voicescape.tipping_review.v1");
+    expect(p.observed_at).toBe("2026-10-06T00:00:00.000Z");
+    expect(p.evidence).toHaveLength(1);
+    expect(p.evidence[0].ref).toBe("0.0.123@1234567890.000000000");
+    expect(p.evidence[0].anchor).toContain("hashscan.io");
+  });
+
+  it("produces a minimal HCS-27 entry", () => {
+    const p = toCrossLedgerProfile(mkReview());
+    const entry = reviewToHCS27Entry(p);
+    expect(entry.schema_id).toBe("voicescape.tipping_review.v1");
+    expect(entry.digest).toBe("abc123");
+    // Minimal: no nested evidence arrays in the leaf
+    expect(entry).not.toHaveProperty("evidence");
   });
 });
