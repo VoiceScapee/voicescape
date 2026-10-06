@@ -52,6 +52,23 @@ describe("MCP tool surface", () => {
     }
   });
 
+  it("prepare_agent_claim('ab') returns machine-readable code/retryable/suggestions", async () => {
+    // The stuck-retry loop: an anonymous agent retried username "ab" ~140
+    // times across 4 days, ignoring prose. The error must speak machine.
+    const client = await connectedClient();
+    try {
+      const res = await callTool(client, "prepare_agent_claim", { username: "ab", purpose: "test agent" });
+      expect(res.isError).toBe(true);
+      const body = JSON.parse(res.content[0]?.text ?? "{}");
+      expect(body.code).toBe("USERNAME_TOO_SHORT");
+      expect(body.retryable).toBe(false);
+      expect(body.suggestions).toEqual(["ab-agent", "my-ab-bot"]);
+      expect(body.error).toMatch(/too short/);
+    } finally {
+      await client.close();
+    }
+  });
+
   it("lists all 26 tools with human-readable titles", async () => {
     const client = await connectedClient();
     try {
