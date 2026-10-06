@@ -58,8 +58,8 @@ export interface TippingReview {
   attestation_note: string;
 }
 
-/** Recommended HCS topic for review attestations (caller may use their own). */
-export const REVIEW_ATTESTATION_TOPIC = "0.0.0"; // placeholder until topic is created
+/** HCS topic for review attestations ("Voicescape review attestations"). */
+export const REVIEW_ATTESTATION_TOPIC = "0.0.10908351";
 
 /**
  * Brandon's public treasury — receives the 2% tip cut. Excluded when

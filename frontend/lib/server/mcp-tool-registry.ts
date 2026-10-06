@@ -180,7 +180,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Review agent tipping",
       description:
-        "Return a deterministic verdict (clean / flagged / insufficient_data) over a Hedera agent's on-chain tipping behavior, with mirror-node evidence for every claim. Checks tip volume, self-tip rate (wash detection), and history depth. Includes a SHA256 report hash. It also returns a prepared unsigned HCS attestation transaction the caller signs to commit the review publicly — included only when a review attestation topic is configured (currently none is, so this field is null; the verdict and evidence are still fully verifiable via the mirror node). Pass a 0.0.x account id.",
+        "Return a deterministic verdict (clean / flagged / insufficient_data) over a Hedera agent's on-chain tipping behavior, with mirror-node evidence for every claim. Checks tip volume, self-tip rate (wash detection), and history depth. Includes a SHA256 report hash. It also returns a prepared unsigned HCS attestation transaction for topic 0.0.10908351 (\"Voicescape review attestations\") that the caller signs to commit the review publicly — unsigned, so the caller sets their own payer and submits; the verdict and evidence are also fully verifiable via the mirror node. Pass a 0.0.x account id.",
       inputSchema: z.object({
         subject: z
           .string()
