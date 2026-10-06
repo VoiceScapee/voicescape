@@ -391,6 +391,20 @@ export function registerTools(server: McpServer): void {
     },
     async (args) =>
       withMcpErrorTelemetry("prepare_agent_claim", async () => {
+        // Machine-readable username validation FIRST — this is the exact
+        // path the stuck "ab" retry loop hits. prepareAgentClaim validates
+        // the username before anything else, so surfacing the structured
+        // issue here is behavior-identical and lets automated callers see
+        // code/retryable/suggestions instead of prose they ignore.
+        const name = (args.username ?? "").trim().toLowerCase();
+        if (!USERNAME_RE.test(name)) {
+          const issue = usernameValidationIssue(args.username);
+          return toolError(issue.message, {
+            code: issue.code,
+            retryable: issue.retryable,
+            suggestions: issue.suggestions,
+          });
+        }
         const res = await prepareAgentClaim(args);
         if ("error" in res) return toolError(res.error);
         // Best-effort: queue the package as a one-tap approval card in the
