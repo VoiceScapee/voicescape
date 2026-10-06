@@ -76,6 +76,15 @@ export async function POST(
   if (!pkg) {
     return fail("link-invalid", "this approval link is invalid or expired — ask your agent for a fresh one", 404);
   }
+  // Self-mode packages are claimed by the agent's own key — the human
+  // wallet flow must never finalize them.
+  if (pkg.mode === "self") {
+    return fail(
+      "wrong-mode",
+      "this package is claimed by the agent's own key — approval happens in the agent's chat, not in a browser wallet",
+      400,
+    );
+  }
 
   // Idempotent replay for true double-taps: if a finalize completed less
   // than 60s ago, return the SAME unsigned transaction instead of building

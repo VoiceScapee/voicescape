@@ -65,6 +65,15 @@ export async function POST(
   // Find the username: the live package first, else the status record
   // written at finalize time (the package may already be deleted).
   const pkg = await getClaimPackage(id);
+  // Self-mode packages complete through the complete_agent_self_claim MCP
+  // tool (which verifies the on-chain owner is the agent's account) — the
+  // browser completion signal must never flip them.
+  if (pkg?.mode === "self") {
+    return NextResponse.json(
+      { error: "this package is claimed by the agent's own key — report completion with the complete_agent_self_claim MCP tool" },
+      { status: 400 },
+    );
+  }
   const recorded = await getPackageStatus("claim", id);
   const username = pkg?.username ?? recorded?.username;
   if (!username) {

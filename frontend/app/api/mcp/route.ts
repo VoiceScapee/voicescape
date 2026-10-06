@@ -3,7 +3,7 @@
  *
  * Stateless Streamable HTTP over the official MCP SDK, served from the
  * existing Next.js app (no new infra). One tier: PUBLIC tools any agent
- * on the internet may call — 26 tools: read-only mirror-node reads plus
+ * on the internet may call — 29 tools: read-only mirror-node reads plus
  * write tools (intros, claims, vaults, feedback, messages). No auth,
  * no keys, no signing.
  * The server never holds keys, never signs, never spends.

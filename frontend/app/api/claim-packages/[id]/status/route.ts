@@ -7,12 +7,14 @@
  * no status record and no live package means it expired silently after
  * the 24h TTL (reported as expired so the agent stops guessing).
  *
- * Self-healing: an "awaiting_signature" record means the unsigned tx was issued and
- * we're waiting on the human's signature. If the page is now registered
- * on-chain (the human signed but the completion signal never arrived —
- * closed tab, failed request), this endpoint upgrades the record to
- * "completed" on read so the agent learns the truth instead of waiting
- * forever. Best-effort: a failed chain read returns the recorded status.
+ * Self-healing: an "awaiting_signature" / "awaiting_agent_signature" record
+ * means the unsigned tx was issued and we're waiting on the signature
+ * (human's wallet for the sovereign path, the agent's own key for the
+ * self path). If the page is now registered on-chain (the signature
+ * landed but the completion signal never arrived — closed tab, failed
+ * request), this endpoint upgrades the record to "completed" on read so
+ * the agent learns the truth instead of waiting forever. Best-effort: a
+ * failed chain read returns the recorded status.
  */
 export const runtime = "nodejs";
 
@@ -28,10 +30,15 @@ export async function GET(
   const { id } = await params;
   const recorded = await getPackageStatus("claim", id);
   if (recorded) {
-    // Self-heal: "awaiting_signature" waits on the human's signature. If the page
-    // is on-chain now, the human signed and the completion signal was
-    // lost — upgrade to "completed" so the agent stops waiting.
-    if (recorded.status === "awaiting_signature" && recorded.username) {
+    // Self-heal: "awaiting_signature" / "awaiting_agent_signature" waits
+    // on the signature. If the page is on-chain now, the signature landed
+    // and the completion signal was lost — upgrade to "completed" so the
+    // agent stops waiting.
+    if (
+      (recorded.status === "awaiting_signature" ||
+        recorded.status === "awaiting_agent_signature") &&
+      recorded.username
+    ) {
       try {
         const lookup = await lookupBlockpage(recorded.username);
         if (lookup.found) {
@@ -69,11 +76,14 @@ export async function GET(
   // No terminal record: is the package still alive (pending) or gone?
   const pkg = await getClaimPackage(id);
   if (pkg) {
+    const selfMode = pkg.mode === "self";
     return NextResponse.json({
       package_id: id,
       status: "pending",
       updated_at: new Date(pkg.createdAt).toISOString(),
-      detail: "waiting for the human to open the approval link and tap approve",
+      detail: selfMode
+        ? "waiting for the agent to finalize and sign with its own key — the human approves in the agent's own chat, no browser link"
+        : "waiting for the human to open the approval link and tap approve",
     });
   }
   if (!/^[0-9a-f]{32}$/.test(id)) {

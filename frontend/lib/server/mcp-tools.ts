@@ -35,7 +35,10 @@ import {
 } from "./agent-intros";
 import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
-import { stashClaimPackage } from "./claim-packages";
+import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
+import { getKvStore } from "./store";
+import { getPackageStatus, setPackageStatus } from "./package-status";
+import { buildRegisterTransaction, ONBOARD_RATE_LIMIT } from "./agents/executor";
 import {
   assembleClaimPage,
   resolveTemplate,
@@ -1084,6 +1087,527 @@ export async function prepareAgentClaim(
 }
 
 /* ------------------------------------------------------------------ */
+/* PUBLIC tool: prepare_agent_self_claim (own-keys claim)               */
+/* ------------------------------------------------------------------ */
+
+export interface PrepareAgentSelfClaimArgs {
+  username: string;
+  /**
+   * REQUIRED. The agent's OWN Hedera account (0.0.x) — it owns the page
+   * and pays the registration gas. Must exist and hold HBAR on mainnet.
+   */
+  agent_account_id: string;
+  purpose: string;
+  display_name?: string;
+  capabilities?: string[];
+  /**
+   * 0x operator override disclosed on-chain. Defaults to the agent
+   * account's EVM address (resolved at finalize time).
+   */
+  operator?: string;
+  /** Template id from list_templates for the page's starting layout/vibe. */
+  template_id?: string;
+  /** Freeform theme override — custom colors/font on the template's vibe. */
+  theme?: CustomThemeInput;
+  /** Social profiles to link: [{platform, url}]. */
+  socials?: SocialInput[];
+  /** Arbitrary project links: [{label, url}]. */
+  links?: LinkInput[];
+  /**
+   * "agent" only (default). Self-claim registers AGENT pages signed by the
+   * agent's own key — a human page needs the human's own signature, which
+   * is the prepare_agent_claim path.
+   */
+  owner_type?: string;
+}
+
+export interface AgentSelfClaimPackage {
+  username: string;
+  /** The agent's own account — page owner and gas payer. */
+  agent_account_id: string;
+  /** Explicit 0x operator override, or null (defaults to the agent's EVM address). */
+  operator: string | null;
+  purpose: string;
+  page_url: string;
+  /** Short id for finalize_agent_self_claim / check_claim_status. */
+  claim_package_id: string;
+  /** Human-readable preview — show this to the human in the agent's own chat. */
+  preview_summary: string;
+  agent_balance_hbar: number;
+  what_youre_signing: string;
+  next: string;
+}
+
+/**
+ * Prepare an agent-blockpage claim the AGENT signs with its OWN Hedera
+ * key — the own-keys path. The agent already holds a wallet; the human
+ * behind it only previews and approves in the agent's own chat. No
+ * browser, no wallet pairing, no human signature anywhere.
+ *
+ * The server validates the username is free and the agent's account
+ * exists AND is funded (it pays the registration gas), then stashes a
+ * claim package in mode "self". Nothing is pinned and no transaction is
+ * built until the agent calls finalize_agent_self_claim after the human
+ * approves. Pure preparation — no keys, no signing, no submission, no
+ * spending. The prepare call itself is free.
+ */
+export async function prepareAgentSelfClaim(
+  args: PrepareAgentSelfClaimArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<AgentSelfClaimPackage | { error: string }> {
+  const username = (args.username ?? "").trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return { error: usernameValidationError(args.username) };
+  }
+  // The agent's OWN account — required, and it must exist AND be funded:
+  // it owns the page and pays the registerPage gas.
+  const agentAccountId = (args.agent_account_id ?? "").trim();
+  if (!/^0\.0\.\d+$/.test(agentAccountId)) {
+    return {
+      error: `invalid agent_account_id "${args.agent_account_id}" — expected YOUR OWN 0.0.x Hedera account (the account whose key you sign with)`,
+    };
+  }
+  const purpose = (args.purpose ?? "").trim();
+  if (!purpose || purpose.length > 500) {
+    return { error: "purpose is required (1-500 chars) — it is public and permanent on-chain" };
+  }
+  // Self-claim is for agent pages only. A human page needs the human's own
+  // signature — that is the prepare_agent_claim path.
+  if (args.owner_type !== undefined && args.owner_type !== "agent") {
+    return {
+      error: `owner_type "${args.owner_type}" is not supported here — self-claim registers AGENT pages signed by the agent's own key. For a human page, use prepare_agent_claim (the human signs once in their own wallet)`,
+    };
+  }
+  const displayName = (args.display_name ?? "").trim().slice(0, 60) || username;
+  const capabilities = Array.isArray(args.capabilities)
+    ? args.capabilities.filter((c): c is string => typeof c === "string" && c.trim() !== "").map((c) => c.trim().slice(0, 40)).slice(0, 20)
+    : [];
+
+  // 1. Username must be free (on-chain Registry read).
+  let existing: BlockpageLookup;
+  try {
+    existing = await lookupBlockpage(username, fetchFn);
+  } catch {
+    return { error: "registry unavailable — try again in a moment" };
+  }
+  if (existing.found) {
+    return { error: `username "${username}" is already registered — pick another` };
+  }
+
+  // 2. The agent's account must exist AND hold HBAR — it pays the gas.
+  //    A 404 is "wrong account id"; any other failure is the mirror node.
+  let balanceHbar = 0;
+  try {
+    const res = await fetchFn(`${MIRROR_BASE}/accounts/${agentAccountId}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (res.status === 404) {
+      return { error: `account ${agentAccountId} not found on Hedera mainnet — double-check the account id` };
+    }
+    if (!res.ok) {
+      return { error: "mirror node unreachable — try again in a moment" };
+    }
+    const body = (await res.json().catch(() => null)) as {
+      balance?: { balance?: number };
+    } | null;
+    const balTinybar = body?.balance?.balance;
+    balanceHbar = typeof balTinybar === "number" ? balTinybar / 100_000_000 : 0;
+  } catch {
+    return { error: "mirror node unreachable — try again in a moment" };
+  }
+  if (balanceHbar <= 0) {
+    return {
+      error: `account ${agentAccountId} holds no HBAR — it must pay the registration gas (a few cents). Fund it first, then prepare again`,
+    };
+  }
+
+  // 3. Operator override, if given (0x form); otherwise the agent
+  //    account's EVM address at finalize time.
+  let operator: string | null = null;
+  if (args.operator !== undefined && args.operator !== "") {
+    const op = args.operator.trim().toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(op)) {
+      return { error: `invalid operator "${args.operator}" — expected a 0x EVM address` };
+    }
+    operator = op;
+  }
+
+  // 4. Custom layout: template pick and/or freeform theme, socials, links.
+  //    Validated now so the agent gets fast feedback; re-validated at finalize.
+  let templateId: string | null = null;
+  if (args.template_id !== undefined && args.template_id !== "") {
+    try {
+      resolveTemplate(args.template_id, "agent");
+      templateId = args.template_id.trim().toLowerCase();
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "invalid template_id" };
+    }
+  }
+  try {
+    validateCustomTheme(args.theme ?? null);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "invalid theme" };
+  }
+  const normSocials = Array.isArray(args.socials)
+    ? args.socials
+        .filter((s) => s && typeof s.platform === "string" && typeof s.url === "string")
+        .map((s) => ({ platform: s.platform.slice(0, 40), url: s.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+  const normLinks = Array.isArray(args.links)
+    ? args.links
+        .filter((l) => l && typeof l.label === "string" && typeof l.url === "string")
+        .map((l) => ({ label: l.label.slice(0, 40), url: l.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+  // Claim-prep URLs land on a public blockpage — https only, so a
+  // javascript: or data: URL can never be smuggled into the page.
+  const badUrl = [...(normSocials ?? []), ...(normLinks ?? [])].find(
+    (e) => !/^https:\/\/[^/\s]+\.[^/\s]+/.test(e.url.trim()),
+  );
+  if (badUrl) {
+    return { error: `invalid url "${badUrl.url.slice(0, 80)}" — links must be https:// URLs` };
+  }
+
+  // 5. Stash the package in mode "self" — nothing pinned, nothing built,
+  //    until the agent finalizes after the human approves in its own chat.
+  const origin = getRequestContext().origin.replace(/\/$/, "");
+  const record = await stashClaimPackage({
+    username,
+    purpose,
+    displayName,
+    capabilities,
+    operator,
+    claimCode: null,
+    ownerAccountId: agentAccountId,
+    pageUrl: `${origin}/${username}`,
+    ownerType: "agent",
+    templateId,
+    theme: args.theme ?? null,
+    socials: normSocials,
+    links: normLinks,
+    mode: "self",
+  });
+
+  const previewSummary =
+    `@${username} — agent blockpage claim (you sign with your own key)\n` +
+    `Purpose: ${purpose}\n` +
+    `Display name: ${displayName}\n` +
+    (capabilities.length > 0 ? `Capabilities: ${capabilities.join(", ")}\n` : "") +
+    `Page will live at: ${origin}/${username}\n` +
+    `Owner + gas payer: ${agentAccountId} (your account — ${balanceHbar} HBAR available)\n` +
+    `Cost: network gas only — a few cents of HBAR from your account. This prepare call was free.`;
+
+  return {
+    username,
+    agent_account_id: agentAccountId,
+    operator,
+    purpose,
+    page_url: `${origin}/${username}`,
+    claim_package_id: record.id,
+    preview_summary: previewSummary,
+    agent_balance_hbar: balanceHbar,
+    what_youre_signing:
+      `registerPage("${username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
+      `registers "${username}" as an AGENT page owned by ${agentAccountId} (your account — you sign), ` +
+      `with the purpose "${purpose.slice(0, 120)}". Costs gas only (a few cents), paid from ${agentAccountId}. ` +
+      `The page content can be updated later by the page owner (you).`,
+    next:
+      `Show the preview summary above to your human in YOUR OWN chat — there is no browser link and nothing for them to tap. ` +
+      `When they approve, call finalize_agent_self_claim with claim_package_id "${record.id}" — it pins the page and returns the UNSIGNED registerPage bytes. ` +
+      `Sign them with your own Hedera key (ECDSA or ED25519) in your own environment — your key signs everything, this server never sees it — then submit and call complete_agent_self_claim with the confirmed transaction id. ` +
+      `Track this package with check_claim_status: pending → awaiting_agent_signature → completed, or race_lost (username taken — prepare a fresh claim), or expired (unused after 24h). "awaiting_agent_signature" means the unsigned transaction is issued and waiting for YOUR signature. "completed" means your signature landed on-chain and the blockpage is live.`,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: finalize_agent_self_claim (own-keys finalize)          */
+/* ------------------------------------------------------------------ */
+
+export interface FinalizeAgentSelfClaimArgs {
+  claim_package_id: string;
+}
+
+export interface FinalizedSelfClaim {
+  username: string;
+  agent_account_id: string;
+  unsignedTxBytes: string;
+  transactionId: string;
+  txType: string;
+  signerAccountId: string;
+  cid: string;
+  page_url: string;
+  cost_estimate: string;
+  signing_instructions: string;
+}
+
+/**
+ * Daily finalize cap per agent account — mirrors ONBOARD_RATE_LIMIT:
+ * claiming pages is rare, and the cap bounds pin+tx-build abuse.
+ */
+const SELF_CLAIM_DAILY_LIMIT = ONBOARD_RATE_LIMIT;
+const DAY_MS = 24 * 3_600_000;
+
+/**
+ * Finalize an own-keys claim AFTER the human approved in the agent's own
+ * chat. Re-validates the username is still free (kills the prepare-time
+ * availability race) and that the agent's account still exists and is
+ * funded, pins the starter page to IPFS (pinning at prepare time orphans
+ * a page every time the human never approves), and builds the frozen
+ * UNSIGNED registerPage transaction with the AGENT's account as payer.
+ *
+ * Never touches keys; never signs. The output is unsigned bytes — only
+ * the agent's own key can sign them.
+ */
+export async function finalizeAgentSelfClaim(
+  args: FinalizeAgentSelfClaimArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<FinalizedSelfClaim | { error: string }> {
+  const id = (args.claim_package_id ?? "").trim();
+  if (!/^[0-9a-f]{32}$/.test(id)) {
+    return { error: "unknown package id — expected the 32-hex claim_package_id from prepare_agent_self_claim" };
+  }
+  const pkg = await getClaimPackage(id);
+  if (!pkg) {
+    return { error: "unknown or expired package — prepare a fresh claim with prepare_agent_self_claim" };
+  }
+  if (pkg.mode !== "self") {
+    return {
+      error:
+        "this package is a human-approval claim (prepare_agent_claim) — it can only be signed by the human's wallet on the approval link. " +
+        "For the agent's own-key flow, prepare a fresh claim with prepare_agent_self_claim",
+    };
+  }
+  const agentAccountId = pkg.ownerAccountId;
+  if (!agentAccountId || !/^0\.0\.\d+$/.test(agentAccountId)) {
+    return { error: "package is missing its agent account — prepare a fresh claim with prepare_agent_self_claim" };
+  }
+  // Already completed: nothing left to sign — don't mint a second tx.
+  const recorded = await getPackageStatus("claim", id);
+  if (recorded?.status === "completed") {
+    return { error: `this claim is already completed — @${pkg.username} is live. Nothing left to sign` };
+  }
+
+  // Idempotent replay: a finalize issued less than 60s ago returns the
+  // SAME unsigned transaction. Beyond that the frozen transaction is
+  // expiring — Hedera txs die 120s after valid-start — so a retry MUST
+  // mint a fresh transaction.
+  if (pkg.finalizedResponseJson && pkg.finalizedAt && Date.now() - pkg.finalizedAt < 60_000) {
+    try {
+      return JSON.parse(pkg.finalizedResponseJson) as FinalizedSelfClaim;
+    } catch {
+      /* fall through and rebuild below */
+    }
+  }
+
+  // 1. The name must STILL be free — checked at prepare time, re-checked
+  //    here so a front-run can't produce a confusing revert.
+  let lookup;
+  try {
+    lookup = await lookupBlockpage(pkg.username, fetchFn);
+  } catch {
+    return { error: "registry unavailable — try again in a moment" };
+  }
+  if (lookup.found) {
+    await setPackageStatus("claim", id, "race_lost", {
+      username: pkg.username,
+      detail: `"${pkg.username}" was registered by someone else — prepare a fresh claim with a different name`,
+    });
+    return { error: `"${pkg.username}" was just registered by someone else — prepare a fresh claim with a different name` };
+  }
+
+  // 2. The agent's account must still exist and still be funded — it pays
+  //    the registerPage gas.
+  try {
+    const res = await fetchFn(`${MIRROR_BASE}/accounts/${agentAccountId}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (res.status === 404) {
+      return { error: `account ${agentAccountId} not found on Hedera mainnet` };
+    }
+    if (!res.ok) {
+      return { error: "mirror node unreachable — try again in a moment" };
+    }
+    const body = (await res.json().catch(() => null)) as {
+      balance?: { balance?: number };
+    } | null;
+    const bal = body?.balance?.balance;
+    if (typeof bal === "number" && bal <= 0) {
+      return { error: `account ${agentAccountId} holds no HBAR — fund it with gas money (a few cents) and call finalize again` };
+    }
+  } catch {
+    return { error: "mirror node unreachable — try again in a moment" };
+  }
+
+  // 3. Per-agent-account daily cap — claiming pages is rare.
+  let used: number;
+  try {
+    used = await getKvStore().incr(`agent-self-claim:${agentAccountId}`, DAY_MS);
+  } catch {
+    return { error: "rate limiter unavailable — try again in a moment" };
+  }
+  if (used > SELF_CLAIM_DAILY_LIMIT) {
+    return { error: `rate limit exceeded: ${SELF_CLAIM_DAILY_LIMIT} self-claims per account per day` };
+  }
+
+  // 4. Pin the page (once per package — cached on the record). Assembled
+  //    server-side from the template + the agent's customization.
+  let cid = pkg.cid;
+  if (!cid) {
+    const pinOperator = pkg.operator ?? (await evmAddressForAccount(agentAccountId, fetchFn));
+    try {
+      cid = await pinAgentPage({
+        username: pkg.username,
+        ownerType: "agent",
+        displayName: pkg.displayName ?? pkg.username,
+        purpose: pkg.purpose,
+        capabilities: pkg.capabilities ?? [],
+        operator: pinOperator,
+        templateId: pkg.templateId,
+        theme: pkg.theme,
+        socials: pkg.socials,
+        links: pkg.links,
+      });
+    } catch (e) {
+      return { error: `could not pin page: ${e instanceof Error ? e.message : "pinning failed"}` };
+    }
+    pkg.cid = cid;
+    await saveClaimPackage(pkg);
+  }
+  const operator = pkg.operator ?? (await evmAddressForAccount(agentAccountId, fetchFn));
+
+  // 5. Build the frozen UNSIGNED registerPage — payer = the agent's own
+  //    account. AccountId.fromString accepts any 0.0.x account id.
+  let built;
+  try {
+    built = buildRegisterTransaction(
+      { username: pkg.username, ipfsHash: cid, ownerType: 1, operator, purpose: pkg.purpose },
+      { payerAccountId: agentAccountId, network: "mainnet", registryContractAddress: REGISTRY_EVM },
+    );
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "failed to build transaction" };
+  }
+
+  const responseBody: FinalizedSelfClaim = {
+    username: pkg.username,
+    agent_account_id: agentAccountId,
+    unsignedTxBytes: built.unsignedTxBytes,
+    transactionId: built.transactionId,
+    txType: built.txType,
+    signerAccountId: `hedera:mainnet:${agentAccountId}`,
+    cid,
+    page_url: pkg.pageUrl,
+    cost_estimate: "Network gas only — a few cents of HBAR from your account. No fee to Voicescape.",
+    signing_instructions:
+      "Sign with YOUR OWN Hedera key in your own environment — this server never sees it. " +
+      'Hiero SDK: const tx = Transaction.fromBytes(Buffer.from(unsignedTxBytes, "base64")); ' +
+      "tx.sign(yourPrivateKey); await tx.execute(client); — works with ECDSA or ED25519 keys. " +
+      "Sign and submit within ~2 minutes: the unsigned transaction expires 120s after issue — " +
+      "if it lapses, call finalize_agent_self_claim again for a fresh one. " +
+      "Then call complete_agent_self_claim with the confirmed transaction id.",
+  };
+
+  // Cache the response for double-submit idempotency (replayed only when
+  // fresh — see above).
+  pkg.finalizedAt = Date.now();
+  pkg.finalizedResponseJson = JSON.stringify(responseBody);
+  await saveClaimPackage(pkg);
+  await setPackageStatus("claim", id, "awaiting_agent_signature", {
+    username: pkg.username,
+    transactionId: built.transactionId,
+    detail: "unsigned registerPage issued — waiting for the AGENT's own-key signature",
+  });
+
+  return responseBody;
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: complete_agent_self_claim (own-keys completion)        */
+/* ------------------------------------------------------------------ */
+
+export interface CompleteAgentSelfClaimArgs {
+  claim_package_id: string;
+  transaction_id: string;
+}
+
+/**
+ * Report the agent's own-key signature for a self-claim package.
+ *
+ * The server does NOT trust the caller: it verifies the username is
+ * registered on-chain via lookupBlockpage AND that the on-chain owner is
+ * the agent's own account before marking the package "completed". If the
+ * page isn't on-chain yet, it returns an error and the agent keeps polling
+ * check_claim_status at "awaiting_agent_signature".
+ */
+export async function completeAgentSelfClaim(
+  args: CompleteAgentSelfClaimArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<
+  | { ok: true; already?: boolean; username: string; page_url: string }
+  | { error: string }
+> {
+  const id = (args.claim_package_id ?? "").trim();
+  if (!/^[0-9a-f]{32}$/.test(id)) {
+    return { error: "unknown package id — expected the 32-hex claim_package_id from prepare_agent_self_claim" };
+  }
+  const transactionId = (args.transaction_id ?? "").trim();
+  if (!transactionId) {
+    return { error: "transaction_id is required — the confirmed Hedera transaction id of your registerPage submission" };
+  }
+
+  // Find the username: the live package first, else the status record
+  // written at finalize time (the package may already be deleted).
+  const pkg = await getClaimPackage(id);
+  const recorded = await getPackageStatus("claim", id);
+  const username = pkg?.username ?? recorded?.username;
+  if (!username) {
+    return { error: "unknown package id" };
+  }
+  if (pkg && pkg.mode !== "self") {
+    return { error: "this package is a human-approval claim — its completion is reported by the approval page, not this tool" };
+  }
+  if (recorded?.status === "completed") {
+    const doneOrigin = getRequestContext().origin.replace(/\/$/, "");
+    return { ok: true, already: true, username, page_url: `${doneOrigin}/${username}` };
+  }
+  const agentAccountId = pkg?.ownerAccountId ?? null;
+
+  // Ground truth: is the page registered on-chain, and owned by the
+  // AGENT's account? Never trust the caller.
+  let lookup;
+  try {
+    lookup = await lookupBlockpage(username, fetchFn);
+  } catch {
+    return { error: "registry unreachable — try again in a moment" };
+  }
+  if (!lookup.found) {
+    return { error: "blockpage not registered on-chain yet — sign and submit the unsigned transaction first, then call this again" };
+  }
+  if (agentAccountId) {
+    // Compare on both the 0.0.x account id and the EVM address — the
+    // account-id mapping is best-effort and may come back null.
+    const agentEvm = (await evmAddressForAccount(agentAccountId, fetchFn)).toLowerCase();
+    const ownerMatches =
+      (lookup.owner_account != null && lookup.owner_account === agentAccountId) ||
+      (lookup.owner_evm != null && lookup.owner_evm.toLowerCase() === agentEvm);
+    if (!ownerMatches) {
+      const actual = lookup.owner_account ?? lookup.owner_evm ?? "an unknown account";
+      return {
+        error: `"${username}" is registered on-chain but owned by ${actual}, not your account ${agentAccountId} — the page must be owned by the agent's own account`,
+      };
+    }
+  }
+
+  const origin = getRequestContext().origin.replace(/\/$/, "");
+  await setPackageStatus("claim", id, "completed", {
+    username,
+    transactionId,
+    detail: `registered on-chain — live at ${origin}/${username}`,
+  });
+  return { ok: true, username, page_url: `${origin}/${username}` };
+}
+
+/* ------------------------------------------------------------------ */
 /* PUBLIC tool: get_started (first-run onboarding)                     */
 /* ------------------------------------------------------------------ */
 
@@ -1101,12 +1625,14 @@ export function getStarted(): GetStarted {
     server: "Voicescape MCP — on-chain agent blockpages and 98/2 tipping on Hedera mainnet",
     what_this_is:
       "A read-only window into Voicescape plus unsigned-transaction preparation. " +
-      "Agents look things up, verify payments, and prepare claims — a human always " +
-      "signs in their own wallet.",
+      "Agents look things up, verify payments, and prepare claims — write paths prepare " +
+      "UNSIGNED transactions two ways: a one-tap approval link the human signs once in " +
+      "their own wallet, or, when the agent holds its own Hedera keys, unsigned bytes " +
+      "the agent signs itself with its own key.",
     guarantees: [
       "Read-only public surface: lookups and verifications never move funds.",
       "This server never holds keys, never signs, never spends.",
-      "Write paths prepare UNSIGNED transactions and return a one-tap approval link; the human reviews and signs once in their own wallet.",
+      "Write paths prepare UNSIGNED transactions and never take keys: either a one-tap approval link the human reviews and signs once in their own wallet, or unsigned bytes the agent signs with its own Hedera key in its own environment.",
       "Tips split 98/2 atomically on-chain (98% creator, 2% treasury) — enforced by the contract, not by us.",
     ],
     hello_world: [

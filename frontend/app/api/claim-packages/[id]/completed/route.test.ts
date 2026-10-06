@@ -20,7 +20,9 @@ vi.mock("@/lib/server/claim-packages", () => ({
   getClaimPackage: async (id: string) =>
     id === "a".repeat(32)
       ? { username: "thechomps", claimCode: "ABC123" }
-      : null,
+      : id === "c".repeat(32)
+        ? { username: "selfbot", claimCode: null, mode: "self", ownerAccountId: "0.0.1234" }
+        : null,
 }));
 
 vi.mock("@/lib/server/package-status", () => ({
@@ -103,6 +105,17 @@ describe("POST /api/claim-packages/[id]/completed", () => {
       params: Promise.resolve({ id: ID }),
     });
     expect(missing.status).toBe(400);
+  });
+
+  it("rejects self-mode packages — the browser completion signal never flips them", async () => {
+    onChainUsernames.add("selfbot");
+    const res = await POST(postReq({ transaction_id: "0.0.1234@123.456" }), {
+      params: Promise.resolve({ id: "c".repeat(32) }),
+    });
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(String(json.error)).toMatch(/complete_agent_self_claim/);
+    expect(store.get("c".repeat(32))).toBeUndefined();
   });
 });
 

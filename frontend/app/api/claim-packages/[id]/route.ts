@@ -31,6 +31,7 @@ export async function GET(
     claim_code: pkg.claimCode,
     page_url: pkg.pageUrl,
     owner_type: pkg.ownerType ?? "agent",
+    mode: pkg.mode ?? "sovereign",
     created_at: new Date(pkg.createdAt).toISOString(),
   });
 }

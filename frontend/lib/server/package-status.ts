@@ -8,8 +8,10 @@
  * expiry still learns what happened instead of guessing from a 404.
  *
  * Statuses:
- *   pending           — package created, awaiting the human tap
+ *   pending           — package created, awaiting the human tap (sovereign)
+ *                       or the agent's finalize call (self)
  *   awaiting_signature — unsigned tx issued, waiting on the human's wallet signature
+ *   awaiting_agent_signature — unsigned tx issued, waiting on the AGENT's own-key signature
  *   completed         — on-chain effect confirmed (vault watch registered; claim intro linked)
  *   race_lost         — username was taken before finalize; package is dead
  *   expired    — (written lazily on read) package gone without terminal state
@@ -23,6 +25,7 @@ export type PackageStatusKind = "claim" | "vault";
 export type PackageStatus =
   | "pending"
   | "awaiting_signature"
+  | "awaiting_agent_signature"
   | "completed"
   | "race_lost"
   | "expired";

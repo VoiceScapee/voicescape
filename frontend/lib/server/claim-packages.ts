@@ -13,6 +13,13 @@
  *
  * Never stores keys, never signs. The id is 128 bits of randomness; the
  * link is the capability. 24h TTL — an untapped package simply expires.
+ *
+ * Two modes:
+ *   "sovereign" — the human's wallet signs (prepare_agent_claim). Whoever
+ *     pairs on /c/[id] owns the page.
+ *   "self"      — the agent signs with its OWN Hedera key
+ *     (prepare_agent_self_claim). The agent's account owns the page; the
+ *     human approves in the agent's own chat and never touches a wallet.
  */
 import { randomBytes } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
@@ -44,11 +51,19 @@ export interface ClaimPackageInput {
   socials?: Array<{ platform: string; url: string }> | null;
   /** Arbitrary project links. */
   links?: Array<{ label: string; url: string }> | null;
+  /**
+   * Claim mode. "sovereign" (default) = the human's wallet signs via the
+   * /c/[id] approval link; "self" = the agent signs with its own Hedera
+   * key after the human approves in the agent's own chat.
+   */
+  mode?: "sovereign" | "self" | null;
 }
 
 export interface ClaimPackageRecord extends ClaimPackageInput {
   id: string;
   createdAt: number;
+  /** Claim mode — "sovereign" for human-signed packages, "self" for agent-signed. */
+  mode: "sovereign" | "self";
   /** Starter-page CID — pinned at finalize time, not prepare time. */
   cid: string | null;
   /**
@@ -97,6 +112,7 @@ export async function stashClaimPackage(
   if (claimCode !== null && !/^[A-Z0-9-]{4,16}$/.test(claimCode.trim())) {
     throw new Error("stashClaimPackage: bad claim code");
   }
+  const mode = input.mode === "self" ? "self" : "sovereign";
   const record: ClaimPackageRecord = {
     username,
     purpose,
@@ -137,6 +153,7 @@ export async function stashClaimPackage(
       : null,
     id: randomBytes(16).toString("hex"),
     createdAt: Date.now(),
+    mode,
     cid: null,
     finalizedAt: null,
     finalizedResponseJson: null,

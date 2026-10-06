@@ -112,6 +112,7 @@ export default function ClaimLinkPage() {
             claim_code: null,
             page_url: `${window.location.origin}/${encodeURIComponent(completedUsername)}`,
             owner_type: "human",
+            mode: "sovereign",
             created_at: "",
           });
           setPhase({ kind: "done", linked: false, confirmed: true, txId: completedTxId ?? "" });
@@ -246,6 +247,11 @@ export default function ClaimLinkPage() {
       });
   }, [intentApproved, accountId, action, approve, onSettled, phase.kind]);
 
+  // Self-mode packages are claimed by the agent's own key — approval
+  // happens in the agent's chat. This page renders the summary read-only:
+  // no Approve button, no wallet pairing, no signing UI.
+  const isSelf = summary?.mode === "self";
+
   return (
     <main
       style={{
@@ -257,8 +263,9 @@ export default function ClaimLinkPage() {
     >
       {/* The wallet connects AFTER approve (Review → Approve → Connect →
           Done) — showing the connect widget before the human has decided
-          invites connect-first and contradicts the order. */}
-      {intentApproved && <WalletConnect />}
+          invites connect-first and contradicts the order. Self-mode
+          packages never pair a wallet here. */}
+      {intentApproved && !isSelf && <WalletConnect />}
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
         Voicescape · {summary?.owner_type === "human" ? "Blockpage" : "Agent"} claim approval
       </div>
@@ -278,15 +285,17 @@ export default function ClaimLinkPage() {
             @{summary.username}
           </h1>
           <p style={{ margin: "0 0 16px", opacity: 0.75, fontSize: 14, lineHeight: 1.6 }}>
-            {summary.owner_type === "human" ? "Your AI agent prepared this blockpage for you." : "An AI agent prepared this blockpage claim."} Review it,
-            tap Approve, then connect a wallet to sign — one signature and the page is live and registered.
+            {isSelf
+              ? "This claim is signed by the agent's own key — approval happens in the agent's chat. This page is a read-only record; there is nothing to tap here."
+              : summary.owner_type === "human"
+                ? "Your AI agent prepared this blockpage for you."
+                : "An AI agent prepared this blockpage claim."}{" "}
+            {!isSelf && "Review it, tap Approve, then connect a wallet to sign — one signature and the page is live and registered."}
           </p>
 
-          {/* What-happens-next stepper — the human opening this link is often
-              non-technical and arrived from their AI chat, not our site.
-              Order: Review → Approve → Connect → Done. Approve is the
-              human's decision (no wallet needed); the wallet connects last
-              and the signature fires on connect. */}
+          {/* What-happens-next stepper — hidden for self-mode packages:
+              the human never approves here. */}
+          {!isSelf && (
           <div style={{ display: "flex", gap: 0, marginBottom: 18 }} aria-label="Steps">
             {[
               { n: 1, label: "Review", done: true },
@@ -323,6 +332,20 @@ export default function ClaimLinkPage() {
               </div>
             ))}
           </div>
+          )}
+
+          {/* Self-mode: read-only notice instead of the approval buttons. */}
+          {isSelf && phase.kind === "review" && (
+            <div style={{ border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "14px 16px", background: "rgba(255,255,255,.05)", marginBottom: 12 }}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Claimed by the agent's own key</div>
+              <div style={{ fontSize: 14, lineHeight: 1.65, opacity: 0.85 }}>
+                The agent shows this preview to its human in its own chat and
+                signs the registration with its own wallet key — no human
+                wallet is involved. Nothing here needs your tap; this page
+                only records what was prepared.
+              </div>
+            </div>
+          )}
 
           <div
             style={{
@@ -375,7 +398,7 @@ export default function ClaimLinkPage() {
             </div>
           )}
 
-          {phase.kind === "review" && !intentApproved && (
+          {phase.kind === "review" && !isSelf && !intentApproved && (
             <button
               onClick={() => setIntentApproved(true)}
               style={{
@@ -394,7 +417,7 @@ export default function ClaimLinkPage() {
             </button>
           )}
 
-          {phase.kind === "review" && intentApproved && !accountId && !signing && (
+          {phase.kind === "review" && !isSelf && intentApproved && !accountId && !signing && (
             <>
               <p style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.8, margin: "0 0 10px" }}>
                 Approved ✓ — now connect your wallet. The signature fires
@@ -419,7 +442,7 @@ export default function ClaimLinkPage() {
             </>
           )}
 
-          {phase.kind === "review" && intentApproved && signing && (
+          {phase.kind === "review" && !isSelf && intentApproved && signing && (
             <div
               style={{
                 width: "100%",
@@ -439,7 +462,7 @@ export default function ClaimLinkPage() {
             </div>
           )}
 
-          {phase.kind === "review" && signError && (
+          {phase.kind === "review" && !isSelf && signError && (
             <div style={{ border: "1px solid rgba(255,120,120,.4)", borderRadius: 12, padding: "12px 14px", background: "rgba(255,80,80,.06)", marginTop: 10 }}>
               <div style={{ fontSize: 14, lineHeight: 1.6, opacity: 0.9 }}>{signError}</div>
               <button
@@ -533,12 +556,14 @@ export default function ClaimLinkPage() {
             </div>
           )}
 
+          {!isSelf && (
           <p style={{ fontSize: 12.5, opacity: 0.55, marginTop: 18, lineHeight: 1.6 }}>
             No signup, no sign-in. Tapping Approve is your go-ahead — nothing
             is recorded or signed until you connect your wallet and confirm
             in the wallet's own screen. One signature publishes the blockpage
             and registers it — done.
           </p>
+          )}
         </>
       )}
     </main>

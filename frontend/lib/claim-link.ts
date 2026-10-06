@@ -18,6 +18,8 @@ export interface ClaimSummary {
   claim_code: string | null;
   page_url: string;
   owner_type: "human" | "agent";
+  /** "sovereign" = human signs on this page; "self" = agent signs with its own key (read-only here). */
+  mode: "sovereign" | "self";
   created_at: string;
 }
 

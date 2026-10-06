@@ -69,11 +69,11 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("lists all 26 tools with human-readable titles", async () => {
+  it("lists all 29 tools with human-readable titles", async () => {
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(26);
+      expect(tools).toHaveLength(29);
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.description, t.name).toBeTruthy();
@@ -81,6 +81,28 @@ describe("MCP tool surface", () => {
       const names = tools.map((t) => t.name);
       expect(names).toContain("render_blockpage");
       expect(names).toContain("render_blockpage_image");
+      expect(names).toContain("prepare_agent_self_claim");
+      expect(names).toContain("finalize_agent_self_claim");
+      expect(names).toContain("complete_agent_self_claim");
+    } finally {
+      await client.close();
+    }
+  });
+
+  it("prepare_agent_self_claim('ab') returns machine-readable code/retryable/suggestions", async () => {
+    const client = await connectedClient();
+    try {
+      const res = await callTool(client, "prepare_agent_self_claim", {
+        username: "ab",
+        agent_account_id: "0.0.1234",
+        purpose: "test agent",
+      });
+      expect(res.isError).toBe(true);
+      const body = JSON.parse(res.content[0]?.text ?? "{}");
+      expect(body.code).toBe("USERNAME_TOO_SHORT");
+      expect(body.retryable).toBe(false);
+      expect(body.suggestions).toEqual(["ab-agent", "my-ab-bot"]);
+      expect(body.error).toMatch(/too short/);
     } finally {
       await client.close();
     }
