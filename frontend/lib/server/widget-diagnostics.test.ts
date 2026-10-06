@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   getWidgetStats,
+  getWidgetIid,
+  IID_MAX_LEN,
+  IID_UNATTRIBUTED,
+  isUsableIid,
   isWidgetId,
   logWidgetIssued,
   logWidgetVisit,
@@ -63,5 +67,56 @@ describe("widget issuance/visit tracking", () => {
     await logWidgetVisit(wid, undefined, store);
     const stats = await getWidgetStats(store);
     expect(stats.visited).toBe(1);
+  });
+});
+
+describe("iid attribution (autonomaavalix's ask)", () => {
+  it("stores a usable iid alongside the visit", async () => {
+    const store = createMemoryKvStore();
+    const wid = mintWidgetId();
+    await logWidgetVisit(wid, "req-123", store);
+    expect(await getWidgetIid(wid, store)).toBe("req-123");
+  });
+
+  it("missing iid lands in the explicit unattributed bucket, not a null", async () => {
+    const store = createMemoryKvStore();
+    const wid = mintWidgetId();
+    await logWidgetVisit(wid, undefined, store);
+    expect(await getWidgetIid(wid, store)).toBe(IID_UNATTRIBUTED);
+  });
+
+  it("empty and oversized iids are unattributed too", async () => {
+    const store = createMemoryKvStore();
+    const wid1 = mintWidgetId();
+    const wid2 = mintWidgetId();
+    await logWidgetVisit(wid1, "", store);
+    await logWidgetVisit(wid2, "x".repeat(IID_MAX_LEN + 1), store);
+    expect(await getWidgetIid(wid1, store)).toBe(IID_UNATTRIBUTED);
+    expect(await getWidgetIid(wid2, store)).toBe(IID_UNATTRIBUTED);
+  });
+
+  it("counts unattributed visits separately", async () => {
+    const store = createMemoryKvStore();
+    await logWidgetVisit(mintWidgetId(), "req-1", store);
+    await logWidgetVisit(mintWidgetId(), undefined, store);
+    await logWidgetVisit(mintWidgetId(), "", store);
+    const raw = await store.get("widget:stats:unattributed");
+    expect(raw).toBe("2");
+    const stats = await getWidgetStats(store);
+    expect(stats.visited).toBe(3);
+  });
+
+  it("isUsableIid accepts caller keys, rejects junk", () => {
+    expect(isUsableIid("abc-123")).toBe(true);
+    expect(isUsableIid("")).toBe(false);
+    expect(isUsableIid(undefined)).toBe(false);
+    expect(isUsableIid("x".repeat(IID_MAX_LEN + 1))).toBe(false);
+    expect(isUsableIid(42)).toBe(false);
+  });
+
+  it("getWidgetIid returns null for unknown or invalid wids", async () => {
+    const store = createMemoryKvStore();
+    expect(await getWidgetIid(mintWidgetId(), store)).toBe(null);
+    expect(await getWidgetIid("junk", store)).toBe(null);
   });
 });

@@ -16,6 +16,11 @@
  * issued/visited flags are stored, 7-day TTL, same rules as the MCP
  * error telemetry. Best-effort: logging never throws and never changes
  * what the agent or user receives.
+ *
+ * Attribution: each visit row carries the caller's JSON-RPC request id
+ * (`iid`) when the beacon supplies one; visits without a usable iid are
+ * stored under the explicit "unattributed" sentinel so receipt rows stay
+ * joinable and unattributed traffic is a visible bucket, not a null.
  */
 import { randomBytes } from "crypto";
 import { getKvStore, type KvStore } from "./store";
@@ -26,8 +31,26 @@ const WID_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // unambiguous, like claim 
 const WID_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/;
 const ISSUED_SUFFIX = ":issued";
 const VISITED_SUFFIX = ":visited";
+const IID_SUFFIX = ":iid";
 const STATS_ISSUED_KEY = "widget:stats:issued";
 const STATS_VISITED_KEY = "widget:stats:visited";
+const STATS_UNATTRIBUTED_KEY = "widget:stats:unattributed";
+
+/**
+ * Explicit unattributed bucket (autonomaavalix's ask, 2026-10-06):
+ * a visit beacon with missing/empty/oversized iid is stored with this
+ * sentinel instead of a quiet null, so receipt rows are always joinable
+ * and "no attribution" is a visible state, not an absence.
+ */
+export const IID_UNATTRIBUTED = "unattributed";
+
+/** Max iid length accepted on the beacon (route.ts enforces the same). */
+export const IID_MAX_LEN = 128;
+
+/** True if the iid is a usable caller correlation key. */
+export function isUsableIid(raw: unknown): raw is string {
+  return typeof raw === "string" && raw.length > 0 && raw.length <= IID_MAX_LEN;
+}
 
 /** Mint a random 8-char widget instance id. */
 export function mintWidgetId(): string {
@@ -67,12 +90,37 @@ export async function logWidgetVisit(
     await store.set(`${WID_PREFIX}${wid}${VISITED_SUFFIX}`, "1", WID_TTL_MS);
     // Invocation correlation key (autonomaavalix's ask, 2026-10-06):
     // stored alongside the visit so receipt rows join without inferring.
-    if (iid) {
-      await store.set(`${WID_PREFIX}${wid}:iid`, iid, WID_TTL_MS);
+    // Missing/empty/oversized iid lands in the explicit unattributed
+    // bucket — never a quiet null.
+    if (isUsableIid(iid)) {
+      await store.set(`${WID_PREFIX}${wid}${IID_SUFFIX}`, iid, WID_TTL_MS);
+    } else {
+      await store.set(
+        `${WID_PREFIX}${wid}${IID_SUFFIX}`,
+        IID_UNATTRIBUTED,
+        WID_TTL_MS,
+      );
+      await bumpCounter(store, STATS_UNATTRIBUTED_KEY);
     }
     await bumpCounter(store, STATS_VISITED_KEY);
   } catch {
     /* best-effort */
+  }
+}
+
+/**
+ * Read back the stored iid for a widget visit: the caller's key, the
+ * "unattributed" sentinel, or null if the visit was never logged.
+ */
+export async function getWidgetIid(
+  wid: string,
+  store: KvStore = getKvStore(),
+): Promise<string | null> {
+  if (!isWidgetId(wid)) return null;
+  try {
+    return await store.get(`${WID_PREFIX}${wid}${IID_SUFFIX}`);
+  } catch {
+    return null;
   }
 }
 

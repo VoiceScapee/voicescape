@@ -6,13 +6,20 @@
  *
  * Optional `iid` carries the caller's JSON-RPC request id (invocation
  * correlation key, autonomaavalix's ask 2026-10-06) so independent
- * observers can join beacon rows against their request log.
+ * observers can join beacon rows against their request log. A missing,
+ * empty, or oversized iid is stored under the explicit "unattributed"
+ * sentinel — never a quiet null.
  *
  * No auth — the wid is a random 8-char id (no PII), iid is opaque.
  * Invalid or unissued wids are ignored. Best-effort; always returns 200.
  */
 import { NextResponse } from "next/server";
-import { isWidgetId, logWidgetVisit, wasWidgetIssued } from "@/lib/server/widget-diagnostics";
+import {
+  isUsableIid,
+  isWidgetId,
+  logWidgetVisit,
+  wasWidgetIssued,
+} from "@/lib/server/widget-diagnostics";
 
 export async function POST(req: Request) {
   try {
@@ -20,10 +27,9 @@ export async function POST(req: Request) {
     const wid = (body as { wid?: unknown }).wid;
     const iid = (body as { iid?: unknown }).iid;
     if (isWidgetId(wid) && (await wasWidgetIssued(wid))) {
-      await logWidgetVisit(
-        wid,
-        typeof iid === "string" && iid.length > 0 && iid.length <= 128 ? iid : undefined,
-      );
+      // Unusable iid (missing/empty/oversized) lands in the explicit
+      // "unattributed" bucket inside logWidgetVisit — never a quiet null.
+      await logWidgetVisit(wid, isUsableIid(iid) ? iid : undefined);
     }
   } catch {
     /* best-effort */
