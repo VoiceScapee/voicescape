@@ -31,6 +31,21 @@ import {
   TransferTransaction,
 } from "@hiero-ledger/sdk";
 import { getHederaPairing } from "./wallet";
+import { fetchWithTimeout } from "./fetch-timeout";
+import {
+  getMirrorHeadTimestampMs,
+  isMirrorBeyondTxWindow,
+  MIRROR_CATCHUP_MARGIN_MS,
+  toMirrorTxId,
+} from "./tx-confirm";
+import {
+  type LandedStatus,
+  listPendingIntents,
+  reconcilePendingIntents,
+  removePendingIntent,
+  savePendingIntent,
+} from "./pending-intents";
+import { isWalletRejection } from "./wallet-guards";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -226,9 +241,68 @@ function toAccountId(addr: string): AccountId {
 }
 
 /**
+ * Check whether a dust-fee HBAR transfer actually executed, via the mirror
+ * node (transfers aren't contract calls, so the contracts/results endpoint
+ * doesn't apply). Bounded — a mirror stall degrades to "unknown", never a
+ * hang. "expired" means the mirror indexed past the tx's validity window
+ * without seeing it: it can never land, so a retry is safe.
+ */
+const DUST_CHECK_TIMEOUT_MS = 10_000;
+async function checkDustTxLanded(txId: string): Promise<LandedStatus> {
+  const url =
+    `https://mainnet.mirrornode.hedera.com/api/v1/transactions/` +
+    encodeURIComponent(toMirrorTxId(txId));
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), DUST_CHECK_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(url, { cache: "no-store", signal: ctrl.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      const headMs = await getMirrorHeadTimestampMs();
+      if (isMirrorBeyondTxWindow(txId, headMs, MIRROR_CATCHUP_MARGIN_MS)) return "expired";
+      return "unknown";
+    }
+    const data = (await res.json()) as { transactions?: Array<{ result?: string }> };
+    const result = data.transactions?.[0]?.result;
+    if (result === "SUCCESS") return "success";
+    if (result) return "failed";
+    return "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Reconcile stored dust-fee intents for this account. A previous attempt
+ * whose outcome is still unknown BLOCKS a new payment — retrying blind
+ * would charge the user twice for one post. Resolved intents are cleared.
+ */
+async function gateUnresolvedDustFee(account: string): Promise<void> {
+  await reconcilePendingIntents(checkDustTxLanded);
+  const blocked = listPendingIntents().filter(
+    (i) => i.account === account && i.kind === "dust-fee",
+  );
+  if (blocked.length > 0) {
+    const txIds = blocked.map((i) => i.txId).join(", ");
+    throw new Error(
+      `A dust-fee payment from this wallet is still unconfirmed (${txIds}). ` +
+        `Check its status on HashScan before paying again — paying again now could charge you twice.`,
+    );
+  }
+}
+
+/**
  * Send `tinybars` of HBAR to `treasury` (0.0.x or 0x…), signed by the
  * connected Hedera wallet via DAppConnector (HIP-820). Resolves to the tx
  * id to pass as dustFeeTxId.
+ *
+ * Same honesty discipline as lib/tx.ts executeWrite: 30s wallet timeout,
+ * mirror verification on silence, and a pending-intent guard so retrying
+ * after a hang can't silently charge the user twice for one post.
  */
 export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise<string> {
   if (tinybars <= 0n) throw new Error("Dust fee must be greater than zero.");
@@ -238,6 +312,10 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
   }
   const { hc, accountId } = pairing;
   const payer = AccountId.fromString(accountId);
+  // Double-payment guard FIRST: if a previous dust-fee attempt from this
+  // wallet is still unconfirmed, refuse a new payment until its outcome is
+  // known. A fresh txId per attempt means a blind retry would pay twice.
+  await gateUnresolvedDustFee(accountId);
   const amount = Hbar.fromTinybars(tinybars.toString());
   const tx = new TransferTransaction()
     .addHbarTransfer(payer, amount.negated())
@@ -259,14 +337,79 @@ export async function sendDustFeeTo(treasury: string, tinybars: bigint): Promise
     networkClient.close(); // never leak the gRPC client per town-hall write
   }
   const txId = tx.transactionId?.toString() ?? "";
+  // Persist the intent before the wallet signs — cleared below on
+  // definitive outcomes. An "unknown" outcome stays stored so the next
+  // payFee reconciles instead of double-paying.
+  savePendingIntent({
+    txId,
+    kind: "dust-fee",
+    label: `Dust fee ${tinybars.toString()} tinybars`,
+    account: accountId,
+    createdAt: Date.now(),
+  });
   // DAppConnector signs AND executes via the wallet (HIP-820).
   const { transactionToBase64String } = await import("@hashgraph/hedera-wallet-connect");
   const network = "mainnet"; // mainnet only — no testnet
-  await (hc.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
-    signerAccountId: `hedera:${network}:${accountId}`,
-    transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),
-  });
-  if (!txId) throw new Error("Wallet did not return a transaction id.");
+  // 30s wallet timeout (same as executeWrite): without it a silent wallet
+  // hangs the UI on "paying" forever, and a retry would pay the fee twice.
+  const WALLET_TIMEOUT_MS = 30_000;
+  let walletResponded = false;
+  try {
+    await Promise.race([
+      (async () => {
+        await (hc.signAndExecuteTransaction as unknown as (params: object) => Promise<unknown>)({
+          signerAccountId: `hedera:${network}:${accountId}`,
+          transactionList: transactionToBase64String(tx as unknown as Parameters<typeof transactionToBase64String>[0]),
+        });
+        walletResponded = true;
+      })(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("WALLET_TIMEOUT")), WALLET_TIMEOUT_MS),
+      ),
+    ]);
+  } catch (e) {
+    if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
+      // Wallet went silent — verify on-chain before giving up. Bounded:
+      // a mirror stall must not hang the user a second time.
+      const landed = await checkDustTxLanded(txId);
+      if (landed === "success") {
+        removePendingIntent(txId);
+        return txId;
+      }
+      if (landed === "failed") {
+        removePendingIntent(txId);
+        throw new Error("The dust-fee transaction failed on-chain. No payment was sent.");
+      }
+      if (landed === "expired") {
+        // Never reached the network — nothing was sent, safe to retry.
+        removePendingIntent(txId);
+        throw new Error(
+          "The dust-fee transaction never reached the Hedera network — nothing was sent and it's safe to retry.",
+        );
+      }
+      // Outcome genuinely unknown: the wallet may have broadcast it. The
+      // intent stays stored — the next attempt is gated until this resolves.
+      // Never a silent hang, never permission to blindly re-pay.
+      throw new Error(
+        `The wallet didn't respond, and the dust-fee payment's outcome is unknown. ` +
+          `Check ${txId} on HashScan before retrying — retrying now could charge you twice.`,
+      );
+    }
+    // A rejected signature is never broadcast — clear the intent so a
+    // routine "decline" doesn't block the next attempt.
+    if (isWalletRejection(e)) {
+      removePendingIntent(txId);
+    }
+    throw e;
+  }
+  if (!txId) {
+    removePendingIntent(txId);
+    throw new Error("Wallet did not return a transaction id.");
+  }
+  // Wallet responded: the transfer was submitted. Clear the intent — the
+  // server verifies the dustFeeTxId next, and a later payFee is a conscious
+  // new attempt, not a blind retry of a hang.
+  removePendingIntent(txId);
   return txId;
 }
 

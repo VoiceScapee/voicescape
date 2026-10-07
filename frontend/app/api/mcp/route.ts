@@ -16,6 +16,7 @@
 
 export const runtime = "nodejs";
 
+import { READONLY_TOOLS } from "@/lib/server/mcp-readonly-tools";
 import { createMcpHandler } from "mcp-handler";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
@@ -31,30 +32,6 @@ const mcpHandler = createMcpHandler(registerTools, {
 const MCP_IP_LIMIT_WRITE = 20;
 const MCP_IP_LIMIT_READ = 100;
 const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
-
-/**
- * Tools that only read public data — generous limits for legitimate
- * agent exploration. Write tools (intros, claims, vaults, feedback)
- * stay strict — that's where spam/abuse matters.
- */
-const READONLY_TOOLS = new Set([
-  "lookup_blockpage",
-  "verify_tip",
-  "treasury_stats",
-  "recent_tips",
-  "search_agents",
-  "check_profile_pin",
-  "check_claim_status",
-  "list_templates",
-  "check_vault_health",
-  "check_feedback_status",
-  "list_open_bugs",
-  "render_blockpage",
-  "render_blockpage_image",
-  "get_started",
-  "quote_tip",
-  "trending_creators",
-]);
 
 /**
  * Extract the tool name from a JSON-RPC tools/call request body.

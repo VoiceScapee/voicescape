@@ -45,5 +45,12 @@ export async function POST(req: NextRequest) {
   const dd = liaisonRouteDeps();
   if (!dd.ok) return dd.response;
   const deps = dd.deps;
-  return toResponse(await handleVerifyTip(deps, addr, body));
+  try {
+    return toResponse(await handleVerifyTip(deps, addr, body));
+  } catch {
+    return NextResponse.json(
+      { error: "internal error — try again", code: "INTERNAL_ERROR", retryable: true },
+      { status: 500 },
+    );
+  }
 }

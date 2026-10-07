@@ -48,6 +48,7 @@ async function fetchWeeklyTipLogs(): Promise<unknown[]> {
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       next: { revalidate: 300 }, // Cache for 5 minutes — cheap and fresh enough.
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Mirror Node returned ${res.status}`);
     const data = (await res.json()) as { logs?: unknown[]; links?: { next?: string | null } };

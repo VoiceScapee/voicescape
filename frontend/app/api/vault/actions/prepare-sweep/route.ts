@@ -48,7 +48,10 @@ export async function POST(req: Request): Promise<Response> {
 
   let balanceTinybar: bigint;
   try {
-    const res = await fetch(`${MIRROR_BASE}/accounts/${vaultAccountId}`, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${MIRROR_BASE}/accounts/${vaultAccountId}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
       return NextResponse.json({ error: `vault account ${vaultAccountId} not found on Hedera mainnet` }, { status: 400 });
     }
@@ -59,7 +62,10 @@ export async function POST(req: Request): Promise<Response> {
     }
     balanceTinybar = BigInt(bal);
   } catch {
-    return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
+    return NextResponse.json(
+      { error: "mirror node unreachable — try again in a moment", code: "MIRROR_UNAVAILABLE", retryable: true },
+      { status: 502 },
+    );
   }
 
   let built;

@@ -24,6 +24,7 @@ export async function GET() {
     const logsRes = await fetch(logsUrl, {
       headers: { Accept: "application/json" },
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!logsRes.ok) throw new Error("Mirror Node unavailable");

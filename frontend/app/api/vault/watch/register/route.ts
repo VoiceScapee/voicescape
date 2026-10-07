@@ -56,7 +56,10 @@ export async function POST(req: Request): Promise<Response> {
 
   let humanKey;
   try {
-    const res = await fetch(`${MIRROR_BASE}/accounts/${humanAccountId}`, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${MIRROR_BASE}/accounts/${humanAccountId}`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
       return NextResponse.json({ error: `account ${humanAccountId} not found on Hedera mainnet` }, { status: 400 });
     }
@@ -66,7 +69,10 @@ export async function POST(req: Request): Promise<Response> {
     }
     humanKey = parsed;
   } catch {
-    return NextResponse.json({ error: "mirror node unreachable — try again in a moment" }, { status: 502 });
+    return NextResponse.json(
+      { error: "mirror node unreachable — try again in a moment", code: "MIRROR_UNAVAILABLE", retryable: true },
+      { status: 502 },
+    );
   }
 
   try {

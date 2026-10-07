@@ -58,6 +58,7 @@ export function liaisonDeps(): LiaisonDeps {
     mirrorGet: async (path: string) => {
       const res = await fetch(`${MIRROR_NODE_BASE}${path}`, {
         headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
       });
       let json: unknown = null;
       try {

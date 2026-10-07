@@ -41,6 +41,7 @@ export async function GET(req: Request) {
     const res = await fetch(url, {
       headers: { Accept: "application/json" },
       next: { revalidate: 60 },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
@@ -72,7 +73,7 @@ export async function GET(req: Request) {
       try {
         const txRes = await fetch(
           `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
-          { headers: { Accept: "application/json" } }
+          { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }
         );
         if (txRes.ok) {
           const txData = await txRes.json();

@@ -37,6 +37,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }
   const id = typeof body.id === "string" && body.id ? body.id : undefined;
-  await clearPendingAction(owner, id);
+  try {
+    await clearPendingAction(owner, id);
+  } catch {
+    return NextResponse.json(
+      { error: "internal error — try again", code: "INTERNAL_ERROR", retryable: true },
+      { status: 500 },
+    );
+  }
   return NextResponse.json({ ok: true });
 }

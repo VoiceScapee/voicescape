@@ -142,6 +142,7 @@ export async function POST(
   try {
     const res = await fetch(`${MIRROR_BASE}/accounts/${owner}`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (res.status === 404) {
       return fail("account-not-found", `account ${owner} not found on Hedera mainnet`, 400);
