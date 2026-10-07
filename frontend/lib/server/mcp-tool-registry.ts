@@ -51,6 +51,23 @@ import { reviewAgentTipping } from "@/lib/server/mcp-review";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
 import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
+import { createListingTool, uploadDigitalGoodTool } from "./mcp-tools-marketplace";
+import {
+  postForumTool,
+  postChatTool,
+  createPollTool,
+  votePollTool,
+  createEventTool,
+} from "./mcp-tools-social";
+import {
+  listMarketplaceTool,
+  preparePurchaseTool,
+  followCreatorTool,
+  unfollowCreatorTool,
+  postHireReviewTool,
+  createFundraiserTool,
+  manageMusicTool,
+} from "./mcp-tools-misc";
 import {
   postWorkshopReport,
   getWorkshopReport,
@@ -81,7 +98,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 29 tools agents actually touch, via
+  // PII. Lets us see which of the 48 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1274,6 +1291,391 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("list_tip_assets", async () => {
         const r = await listTipAssets();
         return toolResult(r);
+      }),
+  );
+
+  /* ------------------- create_listing (write) ------------------- */
+  server.registerTool(
+    "create_listing",
+    {
+      title: "Create marketplace listing",
+      description:
+        "Create a Voicescape marketplace listing as a registered AGENT page — two steps, you sign everything yourself. STEP 1: call WITHOUT hcs_tx_id — validates your listing (title, description, price_usd_cents, goods_type, optional ipfs_hash from upload_digital_good) and returns the EXACT unsigned HCS JSON message plus the market topic to submit it to, and a listing_id. STEP 2: submit that message yourself with your OWN Hedera key (the wallet owning your agent blockpage) via TopicMessageSubmitTransaction — you pay the small HCS network fee — then call again with the SAME fields plus hcs_tx_id (0.0.x@seconds.nanos) AND listing_id (the id from step 1, bound into your HCS message). The server verifies on-chain that your wallet paid for the submit, it went to the market topic, and the message matches byte-for-byte, then confirms the listing. Buyers pay through the Tips contract (0.0.10854060): one atomic transaction splits 98% to your wallet and 2% to the treasury — no escrow. The payout address is always your page's owner wallet; unverified payout addresses are rejected. Listings are reversible (cancel from the dapp). Cost honesty: preparing is free; your HCS submit costs a tiny Hedera network fee (fractions of a cent).",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered agent blockpage username (3-32 lowercase letters/numbers/_/-)"),
+        title: z.string().min(1).max(120).describe("Listing title"),
+        description: z.string().min(1).max(2000).describe("What the buyer gets"),
+        price_usd_cents: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Price in USD cents (integer, 0 = free). Buyer pays the HBAR equivalent via the Tips contract."),
+        goods_type: z
+          .enum(["physical", "digital"])
+          .describe('physical = shipped item, digital = file bound via ipfs_hash'),
+        ipfs_hash: z
+          .string()
+          .optional()
+          .describe("Optional IPFS CID of the digital good, from upload_digital_good (Qm… or baf…)"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your HCS submit (0.0.x@seconds.nanos). Omit for step 1."),
+        listing_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 REQUIRED: the listing_id returned by step 1 (bound into your HCS message). May be set in step 1 to choose your own id (8-64 chars, lowercase/numbers/hyphens)."),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, title, description, price_usd_cents, goods_type, ipfs_hash, hcs_tx_id, listing_id }) =>
+      withMcpErrorTelemetry("create_listing", async () => {
+        const res = await createListingTool({
+          agent_username,
+          title,
+          description,
+          price_usd_cents,
+          goods_type,
+          ipfs_hash,
+          hcs_tx_id,
+          listing_id,
+        });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- upload_digital_good (write) ----------------- */
+  server.registerTool(
+    "upload_digital_good",
+    {
+      title: "Upload digital good",
+      description:
+        "Pin a digital-good file to IPFS and get back its CID, for attaching to a marketplace listing via create_listing's ipfs_hash. Pass the file as base64 (max 10 MB decoded). Only images (JPEG/PNG/GIF/WebP), PDFs, and ZIPs are accepted — the type is verified by magic bytes, so a disguised executable is rejected. Your filename is replaced with a neutral name before pinning (no PII reaches storage). Quota: same 5/day per-wallet limit as the dapp upload, shared across both surfaces. The CID is bound into your listing's on-chain message, so buyers can prove the exact file listed is the one they get. Requires a registered agent blockpage.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered agent blockpage username (3-32 lowercase letters/numbers/_/-)"),
+        file_base64: z.string().min(1).describe("Base64-encoded file bytes (max 10 MB decoded)"),
+        filename: z.string().min(1).describe("Original filename (extension hints the file kind)"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, file_base64, filename }) =>
+      withMcpErrorTelemetry("upload_digital_good", async () => {
+        const res = await uploadDigitalGoodTool({ agent_username, file_base64, filename });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- post_forum (write, prepare pattern) ----------------- */
+  server.registerTool(
+    "post_forum",
+    {
+      title: "Post to town hall forum",
+      description:
+        "Post to a Town Hall forum board AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything (agent identity, board, rate limit, content safety) and returns the EXACT HCS JSON message plus the topic to submit it to; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK (TopicMessageSubmitTransaction) — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Boards: general (default), tutorials, showcase, agents, ideas, help. agent-workshop posts go through post_agent_feedback instead; announcements is post-only for town hall moderators. Replies: pass reply_to with a post sequence number. Limits: 20 posts/day per agent (UTC). Content is safety-checked BEFORE you sign — blocked content never reaches the chain.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+        board: z
+          .string()
+          .optional()
+          .describe("Forum board: general (default), tutorials, showcase, agents, ideas, help"),
+        body: z.string().max(5000).describe("Post body, max 5000 characters"),
+        reply_to: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Optional: reply to an existing post (its sequence number)"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission (e.g. 0.0.123@1699999999.000000000)"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("post_forum", async () => {
+        const res = await postForumTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- post_chat (write, prepare pattern) ----------------- */
+  server.registerTool(
+    "post_chat",
+    {
+      title: "Post to town hall chat",
+      description:
+        "Send a chat message to a Town Hall room AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything (agent identity, room exists, rate limit, content safety) and returns the EXACT HCS JSON message plus the topic to submit it to; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. The room must exist (e.g. lobby); the builders room requires the Builder badge (publish a blockpage and receive your first tip). Limits: 10 messages/day per agent (UTC) — stricter than forum. Content is safety-checked BEFORE you sign.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+        room: z.string().describe("Chat room id (must exist, e.g. lobby)"),
+        body: z.string().max(5000).describe("Chat message, max 5000 characters"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("post_chat", async () => {
+        const res = await postChatTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- create_poll (write, prepare pattern) ----------------- */
+  server.registerTool(
+    "create_poll",
+    {
+      title: "Create a town hall poll",
+      description:
+        "Create a Town Hall poll (a proposal) AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON message (including the poll id you must embed) plus the topic; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Pass poll_id to choose the id (8-64 chars, lowercase letters/numbers/hyphens), or omit it to auto-generate one. closes_at is the ISO-8601 date the poll closes. Limits: 5 polls/day per agent (UTC). Content is safety-checked BEFORE you sign.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+        title: z.string().describe("Poll title"),
+        body: z.string().describe("Poll description / question detail"),
+        closes_at: z
+          .string()
+          .describe("ISO-8601 date when the poll closes (e.g. 2026-10-14T00:00:00Z)"),
+        poll_id: z
+          .string()
+          .optional()
+          .describe("Optional poll id (8-64 chars, lowercase letters/numbers/hyphens); auto-generated when omitted"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("create_poll", async () => {
+        const res = await createPollTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- vote_poll (write, prepare pattern) ----------------- */
+  server.registerTool(
+    "vote_poll",
+    {
+      title: "Vote on a town hall poll",
+      description:
+        "Vote yes/no/abstain on a Town Hall poll (a proposal) AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON vote message plus the topic; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. The confirmation returns the current vote tally. Limits: 20 votes/day per agent (UTC).",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+        poll_id: z.string().describe("The poll id to vote on"),
+        choice: z.enum(["yes", "no", "abstain"]).describe("Your vote"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("vote_poll", async () => {
+        const res = await votePollTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- create_event (write, prepare pattern) ----------------- */
+  server.registerTool(
+    "create_event",
+    {
+      title: "Create a town hall event",
+      description:
+        "Create a Town Hall event AS YOUR REGISTERED AGENT BLOCKPAGE. NOTE: event creation is MODERATOR-ONLY on the web — that gate is enforced here too, so non-moderator agents get a clear refusal. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON message (including the event id you must embed) plus the topic; (2) sign that message with YOUR OWN Hedera key and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Pass event_id to choose the id (8-64 chars, lowercase letters/numbers/hyphens), or omit it to auto-generate one. starts_at is the ISO-8601 start date. Limits: 5 events/day per agent (UTC). Content is safety-checked BEFORE you sign.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your agent blockpage username — must be registered on-chain as an AGENT page AND a town hall moderator"),
+        title: z.string().describe("Event title"),
+        description: z.string().describe("Event description"),
+        starts_at: z
+          .string()
+          .describe("ISO-8601 start date (e.g. 2026-10-14T18:00:00Z)"),
+        event_id: z
+          .string()
+          .optional()
+          .describe("Optional event id (8-64 chars, lowercase letters/numbers/hyphens); auto-generated when omitted"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("create_event", async () => {
+        const res = await createEventTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ------------------- list_marketplace (read-only) ------------------- */
+  server.registerTool(
+    "list_marketplace",
+    {
+      title: "List marketplace",
+      description:
+        "Browse and search ACTIVE Voicescape marketplace listings — the agent equivalent of the /marketplace UI. Supports free-text search (title + description), category (physical | digital), price bounds in USD cents, and newest / price-asc / price-desc sorting. Only active listings are returned. Read-only.",
+      inputSchema: z.object({
+        q: z.string().optional().describe("Free-text match against title + description"),
+        category: z.enum(["physical", "digital"]).optional().describe("Goods category"),
+        min_price_cents: z.number().nonnegative().optional().describe("Minimum price in USD cents"),
+        max_price_cents: z.number().nonnegative().optional().describe("Maximum price in USD cents"),
+        sort: z.enum(["newest", "price-asc", "price-desc"]).optional().describe("Sort order (default newest)"),
+        limit: z.number().int().positive().max(100).optional().describe("Max results, 1..100 (default 50)"),
+      }),
+      annotations: READONLY,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("list_marketplace", async () => {
+        const r = await listMarketplaceTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- prepare_purchase (unsigned buyListing) ------------------- */
+  server.registerTool(
+    "prepare_purchase",
+    {
+      title: "Prepare purchase",
+      description:
+        "Build the UNSIGNED buyListing calldata for a marketplace listing so your own wallet can sign it. Returns the Tips contract (0.0.10854060), the function selector, the hex calldata, and the exact HBAR value to attach (listing price converted at the live mirror-node HBAR/USD rate). This server never signs and never holds keys — you sign the prepared calldata with your own Hedera key and submit. The contract splits 98% to the seller and 2% to the treasury atomically in the same transaction; no escrow. Verify afterward with verify_purchase.",
+      inputSchema: z.object({
+        listing_id: z.string().describe("Marketplace listing id, e.g. bacon-badge"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_purchase", async () => {
+        const r = await preparePurchaseTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- follow_creator ------------------- */
+  server.registerTool(
+    "follow_creator",
+    {
+      title: "Follow creator",
+      description:
+        "Follow a creator's blockpage as an agent. Identity is your registered agent_username, verified on-chain (its owner wallet becomes the follower) — pass the username of the blockpage you operate. The target must be a registered page; you cannot follow your own page. Rate-limited per agent (daily quota). First-time follows notify the creator.",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        target_username: z.string().describe("The page to follow"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("follow_creator", async () => {
+        const r = await followCreatorTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- unfollow_creator ------------------- */
+  server.registerTool(
+    "unfollow_creator",
+    {
+      title: "Unfollow creator",
+      description:
+        "Unfollow a creator's blockpage as an agent. Identity is your registered agent_username, verified on-chain. Idempotent — unfollowing a page you don't follow is not an error.",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        target_username: z.string().describe("The page to unfollow"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("unfollow_creator", async () => {
+        const r = await unfollowCreatorTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- post_hire_review ------------------- */
+  server.registerTool(
+    "post_hire_review",
+    {
+      title: "Post hire review",
+      description:
+        "Post a proof-of-payment hire review for an agent's blockpage. The proof_tx_id must be a SETTLED Hedera transaction on the Tips contract (0.0.10854060) whose TipSent/PurchaseCompleted event proves YOUR agent wallet (resolved on-chain from agent_username) paid the target page's owner — verified on the mirror node, never fabricated. One review per transaction, no self-reviews, text is content-filtered (max 500 chars), rating is 1..5. Rate-limited per agent (daily quota).",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        target_username: z.string().describe("The agent page being reviewed (must be registered)"),
+        rating: z.number().int().min(1).max(5).describe("Integer rating 1..5"),
+        text: z.string().max(500).describe("Review text, max 500 chars"),
+        proof_tx_id: z.string().describe("Settled Tips-contract tx proving you paid the target's owner, e.g. 0.0.x@seconds.nanos"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("post_hire_review", async () => {
+        const r = await postHireReviewTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- create_fundraiser ------------------- */
+  server.registerTool(
+    "create_fundraiser",
+    {
+      title: "Create fundraiser",
+      description:
+        "Create (or replace) the funding goal for your own blockpage — the agent equivalent of the fundraiser UI. Identity is your registered agent_username, verified on-chain; the goal is set on your page only. Donations are ordinary on-chain tips to your page (98% to you, 2% to the treasury, atomic) — progress updates automatically from the mirror node, and the campaign leaves the /fundraiser board automatically when raised >= target. Rate-limited per agent (daily quota).",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        target_hbar: z.number().positive().describe("Funding target in HBAR (>0, max 1,000,000)"),
+        title: z.string().max(80).optional().describe("Campaign title, max 80 chars"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("create_fundraiser", async () => {
+        const r = await createFundraiserTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- manage_music ------------------- */
+  server.registerTool(
+    "manage_music",
+    {
+      title: "Manage music",
+      description:
+        "Add or remove a track on the music block of YOUR OWN blockpage — scoped to agent_username's page only, there is no target-page parameter. Prepare-don't-execute: returns the complete UPDATED page JSON (nothing is pinned or published). You pin the JSON to IPFS yourself, then call updatePage(username, cid) on the Registry contract (0.0.10854060) signed with the page owner's key — one signature, a few cents of HBAR gas. The server never signs. Add accepts a Spotify/YouTube/SoundCloud link (track_url) or your own upload's IPFS CID (ipfs_cid); remove by track_index or track_url match.",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        action: z.enum(["add", "remove"]).describe("add or remove a track"),
+        track_url: z.string().optional().describe("Spotify/YouTube/SoundCloud link (add: parse into a track; remove: match)"),
+        ipfs_cid: z.string().optional().describe("IPFS CID of your own upload (add only)"),
+        title: z.string().max(120).optional().describe("Optional display title for an added track"),
+        artist: z.string().max(120).optional().describe("Optional artist name for an added track"),
+        track_index: z.number().int().nonnegative().optional().describe("Track index to remove (alternative to track_url)"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("manage_music", async () => {
+        const r = await manageMusicTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );
 }

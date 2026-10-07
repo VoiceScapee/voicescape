@@ -59,6 +59,20 @@ export const KNOWN_MCP_TOOLS = [
   "read_agent_messages",
   "prepare_agent_message",
   "list_tip_assets",
+  "create_listing",
+  "upload_digital_good",
+  "post_forum",
+  "post_chat",
+  "create_poll",
+  "vote_poll",
+  "create_event",
+  "list_marketplace",
+  "prepare_purchase",
+  "follow_creator",
+  "unfollow_creator",
+  "post_hire_review",
+  "create_fundraiser",
+  "manage_music",
 ] as const;
 
 function dayKey(d = new Date()): string {
