@@ -13,7 +13,9 @@ export const maxDuration = 60;
  * activity scan, balance floor). Alerts are recorded on the watch records,
  * surfaced via check_vault_health and /v/manage.
  *
- * Triggered by Vercel Cron (see vercel.json). Guarded by CRON_SECRET:
+ * Triggered by Vercel Cron — vercel.json is the single source of truth for the
+ * cadence (currently daily); do not restate the schedule here or it will drift
+ * again (see the webhooks/poll "every 5 minutes" incident). Guarded by CRON_SECRET:
  * fails closed with 503 when the secret is unset and 401 when the Bearer
  * token is missing or wrong. Same pattern as /api/webhooks/poll.
  */

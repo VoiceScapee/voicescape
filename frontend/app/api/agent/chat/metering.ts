@@ -365,7 +365,9 @@ async function resolveSenderEvmAddress(evmAddress: string): Promise<string> {
   if (!m) return evmAddress.toLowerCase();
   const accountId = `0.0.${BigInt("0x" + m[1]).toString()}`;
   try {
-    const res = await fetch(`${MIRROR_BASE}/accounts/${accountId}`);
+    const res = await fetch(`${MIRROR_BASE}/accounts/${accountId}`, {
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) return evmAddress.toLowerCase();
     const body = (await res.json()) as { evm_address?: string };
     return typeof body.evm_address === "string" && /^0x[0-9a-fA-F]{40}$/.test(body.evm_address)
@@ -406,7 +408,7 @@ async function discoverFreshPayments(
       `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results/logs` +
       `?order=desc&limit=100` +
       `&timestamp=gte:${fromSec}.000000000&timestamp=lte:${nowSec}.999999999`;
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
     if (!res.ok) return [];
     const body = (await res.json()) as {
       logs?: Array<{

@@ -70,7 +70,14 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await readJsonBody(req);
-  return toResponse(await handleDraftPost(deps, addr, body));
+  try {
+    return toResponse(await handleDraftPost(deps, addr, body));
+  } catch {
+    return NextResponse.json(
+      { error: "internal error — try again", code: "INTERNAL_ERROR", retryable: true },
+      { status: 500 },
+    );
+  }
 }
 
 export async function DELETE(req: NextRequest) {
@@ -87,5 +94,12 @@ export async function DELETE(req: NextRequest) {
   const dd = liaisonRouteDeps();
   if (!dd.ok) return dd.response;
   const deps = dd.deps;
-  return toResponse(await handleDraftDelete(deps, addr));
+  try {
+    return toResponse(await handleDraftDelete(deps, addr));
+  } catch {
+    return NextResponse.json(
+      { error: "internal error — try again", code: "INTERNAL_ERROR", retryable: true },
+      { status: 500 },
+    );
+  }
 }

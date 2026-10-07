@@ -31,9 +31,13 @@ export async function GET(req: NextRequest) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ accountId: account, network: "mainnet" }),
+      signal: AbortSignal.timeout(12_000),
     });
   } catch {
-    return NextResponse.json({ error: "profile service unreachable" }, { status: 502 });
+    return NextResponse.json(
+      { error: "profile service unavailable — try again", code: "UPSTREAM_UNAVAILABLE", retryable: true },
+      { status: 502 },
+    );
   }
   if (!upstream.ok) {
     return NextResponse.json({ error: "profile lookup failed" }, { status: 502 });

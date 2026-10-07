@@ -40,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ room
     const topic = getTopicId("chat");
     if (!topic) return NextResponse.json({ messages: [] });
     const mirrorUrl = `${mirrorBaseUrl()}/api/v1/topics/${topic}/messages?order=asc&limit=100${Number.isFinite(since) && since > 0 ? `&sequencenumber=gt:${since}` : ""}`;
-    const res = await fetch(mirrorUrl);
+    const res = await fetch(mirrorUrl, { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`Mirror node query failed: ${res.status}`);
     const data = (await res.json()) as { messages?: Array<{ sequence_number: number; message: string }> };
     const messages = [];
@@ -63,7 +63,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ room
     return NextResponse.json({ messages });
   } catch (e) {
     console.error("[chat GET] error:", e instanceof Error ? e.message : String(e));
-    return NextResponse.json({ error: "Failed to load messages" }, { status: 500 });
+    return NextResponse.json(
+      { error: "mirror node unavailable — try again", code: "MIRROR_UNAVAILABLE", retryable: true },
+      { status: 502 },
+    );
   }
 }
 

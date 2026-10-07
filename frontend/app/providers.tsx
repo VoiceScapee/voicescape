@@ -189,8 +189,53 @@ export function RootProviders({ children }: { children: React.ReactNode }) {
   return (
     <WalletProvider>
       <SessionProvider>
-        <LanguageProvider>{children}</LanguageProvider>
+        <LanguageProvider>
+          <OfflineBanner />
+          {children}
+        </LanguageProvider>
       </SessionProvider>
     </WalletProvider>
+  );
+}
+
+/**
+ * Global offline state. The service worker is deliberately cache-free (push
+ * only), so an installed PWA that loses network would otherwise show only
+ * browser-default failure screens. This banner says so honestly instead.
+ * No caching behavior change — just the truth about the connection.
+ */
+function OfflineBanner() {
+  const [online, setOnline] = React.useState(true);
+  React.useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  if (online) return null;
+  return (
+    <div
+      role="status"
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 9999,
+        padding: "10px 16px",
+        paddingTop: "calc(10px + env(safe-area-inset-top, 0px))",
+        textAlign: "center",
+        fontSize: 14,
+        fontWeight: 600,
+        color: "#fff",
+        background: "#b45309",
+      }}
+    >
+      You&apos;re offline — Voicescape needs a connection.
+    </div>
   );
 }

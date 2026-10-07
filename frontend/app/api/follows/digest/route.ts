@@ -62,6 +62,7 @@ async function txIdForLog(log: TipLog): Promise<string> {
   try {
     const res = await fetch(`${MIRROR}/transactions?timestamp=${encodeURIComponent(log.timestamp)}`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) return fallback;
     const data: unknown = await res.json();
@@ -87,7 +88,11 @@ async function tipsForPage(page: PageInfo): Promise<DigestItem[]> {
       `${MIRROR}/contracts/${TIPS_CONTRACT}/results/logs` +
       `?order=desc&limit=${TIPS_PER_PAGE}` +
       `&topic0=${TIPSENT_TOPIC}&topic3=${padTopicAddress(page.owner)}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" }, next: { revalidate: 60 } });
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      next: { revalidate: 60 },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) return [];
     const data: unknown = await res.json();
     logs = ((data as { logs?: TipLog[] })?.logs ?? []).filter((l) => l && typeof l === "object");
