@@ -38,7 +38,8 @@ import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
 import { getKvStore } from "./store";
-import { validateCapabilityToken } from "./capability-tokens";
+import { validateCapabilityToken, CAPABILITY_SCOPES } from "./capability-tokens";
+import { createTokenRequest } from "./token-requests";
 import {
   stashPageUpdateProposal,
   PendingActionConflictError,
@@ -1152,6 +1153,12 @@ export interface PageUpdateProposal {
   change_summary: string;
   status: "awaiting_human_approval";
   expires_in: string;
+  /**
+   * Approval link for the human — the agent drops this in its OWN chat.
+   * The human opens it, reviews the proposal, taps Approve, and signs
+   * once in their wallet. No Buddy chat, no dapp sign-in needed.
+   */
+  approval_url: string;
   next: string;
 }
 
@@ -1263,10 +1270,12 @@ export async function proposePageUpdate(
       change_summary: changeSummary,
       status: "awaiting_human_approval",
       expires_in: "24h",
+      approval_url: `${getRequestContext().origin.replace(/\/$/, "")}/p/${action.id}`,
       next:
-        `Point the human at their Buddy chat approval inbox — the proposal is there as a one-tap card. ` +
-        `They review "${changeSummary.slice(0, 120)}", tap Approve, and sign ONCE in their wallet ` +
+        `Share this approval link with your human in YOUR OWN chat: ${getRequestContext().origin.replace(/\/$/, "")}/p/${action.id} — ` +
+        `they open it, review "${changeSummary.slice(0, 120)}", tap Approve, and sign ONCE in their wallet ` +
         `(a few cents of HBAR network gas). Nothing is pinned and no transaction is built until they tap. ` +
+        `The proposal is also in their Buddy chat approval inbox as a card. ` +
         `Untapped proposals expire after 24h. Do not resubmit the same proposal — if the inbox is full ` +
         `(3 max), ask the human to clear it first.`,
     };
@@ -1279,6 +1288,91 @@ export async function proposePageUpdate(
       };
     }
     throw e;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: request_capability_token (keyless issuance link)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Request a capability-token issuance link for the keyless path. The agent
+ * cannot hold keys, so its human issues the Bearer <redacted> — but the
+ * human lives in the AGENT'S OWN chat, not in the dapp. This tool returns
+ * an issuance URL (/t/<id>) the agent drops in its own chat: the human
+ * opens it, connects their wallet, and taps "Issue pass". The wallet
+ * pairing IS the consent; the token is bound to the paired account and
+ * shown ONCE on the page, and the human puts it in the agent's secure
+ * credential storage (never in chat).
+ *
+ * The token only authorizes PROPOSALS (page:update:propose et al) — every
+ * on-chain write still needs the human's wallet signature. The server
+ * never holds any key.
+ */
+export interface RequestCapabilityTokenArgs {
+  /**
+   * Agent-chosen label, shown to the human on the issuance page —
+   * e.g. "muse AI agent". The human decides whether to trust it.
+   */
+  label: string;
+  /**
+   * Requested scopes, subset of page:update:propose, page:read, media:pin.
+   * Defaults to all three when omitted.
+   */
+  scopes?: string[];
+}
+
+export interface CapabilityTokenRequest {
+  request_id: string;
+  label: string;
+  scopes: string[];
+  /** Issuance link for the human — share it in YOUR OWN chat. */
+  issuance_url: string;
+  expires_in: string;
+  next: string;
+}
+
+export async function requestCapabilityToken(
+  args: RequestCapabilityTokenArgs,
+): Promise<CapabilityTokenRequest | { error: string }> {
+  const label = (args.label ?? "").trim().slice(0, 80);
+  if (!label) {
+    return { error: "label is required — name your agent so the human knows who is asking" };
+  }
+  let scopes: (typeof CAPABILITY_SCOPES)[number][] | undefined;
+  if (args.scopes !== undefined) {
+    if (
+      !Array.isArray(args.scopes) ||
+      args.scopes.length === 0 ||
+      !args.scopes.every(
+        (s): s is (typeof CAPABILITY_SCOPES)[number] =>
+          typeof s === "string" && (CAPABILITY_SCOPES as readonly string[]).includes(s),
+      )
+    ) {
+      return {
+        error: `scopes must be a non-empty subset of: ${CAPABILITY_SCOPES.join(", ")}`,
+      };
+    }
+    scopes = args.scopes as (typeof CAPABILITY_SCOPES)[number][];
+  }
+  try {
+    const rec = await createTokenRequest({ label, scopes });
+    const issuanceUrl = `${getRequestContext().origin.replace(/\/$/, "")}/t/${rec.id}`;
+    return {
+      request_id: rec.id,
+      label: rec.label,
+      scopes: rec.scopes,
+      issuance_url: issuanceUrl,
+      expires_in: "24h",
+      next:
+        `Share this issuance link with your human in YOUR OWN chat: ${issuanceUrl} — ` +
+        `they open it, connect their wallet, and tap "Issue pass". The pass (a vs_cap_… Bearer <redacted>) ` +
+        `is shown to them ONCE on that page; they put it in your secure credential storage (never in chat). ` +
+        `The pass only lets you PROPOSE page updates — nothing executes without their tap on each ` +
+        `proposal's approval link. The link expires unused after 24h.`,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "could not create the issuance request" };
   }
 }
 
@@ -1613,6 +1707,22 @@ export interface FinalizedSelfClaim {
   page_url: string;
   cost_estimate: string;
   signing_instructions: string;
+  /**
+   * Hedera Agent Kit recommended envelope for byte-returning tools
+   * (docs/MCP.md "Recommended response shape for custom byte-returning
+   * tools"). Additive aliases — existing fields are kept unchanged.
+   */
+  /** Alias of unsignedTxBytes, kit-recommended field name. */
+  transactionBytesBase64: string;
+  /** "hedera:mainnet" — name the network so bytes can't be mis-submitted. */
+  network: string;
+  /** Prerequisites the signer must satisfy before signing. */
+  requires: {
+    estimatedFeeHbar: string;
+    prerequisites: string[];
+  };
+  /** Human-readable: unsigned, unsubmitted — review, then sign yourself. */
+  safetyNote: string;
 }
 
 /**
@@ -1772,6 +1882,21 @@ export async function finalizeAgentSelfClaim(
     cid,
     page_url: pkg.pageUrl,
     cost_estimate: "Network gas only — a few cents of HBAR from your account. No fee to Voicescape.",
+    // Kit-aligned envelope (additive aliases — existing fields unchanged).
+    transactionBytesBase64: built.unsignedTxBytes,
+    network: "hedera:mainnet",
+    requires: {
+      estimatedFeeHbar: "a few cents of HBAR (gas only), paid from your account",
+      prerequisites: [
+        "your account must exist on Hedera mainnet and hold HBAR",
+        "sign with YOUR OWN Hedera key (ECDSA recommended) — this server never sees it",
+        "sign and submit within ~2 minutes; expired bytes need a fresh finalize_agent_self_claim",
+      ],
+    },
+    safetyNote:
+      "This transaction is NOT signed and has NOT been submitted. Review what_youre_signing " +
+      "above, then sign and submit it with your own key on hedera:mainnet. " +
+      "The Voicescape server holds no keys of any kind and never sees your signature.",
     signing_instructions:
       "Sign with YOUR OWN Hedera key in your own environment — this server never sees it. " +
       'Hiero SDK: const tx = Transaction.fromBytes(Buffer.from(unsignedTxBytes, "base64")); ' +
@@ -1891,6 +2016,17 @@ export interface GetStarted {
   guarantees: string[];
   hello_world: Array<{ step: number; action: string; tool: string; example_args: Record<string, string> }>;
   docs: Record<string, string>;
+  /**
+   * How the official Hedera Agent Kit (@hashgraph/hedera-agent-kit) maps
+   * onto this server — machine-readable so kit-based agents can wire
+   * themselves up without guessing.
+   */
+  hedera_agent_kit: {
+    architecture: string;
+    sign_pattern: string;
+    key_type: string;
+    example: string;
+  };
 }
 
 /** Static orientation payload — no chain reads, no auth. */
@@ -1932,6 +2068,22 @@ export function getStarted(): GetStarted {
     docs: {
       setup: "https://voicescape.vercel.app/ai-agent",
       mcp_url: "https://voicescape.vercel.app/api/mcp",
+    },
+    hedera_agent_kit: {
+      architecture:
+        "Non-custodial HTTP MCP server — the official Hedera Agent Kit's RETURN_BYTES pattern: " +
+        "the server builds frozen unsigned transactions and never holds keys, never signs, never spends.",
+      sign_pattern:
+        "finalize_agent_self_claim returns the kit's recommended byte envelope " +
+        "(transactionBytesBase64, network, requires, safetyNote). Decode with the kit's toUint8Array " +
+        "(or Buffer.from(b64, 'base64')), Transaction.fromBytes, sign with your operator key, execute — " +
+        "the same flow as the kit's external-mcp-return-bytes-agent.ts example.",
+      key_type:
+        "ECDSA (secp256k1) recommended — the kit's official default; required for hollow-account " +
+        "onboarding (ED25519 cannot hollow-create) and x402 buyer flows. registerPage itself signs fine with either key type.",
+      example:
+        "Runnable Node client: voicescape-agent-onboarding skill, examples/self-claim-own-keys.mjs " +
+        "(prepare → human approves in your chat → finalize → sign locally → complete).",
     },
   };
 }

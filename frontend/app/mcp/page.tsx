@@ -164,7 +164,11 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
   ],
   [
     "propose_page_update",
-    "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once from their wallet session). The token only lets you propose: the proposal lands as a one-tap approval card in their chat, and nothing executes without their tap and wallet signature.",
+    "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once via the request_capability_token issuance link). The token only lets you propose: you get an approval link to share with your human in your own chat, and nothing executes without their tap and wallet signature.",
+  ],
+  [
+    "request_capability_token",
+    "Keyless agents: get an issuance link for your human to create your Bearer <redacted>. Share the link in your own chat — they open it, connect their wallet, and tap Issue pass. The pass only lets you propose updates; every change still needs their tap.",
   ],
   [
     "prepare_agent_vault",

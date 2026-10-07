@@ -790,6 +790,14 @@ describe("get_started", () => {
     expect(g.hello_world[0].tool).toBe("lookup_blockpage");
     expect(g.docs.mcp_url).toContain("/api/mcp");
   });
+
+  it("exposes the Hedera Agent Kit wiring block", () => {
+    const g = getStarted();
+    expect(g.hedera_agent_kit.architecture).toMatch(/RETURN_BYTES/i);
+    expect(g.hedera_agent_kit.sign_pattern).toMatch(/finalize_agent_self_claim/);
+    expect(g.hedera_agent_kit.sign_pattern).toMatch(/operator key/);
+    expect(g.hedera_agent_kit.key_type).toMatch(/ECDSA/);
+  });
 });
 
 describe("quote_tip", () => {
@@ -1378,13 +1386,74 @@ describe("propose_page_update tool", () => {
       status: string;
       owner_account_id: string;
       expires_in: string;
+      approval_url: string;
       next: string;
     };
     expect(okRes.proposal_id).toMatch(/^[0-9a-f]{16}$/);
     expect(okRes.status).toBe("awaiting_human_approval");
     expect(okRes.owner_account_id).toBe(OWNER);
     expect(okRes.expires_in).toBe("24h");
-    expect(okRes.next).toMatch(/one-tap/i);
+    expect(okRes.approval_url).toMatch(new RegExp(`/p/${okRes.proposal_id}$`));
+    expect(okRes.next).toMatch(/approval link/i);
+  });
+
+  describe("request_capability_token tool", () => {
+    it("returns an issuance URL for a valid label", async () => {
+      const { requestCapabilityToken } = await import("./mcp-tools");
+      const res = await requestCapabilityToken({ label: "muse AI agent" });
+      expect("error" in res).toBe(false);
+      const ok = res as unknown as {
+        request_id: string;
+        label: string;
+        scopes: string[];
+        issuance_url: string;
+        expires_in: string;
+        next: string;
+      };
+      expect(ok.request_id).toMatch(/^[0-9a-f]{32}$/);
+      expect(ok.label).toBe("muse AI agent");
+      expect(ok.scopes).toEqual(["page:update:propose", "page:read", "media:pin"]);
+      expect(ok.issuance_url).toMatch(new RegExp(`/t/${ok.request_id}$`));
+      expect(ok.expires_in).toBe("24h");
+      expect(ok.next).toMatch(/issuance link/i);
+    });
+
+    it("rejects a missing label and bad scopes", async () => {
+      const { requestCapabilityToken } = await import("./mcp-tools");
+      const noLabel = await requestCapabilityToken({ label: "   " });
+      expect("error" in noLabel).toBe(true);
+      const badScopes = await requestCapabilityToken({ label: "x", scopes: ["admin:everything"] });
+      expect("error" in badScopes).toBe(true);
+      expect((badScopes as { error: string }).error).toMatch(/scopes/i);
+    });
+
+    it("honors a requested scope subset", async () => {
+      const { requestCapabilityToken } = await import("./mcp-tools");
+      const res = await requestCapabilityToken({ label: "x", scopes: ["page:update:propose"] });
+      expect("error" in res).toBe(false);
+      expect((res as unknown as { scopes: string[] }).scopes).toEqual(["page:update:propose"]);
+    });
+
+    it("the issued pass validates for the paired account with requested scopes", async () => {
+      const { requestCapabilityToken } = await import("./mcp-tools");
+      const { consumeTokenRequest } = await import("./token-requests");
+      const { issueCapabilityToken, validateCapabilityToken } = await import("./capability-tokens");
+      const req = await requestCapabilityToken({ label: "tester", scopes: ["page:update:propose"] });
+      expect("error" in req).toBe(false);
+      const requestId = (req as unknown as { request_id: string }).request_id;
+      // Simulate the human opening /t/<id> and pairing 0.0.99999.
+      const consumed = await consumeTokenRequest(requestId);
+      expect(consumed).not.toBeNull();
+      const { token } = await issueCapabilityToken("0.0.99999", {
+        label: consumed!.label,
+        scopes: consumed!.scopes,
+      });
+      const validated = await validateCapabilityToken(token, "page:update:propose");
+      expect(validated).not.toBeNull();
+      expect(validated!.record.ownerAccountId).toBe("0.0.99999");
+      // One-time link: already consumed.
+      expect(await consumeTokenRequest(requestId)).toBeNull();
+    });
   });
 
   it("requires a change summary and content fields", async () => {
