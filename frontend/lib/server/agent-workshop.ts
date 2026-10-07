@@ -555,11 +555,17 @@ export async function upvoteWorkshopReport(
  * platform operator needs to reply freely as part of its job — rate-limiting
  * the operator would break the feedback loop.
  */
+/**
+ * Built-in engine operator — the platform operator always bypasses rate limits
+ * and identity gates, no env configuration needed. Additional operators can be
+ * added via WORKSHOP_OPERATORS env var.
+ */
+const BUILTIN_OPERATORS = ["danny_engine"];
+
 function getWorkshopOperators(): Set<string> {
   const raw = process.env.WORKSHOP_OPERATORS ?? "";
-  return new Set(
-    raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
-  );
+  const fromEnv = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  return new Set([...BUILTIN_OPERATORS, ...fromEnv]);
 }
 
 /** Separate rate-limit prefix for replies (vs posts). */
