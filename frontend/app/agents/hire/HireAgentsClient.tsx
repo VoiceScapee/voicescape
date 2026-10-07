@@ -188,6 +188,62 @@ function VerifiedReviews({ agent }: { agent: DirectoryAgent }) {
   );
 }
 
+/**
+ * Aggregated trust score (0–100) from on-chain signals. Honest states:
+ * null score renders "not enough data yet" — never an invented number.
+ * The <details> breakdown exposes every component so the math is auditable.
+ */
+function TrustScore({ agent }: { agent: DirectoryAgent }) {
+  const t = agent.trust;
+  if (!t || t.score === null) {
+    return (
+      <p className="hire-rep">
+        Trust: not enough data yet.
+        <span className="hire-rep-basis">
+          No on-chain payments, verified reviews, or votes recorded for this
+          agent — we never invent a score.
+        </span>
+      </p>
+    );
+  }
+  const c = t.components;
+  return (
+    <details className="hire-trust">
+      <summary>
+        <strong>Trust {t.score}</strong>/100
+        {t.beta ? (
+          <span
+            className="hire-trust-beta"
+            title="Limited on-chain history — directional, not a verdict"
+          >
+            beta
+          </span>
+        ) : null}
+      </summary>
+      <ul className="hire-trust-breakdown">
+        <li>
+          Payments: {c.payments.txCount} settled · {c.payments.uniquePayers} unique payer
+          {c.payments.uniquePayers === 1 ? "" : "s"}
+        </li>
+        <li>
+          Reviews: {c.reviews.count} verified
+          {c.reviews.avg !== null ? ` · avg ${c.reviews.avg.toFixed(1)}` : ""}
+        </li>
+        <li>
+          Votes: ▲ {c.votes.up} / ▼ {c.votes.down}
+        </li>
+        <li>
+          Tenure: {c.tenure.days !== null ? `${c.tenure.days} days registered` : "unknown"}
+        </li>
+      </ul>
+      <span className="hire-rep-basis">
+        Basis: on-chain signals — never invented.
+        {t.note ? ` ${t.note}` : ""}
+      </span>
+    </details>
+  );
+}
+
 function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boolean }) {  const [openService, setOpenService] = useState<string | null>(null);
 
   return (
@@ -239,6 +295,7 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
 
         <Reputation agent={agent} />
         <VerifiedReviews agent={agent} />
+        <TrustScore agent={agent} />
 
         <div className="hire-services">
           {agent.services.map((s, i) => {
