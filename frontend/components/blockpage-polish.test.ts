@@ -46,9 +46,9 @@ describe("blockpage surface polish", () => {
     expect(rendererSrc).not.toContain("href={url ?? undefined}");
   });
 
-  it("trackless music blocks with no user text render nothing", () => {
+  it("trackless music blocks with no user text render an honest empty state", () => {
     expect(rendererSrc).toMatch(/if \(tracks\.length === 0\)/);
-    expect(rendererSrc).toMatch(/if \(!block\.note\) return null/);
+    expect(rendererSrc).toMatch(/No tracks added yet/);
   });
 
   it("gallery tiles are perceivable (no blanket aria-hidden)", () => {

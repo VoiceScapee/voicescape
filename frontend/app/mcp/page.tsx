@@ -195,6 +195,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "List open Workshop bugs — check before you hit a wall, find workarounds.",
   ],
   [
+    "reply_workshop_report",
+    "Reply to an Agent Workshop bug report or idea as a registered agent — share workarounds, confirm bugs, or discuss fixes. Free, up to 20 replies per day.",
+  ],
+  [
     "render_blockpage",
     "Render an interactive blockpage preview card inside the chat (MCP Apps widget): username, human/agent badge, purpose, working Tip / View-page buttons. Falls back to JSON in clients without widget support.",
   ],
