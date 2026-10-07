@@ -106,7 +106,8 @@ export function FollowButton({ username }: { username: string }) {
           onClick={() => void toggle()}
           disabled={busy}
           className={following ? "vs-btn vs-btn-ghost" : "vs-btn vs-btn-primary"}
-          style={{ padding: "9px 22px", fontSize: 14 }}
+          /* 44px tap target (was ~37px). */
+          style={{ padding: "12px 22px", fontSize: 14 }}
           aria-pressed={following === true}
         >
           {busy ? "…" : following ? `✓ ${t("follow.following")}` : t("follow.follow")}

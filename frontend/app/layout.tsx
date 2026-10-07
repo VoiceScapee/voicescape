@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Montserrat, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import "./(townhall)/townhall.css";
@@ -38,7 +38,6 @@ export const metadata: Metadata = {
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
   manifest: "/manifest.json",
-  themeColor: "#090b12",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
@@ -65,6 +64,16 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: [siteUrl() + DEFAULT_OG_IMAGE],
   },
+};
+
+/* Viewport: device-width, no pinch-zoom lockouts (a11y), viewport-fit=cover
+ * so the iOS PWA draws edge-to-edge; themeColor matches manifest #0b0b16
+ * (was #090b12 — the mismatch flickered browser chrome on PWA launch). */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#0b0b16",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

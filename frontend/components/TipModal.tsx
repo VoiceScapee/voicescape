@@ -38,6 +38,7 @@ import { recordConversionEvent } from "@/lib/metrics";
 import { reportError } from "@/lib/report-error";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import TipCelebration from "@/components/TipCelebration";
+import { useDialogA11y } from "@/components/useDialogA11y";
 
 const TIP_PRESETS = [1, 5, 10];
 const TIP_PRESETS_HBAR = [1, 5, 10, 25, 50];
@@ -63,6 +64,9 @@ export default function TipModal({
 }) {
   const { account, connect, getTxSender } = useWallet();
   const { session, signOut } = useSession();
+  // Dialog a11y (Escape, focus trap, focus return, scroll lock) — overlay
+  // only; the inline embed render is not a dialog.
+  const dialogRef = useDialogA11y(onClose, !inline);
   // Optional preselected amount (embed ?amount=). Clamped 1..1000; null
   // keeps the existing default. Never touches amounts sent on-chain beyond
   // what the visitor explicitly confirms.
@@ -404,6 +408,8 @@ export default function TipModal({
   if (inline) return panel;
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       className="th-modal-overlay"
       role="dialog"
       aria-modal="true"
