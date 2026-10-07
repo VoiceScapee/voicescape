@@ -200,9 +200,14 @@
   font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
+  /* 360px phones: three flex:1 tabs each get ~104px; keep labels on one line. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.vb-tab:hover {
+.vb-tab:hover,
+.vb-tab:focus-visible {
   color: var(--vs-text);
   background: rgba(255, 255, 255, 0.05);
 }
@@ -239,7 +244,8 @@
   transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.vb-template-card:hover {
+.vb-template-card:hover,
+.vb-template-card:focus-visible {
   transform: translateY(-2px);
   border-color: rgba(130, 89, 239, 0.55);
 }
@@ -314,8 +320,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 44px;
+  height: 44px;
   border-radius: 9px;
   border: 1px solid var(--vs-border);
   background: transparent;
@@ -324,12 +330,14 @@
   transition: all 0.16s ease;
 }
 
-.vb-icon-btn:hover {
+.vb-icon-btn:hover,
+.vb-icon-btn:focus-visible {
   color: var(--vs-text);
   border-color: var(--vs-cyan);
 }
 
-.vb-icon-btn-danger:hover {
+.vb-icon-btn-danger:hover,
+.vb-icon-btn-danger:focus-visible {
   color: #ff8f8f;
   border-color: rgba(255, 107, 107, 0.6);
   background: rgba(255, 107, 107, 0.08);
@@ -558,7 +566,8 @@ select.vs-input option {
   transition: all 0.16s ease;
 }
 
-.vb-chip-btn:hover:not(:disabled) {
+.vb-chip-btn:hover:not(:disabled),
+.vb-chip-btn:focus-visible:not(:disabled) {
   background: rgba(130, 89, 239, 0.22);
   border-color: var(--vs-violet);
   transform: translateY(-1px);
@@ -806,7 +815,8 @@ select.vs-input option {
   cursor: pointer;
   text-align: left;
 }
-.vb-quiet-link:hover {
+.vb-quiet-link:hover,
+.vb-quiet-link:focus-visible {
   text-decoration: underline;
 }
 
@@ -871,7 +881,8 @@ select.vs-input option {
   word-break: break-all;
 }
 
-.vb-tx-link:hover {
+.vb-tx-link:hover,
+.vb-tx-link:focus-visible {
   text-decoration: underline;
 }
 
@@ -911,7 +922,7 @@ select.vs-input option {
     gap: 8px;
     position: fixed;
     right: 16px;
-    bottom: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
     z-index: 60;
     border-radius: 999px;
     padding: 12px 18px;
@@ -1161,7 +1172,8 @@ select.vs-input option {
   align-self: flex-start;
 }
 
-.vb-quiet-link:hover:not(:disabled) {
+.vb-quiet-link:hover:not(:disabled),
+.vb-quiet-link:focus-visible:not(:disabled) {
   color: var(--vs-text);
 }
 

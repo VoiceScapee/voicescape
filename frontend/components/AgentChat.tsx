@@ -62,11 +62,35 @@ function readFabPos(): FabPos | null {
 
 function clampFabPos(x: number, y: number): FabPos {
   const maxX = Math.max(8, window.innerWidth - FAB_SIZE - 8);
-  const maxY = Math.max(8, window.innerHeight - FAB_SIZE - 8);
+  // Keep the FAB clear of the iPhone home indicator when dragged low.
+  const maxY = Math.max(8, window.innerHeight - FAB_SIZE - 8 - safeAreaBottom());
   return {
     x: Math.min(Math.max(x, 8), maxX),
     y: Math.min(Math.max(y, 8), maxY),
   };
+}
+
+/**
+ * iPhone home-indicator height, read from the real CSS env() value (not a
+ * guess). Cached — the indicator height only changes with orientation.
+ */
+let cachedSafeBottom: number | null = null;
+function safeAreaBottom(): number {
+  if (cachedSafeBottom != null) return cachedSafeBottom;
+  try {
+    const probe = document.createElement("div");
+    probe.style.cssText =
+      "position:fixed;bottom:env(safe-area-inset-bottom);visibility:hidden;pointer-events:none;";
+    document.body.appendChild(probe);
+    cachedSafeBottom = parseFloat(getComputedStyle(probe).bottom) || 0;
+    probe.remove();
+  } catch {
+    cachedSafeBottom = 0;
+  }
+  return cachedSafeBottom;
+}
+function resetSafeAreaCache() {
+  cachedSafeBottom = null;
 }
 
 type Msg = {
@@ -508,7 +532,10 @@ export default function AgentChat() {
 
   // Keep a saved position on-screen across rotation/resize.
   useEffect(() => {
-    const onResize = () => setFabPos((p) => (p ? clampFabPos(p.x, p.y) : p));
+    const onResize = () => {
+      resetSafeAreaCache();
+      setFabPos((p) => (p ? clampFabPos(p.x, p.y) : p));
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -578,13 +605,19 @@ export default function AgentChat() {
   // trapped inside while open, and focus returns to the launcher on
   // close — Intercom's verified-live accessible-dialog pattern.
   const everOpenedRef = useRef(false);
+  // Element that had focus when the chat opened — restored on close.
+  const returnFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!open) {
-      // Never steal focus on first mount — only return it after a close.
-      if (everOpenedRef.current) launcherRef.current?.focus();
+      // Return focus to whatever opened the chat — don't strand keyboard users.
+      if (everOpenedRef.current) {
+        (returnFocusRef.current ?? launcherRef.current)?.focus();
+        returnFocusRef.current = null;
+      }
       return;
     }
     everOpenedRef.current = true;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     // Internal usage telemetry (founder eyes only): widget opened.
     recordUsageEvent("buddy.open");
     inputRef.current?.focus();
@@ -612,7 +645,14 @@ export default function AgentChat() {
       }
     };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    // Lock background scroll while the chat is open — on mobile, gestures
+    // can otherwise scroll the page behind the panel. Restore on close.
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
   }, [open ]);
 
   // One-time "🎉 Your blockpage is live!" greeting after a publish.
@@ -1021,7 +1061,8 @@ export default function AgentChat() {
             position: "fixed",
             ...(fabPos
               ? { left: fabPos.x, top: fabPos.y }
-              : { right: FAB_DEFAULT_GAP, bottom: FAB_DEFAULT_GAP }),
+              // Clear the iPhone home indicator; no-op on Android.
+              : { right: FAB_DEFAULT_GAP, bottom: `calc(${FAB_DEFAULT_GAP}px + env(safe-area-inset-bottom))` }),
             zIndex: 60,
             width: FAB_SIZE,
             height: FAB_SIZE,
@@ -1766,7 +1807,8 @@ export default function AgentChat() {
                 background: "#0d111a",
                 color: "#fff",
                 padding: "10px 12px",
-                fontSize: 13.5,
+                // 16px minimum — iOS Safari auto-zooms on smaller inputs.
+                fontSize: 16,
                 outline: "none",
               }}
             />

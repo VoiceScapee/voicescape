@@ -15,7 +15,7 @@
  *
  * Mobile-first: full-screen sheet on small screens, centered card on desktop.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
@@ -193,6 +193,18 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
     onDone();
   }
 
+  // Complete the dialog pattern: Escape dismisses (same as backdrop tap),
+  // and the first field takes focus on open.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dismiss();
+    };
+    window.addEventListener("keydown", onKey);
+    displayNameRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function finish() {
     saveOnboardDraft({ templateId, displayName: displayName.trim(), bio: bio.trim(), heroTitle: heroTitle.trim(), ownerType, socials });
     markOnboarded();
@@ -246,7 +258,7 @@ export function Onboarding({ onDone, account }: { onDone: () => void; account?: 
           <button
             onClick={skip}
             className="vs-btn vs-btn-ghost"
-            style={{ padding: "4px 10px", fontSize: 12 }}
+            style={{ padding: "4px 10px", fontSize: 12, minHeight: 44, display: "inline-flex", alignItems: "center", justifyContent: "center" }}
           >
             Skip
           </button>
@@ -564,7 +576,7 @@ const inputStyle: React.CSSProperties = {
   border: "1px solid var(--vs-border)",
   background: "rgba(255,255,255,0.04)",
   color: "var(--vs-text)",
-  fontSize: 15,
+  fontSize: 16, // 16px minimum — iOS Safari auto-zooms on smaller inputs
   fontFamily: "inherit",
   boxSizing: "border-box",
 };
