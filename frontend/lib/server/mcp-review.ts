@@ -356,7 +356,7 @@ export async function reviewAgentTipping(
     verdict,
   );
 
-  return {
+  const review = {
     ...reportBase,
     report_hash: reportHash,
     attestation_tx_base64: attestationTx,
@@ -364,4 +364,31 @@ export async function reviewAgentTipping(
       ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor"
       : "attestation topic not yet configured — verdict and evidence above are still fully verifiable via the mirror node",
   };
+
+  // Fire-and-forget: anchor this review in the HCS-27 transparency log.
+  // Fail-open — a publish failure never breaks the review itself.
+  // NOTE: HCS-27 is a community draft, not an official Hedera standard.
+  void (async () => {
+    try {
+      const { publishReviewCheckpoint, REVIEWS_LOG_ID } = await import(
+        "./hcs27/publisher"
+      );
+      const entry = {
+        report_hash: reportHash,
+        subject: reportBase.subject,
+        subject_account: reportBase.subject_account,
+        verdict: reportBase.verdict,
+        confidence: reportBase.confidence,
+        summary: reportBase.summary,
+        tips_analyzed: reportBase.tips_analyzed,
+        checked_at: reportBase.checked_at,
+        reviewer: reportBase.reviewer,
+      };
+      await publishReviewCheckpoint(REVIEWS_LOG_ID, [entry]);
+    } catch {
+      // Fail-open: transparency logging is best-effort.
+    }
+  })();
+
+  return review;
 }
