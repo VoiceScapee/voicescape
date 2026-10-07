@@ -1,7 +1,23 @@
 "use client";
 
-import { toMirrorTxId } from "./tx-confirm";
+import {
+  toMirrorTxId,
+  getMirrorHeadTimestampMs,
+  isMirrorBeyondTxWindow,
+  MIRROR_CATCHUP_MARGIN_MS,
+} from "./tx-confirm";
 import { STALE_CONNECTION_COPY } from "./wallet";
+import { fetchWithTimeout } from "./fetch-timeout";
+import { isWalletRejection, isWalletSessionAlive } from "./wallet-guards";
+import {
+  type LandedStatus,
+  isHcsIntentKind,
+  listPendingIntents,
+  reconcilePendingIntents,
+  removePendingIntent,
+  savePendingIntent,
+  UnresolvedIntentError,
+} from "./pending-intents";
 
 /**
  * Client-side HCS message submit via the user's wallet.
@@ -51,6 +67,54 @@ interface WalletSigner {
   signAndExecuteTransaction(params: object): Promise<unknown>;
   accountId: string;
   network: "mainnet"; // mainnet only — no testnet
+  /**
+   * Optional live DAppConnector for the stale-session pre-check (shared
+   * with lib/tx.ts). When provided and the session is dead, the submit
+   * fails fast instead of hanging until the wallet timeout.
+   */
+  walletConnector?: unknown;
+}
+
+/**
+ * Time-bounded wrapper around checkHcsTxLanded. The wallet-timeout recovery
+ * path must not hang a second time on a stalled mirror node — a timeout
+ * degrades to "unknown", which keeps the existing stale-session guidance.
+ */
+const HCS_CHECK_TIMEOUT_MS = 10_000;
+function checkHcsTxLandedBounded(
+  txId: string,
+  network: "mainnet",
+): Promise<"success" | "failed" | "unknown"> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve("unknown"), HCS_CHECK_TIMEOUT_MS);
+    checkHcsTxLanded(txId, network).then(
+      (s) => {
+        clearTimeout(timer);
+        resolve(s);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve("unknown");
+      },
+    );
+  });
+}
+
+/**
+ * Full landed status for an HCS tx id, including expiry: once the mirror's
+ * index frontier has moved past the tx's validity window without seeing it,
+ * the tx can never land. Used by the HCS pending-intent gate.
+ */
+async function checkHcsLandedStatus(txId: string): Promise<LandedStatus> {
+  const landed = await checkHcsTxLandedBounded(txId, "mainnet");
+  if (landed !== "unknown") return landed;
+  try {
+    const headMs = await getMirrorHeadTimestampMs();
+    if (isMirrorBeyondTxWindow(txId, headMs, MIRROR_CATCHUP_MARGIN_MS)) return "expired";
+  } catch {
+    // No signal — unknown stays unknown.
+  }
+  return "unknown";
 }
 
 /**
@@ -106,6 +170,28 @@ export async function submitHcsViaWallet(
     // Fail fast before the user signs and pays: oversized messages are
     // auto-chunked by the SDK, which our server never reassembles.
     const messageJson = assertHcsMessageFits(message);
+    // Fail fast on a dead WalletConnect session (shared check with
+    // lib/tx.ts) — otherwise the wallet prompt never appears and the user
+    // stares at "sending…" until the 30s timeout. Fail-open when the
+    // caller passes no connector.
+    if (
+      signer.walletConnector !== undefined &&
+      !isWalletSessionAlive(signer.walletConnector)
+    ) {
+      throw new Error(
+        "Wallet session expired — disconnect and reconnect your wallet, then try again.",
+      );
+    }
+    // HCS submits share the pending-intent ledger (kind "hcs:…") so an
+    // interrupted submit can't silently duplicate: re-ask the mirror about
+    // any unanswered HCS intent from this account first, and refuse while
+    // one is still unknown. HCS intents never gate contract writes (see
+    // isHcsIntentKind) — an unconfirmed post must not block a payment.
+    await reconcilePendingIntents(checkHcsLandedStatus);
+    const blockedHcs = listPendingIntents().filter(
+      (i) => i.account === accountId.toString() && isHcsIntentKind(i.kind),
+    );
+    if (blockedHcs.length > 0) throw new UnresolvedIntentError(blockedHcs);
     const tx = new TopicMessageSubmitTransaction()
       .setTopicId(TopicId.fromString(topicId))
       .setMessage(messageJson);
@@ -116,6 +202,20 @@ export async function submitHcsViaWallet(
 
     const txId = tx.transactionId?.toString() ?? "";
     const txBase64 = Buffer.from(tx.toBytes()).toString("base64");
+    // Persist the intent before the wallet signs — same pattern as
+    // lib/tx.ts. Cleared on definitive outcomes; unknown outcomes stay
+    // stored so the next submit reconciles instead of double-paying.
+    const msgKind = (message as { kind?: unknown }).kind;
+    savePendingIntent({
+      txId,
+      kind: "hcs:submit",
+      label:
+        typeof msgKind === "string" && msgKind
+          ? `Town Hall ${msgKind}`
+          : "Town Hall message",
+      account: accountId.toString(),
+      createdAt: Date.now(),
+    });
 
     // The wallet response sometimes never arrives even though the user
     // approved and the HCS message was submitted. Without a timeout the UI
@@ -143,14 +243,25 @@ export async function submitHcsViaWallet(
       ]);
     } catch (e) {
       if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
-        const landed = await checkHcsTxLanded(txId, signer.network);
-        if (landed === "success") return { transactionId: txId };
+        const landed = await checkHcsTxLandedBounded(txId, signer.network);
+        if (landed === "success") {
+          removePendingIntent(txId);
+          return { transactionId: txId };
+        }
         if (landed === "failed") {
+          removePendingIntent(txId);
           throw new Error("The transaction failed on-chain. No message was posted.");
         }
         // Not on-chain after 30s of wallet silence: the prompt never appeared
-        // (stale WalletConnect session). Tell the user how to fix it.
+        // (stale WalletConnect session). Tell the user how to fix it. The
+        // intent stays stored — the next submit reconciles it instead of
+        // silently posting (and charging for) a duplicate.
         throw new Error(STALE_CONNECTION_COPY);
+      }
+      // A rejected signature is never broadcast — clear the intent so a
+      // routine "decline" doesn't block later submits (same as tx.ts H1).
+      if (isWalletRejection(e)) {
+        removePendingIntent(txId);
       }
       throw e;
     }
@@ -163,7 +274,9 @@ export async function submitHcsViaWallet(
 
 /** Fetch Town Hall topic IDs from the server (public, no auth needed). */
 export async function getTownhallTopics(): Promise<Record<string, string | null>> {
-  const res = await fetch("/api/townhall/topics");
+  // Bounded: without a timeout a hung /api/townhall/topics stalls the HCS
+  // submit flow before the wallet prompt ever appears.
+  const res = await fetchWithTimeout("/api/townhall/topics", 10_000);
   if (!res.ok) throw new Error("Failed to fetch Town Hall topics");
   return res.json();
 }

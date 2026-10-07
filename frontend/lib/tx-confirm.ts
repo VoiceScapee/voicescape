@@ -150,9 +150,7 @@ export async function getMirrorHeadTimestampMs(
   mirrorBase: string = DEFAULT_MIRROR_BASE,
 ): Promise<number | null> {
   try {
-    const res = await fetch(`${mirrorBase}/blocks?limit=1&order=desc`, {
-      cache: "no-store",
-    });
+    const res = await fetchWithAttemptTimeout(`${mirrorBase}/blocks?limit=1&order=desc`);
     if (!res.ok) return null;
     const data = (await res.json()) as { blocks?: MirrorBlock[] };
     const to = data.blocks?.[0]?.timestamp?.to;
@@ -178,6 +176,23 @@ export function isMirrorBeyondTxWindow(
   const validStartMs = parseTxValidStartMs(txId);
   if (validStartMs == null) return false;
   return headTimestampMs >= validStartMs + marginMs;
+}
+
+/**
+ * Per-attempt fetch timeout for mirror-node polling. The poll loop has an
+ * overall cap, but each individual fetch was unbounded — a stalled TCP
+ * connection could push the poll past its cap. ~15s per attempt degrades to
+ * "no answer this round" instead of hanging the whole poll.
+ */
+const ATTEMPT_TIMEOUT_MS = 15_000;
+async function fetchWithAttemptTimeout(url: string): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS);
+  try {
+    return await fetch(url, { cache: "no-store", signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
@@ -232,7 +247,7 @@ export async function pollTransactionStatus(
     let result: string | undefined;
     let consensusTs: string | null = null;
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetchWithAttemptTimeout(url);
       if (res.ok) {
         const data = (await res.json()) as { transactions?: MirrorTransaction[] };
         result = data.transactions?.[0]?.result;
