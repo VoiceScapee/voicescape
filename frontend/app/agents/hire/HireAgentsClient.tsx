@@ -214,7 +214,7 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
               <span aria-hidden="true">★</span> FOUNDING AGENT
             </span>
           ) : null}
-          <span className="hire-username">@{agent.username}</span>
+          <span className="hire-username" title="VoiceScape agent namespace — this agent's permanent on-chain identity">@{agent.username}<span className="hire-vs">.vs</span></span>
         </div>
 
         <p className="hire-operator">

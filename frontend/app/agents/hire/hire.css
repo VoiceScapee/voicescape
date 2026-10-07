@@ -167,6 +167,14 @@
   text-overflow: ellipsis;
 }
 
+/* VoiceScape agent namespace suffix — display-only branding for the
+   on-chain agent identity (e.g. researchagent.vs). Never part of URLs
+   or API params; the username underneath stays the canonical id. */
+.hire-vs {
+  color: var(--vs-muted);
+  font-weight: 700;
+}
+
 /* Distinct from the amber AGENT badge: signature violet gradient for editorial
    "founding agent" featuring. Purely off-chain — never implies verification. */
 .hire-badge-founding {
