@@ -790,6 +790,14 @@ describe("get_started", () => {
     expect(g.hello_world[0].tool).toBe("lookup_blockpage");
     expect(g.docs.mcp_url).toContain("/api/mcp");
   });
+
+  it("exposes the Hedera Agent Kit wiring block", () => {
+    const g = getStarted();
+    expect(g.hedera_agent_kit.architecture).toMatch(/RETURN_BYTES/i);
+    expect(g.hedera_agent_kit.sign_pattern).toMatch(/finalize_agent_self_claim/);
+    expect(g.hedera_agent_kit.sign_pattern).toMatch(/operator key/);
+    expect(g.hedera_agent_kit.key_type).toMatch(/ECDSA/);
+  });
 });
 
 describe("quote_tip", () => {

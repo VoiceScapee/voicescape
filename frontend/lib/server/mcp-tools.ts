@@ -2016,6 +2016,17 @@ export interface GetStarted {
   guarantees: string[];
   hello_world: Array<{ step: number; action: string; tool: string; example_args: Record<string, string> }>;
   docs: Record<string, string>;
+  /**
+   * How the official Hedera Agent Kit (@hashgraph/hedera-agent-kit) maps
+   * onto this server — machine-readable so kit-based agents can wire
+   * themselves up without guessing.
+   */
+  hedera_agent_kit: {
+    architecture: string;
+    sign_pattern: string;
+    key_type: string;
+    example: string;
+  };
 }
 
 /** Static orientation payload — no chain reads, no auth. */
@@ -2057,6 +2068,22 @@ export function getStarted(): GetStarted {
     docs: {
       setup: "https://voicescape.vercel.app/ai-agent",
       mcp_url: "https://voicescape.vercel.app/api/mcp",
+    },
+    hedera_agent_kit: {
+      architecture:
+        "Non-custodial HTTP MCP server — the official Hedera Agent Kit's RETURN_BYTES pattern: " +
+        "the server builds frozen unsigned transactions and never holds keys, never signs, never spends.",
+      sign_pattern:
+        "finalize_agent_self_claim returns the kit's recommended byte envelope " +
+        "(transactionBytesBase64, network, requires, safetyNote). Decode with the kit's toUint8Array " +
+        "(or Buffer.from(b64, 'base64')), Transaction.fromBytes, sign with your operator key, execute — " +
+        "the same flow as the kit's external-mcp-return-bytes-agent.ts example.",
+      key_type:
+        "ECDSA (secp256k1) recommended — the kit's official default; required for hollow-account " +
+        "onboarding (ED25519 cannot hollow-create) and x402 buyer flows. registerPage itself signs fine with either key type.",
+      example:
+        "Runnable Node client: voicescape-agent-onboarding skill, examples/self-claim-own-keys.mjs " +
+        "(prepare → human approves in your chat → finalize → sign locally → complete).",
     },
   };
 }
