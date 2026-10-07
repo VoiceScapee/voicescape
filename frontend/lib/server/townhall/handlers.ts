@@ -2199,6 +2199,39 @@ export async function searchListings(
   return ok({ listings: views.slice(0, limit), count: views.length });
 }
 
+/**
+ * Single listing by id (latest message wins, status updates included).
+ * Returns null when the id is unknown — never throws.
+ */
+export async function getListingById(
+  deps: TownhallDeps,
+  id: string,
+): Promise<ListingView | null> {
+  try {
+    const topic = topicOr503("market");
+    if (typeof topic !== "string") return null;
+    const messages = await deps.hcs.queryAll(topic);
+    const m = aggregateListings(messages).get(id);
+    if (!m) return null;
+    return {
+      id: m.contents.id,
+      seller: m.contents.seller,
+      sellerUsername:
+        m.contents.sellerUsername ??
+        (!looksLikeAddress(m.contents.seller) ? m.contents.seller : null),
+      title: m.contents.title,
+      description: m.contents.description,
+      priceUsdCents: m.contents.priceUsdCents,
+      goodsType: m.contents.goodsType,
+      ipfsHash: m.contents.ipfsHash,
+      status: m.contents.status,
+      ts: m.contents.ts,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export interface CreateListingBody extends AuthBody {
   seller?: unknown;
   sellerUsername?: unknown;
@@ -2215,6 +2248,19 @@ export interface CreateListingBody extends AuthBody {
 /** True for an EVM address or a Hedera 0.0.x account id. */
 function looksLikeAddress(s: string): boolean {
   return /^0x[0-9a-fA-F]{40}$/.test(s) || /^\d+\.\d+\.\d+$/.test(s);
+}
+
+/**
+ * Plausible IPFS CID (v0 Qm… or v1 baf…), length-bounded. This is a shape
+ * check, not a multihash verification — the CID must still resolve on IPFS
+ * for the buyer's download to work, which the seller can test from the
+ * listing page right after publishing.
+ */
+function isPlausibleCid(s: string): boolean {
+  return (
+    s.length <= 128 &&
+    (/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(s) || /^baf[a-z0-9]{50,120}$/.test(s))
+  );
 }
 
 export async function createListing(deps: TownhallDeps, body: CreateListingBody): Promise<HandlerResult> {
@@ -2267,6 +2313,17 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
   const id = body.id;
   const title = body.title.trim();
   const description = body.description.trim();
+  // Optional digital-good file: the seller pins the file first (via the
+  // market upload endpoint) and binds its CID here. The CID is part of the
+  // HCS-verified message so the server can later prove this exact file was
+  // the one listed. Null when the listing has no attached file.
+  let ipfsHash: string | null = null;
+  if (body.ipfsHash !== undefined && body.ipfsHash !== null && body.ipfsHash !== "") {
+    if (typeof body.ipfsHash !== "string" || !isPlausibleCid(body.ipfsHash.trim())) {
+      return err(400, "ipfsHash must be a valid IPFS CID (from the market file upload)");
+    }
+    ipfsHash = body.ipfsHash.trim();
+  }
   // The seller pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the listing fields.
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
@@ -2280,7 +2337,7 @@ export async function createListing(deps: TownhallDeps, body: CreateListingBody)
     description,
     priceUsdCents: body.priceUsdCents,
     goodsType: body.goodsType,
-    ipfsHash: null,
+    ipfsHash,
     status: "active",
   });
   if (verified) return verified;

@@ -1019,6 +1019,39 @@ describe("listings", () => {
     expect(bad2.status).toBe(400);
   });
 
+  it("accepts a valid ipfsHash for digital listings", async () => {
+    const cid = "bafybeigdyrzt5sfp7udm7hu76uh7y26nf3efuylqabf3oclgtqy55fbzdi";
+    const r = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      id: "ebook-test-1",
+      title: "My Ebook",
+      description: "A digital ebook",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ipfsHash: cid,
+      ...fee(),
+    });
+    expect(r.status).toBe(201);
+  });
+
+  it("rejects a malformed ipfsHash", async () => {
+    const r = await createListing(deps, {
+      seller: "0x000000000000000000000000000000000000a11c",
+      sellerUsername: "alice",
+      auth: testCred("alice"),
+      id: "ebook-test-2",
+      title: "My Ebook",
+      description: "A digital ebook",
+      priceUsdCents: 100,
+      goodsType: "digital",
+      ipfsHash: "not-a-cid",
+      ...fee(),
+    });
+    expect(r.status).toBe(400);
+  });
+
   it("seller-only status change; latest-wins on read", async () => {
     const id = "sticker-pack-2";
     await writeListing(deps, "alice", id, {

@@ -4,7 +4,7 @@
  * Every mirror-node call is driven by a fixture fetch; the real network is
  * never touched.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ethers } from "ethers";
 import {
   lookupBlockpage,
@@ -1482,5 +1482,77 @@ describe("propose_page_update tool", () => {
     );
     expect("error" in res).toBe(true);
     expect((res as { error: string }).error).toMatch(/https:\/\//);
+  });
+});
+
+/* ------------------------- verify_purchase / my_purchases ------------------------- */
+
+vi.mock("./townhall/badges", () => ({
+  verifyPurchase: async (wallet: string, listingRef: string) =>
+    wallet === "0.0.1" && listingRef === "sticker-pack",
+  walletPurchases: async (_hcs: unknown, wallet: string) =>
+    wallet === "0.0.1"
+      ? [
+          {
+            listingRef: "sticker-pack",
+            title: "Sticker Pack",
+            tx: "0.0.1@1700000000.000000000",
+            timestamp: "1700000000.000000000",
+          },
+        ]
+      : [],
+}));
+
+vi.mock("./townhall/hcs", () => ({
+  defaultHcsPort: () => ({}),
+}));
+
+describe("verify_purchase", () => {
+  it("verifies a real on-chain purchase with its receipt", async () => {
+    const { verifyPurchaseTool } = await import("./mcp-tools");
+    const res = (await verifyPurchaseTool("0.0.1", "sticker-pack")) as {
+      verified: boolean;
+      listing_title: string;
+      transaction_id: string;
+    };
+    expect(res.verified).toBe(true);
+    expect(res.listing_title).toBe("Sticker Pack");
+    expect(res.transaction_id).toBe("0.0.1@1700000000.000000000");
+  });
+
+  it("reports unverified when no purchase exists", async () => {
+    const { verifyPurchaseTool } = await import("./mcp-tools");
+    const res = (await verifyPurchaseTool("0.0.2", "sticker-pack")) as { verified: boolean };
+    expect(res.verified).toBe(false);
+  });
+
+  it("requires wallet and listingRef", async () => {
+    const { verifyPurchaseTool } = await import("./mcp-tools");
+    expect("error" in (await verifyPurchaseTool("", "x"))).toBe(true);
+    expect("error" in (await verifyPurchaseTool("0.0.1", ""))).toBe(true);
+  });
+});
+
+describe("my_purchases", () => {
+  it("lists verified purchases for the wallet", async () => {
+    const { myPurchasesTool } = await import("./mcp-tools");
+    const res = (await myPurchasesTool("0.0.1")) as {
+      wallet: string;
+      purchases: { listing_ref: string }[];
+    };
+    expect(res.wallet).toBe("0.0.1");
+    expect(res.purchases).toHaveLength(1);
+    expect(res.purchases[0].listing_ref).toBe("sticker-pack");
+  });
+
+  it("returns an empty list for a wallet with no purchases", async () => {
+    const { myPurchasesTool } = await import("./mcp-tools");
+    const res = (await myPurchasesTool("0.0.9")) as { purchases: unknown[] };
+    expect(res.purchases).toEqual([]);
+  });
+
+  it("requires a wallet", async () => {
+    const { myPurchasesTool } = await import("./mcp-tools");
+    expect("error" in (await myPurchasesTool(""))).toBe(true);
   });
 });

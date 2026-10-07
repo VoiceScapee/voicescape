@@ -604,3 +604,99 @@ describe("fair ordering (first principles)", () => {
     expect(stats.get("gamer")?.firstTs).toBe(Date.parse("2026-09-10T12:00:00Z"));
   });
 });
+
+describe("generalized purchase badges", () => {
+  const PURCHASE_TOPIC0 = ethers.id("PurchaseCompleted(address,address,string,uint256,uint256)");
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const pad = (addr: string) => "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const BUYER = "0x0000000000000000000000000000000000012345";
+  const SELLER = "0x0000000000000000000000000000000000009999";
+
+  function purchaseLog(listingRef: string, buyer: string = BUYER): TipsLog {
+    return {
+      topics: [PURCHASE_TOPIC0, pad(buyer), pad(SELLER)],
+      data: coder.encode(["string", "uint256", "uint256"], [listingRef, 100n, 2n]),
+    };
+  }
+
+  it("purchasedListingRefs returns every distinct listing the wallet bought", async () => {
+    const { purchasedListingRefs } = await import("./badges");
+    const logs = [
+      purchaseLog("sticker-pack"),
+      purchaseLog("ebook-1"),
+      purchaseLog("sticker-pack"), // duplicate — deduped
+      purchaseLog("other-item", "0x0000000000000000000000000000000000007777"), // not this buyer
+    ];
+    const refs = purchasedListingRefs(logs, BUYER);
+    expect(refs.sort()).toEqual(["ebook-1", "sticker-pack"]);
+  });
+
+  it("purchasedListingRefs is empty for a wallet with no purchases", async () => {
+    const { purchasedListingRefs } = await import("./badges");
+    expect(purchasedListingRefs([purchaseLog("sticker-pack")], "0.0.99999")).toEqual([]);
+    expect(purchasedListingRefs([], BUYER)).toEqual([]);
+  });
+
+  it("badgesForUser grants one display badge per purchase", () => {
+    const s = statsFor("buyer", {});
+    const badges = badgesForUser(
+      s,
+      {
+        ...EMPTY_ENRICHMENT,
+        purchases: [
+          { ref: "sticker-pack", title: "Sticker Pack" },
+          { ref: "ebook-1", title: "My Ebook" },
+        ],
+      },
+      null,
+    );
+    const ids = badges.map((b) => b.id);
+    expect(ids).toContain("purchase:sticker-pack");
+    expect(ids).toContain("purchase:ebook-1");
+    const sticker = badges.find((b) => b.id === "purchase:sticker-pack")!;
+    expect(sticker.name).toBe("Sticker Pack");
+    expect(sticker.description).toContain("verified on-chain");
+  });
+
+  it("the OG bacon-badge keeps its special badge and is excluded from the generic loop", () => {
+    const s = statsFor("buyer", {});
+    const badges = badgesForUser(
+      s,
+      {
+        ...EMPTY_ENRICHMENT,
+        baconBadge: true,
+        purchases: [{ ref: "bacon-badge", title: "Bacon Badge" }],
+      },
+      null,
+    );
+    const ids = badges.map((b) => b.id);
+    expect(ids).toContain("bacon-badge");
+    expect(ids).not.toContain("purchase:bacon-badge");
+    expect(ids.filter((id) => id === "bacon-badge")).toHaveLength(1);
+  });
+
+  it("resolveListingTitles maps refs to titles and falls back to the ref", async () => {
+    const { resolveListingTitles } = await import("./badges");
+    process.env.TOWNHALL_TOPIC_MARKET = "0.0.999";
+    const hcs = {
+      queryAll: async () => [
+        msg("listing", "seller1", { id: "sticker-pack", title: "Sticker Pack" }),
+      ],
+    };
+    const titles = await resolveListingTitles(hcs as never, ["sticker-pack", "unknown-ref"]);
+    expect(titles.get("sticker-pack")).toBe("Sticker Pack");
+    expect(titles.get("unknown-ref")).toBe("unknown-ref");
+    delete process.env.TOWNHALL_TOPIC_MARKET;
+  });
+
+  it("resolveListingTitles is fail-open on HCS errors", async () => {
+    const { resolveListingTitles } = await import("./badges");
+    const hcs = {
+      queryAll: async () => {
+        throw new Error("boom");
+      },
+    };
+    const titles = await resolveListingTitles(hcs as never, ["sticker-pack"]);
+    expect(titles.get("sticker-pack")).toBe("sticker-pack");
+  });
+});

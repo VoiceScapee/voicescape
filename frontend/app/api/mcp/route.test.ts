@@ -69,11 +69,11 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("lists all 31 tools with human-readable titles", async () => {
+  it("lists all 34 tools with human-readable titles", async () => {
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(31);
+      expect(tools).toHaveLength(34);
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.description, t.name).toBeTruthy();
@@ -86,6 +86,8 @@ describe("MCP tool surface", () => {
       expect(names).toContain("complete_agent_self_claim");
       expect(names).toContain("propose_page_update");
       expect(names).toContain("request_capability_token");
+      expect(names).toContain("verify_purchase");
+      expect(names).toContain("my_purchases");
     } finally {
       await client.close();
     }

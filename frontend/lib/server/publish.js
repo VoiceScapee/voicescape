@@ -321,6 +321,36 @@ export async function publishImageFile(data, filename, contentType) {
   return pinFileViaPinata(data, filename, contentType, pinataJwt);
 }
 
+/** Max marketplace digital-good upload: 10 MB. Keeps pins cheap and gateway-friendly. */
+export const MAX_DIGITAL_GOOD_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Pin a marketplace digital-good file to IPFS via Pinata.
+ * Requires PINATA_JWT. The caller must validate the file kind (magic bytes)
+ * before calling — this only enforces the size cap.
+ *
+ * @param {Buffer|Uint8Array} data - File bytes.
+ * @param {string} filename - Neutral filename (never user-controlled).
+ * @param {string} contentType - MIME type.
+ * @returns {Promise<PublishResult>} `{ cid, provider }`.
+ * @throws {Error} If validation fails, PINATA_JWT is unset, or Pinata errors.
+ */
+export async function publishDigitalGood(data, filename, contentType) {
+  if (!data || data.byteLength === 0) {
+    throw new Error("Refusing to pin an empty file.");
+  }
+  if (data.byteLength > MAX_DIGITAL_GOOD_BYTES) {
+    throw new Error(
+      `File too large (max ${(MAX_DIGITAL_GOOD_BYTES / 1024 / 1024).toFixed(0)} MB).`,
+    );
+  }
+  const pinataJwt = process.env[ENV.PINATA_JWT];
+  if (!pinataJwt) {
+    throw new Error("PINATA_UNAVAILABLE");
+  }
+  return pinFileViaPinata(data, filename, contentType || "application/octet-stream", pinataJwt);
+}
+
 /**
  * Fetch a published page JSON from an IPFS gateway.
  *

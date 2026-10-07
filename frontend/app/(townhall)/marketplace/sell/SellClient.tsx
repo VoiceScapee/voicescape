@@ -7,6 +7,7 @@ import { useWriteGate } from "@/components/townhall/useTownhall";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import { useWallet } from "@/lib/wallet";
 import { accountToEvmAddress, makeTownhallId, postJson, usdToHbarDisplay } from "@/lib/townhall";
+import { getAuthHeaders } from "@/lib/auth-client";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { getActiveChain } from "@/lib/chains";
 import { resolvePage } from "@/lib/contracts";
@@ -24,6 +25,10 @@ export default function SellClient() {
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [hbarPrice, setHbarPrice] = useState<number | null>(null);
+  // Digital-good file: pinned to IPFS first, CID bound into the listing.
+  const [fileCid, setFileCid] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     getHbarUsdPrice().then(setHbarPrice).catch(() => setHbarPrice(null));
@@ -34,7 +39,34 @@ export default function SellClient() {
     title.trim().length > 0 &&
     description.trim().length > 0 &&
     Number.isFinite(priceCents) &&
-    priceCents > 0;
+    priceCents > 0 &&
+    !uploading;
+
+  const onFile = async (f: File | undefined) => {
+    setUploadError(null);
+    setFileCid(null);
+    if (!f) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append("file", f);
+      const res = await fetch("/api/townhall/market/upload", {
+        method: "POST",
+        headers: { ...getAuthHeaders() },
+        body: form,
+      });
+      const json = (await res.json().catch(() => ({}))) as { cid?: string; error?: string };
+      if (!res.ok || !json.cid) {
+        setUploadError(json.error ?? "upload failed — try again");
+        return;
+      }
+      setFileCid(json.cid);
+    } catch {
+      setUploadError("upload failed — check your connection and try again");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async () => {
     if (!valid || !canWrite || !account || !me) return;
@@ -83,7 +115,7 @@ export default function SellClient() {
       description: d,
       priceUsdCents: priceCents,
       goodsType,
-      ipfsHash: null,
+      ipfsHash: fileCid,
       status: "active",
     });
     if (!hcsTxId) return; // User cancelled or error — phase shows the error
@@ -101,6 +133,7 @@ export default function SellClient() {
           description: d,
           priceUsdCents: priceCents,
           goodsType,
+          ipfsHash: fileCid,
           hcsTxId,
         },
       );
@@ -203,6 +236,34 @@ export default function SellClient() {
               </button>
             </div>
           </div>
+          {goodsType === "digital" && (
+            <div>
+              <label className="vs-label" htmlFor="sell-file">
+                Digital file <span className="th-muted">(optional)</span>
+              </label>
+              <input
+                id="sell-file"
+                type="file"
+                className="vs-input"
+                accept="image/*,.pdf,.zip"
+                onChange={(e) => void onFile(e.target.files?.[0])}
+                disabled={uploading}
+              />
+              <p className="th-muted" style={{ marginTop: 6 }}>
+                Attach the file buyers receive — image, PDF, or ZIP up to 10 MB.
+                It&apos;s pinned to IPFS and released to verified buyers automatically.
+                {fileCid && (
+                  <>
+                    {" "}Attached ✅ <span className="vs-mono" style={{ fontSize: 11 }}>{fileCid.slice(0, 18)}…</span>
+                  </>
+                )}
+                {uploading && "Uploading…"}
+              </p>
+              {uploadError && (
+                <p className="th-error" role="alert" style={{ marginTop: 6 }}>{uploadError}</p>
+              )}
+            </div>
+          )}
           <button
             type="button"
             className="vs-btn vs-btn-primary th-btn-block"

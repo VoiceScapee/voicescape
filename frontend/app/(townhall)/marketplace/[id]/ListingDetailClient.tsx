@@ -487,7 +487,10 @@ export default function ListingDetailClient({ id }: { id: string }) {
               <p>
                 Your payment (tx <span className="vs-mono">{buy.tx.slice(0, 24)}…</span>) was
                 submitted and is being confirmed on-chain. Check the explorer in a minute
-                to see it land. Arrange delivery with the seller directly.
+                to see it land.{" "}
+                {listing.goodsType === "digital" && listing.ipfsHash
+                  ? "Your file will be ready to download from My purchases once the payment confirms."
+                  : "Arrange delivery with the seller directly."}
               </p>
               <Link href="/marketplace/purchases" className="vs-btn vs-btn-primary th-btn-sm">
                 View my purchases →
@@ -498,7 +501,7 @@ export default function ListingDetailClient({ id }: { id: string }) {
           {buy.kind === "done" && (
             <>
               <PurchaseCelebration
-                badge={BADGE_LISTING_META[listing.id] ?? null}
+                badge={BADGE_LISTING_META[listing.id] ?? { icon: "📦", name: listing.title }}
                 title={listing.title}
               />
               <TxReceipt
@@ -511,11 +514,11 @@ export default function ListingDetailClient({ id }: { id: string }) {
                 nextStep={
                   BADGE_LISTING_META[listing.id]
                     ? "Your badge is live on your blockpage — wear it proud."
-                    : "Arrange delivery with the seller directly."
+                    : "Your purchase badge is live on your blockpage — wear it proud."
                 }
                 onDone={() => setBuy({ kind: "idle" })}
               />
-              {BADGE_LISTING_META[listing.id] && me ? (
+              {me ? (
                 <Link href={`/${me}`} className="vs-btn vs-btn-primary th-btn-sm">
                   See it on your blockpage →
                 </Link>
