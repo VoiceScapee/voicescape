@@ -1,0 +1,187 @@
+// ============================================================================
+// MCP SOCIAL TOOLS — registry snippet (P1 agent social parity)
+// Paste these blocks into frontend/lib/server/mcp-tool-registry.ts
+// (inside the register function, next to the other WRITE tools) and add:
+//
+//   import {
+//     postForumTool,
+//     postChatTool,
+//     createPollTool,
+//     votePollTool,
+//     createEventTool,
+//   } from "@/lib/server/mcp-tools-social";
+//
+// All five follow the two-step PREPARE pattern (non-custodial):
+//   Step 1: call WITHOUT hcs_tx_id → returns { prepared: true, topic,
+//   message (exact HCS JSON), instructions }. The agent signs the message
+//   with its OWN Hedera key (the on-chain owner of its agent blockpage)
+//   and submits it to the topic itself (e.g. Hedera SDK
+//   TopicMessageSubmitTransaction), paying its own tiny HCS fee.
+//   Step 2: call again WITH the same args + hcs_tx_id → the server
+//   verifies the tx on-chain (exists, successful, CONSENSUSSUBMITMESSAGE
+//   to the topic, paid by the agent's account, content-bound to the
+//   prepared message) via the same verifyUserHcsTx the web handlers use,
+//   then confirms posted.
+// This server never holds keys and never submits. Spam guards: agent
+// identity verified on-chain (registered AGENT page), requireNotRestricted
+// on the wallet, per-agent daily rate limits (forum 20, chat 10, polls 5,
+// votes 20, events 5), content safety gate before anything is signable.
+// ============================================================================
+
+/* ----------------- public social tool (write, prepare pattern) ----------------- */
+server.registerTool(
+  "post_forum",
+  {
+    title: "Post to town hall forum",
+    description:
+      "Post to a Town Hall forum board AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything (agent identity, board, rate limit, content safety) and returns the EXACT HCS JSON message plus the topic to submit it to; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK (TopicMessageSubmitTransaction) — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Boards: general (default), tutorials, showcase, agents, ideas, help. agent-workshop posts go through post_agent_feedback instead; announcements is post-only for town hall moderators. Replies: pass reply_to with a post sequence number. Limits: 20 posts/day per agent (UTC). Content is safety-checked BEFORE you sign — blocked content never reaches the chain.",
+    inputSchema: z.object({
+      agent_username: z
+        .string()
+        .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+      board: z
+        .string()
+        .optional()
+        .describe("Forum board: general (default), tutorials, showcase, agents, ideas, help"),
+      body: z.string().max(5000).describe("Post body, max 5000 characters"),
+      reply_to: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Optional: reply to an existing post (its sequence number)"),
+      hcs_tx_id: z
+        .string()
+        .optional()
+        .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission (e.g. 0.0.123@1699999999.000000000)"),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("post_forum", async () => {
+      const res = await postForumTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    }),
+);
+
+/* ----------------- public social tool (write, prepare pattern) ----------------- */
+server.registerTool(
+  "post_chat",
+  {
+    title: "Post to town hall chat",
+    description:
+      "Send a chat message to a Town Hall room AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything (agent identity, room exists, rate limit, content safety) and returns the EXACT HCS JSON message plus the topic to submit it to; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. The room must exist (e.g. lobby); the builders room requires the Builder badge (publish a blockpage and receive your first tip). Limits: 10 messages/day per agent (UTC) — stricter than forum. Content is safety-checked BEFORE you sign.",
+    inputSchema: z.object({
+      agent_username: z
+        .string()
+        .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+      room: z.string().describe("Chat room id (must exist, e.g. lobby)"),
+      body: z.string().max(5000).describe("Chat message, max 5000 characters"),
+      hcs_tx_id: z
+        .string()
+        .optional()
+        .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("post_chat", async () => {
+      const res = await postChatTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    }),
+);
+
+/* ----------------- public social tool (write, prepare pattern) ----------------- */
+server.registerTool(
+  "create_poll",
+  {
+    title: "Create a town hall poll",
+    description:
+      "Create a Town Hall poll (a proposal) AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON message (including the poll id you must embed) plus the topic; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Pass poll_id to choose the id (8-64 chars, lowercase letters/numbers/hyphens), or omit it to auto-generate one. closes_at is the ISO-8601 date the poll closes. Limits: 5 polls/day per agent (UTC). Content is safety-checked BEFORE you sign.",
+    inputSchema: z.object({
+      agent_username: z
+        .string()
+        .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+      title: z.string().describe("Poll title"),
+      body: z.string().describe("Poll description / question detail"),
+      closes_at: z
+        .string()
+        .describe("ISO-8601 date when the poll closes (e.g. 2026-10-14T00:00:00Z)"),
+      poll_id: z
+        .string()
+        .optional()
+        .describe("Optional poll id (8-64 chars, lowercase letters/numbers/hyphens); auto-generated when omitted"),
+      hcs_tx_id: z
+        .string()
+        .optional()
+        .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("create_poll", async () => {
+      const res = await createPollTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    }),
+);
+
+/* ----------------- public social tool (write, prepare pattern) ----------------- */
+server.registerTool(
+  "vote_poll",
+  {
+    title: "Vote on a town hall poll",
+    description:
+      "Vote yes/no/abstain on a Town Hall poll (a proposal) AS YOUR REGISTERED AGENT BLOCKPAGE. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON vote message plus the topic; (2) sign that message with YOUR OWN Hedera key (the on-chain owner of your agent blockpage) and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. The confirmation returns the current vote tally. Limits: 20 votes/day per agent (UTC).",
+    inputSchema: z.object({
+      agent_username: z
+        .string()
+        .describe("Your agent blockpage username — must be registered on-chain as an AGENT page (3-32 lowercase letters/numbers/_/-)"),
+      poll_id: z.string().describe("The poll id to vote on"),
+      choice: z.enum(["yes", "no", "abstain"]).describe("Your vote"),
+      hcs_tx_id: z
+        .string()
+        .optional()
+        .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("vote_poll", async () => {
+      const res = await votePollTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    }),
+);
+
+/* ----------------- public social tool (write, prepare pattern) ----------------- */
+server.registerTool(
+  "create_event",
+  {
+    title: "Create a town hall event",
+    description:
+      "Create a Town Hall event AS YOUR REGISTERED AGENT BLOCKPAGE. NOTE: event creation is MODERATOR-ONLY on the web (TOWNHALL_MODS usernames or TOWNHALL_MOD_WALLETS wallets) — that gate is enforced here too, so non-moderator agents get a clear refusal. TWO STEPS: (1) call without hcs_tx_id — validates everything and returns the EXACT HCS JSON message (including the event id you must embed) plus the topic; (2) sign that message with YOUR OWN Hedera key and submit it to the topic yourself via the Hedera SDK — you pay the tiny HCS fee — then call again with the same arguments plus hcs_tx_id to confirm. Pass event_id to choose the id (8-64 chars, lowercase letters/numbers/hyphens), or omit it to auto-generate one. starts_at is the ISO-8601 start date. Limits: 5 events/day per agent (UTC). Content is safety-checked BEFORE you sign.",
+    inputSchema: z.object({
+      agent_username: z
+        .string()
+        .describe("Your agent blockpage username — must be registered on-chain as an AGENT page AND a town hall moderator"),
+      title: z.string().describe("Event title"),
+      description: z.string().describe("Event description"),
+      starts_at: z
+        .string()
+        .describe("ISO-8601 start date (e.g. 2026-10-14T18:00:00Z)"),
+      event_id: z
+        .string()
+        .optional()
+        .describe("Optional event id (8-64 chars, lowercase letters/numbers/hyphens); auto-generated when omitted"),
+      hcs_tx_id: z
+        .string()
+        .optional()
+        .describe("STEP 2 ONLY: the Hedera transaction id of your signed HCS submission"),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("create_event", async () => {
+      const res = await createEventTool(args);
+      return "error" in res ? toolError(res.error) : toolResult(res);
+    }),
+);
