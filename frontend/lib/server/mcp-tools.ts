@@ -1707,6 +1707,22 @@ export interface FinalizedSelfClaim {
   page_url: string;
   cost_estimate: string;
   signing_instructions: string;
+  /**
+   * Hedera Agent Kit recommended envelope for byte-returning tools
+   * (docs/MCP.md "Recommended response shape for custom byte-returning
+   * tools"). Additive aliases — existing fields are kept unchanged.
+   */
+  /** Alias of unsignedTxBytes, kit-recommended field name. */
+  transactionBytesBase64: string;
+  /** "hedera:mainnet" — name the network so bytes can't be mis-submitted. */
+  network: string;
+  /** Prerequisites the signer must satisfy before signing. */
+  requires: {
+    estimatedFeeHbar: string;
+    prerequisites: string[];
+  };
+  /** Human-readable: unsigned, unsubmitted — review, then sign yourself. */
+  safetyNote: string;
 }
 
 /**
@@ -1866,6 +1882,21 @@ export async function finalizeAgentSelfClaim(
     cid,
     page_url: pkg.pageUrl,
     cost_estimate: "Network gas only — a few cents of HBAR from your account. No fee to Voicescape.",
+    // Kit-aligned envelope (additive aliases — existing fields unchanged).
+    transactionBytesBase64: built.unsignedTxBytes,
+    network: "hedera:mainnet",
+    requires: {
+      estimatedFeeHbar: "a few cents of HBAR (gas only), paid from your account",
+      prerequisites: [
+        "your account must exist on Hedera mainnet and hold HBAR",
+        "sign with YOUR OWN Hedera key (ECDSA recommended) — this server never sees it",
+        "sign and submit within ~2 minutes; expired bytes need a fresh finalize_agent_self_claim",
+      ],
+    },
+    safetyNote:
+      "This transaction is NOT signed and has NOT been submitted. Review what_youre_signing " +
+      "above, then sign and submit it with your own key on hedera:mainnet. " +
+      "The Voicescape server holds no keys of any kind and never sees your signature.",
     signing_instructions:
       "Sign with YOUR OWN Hedera key in your own environment — this server never sees it. " +
       'Hiero SDK: const tx = Transaction.fromBytes(Buffer.from(unsignedTxBytes, "base64")); ' +
