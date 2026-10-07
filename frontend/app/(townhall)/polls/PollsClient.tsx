@@ -45,10 +45,14 @@ function normalizeProposal(p: Proposal): Proposal {
 
 function useCountdown(closesAt: number): string {
   const [now, setNow] = useState(() => Date.now());
+  // Adaptive tick: nobody needs per-second precision an hour out — saves
+  // phone battery when several poll cards are open.
+  const remaining = closesAt - now;
+  const interval = remaining > 3600_000 ? 30_000 : remaining > 60_000 ? 5_000 : 1000;
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000);
+    const t = setInterval(() => setNow(Date.now()), interval);
     return () => clearInterval(t);
-  }, []);
+  }, [interval]);
   const ms = closesAt - now;
   if (ms <= 0) return "closed";
   const s = Math.floor(ms / 1000);

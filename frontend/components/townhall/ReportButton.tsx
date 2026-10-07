@@ -117,7 +117,7 @@ export default function ReportButton({
     <>
       <button
         type="button"
-        className="th-action"
+        className="th-action th-action-icon"
         onClick={(e) => {
           // preventDefault: this button can sit inside a card <Link>.
           e.preventDefault();
@@ -156,7 +156,7 @@ export default function ReportButton({
               </button>
             </div>
             {!signedIn ? (
-              <p className="th-muted">Sign in with your wallet to file a report. Reporting is free.</p>
+              <p className="th-muted">Sign in with your wallet to file a report. Reporting costs only the tiny Hedera network fee.</p>
             ) : done ? (
               <p style={{ margin: 0 }}>✅ Report submitted — moderators will review it. Thanks for keeping Voicescape safe.</p>
             ) : (

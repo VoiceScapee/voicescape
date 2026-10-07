@@ -10,6 +10,7 @@ import {
   type Purchase,
 } from "@/lib/townhall";
 import { useSession } from "@/lib/session";
+import { getActiveChain } from "@/lib/chains";
 
 /** A purchase verified on-chain (cross-device source of truth). */
 interface ChainPurchase {
@@ -95,7 +96,15 @@ function PurchaseCard({
         {purchase.amountHbar} · {timeAgo(purchase.boughtAt)}
       </p>
       <p className="th-muted vs-mono" style={{ fontSize: 12, overflowWrap: "anywhere" }}>
-        tx {purchase.tx}
+        tx{" "}
+        <a
+          href={`${getActiveChain().blockExplorer}/transaction/${purchase.tx}`}
+          target="_blank"
+          rel="noreferrer"
+          className="th-identity-link"
+        >
+          {purchase.tx}
+        </a>
       </p>
       <p className="th-muted" style={{ fontSize: 12 }}>
         Seller paid directly — 98% to the seller, 2% to the treasury, in one
