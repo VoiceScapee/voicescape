@@ -5,6 +5,7 @@ import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
 import { ipGate } from "@/lib/server/rate-limit";
 import { checkContent } from "@/lib/server/townhall/content-filter";
 import { getTipsAddress } from "@/lib/contracts";
+import { TIPS_CONTRACT_ID } from "@/lib/server/push";
 import { mirrorBaseUrl } from "@/lib/server/townhall/topics";
 import { canonicalAddress } from "@/lib/session-message";
 import { isValidUsername } from "@/lib/identity";
@@ -162,10 +163,14 @@ export async function POST(req: NextRequest, { params }: Params) {
       { status: 503 },
     );
   }
+  // verifyReviewTx compares against the mirror node's entity_id (0.0.x
+  // form); getTipsAddress() returns the EVM form — normalize so the
+  // comparison can actually match.
+  const tipsId = tipsAddress.startsWith("0x") ? TIPS_CONTRACT_ID : tipsAddress;
   const proven = await verifyReviewTx(input.input.txId, sessionAddress, agentOwner, {
     fetchFn: fetch,
     mirrorBaseUrl: mirrorBaseUrl(),
-    tipsAddress,
+    tipsAddress: tipsId,
   });
   if (!proven.ok) {
     return NextResponse.json({ error: proven.error }, { status: proven.status });
