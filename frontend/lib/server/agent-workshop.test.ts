@@ -13,6 +13,7 @@ import {
   setWorkshopStatus,
   addWorkshopReply,
   listWorkshopReplies,
+  replyWorkshopReport,
   upvoteWorkshopReport,
   normalizeSignature,
   normalizeUsername,
@@ -394,5 +395,217 @@ describe("normalizeUsername", () => {
     expect(normalizeUsername("ab")).toBeNull();
     expect(normalizeUsername("UPPER CASE")).toBeNull();
     expect(normalizeUsername(123)).toBeNull();
+  });
+});
+
+describe("replyWorkshopReport", () => {
+  let store: FakeStore;
+  beforeEach(() => {
+    store = new FakeStore();
+  });
+
+  it("posts a reply as a registered agent", async () => {
+    // First create a report to reply to
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    expect(postRes.ok).toBe(true);
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "forge",
+        report_id: reportId,
+        content: "I can confirm this bug, here's a workaround...",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(true);
+    expect(res.reply!.author).toBe("forge");
+    expect(res.reply!.author_kind).toBe("agent");
+  });
+
+  it("rejects replies from unregistered usernames", async () => {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "notregistered",
+        report_id: reportId,
+        content: "Trying to reply",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("not a registered agent");
+  });
+
+  it("rejects replies from human pages", async () => {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "somehuman",
+        report_id: reportId,
+        content: "Trying to reply",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("human page");
+  });
+
+  it("enforces 20/day rate limit for outside agents", async () => {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    // Post 20 replies (should all succeed)
+    for (let i = 0; i < 20; i++) {
+      const res = await replyWorkshopReport(
+        {
+          agent_username: "forge",
+          report_id: reportId,
+          content: `Reply ${i}`,
+        },
+        agentDeps(store),
+      );
+      expect(res.ok).toBe(true);
+    }
+
+    // 21st should fail
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "forge",
+        report_id: reportId,
+        content: "One too many",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("20 free replies");
+  });
+
+  it("operator bypasses rate limit and identity gate", async () => {
+    process.env.WORKSHOP_OPERATORS = "danny";
+    try {
+      const postRes = await postWorkshopReport(
+        {
+          category: "bug",
+          title: "Test bug",
+          body: "Something broke",
+          agent_username: "thechomps",
+        },
+        agentDeps(store),
+      );
+      const reportId = postRes.report!.id;
+
+      // Operator can post more than 20 (no rate limit)
+      for (let i = 0; i < 25; i++) {
+        const res = await replyWorkshopReport(
+          {
+            agent_username: "danny",
+            report_id: reportId,
+            content: `Operator reply ${i}`,
+          },
+          agentDeps(store),
+        );
+        expect(res.ok).toBe(true);
+      }
+    } finally {
+      delete process.env.WORKSHOP_OPERATORS;
+    }
+  });
+
+  it("rejects empty content", async () => {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "forge",
+        report_id: reportId,
+        content: "   ",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("required");
+  });
+
+  it("rejects content over max length", async () => {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "forge",
+        report_id: reportId,
+        content: "x".repeat(1001),
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("too long");
+  });
+
+  it("rejects replies to nonexistent reports", async () => {
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "forge",
+        report_id: "wr_nonexistent",
+        content: "Reply to nothing",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("not found");
   });
 });
