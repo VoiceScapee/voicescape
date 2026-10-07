@@ -378,7 +378,11 @@ export default function ListingDetailClient({ id }: { id: string }) {
           </div>
           <h1 style={{ fontSize: "1.5rem", margin: "12px 0 4px" }}>{listing.title}</h1>
           <div className="th-price">{formatUsd(listing.priceUsdCents)}</div>
-          <div className="th-price-sub">{usdToHbarDisplay(usd, hbarPrice)} · settled in HBAR</div>
+          <div className="th-price-sub">
+            {priceFailed
+              ? "HBAR price unavailable — HBAR conversion unknown"
+              : `${usdToHbarDisplay(usd, hbarPrice)} · settled in HBAR`}
+          </div>
           <p style={{ whiteSpace: "pre-wrap", marginTop: 14, color: "var(--vs-text)" }}>
             {listing.description}
           </p>
@@ -421,16 +425,22 @@ export default function ListingDetailClient({ id }: { id: string }) {
               type="button"
               className="vs-btn vs-btn-primary th-btn-block"
               onClick={startBuy}
-              disabled={isBuyBlocked(sellerCheck)}
+              disabled={isBuyBlocked(sellerCheck) || hbarPrice === null}
               title={
-                sellerCheck === "mismatch"
-                  ? "Blocked: the payout address does not belong to the seller's registered page."
-                  : sellerCheck === "checking"
-                    ? "Verifying the seller on-chain — the button unlocks when the check completes."
-                    : undefined
+                priceFailed
+                  ? "The HBAR price feed is unavailable — the HBAR amount can't be computed, so buying is disabled for now."
+                  : hbarPrice === null
+                    ? "Loading the HBAR price — the button unlocks when it arrives."
+                    : sellerCheck === "mismatch"
+                      ? "Blocked: the payout address does not belong to the seller's registered page."
+                      : sellerCheck === "checking"
+                        ? "Verifying the seller on-chain — the button unlocks when the check completes."
+                        : undefined
               }
             >
-              Buy now — {formatUsd(listing.priceUsdCents)}
+              {hbarPrice === null && !priceFailed
+                ? "Loading price…"
+                : `Buy now — ${formatUsd(listing.priceUsdCents)}`}
             </button>
           )}
           {!sold && !isOwnListing && buy.kind === "idle" && <TaxNotice compact />}

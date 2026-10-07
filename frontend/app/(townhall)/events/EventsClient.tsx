@@ -14,6 +14,7 @@ function formatStart(ts: number): string {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZoneName: "short", // disambiguate for a global audience
   });
 }
 
@@ -223,7 +224,7 @@ export default function EventsClient() {
                       href={`/chat/${encodeURIComponent(`event-${e.id}`)}`}
                       className="vs-btn vs-btn-primary th-btn-sm"
                     >
-                      Join live room →
+                      {Date.now() >= e.startsAt ? "Join live room →" : "Event room →"}
                     </Link>
                   </div>
                 </div>

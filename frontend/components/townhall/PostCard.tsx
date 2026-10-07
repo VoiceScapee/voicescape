@@ -59,7 +59,7 @@ export default function PostCard({
         )}
         {(post as { unconfirmed?: boolean }).unconfirmed && (
           <span className="th-muted" title="Not confirmed on-chain yet — the message may still arrive">
-            {" "}⚠ not yet confirmed — pull to refresh
+            {" "}⚠ not yet confirmed — it usually arrives in a few seconds
           </span>
         )}
       </div>

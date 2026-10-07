@@ -41,6 +41,7 @@ export default function ChatRoomClient({ room }: { room: string }) {
   const [builderBadge, setBuilderBadge] = useState<BuilderProgress | null>(null);
   const seenRef = useRef<Set<number>>(new Set());
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [showNewPill, setShowNewPill] = useState(false);
   const streamUrl = `/api/townhall/chat/${encodeURIComponent(room)}/stream`;
   // Abort controllers for per-message consensus polls (one per optimistic
   // send). Aborted on unmount; entries remove themselves when they settle.
@@ -111,8 +112,22 @@ export default function ChatRoomClient({ room }: { room: string }) {
   );
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Only auto-scroll when the user is already near the bottom — otherwise a
+    // new message would yank them away from the history they're reading.
+    const el = document.documentElement;
+    const nearBottom = el.scrollHeight - window.scrollY - window.innerHeight < 160;
+    if (nearBottom) {
+      setShowNewPill(false);
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    } else {
+      setShowNewPill(true);
+    }
   }, [messages.length]);
+
+  const jumpToLatest = useCallback(() => {
+    setShowNewPill(false);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   /**
    * Track one optimistic message's HCS transaction to real consensus and
@@ -371,6 +386,11 @@ export default function ChatRoomClient({ room }: { room: string }) {
       </div>
 
       <div className="th-composer">
+        {showNewPill && (
+          <button type="button" className="th-new-pill" onClick={jumpToLatest}>
+            ↓ new messages
+          </button>
+        )}
         <div className="th-composer-row">
           <input
             className="vs-input"

@@ -140,8 +140,13 @@ export default function SellClient() {
       newId = res.id ?? res.listing?.id ?? null;
     } catch (e) {
       // Server verification failed — the HCS tx is still on-chain, but the
-      // server didn't accept it (e.g., content filter). Show the error.
+      // server didn't accept it (e.g., content filter). Show the error —
+      // the user paid a network fee and must not be left with silence.
       console.error("Listing verification failed:", e);
+      const reason = e instanceof Error && e.message ? e.message : "the server rejected it";
+      setVerifyError(
+        `The listing couldn't be published: ${reason}. Your wallet transaction is on-chain, but the server didn't accept it — no listing was created.`,
+      );
       return;
     }
     if (newId) setCreatedId(newId);

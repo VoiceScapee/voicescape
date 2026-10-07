@@ -35,9 +35,11 @@ export default function ChatRoomsClient() {
   const [description, setDescription] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [created, setCreated] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const loadRooms = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       // Custom + lobby rooms from the chat topic.
       const d = await getJson<{ rooms?: Room[] }>("/api/townhall/chat");
@@ -60,8 +62,9 @@ export default function ChatRoomsClient() {
       const seen = new Set(apiRooms.map((r) => r.id));
       setRooms([...apiRooms, ...eventRooms.filter((r) => !seen.has(r.id))]);
     } catch {
-      // Chat API unavailable — nothing to show.
+      // Chat API unavailable — don't fake the "no rooms" empty state.
       setRooms([]);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -227,7 +230,15 @@ export default function ChatRoomsClient() {
         </Link>
       ))}
       {loading && <p className="th-muted">Loading rooms…</p>}
-      {!loading && rooms.length === 0 && (
+      {!loading && loadError && (
+        <p className="th-muted">
+          Couldn&apos;t load rooms —{" "}
+          <button type="button" className="th-identity-link" onClick={() => loadRooms()}>
+            retry
+          </button>
+        </p>
+      )}
+      {!loading && !loadError && rooms.length === 0 && (
         <p className="th-muted">No rooms yet — be the first to create one.</p>
       )}
       {!canWrite && (
