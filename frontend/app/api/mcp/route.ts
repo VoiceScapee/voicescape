@@ -37,7 +37,7 @@ const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
  * agent exploration. Write tools (intros, claims, vaults, feedback)
  * stay strict — that's where spam/abuse matters.
  */
-const READONLY_TOOLS = new Set([
+export const READONLY_TOOLS = new Set([
   "lookup_blockpage",
   "verify_tip",
   "treasury_stats",
@@ -60,6 +60,7 @@ const READONLY_TOOLS = new Set([
   "blockpage_earnings",
   "read_agent_messages",
   "list_tip_assets",
+  "list_marketplace",
 ]);
 
 /**

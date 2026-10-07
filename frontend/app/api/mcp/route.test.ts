@@ -170,3 +170,30 @@ describe("GET /api/mcp fetch-tool pointer", () => {
     expect(res.headers.get("location")).toBe("https://voicescape.vercel.app/mcp");
   });
 });
+
+describe("READONLY_TOOLS drift guard", () => {
+  it("matches the registry's READONLY annotations exactly", async () => {
+    const { registerTools } = await import("@/lib/server/mcp-tool-registry");
+    const { READONLY_TOOLS } = await import("./route");
+    const seen: Array<{ name: string; readOnlyHint: boolean }> = [];
+    const fakeServer = {
+      registerTool: (name: string, config: Record<string, unknown>) => {
+        const annotations = (config.annotations ?? {}) as Record<string, unknown>;
+        seen.push({ name, readOnlyHint: annotations.readOnlyHint === true });
+      },
+      registerResource: () => {},
+    };
+    registerTools(fakeServer as never);
+    expect(seen.length).toBeGreaterThan(0);
+    const missing = seen
+      .filter((t) => t.readOnlyHint && !READONLY_TOOLS.has(t.name))
+      .map((t) => t.name);
+    expect(missing).toEqual([]);
+    const unknown = [...READONLY_TOOLS].filter((n) => !seen.some((t) => t.name === n));
+    expect(unknown).toEqual([]);
+    const writeInReadonly = seen
+      .filter((t) => !t.readOnlyHint && READONLY_TOOLS.has(t.name))
+      .map((t) => t.name);
+    expect(writeInReadonly).toEqual([]);
+  });
+});
