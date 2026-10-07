@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { KvStore } from "./store";
 import {
   stashPendingAction,
+  stashPageUpdateProposal,
+  getPendingActionById,
   getPendingActions,
   clearPendingAction,
   PendingActionConflictError,
@@ -104,5 +106,72 @@ describe("pending-actions inbox", () => {
   it("ignores corrupt stored data instead of crashing", async () => {
     await store.set("pending-actions:0.0.10425049", "{not json", 1000);
     expect(await getPendingActions("0.0.10425049", store)).toEqual([]);
+  });
+});
+
+describe("pending-actions page-update proposals", () => {
+  let store: KvStore;
+  beforeEach(() => { store = fakeStore(); });
+
+  const UPDATE_INPUT = {
+    owner_account_id: "0.0.10425049",
+    spec: {
+      username: "thechomps",
+      ownerType: "agent" as const,
+      displayName: "The Chomps",
+      purpose: "Demo agent page",
+      capabilities: ["demo"],
+      operator: "0x0000000000000000000000000000000000000000",
+      templateId: null,
+      theme: null,
+      socials: null,
+      links: null,
+    },
+    change_summary: "Updated the bio text",
+    token_id: "a".repeat(16),
+  };
+
+  it("stashes an update proposal with kind agent-page-update", async () => {
+    const action = await stashPageUpdateProposal(UPDATE_INPUT, store);
+    expect(action.kind).toBe("agent-page-update");
+    expect(action.title).toBe("Update @thechomps");
+    expect(action.summary).toBe("Updated the bio text");
+    expect(action.claimPackageId).toBeUndefined();
+    expect(action.pageUpdate?.spec.username).toBe("thechomps");
+    expect(action.pageUpdate?.tokenId).toBe("a".repeat(16));
+    const list = await getPendingActions("0.0.10425049", store);
+    expect(list).toHaveLength(1);
+    expect(list[0].kind).toBe("agent-page-update");
+  });
+
+  it("mixes claim and update proposals in one inbox under the same cap", async () => {
+    await stashPendingAction(INPUT, store);
+    await stashPageUpdateProposal(UPDATE_INPUT, store);
+    const list = await getPendingActions("0.0.10425049", store);
+    expect(list.map((p) => p.kind)).toEqual(["agent-claim", "agent-page-update"]);
+  });
+
+  it("finds a single proposal by id", async () => {
+    const action = await stashPageUpdateProposal(UPDATE_INPUT, store);
+    const found = await getPendingActionById("0.0.10425049", action.id, store);
+    expect(found?.id).toBe(action.id);
+    expect(await getPendingActionById("0.0.10425049", "deadbeefdeadbeef", store)).toBeNull();
+    expect(await getPendingActionById("0.0.99999999", action.id, store)).toBeNull();
+  });
+
+  it("rejects invalid update input instead of stashing garbage", async () => {
+    await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, owner_account_id: "nope" }, store)).rejects.toThrow();
+    await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, spec: { ...UPDATE_INPUT.spec, username: "BAD NAME!" } }, store)).rejects.toThrow();
+    await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, change_summary: "" }, store)).rejects.toThrow();
+    await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, token_id: "short" }, store)).rejects.toThrow();
+  });
+
+  it("counts updates toward the inbox cap — never silently overwrites", async () => {
+    await stashPageUpdateProposal(UPDATE_INPUT, store);
+    await stashPageUpdateProposal({ ...UPDATE_INPUT, change_summary: "second" }, store);
+    await stashPageUpdateProposal({ ...UPDATE_INPUT, change_summary: "third" }, store);
+    await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, change_summary: "fourth" }, store)).rejects.toBeInstanceOf(
+      PendingActionConflictError,
+    );
   });
 });
