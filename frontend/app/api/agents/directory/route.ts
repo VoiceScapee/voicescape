@@ -124,6 +124,7 @@ export async function GET(req: NextRequest) {
     const logsRes = await fetch(logsUrl, {
       headers: { Accept: "application/json" },
       next: { revalidate: 300 },
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!logsRes.ok) throw new Error("Mirror Node unavailable");
@@ -144,7 +145,7 @@ export async function GET(req: NextRequest) {
 
         const txRes = await fetch(
           `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
-          { headers: { Accept: "application/json" } }
+          { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }
         );
         if (!txRes.ok) continue;
         const txData = await txRes.json();
@@ -153,7 +154,7 @@ export async function GET(req: NextRequest) {
 
         const resultRes = await fetch(
           `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${txId}`,
-          { headers: { Accept: "application/json" } }
+          { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) }
         );
         if (!resultRes.ok) continue;
         const resultData = await resultRes.json();

@@ -9,12 +9,23 @@
  * observers can join beacon rows against their request log.
  *
  * No auth — the wid is a random 8-char id (no PII), iid is opaque.
- * Invalid or unissued wids are ignored. Best-effort; always returns 200.
+ * Invalid or unissued wids are ignored. Best-effort; returns 200 on success
+ * and 429 when the per-IP flood bound trips.
  */
 import { NextResponse } from "next/server";
 import { isWidgetId, logWidgetVisit, wasWidgetIssued } from "@/lib/server/widget-diagnostics";
+import { ipGate } from "@/lib/server/rate-limit";
 
 export async function POST(req: Request) {
+  // Per-IP flood bound — every hit can do up to two KV writes.
+  const gated = await ipGate(
+    req,
+    "widget-visit",
+    "IP_RATE_LIMIT_WIDGET_VISIT",
+    120,
+    "too many widget beacons from this network — try again later",
+  );
+  if (gated) return gated;
   try {
     const body = await req.json().catch(() => ({}));
     const wid = (body as { wid?: unknown }).wid;

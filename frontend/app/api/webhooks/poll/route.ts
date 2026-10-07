@@ -10,7 +10,7 @@ export const runtime = "nodejs";
  * logs on the Hedera mainnet mirror node since the stored cursor and POSTs
  * new tip/purchase events to matching subscriptions.
  *
- * Triggered by Vercel Cron (see vercel.json — every 5 minutes). Guarded by
+ * Triggered by Vercel Cron (see vercel.json — daily at 08:00 UTC). Guarded by
  * CRON_SECRET: fails closed with 503 when the secret is unset and 401 when
  * the bearer is missing or wrong.
  *

@@ -71,7 +71,7 @@ async function registrationForLog(
     // Get transaction ID from timestamp
     const txRes = await fetch(
       `https://mainnet.mirrornode.hedera.com/api/v1/transactions?timestamp=${log.timestamp}`,
-      { headers: { Accept: "application/json" } },
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) },
     );
     if (!txRes.ok) return null;
     const txData = await txRes.json();
@@ -81,7 +81,7 @@ async function registrationForLog(
     // Get function parameters to decode username + ownerType
     const resultRes = await fetch(
       `https://mainnet.mirrornode.hedera.com/api/v1/contracts/results/${txId}`,
-      { headers: { Accept: "application/json" } },
+      { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(10_000) },
     );
     if (!resultRes.ok) return null;
     const resultData = await resultRes.json();
@@ -104,7 +104,10 @@ async function fetchAllLogs(): Promise<RegistryLog[]> {
     `?order=desc&limit=100`;
 
   while (url && logs.length < 5000) {
-    const res: Response = await fetch(url, { headers: { Accept: "application/json" } });
+    const res: Response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!res.ok) throw new Error(`Mirror Node unavailable: ${res.status}`);
     const data: { logs?: RegistryLog[]; links?: { next?: string } } = await res.json();
     for (const l of data.logs || []) {

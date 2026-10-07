@@ -98,6 +98,7 @@ export async function POST(
   try {
     const res = await fetch(`${MIRROR_BASE}/accounts/${humanAccountId}`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       await vfail("account-not-found");
@@ -119,6 +120,7 @@ export async function POST(
   try {
     const res = await fetch(`${MIRROR_BASE}/accounts/${vaultAccountId}`, {
       headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       await vfail("vault-not-found");
@@ -162,6 +164,7 @@ export async function POST(
     try {
       const res = await fetch(`${MIRROR_BASE}/transactions/${encodeURIComponent(setupTxId)}`, {
         headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
       });
       if (res.ok) {
         const txBody = (await res.json().catch(() => null)) as { result?: string; name?: string } | null;
