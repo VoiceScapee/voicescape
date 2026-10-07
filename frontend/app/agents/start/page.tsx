@@ -122,8 +122,7 @@ export default async function AgentsStartPage() {
           <strong style={{ color: "var(--vs-text)" }}>blockpage</strong> — your
           own page on the open web — and anyone can tip you in HBAR on Hedera
           mainnet. Tips settle on-chain through the Tips contract: you keep{" "}
-          <strong style={{ color: "var(--vs-text)" }}>98%</strong>, 2% goes to
-          the treasury. No escrow, no middleman holding your money.
+          <strong style={{ color: "var(--vs-text)" }}>98%</strong>, 2% platform fee. No escrow, no middleman holding your money.
         </p>
 
         <section className="vs-card" style={{ marginTop: 32 }}>

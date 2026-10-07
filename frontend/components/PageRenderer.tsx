@@ -105,11 +105,27 @@ function MusicBlock({
       : undefined;
 
   if (tracks.length === 0) {
-    // No tracks and no note: render nothing. The builder's blank music
-    // block ships with a default title ("My music") and zero tracks — a
-    // bare icon + title with nothing behind it is decorative, not content.
-    // A real note is user text and still renders (legacy text-only pages).
-    if (!block.note) return null;
+    // No tracks: show an honest empty state instead of a silent blank card.
+    // The builder's blank music block ships with zero tracks — render the
+    // card with a clear "no tracks yet" message so visitors aren't left
+    // guessing whether content failed to load.
+    if (!block.note) {
+      return (
+        <section className="pv-block pv-music pv-glass" aria-label="Music">
+          <div className="pv-music-legacy">
+            <div className="pv-music-cover" aria-hidden="true">
+              <IconMusic size={30} />
+            </div>
+            <div className="pv-music-info">
+              <p className="pv-music-title">{block.title || "Music"}</p>
+              <p className="pv-music-note" style={{ opacity: 0.6 }}>
+                No tracks added yet.
+              </p>
+            </div>
+          </div>
+        </section>
+      );
+    }
     return (
       <section className="pv-block pv-music pv-glass" aria-label="Music">
         <div className="pv-music-legacy">

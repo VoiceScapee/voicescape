@@ -438,7 +438,7 @@ export function DannysVision({
               title: registered
                 ? "🟢 New blockpage registered"
                 : "🟢 Blockpage updated",
-              sub: "Voicescape Registry · 0.0.10854058",
+              sub: `Voicescape Registry · 0.0.10854058 · ${l.transaction_hash.slice(0, 10)}…`,
               url: hashscanTxUrl(l.transaction_hash),
               ts: mirrorTsToMs(l.timestamp),
             };

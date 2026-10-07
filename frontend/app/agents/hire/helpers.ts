@@ -95,5 +95,5 @@ export function buildAgentsQuery(input: AgentsQueryInput): string {
     params.set("available", "true");
   }
   const qs = params.toString();
-  return qs ? `/api/agents?${qs}` : "/api/agents";
+  return qs ? `/api/agents/directory?${qs}` : "/api/agents/directory";
 }
