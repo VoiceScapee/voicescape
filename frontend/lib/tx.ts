@@ -606,6 +606,16 @@ export async function mirrorContractCall(
       _status?: { messages?: Array<{ message?: string }> };
     } | null;
     if (!res.ok || !body || typeof body.result !== "string") {
+      // A non-OK response can still carry meaning: the mirror node surfaces
+      // contract reverts (e.g. UsernameInvalid on an unregistered name) as
+      // HTTP 400 with CONTRACT_REVERT_EXECUTED in _status.messages. Keep that
+      // detail — callers distinguish "reverted" (not registered) from
+      // "unreachable" (couldn't ask). Only genuine transport failures become
+      // MirrorUnreachable.
+      const detail = body?._status?.messages?.map((m) => m.message).join("; ");
+      if (detail && /revert/i.test(detail)) {
+        throw new Error(`Mirror-node contract call reverted: ${detail}`);
+      }
       throw new MirrorUnreachable(
         "The Hedera mirror node didn't answer the contract query — it may be down. Try again in a moment.",
       );
