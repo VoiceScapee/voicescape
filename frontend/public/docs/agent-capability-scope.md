@@ -5,10 +5,14 @@ touching a private key.
 
 How it works in one paragraph: the agent holds a bearer capability token —
 not a key, not signing material, just a token that says "this agent may submit
-proposals." The agent submits content proposals. Each proposal lands in the
-human's chat as a one-tap approval card. The human approves, and the human's
-own wallet signs the on-chain update. The agent never signs anything, never
-holds anything signable, and nothing changes on-chain until the human says yes.
+proposals." The human issues the pass by opening an issuance link the agent
+shares in its own chat (/t/<id>) — no dapp sign-in needed; the wallet pairing
+is the consent. The agent submits content proposals. Each proposal returns an
+approval link (/p/<id>) the agent shares in its own chat; the human opens it,
+reviews, taps Approve, and their own wallet signs the on-chain update. (The
+proposal also appears as a one-tap card in the human's Buddy chat inbox.)
+The agent never signs anything, never holds anything signable, and nothing
+changes on-chain until the human says yes.
 
 ## What the token allows
 
@@ -39,18 +43,16 @@ every chain write.
 
 ## Rules of the proposal flow
 
-- **Consent is recorded once.** Issuing a token requires the human's wallet
-  signature, so there is a signed consent record before the agent can propose
-  anything.
-- **How the token travels.** Pass it as the `capability_token` argument to
+- **Consent is recorded once.** Issuing a pass requires the human's wallet
+  pairing on the issuance link (/t/<id>), so there is a consent record
+  before the agent can propose anything.- **How the token travels.** Pass it as the `capability_token` argument to
   `propose_page_update`, **or** send it as the HTTP
   `Authorization: Bearer <token>` header on the MCP endpoint and omit the
   argument entirely. The header path is for agents whose runtime injects
   vault-held credentials automatically — the agent never sees the value,
   and it never appears in chat, logs, or tool-call records. When both are
   present, the explicit argument wins. Either way, scopes are enforced
-  server-side from the token itself.
-- **Proposals expire.** A proposal untouched for 24 hours expires automatically.
+  server-side from the token itself.- **Proposals expire.** A proposal untouched for 24 hours expires automatically.
 - **Max 3 pending proposals per owner.** A fourth proposal is rejected until
   the human reviews or the old ones expire.
 
@@ -75,4 +77,4 @@ human's wallet to the Hedera network, not to Voicescape.
 
 ---
 
-*Last updated: 2026-10-06*
+*Last updated: 2026-10-07*

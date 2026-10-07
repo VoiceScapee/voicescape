@@ -31,6 +31,7 @@ import {
   postAgentIntro,
   prepareAgentClaim,
   proposePageUpdate,
+  requestCapabilityToken,
   prepareAgentSelfClaim,
   finalizeAgentSelfClaim,
   completeAgentSelfClaim,
@@ -449,7 +450,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Propose page update",
       description:
-        "Propose a content update to a blockpage your human owns — the KEYLESS operation path for agents that cannot hold private keys. Authenticate with a bearer capability token (NOT a key — your human issues it once from their wallet session; it lives in your secure credential storage, never in chat): pass it as the capability_token argument, OR send it as the HTTP Authorization: Bearer <redacted> — if your runtime injects vault-held credentials as a header, OMIT the argument entirely so the value never appears in chat, logs, or tool-call records. The token only lets you PROPOSE: the server verifies your human owns the page on-chain, pins nothing yet, and queues the proposal as a one-tap approval card in their Buddy chat. They review, tap Approve, and sign ONCE in their wallet (a few cents of HBAR gas) — nothing executes without that tap. Pass the FULL desired page content (not a diff): read the current page first, then propose the complete new version. The token cannot move funds, change ownership, touch keys, or do anything outside proposing updates — see /docs/agent-capability-scope.md for the exact allow-list and exclusions.",
+        "Propose a content update to a blockpage your human owns — the KEYLESS operation path for agents that cannot hold private keys. Authenticate with a Bearer <redacted> (NOT a key — your human issues it once via the request_capability_token issuance link; it lives in your secure credential storage, never in chat): pass it as the capability_token argument, OR send it as the HTTP Authorization: Bearer <redacted> — if your runtime injects vault-held credentials as a header, OMIT the argument entirely so the value never appears in chat, logs, or tool-call records. The token only lets you PROPOSE: the server verifies your human owns the page on-chain, pins nothing yet, and returns an approval_url — share that link with your human in YOUR OWN chat; they open it, review, tap Approve, and sign ONCE in their wallet (a few cents of HBAR gas). The proposal is also queued as a one-tap card in their Buddy chat inbox. Nothing executes without that tap. Pass the FULL desired page content (not a diff): read the current page first, then propose the complete new version. The token cannot move funds, change ownership, touch keys, or do anything outside proposing updates — see /docs/agent-capability-scope.md for the exact allow-list and exclusions.",
       inputSchema: z.object({
         capability_token: z
           .string()
@@ -515,6 +516,36 @@ export function registerTools(server: McpServer): void {
   );
 
   /* ----------------- own-keys claim tools (agent signs) ----------------- */
+  // The link-based issuance for the keyless path: the agent's human lives
+  // in the AGENT'S OWN chat, not in the dapp. The agent calls this, gets an
+  // issuance URL, and drops it in its own chat — the human opens it,
+  // connects their wallet, and taps "Issue pass". The wallet pairing IS the
+  // consent; the raw token is shown once on the page and the human puts it
+  // in the agent's secure credential storage (never in chat).
+  server.registerTool(
+    "request_capability_token",
+    {
+      title: "Request capability token",
+      description:
+        "Get an issuance link for your human to create your Bearer <redacted> — the KEYLESS operation path for agents that cannot hold private keys. Your human lives in YOUR OWN chat, not in our dapp: call this with a label naming your agent, share the returned issuance URL with them there, and they open it, connect their wallet, and tap 'Issue pass'. The wallet pairing is their consent; the pass is shown to them ONCE on that page and they put it in your secure credential storage (never in chat). The pass only lets you PROPOSE page updates via propose_page_update — every on-chain change still needs their tap on each proposal's approval link. The link expires unused after 24h.",
+      inputSchema: z.object({
+        label: z
+          .string()
+          .max(80)
+          .describe("Name your agent — the human sees this on the issuance page when deciding whether to trust the request"),
+        scopes: z
+          .array(z.string())
+          .optional()
+          .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin. Defaults to all three when omitted."),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("request_capability_token", async () => {
+        const res = await requestCapabilityToken(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
   // The own-keys path: the agent already holds a Hedera wallet. The human
   // previews and approves in the AGENT'S OWN chat — no browser, no wallet
   // pairing, no human signature. The agent signs the unsigned bytes with

@@ -8,6 +8,7 @@ import {
   stashPendingAction,
   stashPageUpdateProposal,
   getPendingActionById,
+  getPendingActionByPublicId,
   getPendingActions,
   clearPendingAction,
   PendingActionConflictError,
@@ -173,5 +174,27 @@ describe("pending-actions page-update proposals", () => {
     await expect(stashPageUpdateProposal({ ...UPDATE_INPUT, change_summary: "fourth" }, store)).rejects.toBeInstanceOf(
       PendingActionConflictError,
     );
+  });
+
+  it("finds a proposal by its public approval-link id", async () => {
+    const action = await stashPageUpdateProposal(UPDATE_INPUT, store);
+    const found = await getPendingActionByPublicId(action.id, store);
+    expect(found).not.toBeNull();
+    expect(found!.ownerAccountId).toBe("0.0.10425049");
+    expect(found!.pageUpdate!.changeSummary).toBe("Updated the bio text");
+  });
+
+  it("returns null for malformed or unknown public ids", async () => {
+    await stashPageUpdateProposal(UPDATE_INPUT, store);
+    expect(await getPendingActionByPublicId("not-hex", store)).toBeNull();
+    expect(await getPendingActionByPublicId("deadbeefdeadbeef", store)).toBeNull();
+    expect(await getPendingActionByPublicId("", store)).toBeNull();
+  });
+
+  it("clearing a proposal removes its public lookup", async () => {
+    const action = await stashPageUpdateProposal(UPDATE_INPUT, store);
+    expect(await getPendingActionByPublicId(action.id, store)).not.toBeNull();
+    await clearPendingAction("0.0.10425049", action.id, store);
+    expect(await getPendingActionByPublicId(action.id, store)).toBeNull();
   });
 });

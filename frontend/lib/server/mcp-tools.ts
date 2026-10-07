@@ -38,7 +38,8 @@ import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
 import { getKvStore } from "./store";
-import { validateCapabilityToken } from "./capability-tokens";
+import { validateCapabilityToken, CAPABILITY_SCOPES } from "./capability-tokens";
+import { createTokenRequest } from "./token-requests";
 import {
   stashPageUpdateProposal,
   PendingActionConflictError,
@@ -1152,6 +1153,12 @@ export interface PageUpdateProposal {
   change_summary: string;
   status: "awaiting_human_approval";
   expires_in: string;
+  /**
+   * Approval link for the human — the agent drops this in its OWN chat.
+   * The human opens it, reviews the proposal, taps Approve, and signs
+   * once in their wallet. No Buddy chat, no dapp sign-in needed.
+   */
+  approval_url: string;
   next: string;
 }
 
@@ -1263,10 +1270,12 @@ export async function proposePageUpdate(
       change_summary: changeSummary,
       status: "awaiting_human_approval",
       expires_in: "24h",
+      approval_url: `${getRequestContext().origin.replace(/\/$/, "")}/p/${action.id}`,
       next:
-        `Point the human at their Buddy chat approval inbox — the proposal is there as a one-tap card. ` +
-        `They review "${changeSummary.slice(0, 120)}", tap Approve, and sign ONCE in their wallet ` +
+        `Share this approval link with your human in YOUR OWN chat: ${getRequestContext().origin.replace(/\/$/, "")}/p/${action.id} — ` +
+        `they open it, review "${changeSummary.slice(0, 120)}", tap Approve, and sign ONCE in their wallet ` +
         `(a few cents of HBAR network gas). Nothing is pinned and no transaction is built until they tap. ` +
+        `The proposal is also in their Buddy chat approval inbox as a card. ` +
         `Untapped proposals expire after 24h. Do not resubmit the same proposal — if the inbox is full ` +
         `(3 max), ask the human to clear it first.`,
     };
@@ -1279,6 +1288,91 @@ export async function proposePageUpdate(
       };
     }
     throw e;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: request_capability_token (keyless issuance link)        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Request a capability-token issuance link for the keyless path. The agent
+ * cannot hold keys, so its human issues the Bearer <redacted> — but the
+ * human lives in the AGENT'S OWN chat, not in the dapp. This tool returns
+ * an issuance URL (/t/<id>) the agent drops in its own chat: the human
+ * opens it, connects their wallet, and taps "Issue pass". The wallet
+ * pairing IS the consent; the token is bound to the paired account and
+ * shown ONCE on the page, and the human puts it in the agent's secure
+ * credential storage (never in chat).
+ *
+ * The token only authorizes PROPOSALS (page:update:propose et al) — every
+ * on-chain write still needs the human's wallet signature. The server
+ * never holds any key.
+ */
+export interface RequestCapabilityTokenArgs {
+  /**
+   * Agent-chosen label, shown to the human on the issuance page —
+   * e.g. "muse AI agent". The human decides whether to trust it.
+   */
+  label: string;
+  /**
+   * Requested scopes, subset of page:update:propose, page:read, media:pin.
+   * Defaults to all three when omitted.
+   */
+  scopes?: string[];
+}
+
+export interface CapabilityTokenRequest {
+  request_id: string;
+  label: string;
+  scopes: string[];
+  /** Issuance link for the human — share it in YOUR OWN chat. */
+  issuance_url: string;
+  expires_in: string;
+  next: string;
+}
+
+export async function requestCapabilityToken(
+  args: RequestCapabilityTokenArgs,
+): Promise<CapabilityTokenRequest | { error: string }> {
+  const label = (args.label ?? "").trim().slice(0, 80);
+  if (!label) {
+    return { error: "label is required — name your agent so the human knows who is asking" };
+  }
+  let scopes: (typeof CAPABILITY_SCOPES)[number][] | undefined;
+  if (args.scopes !== undefined) {
+    if (
+      !Array.isArray(args.scopes) ||
+      args.scopes.length === 0 ||
+      !args.scopes.every(
+        (s): s is (typeof CAPABILITY_SCOPES)[number] =>
+          typeof s === "string" && (CAPABILITY_SCOPES as readonly string[]).includes(s),
+      )
+    ) {
+      return {
+        error: `scopes must be a non-empty subset of: ${CAPABILITY_SCOPES.join(", ")}`,
+      };
+    }
+    scopes = args.scopes as (typeof CAPABILITY_SCOPES)[number][];
+  }
+  try {
+    const rec = await createTokenRequest({ label, scopes });
+    const issuanceUrl = `${getRequestContext().origin.replace(/\/$/, "")}/t/${rec.id}`;
+    return {
+      request_id: rec.id,
+      label: rec.label,
+      scopes: rec.scopes,
+      issuance_url: issuanceUrl,
+      expires_in: "24h",
+      next:
+        `Share this issuance link with your human in YOUR OWN chat: ${issuanceUrl} — ` +
+        `they open it, connect their wallet, and tap "Issue pass". The pass (a vs_cap_… Bearer <redacted>) ` +
+        `is shown to them ONCE on that page; they put it in your secure credential storage (never in chat). ` +
+        `The pass only lets you PROPOSE page updates — nothing executes without their tap on each ` +
+        `proposal's approval link. The link expires unused after 24h.`,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "could not create the issuance request" };
   }
 }
 

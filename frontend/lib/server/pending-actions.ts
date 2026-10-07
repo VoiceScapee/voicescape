@@ -63,6 +63,17 @@ export class PendingActionConflictError extends Error {}
 
 const KEY_PREFIX = "pending-actions:";
 const TTL_MS = 24 * 3_600_000;
+/**
+ * Global id → owner index so a proposal can be found from a public approval
+ * link (/p/<id>) without knowing the owner up front. The id is unguessable
+ * (16 hex chars); the index carries no proposal content, just the owner key.
+ * Written at stash time, removed when the proposal is cleared.
+ */
+const ID_INDEX_PREFIX = "pending-action-by-id:";
+
+function idIndexKey(id: string): string {
+  return `${ID_INDEX_PREFIX}${id}`;
+}
 /** Max unexpired proposals per owner before new ones conflict. */
 export const MAX_PENDING_PER_OWNER = 3;
 
@@ -104,6 +115,23 @@ export async function getPendingActionById(
 ): Promise<PendingAction | null> {
   const list = await readList(ownerAccountId.trim(), store);
   return list.find((p) => p.id === id) ?? null;
+}
+
+/**
+ * Find a proposal from its public approval-link id (/p/<id>) without
+ * knowing the owner. Returns null for unknown/malformed ids. The index
+ * holds only the owner pointer — the proposal itself is re-read from the
+ * owner's inbox so a stale index can never resurrect cleared content.
+ */
+export async function getPendingActionByPublicId(
+  id: string,
+  store: KvStore = getKvStore(),
+): Promise<PendingAction | null> {
+  const clean = (id ?? "").trim();
+  if (!/^[0-9a-f]{16}$/.test(clean)) return null;
+  const owner = await store.get(idIndexKey(clean));
+  if (!owner || !/^\d+\.\d+\.\d+$/.test(owner)) return null;
+  return getPendingActionById(owner, clean, store);
 }
 
 /**
@@ -222,6 +250,7 @@ export async function stashPageUpdateProposal(
   };
   list.push(action);
   await store.set(keyFor(owner), JSON.stringify(list), TTL_MS);
+  await store.set(idIndexKey(action.id), owner, TTL_MS);
   return action;
 }
 
@@ -236,11 +265,16 @@ export async function clearPendingAction(
 ): Promise<void> {
   const owner = ownerAccountId.trim();
   if (!id) {
+    const list = await readList(owner, store);
+    for (const p of list) {
+      if (p && typeof p.id === "string") await store.del(idIndexKey(p.id));
+    }
     await store.del(keyFor(owner));
     return;
   }
   const list = await readList(owner, store);
   const rest = list.filter((p) => p.id !== id);
+  await store.del(idIndexKey(id));
   if (rest.length === 0) {
     await store.del(keyFor(owner));
   } else {
