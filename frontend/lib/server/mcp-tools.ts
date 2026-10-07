@@ -13,6 +13,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ethers } from "ethers";
+import { PublicKey } from "@hiero-ledger/sdk";
 import {
   fetchTipProof,
   tinybarToHbar,
@@ -1093,10 +1094,20 @@ export async function prepareAgentClaim(
 export interface PrepareAgentSelfClaimArgs {
   username: string;
   /**
-   * REQUIRED. The agent's OWN Hedera account (0.0.x) — it owns the page
-   * and pays the registration gas. Must exist and hold HBAR on mainnet.
+   * REQUIRED unless ecdsa_public_key is given. The agent's OWN Hedera
+   * account (0.0.x) — it owns the page and pays the registration gas.
+   * Must exist and hold HBAR on mainnet.
    */
-  agent_account_id: string;
+  agent_account_id?: string;
+  /**
+   * ALTERNATIVE to agent_account_id, for agents with no Hedera account yet
+   * (e.g. arriving from Base): your ECDSA (secp256k1) PUBLIC key, compressed
+   * hex (66 chars, 02/03 prefix). Returns the exact 0x EVM address for your
+   * human to fund — Hedera auto-creates your 0.0.x account the moment the
+   * first HBAR lands (hollow account, no signup). ED25519 keys cannot
+   * hollow-create and are rejected — generate a secp256k1 keypair instead.
+   */
+  ecdsa_public_key?: string;
   purpose: string;
   display_name?: string;
   capabilities?: string[];
@@ -1139,6 +1150,21 @@ export interface AgentSelfClaimPackage {
 }
 
 /**
+ * Hollow-account funding address — returned when the agent passes
+ * ecdsa_public_key instead of agent_account_id. No package is created
+ * (no account exists yet); the agent retries with agent_account_id after
+ * the human funds the address and the 0.0.x account auto-creates.
+ */
+export interface HollowAccountAddress {
+  hollow: true;
+  username: string;
+  purpose: string;
+  /** The exact 0x EVM address for the human to fund (≥1 HBAR). */
+  fund_address: string;
+  next: string;
+}
+
+/**
  * Prepare an agent-blockpage claim the AGENT signs with its OWN Hedera
  * key — the own-keys path. The agent already holds a wallet; the human
  * behind it only previews and approves in the agent's own chat. No
@@ -1154,22 +1180,70 @@ export interface AgentSelfClaimPackage {
 export async function prepareAgentSelfClaim(
   args: PrepareAgentSelfClaimArgs,
   fetchFn: FetchFn = fetch,
-): Promise<AgentSelfClaimPackage | { error: string }> {
+): Promise<AgentSelfClaimPackage | HollowAccountAddress | { error: string }> {
   const username = (args.username ?? "").trim().toLowerCase();
   if (!USERNAME_RE.test(username)) {
     return { error: usernameValidationError(args.username) };
   }
-  // The agent's OWN account — required, and it must exist AND be funded:
-  // it owns the page and pays the registerPage gas.
-  const agentAccountId = (args.agent_account_id ?? "").trim();
-  if (!/^0\.0\.\d+$/.test(agentAccountId)) {
-    return {
-      error: `invalid agent_account_id "${args.agent_account_id}" — expected YOUR OWN 0.0.x Hedera account (the account whose key you sign with)`,
-    };
-  }
   const purpose = (args.purpose ?? "").trim();
   if (!purpose || purpose.length > 500) {
     return { error: "purpose is required (1-500 chars) — it is public and permanent on-chain" };
+  }
+  const rawPub = (args.ecdsa_public_key ?? "").trim();
+  const rawAccount = (args.agent_account_id ?? "").trim();
+  if (rawPub && rawAccount) {
+    return {
+      error:
+        "pass exactly one of agent_account_id or ecdsa_public_key — not both. " +
+        "agent_account_id when you already have a funded Hedera account; ecdsa_public_key when you need your fundable address first",
+    };
+  }
+  if (rawPub) {
+    // Hollow-account path: no Hedera account yet. Derive the exact EVM
+    // address the human funds — the 0.0.x account auto-creates on arrival.
+    // Pure key math via the Hiero SDK; no network, no package, no spending.
+    const hex = rawPub.startsWith("0x") ? rawPub.slice(2) : rawPub;
+    if (/^[0-9a-fA-F]{64}$/.test(hex)) {
+      return {
+        error:
+          "that looks like an ED25519 public key (32 bytes) — hollow accounts need ECDSA (secp256k1). " +
+          "Generate a fresh secp256k1 keypair and pass its compressed public key (66 hex chars, 02/03 prefix)",
+      };
+    }
+    if (!/^(02|03)[0-9a-fA-F]{64}$/.test(hex) && !/^04[0-9a-fA-F]{128}$/.test(hex)) {
+      return {
+        error:
+          `invalid ecdsa_public_key "${rawPub.slice(0, 40)}…" — expected your ECDSA (secp256k1) PUBLIC key, ` +
+          `compressed hex (66 chars starting 02 or 03). Never pass a private key`,
+      };
+    }
+    let fundAddress: string;
+    try {
+      // toEvmAddress() returns bare hex — normalize to 0x form, the shape
+      // wallets and the onboarding skill expect.
+      fundAddress = "0x" + PublicKey.fromStringECDSA(hex).toEvmAddress().replace(/^0x/, "");
+    } catch {
+      return { error: "ecdsa_public_key is not a valid secp256k1 public key" };
+    }
+    return {
+      hollow: true,
+      username,
+      purpose,
+      fund_address: fundAddress,
+      next:
+        `Have your human send at least 1 HBAR to ${fundAddress} from any Hedera wallet — ` +
+        `your 0.0.x account auto-creates the moment it lands (no signup, no extra step; ECDSA only). ` +
+        `Then call prepare_agent_self_claim again with agent_account_id set to your new account, ` +
+        `and continue: finalize_agent_self_claim → sign with your key → complete_agent_self_claim.`,
+    };
+  }
+  // The agent's OWN account — required, and it must exist AND be funded:
+  // it owns the page and pays the registerPage gas.
+  const agentAccountId = rawAccount;
+  if (!/^0\.0\.\d+$/.test(agentAccountId)) {
+    return {
+      error: `invalid agent_account_id "${args.agent_account_id}" — expected YOUR OWN 0.0.x Hedera account (the account whose key you sign with), or pass ecdsa_public_key if you have no account yet and need your fundable address`,
+    };
   }
   // Self-claim is for agent pages only. A human page needs the human's own
   // signature — that is the prepare_agent_claim path.

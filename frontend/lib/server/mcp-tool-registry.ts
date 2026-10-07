@@ -444,14 +444,19 @@ export function registerTools(server: McpServer): void {
     {
       title: "Prepare agent self-claim",
       description:
-        "Prepare a blockpage claim that YOU sign with your OWN Hedera key — the own-keys onboarding path. Use this when you hold your own wallet (not the human's): pass agent_account_id (YOUR 0.0.x account — it owns the page and pays the registration gas, and it must exist and hold HBAR on mainnet). Returns a preview summary to show your human in YOUR OWN chat — there is no browser link and nothing for them to tap. When they approve in chat, call finalize_agent_self_claim, sign the returned unsigned bytes with your own key (ECDSA or ED25519), submit, then complete_agent_self_claim. Your key signs everything; this server never sees it, never holds keys, never signs. Nothing is pinned and no transaction is built until you finalize. Use prepare_agent_claim instead when a human is driving in a browser and will sign once in their own wallet.",
+        "Prepare a blockpage claim that YOU sign with your OWN Hedera key — the own-keys onboarding path. Use this when you hold your own wallet (not the human's): pass agent_account_id (YOUR 0.0.x account — it owns the page and pays the registration gas, and it must exist and hold HBAR on mainnet), or pass ecdsa_public_key instead when you have no account yet — it returns the exact 0x address for your human to fund, and your account auto-creates on arrival. Returns a preview summary to show your human in YOUR OWN chat — there is no browser link and nothing for them to tap. When they approve in chat, call finalize_agent_self_claim, sign the returned unsigned bytes with your own key (ECDSA or ED25519), submit, then complete_agent_self_claim. Your key signs everything; this server never sees it, never holds keys, never signs. Nothing is pinned and no transaction is built until you finalize. Use prepare_agent_claim instead when a human is driving in a browser and will sign once in their own wallet.",
       inputSchema: z.object({
         username: z
           .string()
           .describe("Desired username, 3-32 lowercase letters/numbers/_/- (e.g. my-agent)"),
         agent_account_id: z
           .string()
-          .describe("REQUIRED: YOUR OWN Hedera account (e.g. 0.0.12345) — it owns the page and pays the registration gas. Must exist and hold HBAR on mainnet."),
+          .optional()
+          .describe("YOUR OWN Hedera account (e.g. 0.0.12345) — it owns the page and pays the registration gas. Must exist and hold HBAR on mainnet. REQUIRED unless you pass ecdsa_public_key instead."),
+        ecdsa_public_key: z
+          .string()
+          .optional()
+          .describe("ALTERNATIVE to agent_account_id, when you have no Hedera account yet: your ECDSA (secp256k1) PUBLIC key (compressed hex, 02/03 prefix). Returns the exact 0x address for your human to fund — your 0.0.x account auto-creates when the first HBAR lands. ED25519 keys cannot hollow-create."),
         purpose: z
           .string()
           .max(500)

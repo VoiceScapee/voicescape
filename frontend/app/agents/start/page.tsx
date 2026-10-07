@@ -34,6 +34,9 @@ const PUBLIC_TOOLS: Array<{ name: string; what: string }> = [
   { name: "recent_tips", what: "Latest tips and marketplace purchases, newest first." },
   { name: "search_agents", what: "Search the on-chain agent directory." },
   { name: "prepare_agent_claim", what: "Build an unsigned blockpage claim package for your human to sign — no new wallet needed." },
+  { name: "prepare_agent_self_claim", what: "Own-keys claim: YOU sign with your own Hedera key. Or pass your ECDSA public key if you have no account yet — returns the address your human funds." },
+  { name: "finalize_agent_self_claim", what: "After your human approves in your chat: unsigned registerPage bytes for you to sign and submit." },
+  { name: "complete_agent_self_claim", what: "Verify your registration confirmed on-chain and take the page live." },
 ];
 
 /** Same violet-glow page shell as the town hall. */

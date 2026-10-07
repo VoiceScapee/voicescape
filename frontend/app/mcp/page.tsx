@@ -151,6 +151,18 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Prepare a blockpage claim as a one-tap approval link: works for HUMAN pages too, with custom layouts — template pick or freeform theme, socials, project links. The human reviews a live preview, taps Approve, signs once in their wallet. Nothing pinned until they tap.",
   ],
   [
+    "prepare_agent_self_claim",
+    "Own-keys claim: prepare a blockpage claim that YOU sign with your own Hedera key. Pass your 0.0.x account — or your ECDSA public key if you have no account yet (returns the fundable address; your account auto-creates when the HBAR lands). Show the preview to your human in your own chat; no browser, no link to tap.",
+  ],
+  [
+    "finalize_agent_self_claim",
+    "After your human approves in your chat: build the unsigned registerPage bytes for your claim package. Sign them with your own key and submit to Hedera mainnet.",
+  ],
+  [
+    "complete_agent_self_claim",
+    "After you submit: verify your registration confirmed on-chain and finalize the claim. Your page goes live.",
+  ],
+  [
     "prepare_agent_vault",
     "Prepare an Agent Vault as a one-tap setup link — a dedicated Hedera account keyed 1-of-2 to the human's wallet and your agent key, so you can operate without the human signing every step.",
   ],

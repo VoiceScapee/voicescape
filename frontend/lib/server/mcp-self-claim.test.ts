@@ -135,6 +135,8 @@ describe("prepare_agent_self_claim", () => {
     );
     expect("error" in res).toBe(false);
     if ("error" in res) return;
+    expect("hollow" in res).toBe(false);
+    if ("hollow" in res) return;
     expect(res.claim_package_id).toMatch(/^[0-9a-f]{32}$/);
     expect(res.agent_account_id).toBe(AGENT);
     // Mode "self" stashed; nothing pinned at prepare time.
@@ -150,6 +152,85 @@ describe("prepare_agent_self_claim", () => {
     expect(res.what_youre_signing).toMatch(new RegExp(`owned by ${AGENT.replace(/\./g, "\\.")}`));
     // No approval link — the human never opens a browser.
     expect("approve_url" in res).toBe(false);
+  });
+});
+
+describe("prepare_agent_self_claim hollow-account path (ecdsa_public_key)", () => {
+  // Deterministic test vector: privkey 0x1234…cdef (ECDSA, test-only).
+  const ECDSA_PUB =
+    "02bb50e2d89a4ed70663d080659fe0ad4b9bc3e06c17a227433966cb59ceee020d";
+  const ECDSA_ADDR = "0x1be31a94361a391bbafb2a4ccd704f57dc04d4bb";
+
+  it("returns the exact fundable EVM address for a valid ECDSA public key", async () => {
+    const res = await prepareAgentSelfClaim(
+      { username: "hollowbot", ecdsa_public_key: ECDSA_PUB, purpose: "an agent from base" },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect("hollow" in res && res.hollow).toBe(true);
+    if (!("hollow" in res)) return;
+    expect(res.fund_address).toBe(ECDSA_ADDR);
+    expect(res.next).toMatch(/at least 1 HBAR/);
+    expect(res.next).toMatch(/auto-creates/);
+    expect(res.next).toMatch(/agent_account_id/);
+    // No package stashed — there is no account yet.
+    expect("claim_package_id" in res).toBe(false);
+  });
+
+  it("accepts a 0x-prefixed public key", async () => {
+    const res = await prepareAgentSelfClaim(
+      { username: "hollowbot", ecdsa_public_key: "0x" + ECDSA_PUB, purpose: "x" },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    if (!("hollow" in res)) return;
+    expect(res.fund_address).toBe(ECDSA_ADDR);
+  });
+
+  it("rejects an ED25519-looking key with a hollow-account explanation", async () => {
+    const res = await prepareAgentSelfClaim(
+      {
+        username: "hollowbot",
+        // 64 hex chars = 32-byte ED25519 public key shape
+        ecdsa_public_key: "3b6a27bcceb6a42d62a3a8d483a6fcf1c6b0b1d9f2e0e8b0c7a3a4b0d9e8f1c2",
+        purpose: "x",
+      },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/ED25519/i);
+  });
+
+  it("rejects garbage keys without leaking anything", async () => {
+    const res = await prepareAgentSelfClaim(
+      { username: "hollowbot", ecdsa_public_key: "not-a-key", purpose: "x" },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) {
+      expect(res.error).toMatch(/invalid ecdsa_public_key/);
+      expect(res.error).toMatch(/Never pass a private key/);
+    }
+  });
+
+  it("rejects passing both account and key", async () => {
+    const res = await prepareAgentSelfClaim(
+      { username: "hollowbot", agent_account_id: AGENT, ecdsa_public_key: ECDSA_PUB, purpose: "x" },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/exactly one of/);
+  });
+
+  it("rejects passing neither account nor key", async () => {
+    const res = await prepareAgentSelfClaim(
+      { username: "hollowbot", purpose: "x" },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/ecdsa_public_key if you have no account yet/);
   });
 });
 
@@ -182,7 +263,7 @@ describe("finalize_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const fetchFn = (async (url: string) => {
       if (url.includes("/contracts/call")) return contractsCall(AGENT_EVM);
       if (url.includes(`/accounts/${AGENT}`)) return fundedAccount();
@@ -201,7 +282,7 @@ describe("finalize_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const res = await finalizeAgentSelfClaim({ claim_package_id: prep.claim_package_id }, freeNameFetch());
     expect("error" in res).toBe(false);
     if ("error" in res) return;
@@ -225,7 +306,7 @@ describe("finalize_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const first = await finalizeAgentSelfClaim({ claim_package_id: prep.claim_package_id }, freeNameFetch());
     const second = await finalizeAgentSelfClaim({ claim_package_id: prep.claim_package_id }, freeNameFetch());
     expect("error" in first).toBe(false);
@@ -243,7 +324,7 @@ describe("complete_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const fetchFn = (async (url: string) => {
       if (url.includes("/contracts/call")) return contractsCall(null);
       throw new Error("unexpected fetch " + url);
@@ -262,7 +343,7 @@ describe("complete_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const fetchFn = (async (url: string) => {
       if (url.includes("/contracts/call")) return contractsCall(AGENT_EVM);
       if (url.includes(`/accounts/${AGENT_EVM}`)) return ok({ account: AGENT });
@@ -287,7 +368,7 @@ describe("complete_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const fetchFn = (async (url: string) => {
       if (url.includes("/contracts/call")) return contractsCall(OTHER_EVM);
       if (url.includes(`/accounts/${OTHER_EVM}`)) return ok({ account: "0.0.5678" });
@@ -308,7 +389,7 @@ describe("complete_agent_self_claim", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     await setPackageStatus("claim", prep.claim_package_id, "completed", { username: "idemabot" });
     const fetchFn = (async (url: string) => {
       if (url.includes("/contracts/call")) return contractsCall(null);
@@ -335,7 +416,7 @@ describe("claim status copy for self mode", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     const res = await get(prep.claim_package_id);
     const body = (await res.json()) as { status: string; detail: string };
     expect(body.status).toBe("pending");
@@ -349,7 +430,7 @@ describe("claim status copy for self mode", () => {
       freeNameFetch(),
     );
     expect("error" in prep).toBe(false);
-    if ("error" in prep) return;
+    if ("error" in prep || "hollow" in prep) return;
     await setPackageStatus("claim", prep.claim_package_id, "awaiting_agent_signature", {
       username: "healbot",
     });
