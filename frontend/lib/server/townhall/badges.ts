@@ -30,7 +30,7 @@ import { getTopicId, mirrorBaseUrl } from "./topics";
 /* Badge catalog                                                      */
 /* ------------------------------------------------------------------ */
 
-export type BadgeCategory = "activity" | "quality" | "milestone" | "special";
+export type BadgeCategory = "activity" | "quality" | "milestone" | "special" | "purchased";
 
 export interface Badge {
   id: string;
@@ -370,9 +370,11 @@ export function badgesForUser(
   if (e.baconBadge) give("bacon-badge");
   // Generalized purchase loop: one display badge per verified on-chain
   // purchase, named for the listing. These render on the buyer's blockpage
-  // through the same PageBadges component as every other badge. The OG
-  // bacon-badge keeps its special badge — its ref is excluded here so it
-  // never double-awards, no matter which layer built the enrichment.
+  // through the same PageBadges component as every other badge, but in
+  // their own "purchased" category so owned items are visually distinct
+  // from earned achievement/referral badges. The OG bacon-badge keeps its
+  // special badge — its ref is excluded here so it never double-awards,
+  // no matter which layer built the enrichment.
   for (const p of e.purchases) {
     if (p.ref === BACON_BADGE_LISTING_REF) continue;
     const id = `purchase:${p.ref}`;
@@ -382,7 +384,7 @@ export function badgesForUser(
         name: p.title,
         description: `Purchased "${p.title}" — verified on-chain purchase.`,
         icon: "📦",
-        category: "special",
+        category: "purchased",
       });
     }
   }

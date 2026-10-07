@@ -656,6 +656,10 @@ describe("generalized purchase badges", () => {
     const sticker = badges.find((b) => b.id === "purchase:sticker-pack")!;
     expect(sticker.name).toBe("Sticker Pack");
     expect(sticker.description).toContain("verified on-chain");
+    // Owned items are visually distinct from earned badges.
+    expect(sticker.category).toBe("purchased");
+    const ebook = badges.find((b) => b.id === "purchase:ebook-1")!;
+    expect(ebook.category).toBe("purchased");
   });
 
   it("the OG bacon-badge keeps its special badge and is excluded from the generic loop", () => {
@@ -673,6 +677,10 @@ describe("generalized purchase badges", () => {
     expect(ids).toContain("bacon-badge");
     expect(ids).not.toContain("purchase:bacon-badge");
     expect(ids.filter((id) => id === "bacon-badge")).toHaveLength(1);
+    // The OG badge keeps its special category; the generic purchased
+    // category never applies to it.
+    const og = badges.find((b) => b.id === "bacon-badge")!;
+    expect(og.category).toBe("special");
   });
 
   it("resolveListingTitles maps refs to titles and falls back to the ref", async () => {
