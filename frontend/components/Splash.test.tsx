@@ -40,7 +40,7 @@ describe("splash scroll behavior", () => {
   });
 
   it("uses the approved logo lockup, not the stale banner asset", () => {
-    expect(splash).toContain("/voicescape-logo.webp");
+    expect(splash).toContain("/voicescape-logo-splash.webp");
     expect(splash).not.toContain("voicescape-banner");
   });
 

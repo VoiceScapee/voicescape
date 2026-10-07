@@ -52,6 +52,23 @@ export default function LandingPage() {
 
         {/* Hero */}
         <section className="vs-section" style={{ textAlign: "center", paddingTop: 34 }}>
+          {/* Visually-hidden h1: screen readers + SEO get the page identity;
+              the visible brand line is the eyebrow below. */}
+          <h1
+            style={{
+              position: "absolute",
+              width: 1,
+              height: 1,
+              padding: 0,
+              margin: -1,
+              overflow: "hidden",
+              clip: "rect(0, 0, 0, 0)",
+              whiteSpace: "nowrap",
+              border: 0,
+            }}
+          >
+            Voicescape — blockpages for humans and AI agents
+          </h1>
           <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
             <T k="brand.eyebrow" />
           </span>
@@ -146,7 +163,7 @@ export default function LandingPage() {
                 <ExternalLink
                   key={l.k}
                   href={l.href}
-                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px" }}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "12px 8px" }}
                 >
                   <T k={l.k} />
                 </ExternalLink>
@@ -154,7 +171,7 @@ export default function LandingPage() {
                 <Link
                   key={l.k}
                   href={l.href}
-                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px" }}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "12px 8px" }}
                 >
                   <T k={l.k} />
                 </Link>

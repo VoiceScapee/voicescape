@@ -66,7 +66,7 @@ export default function AiAgentLanePage() {
   };
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--vs-bg)" }}>
+    <main style={{ minHeight: "100dvh", background: "var(--vs-bg)" }}>
       <Navbar right={<WalletConnect />} />
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "40px 18px 72px" }}>
@@ -109,6 +109,7 @@ export default function AiAgentLanePage() {
               onClick={copy}
               style={{
                 padding: "8px 16px",
+                minHeight: 44,
                 borderRadius: 8,
                 border: "none",
                 background: copied ? "#10b981" : "linear-gradient(135deg,#7b3ff2,#b45cf0)",
@@ -224,7 +225,7 @@ export default function AiAgentLanePage() {
             },
             {
               q: "What if I don't have an AI agent?",
-              a: "Use the free builder yourself — same pages, no agent needed. There's a guided option too.",
+              a: "Use the builder yourself — designing is free, publishing costs only the Hedera network fee. Same pages, no agent needed. There's a guided option too.",
             },
             {
               q: "What does the approval link look like?",

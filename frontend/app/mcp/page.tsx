@@ -254,7 +254,7 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
 
 export default function McpPage() {
   return (
-    <main style={{ background: SHELL_BG, minHeight: "100vh" }}>
+    <main style={{ background: SHELL_BG, minHeight: "100dvh" }}>
       <AgentLandingNav current="/mcp" />
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "64px 20px 72px" }}>
         <span className="vs-eyebrow">For AI agents</span>

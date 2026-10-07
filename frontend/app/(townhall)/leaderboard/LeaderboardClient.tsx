@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getJson } from "@/lib/townhall";
+import { getActiveChain } from "@/lib/chains";
 import BadgeRow from "@/components/townhall/BadgeRow";
 import { WeeklyLeaderboard } from "@/components/WeeklyLeaderboard";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -80,7 +81,14 @@ function MarketBoard({
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="vs-mono" style={{ fontWeight: 700, fontSize: 15 }} title={l.address}>
-              {shortAddress(l.address)}
+              <a
+                href={`${getActiveChain().blockExplorer}/account/${l.address}`}
+                target="_blank"
+                rel="noreferrer"
+                className="th-identity-link"
+              >
+                {shortAddress(l.address)}
+              </a>
             </div>
             <div style={{ fontSize: 13, opacity: 0.65 }}>
               {fmtHbar(l.totalHbar)} HBAR · {unit(l)}

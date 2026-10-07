@@ -46,7 +46,7 @@ export default function NavDropdown({
     display: "block",
     width: "100%",
     textAlign: "left",
-    padding: "10px 14px",
+    padding: "12px 14px",
     fontSize: 14,
     textDecoration: "none",
     boxSizing: "border-box",
@@ -57,7 +57,7 @@ export default function NavDropdown({
       <button
         type="button"
         className="vs-btn vs-btn-ghost"
-        style={{ padding: "8px 20px", fontSize: 14 }}
+        style={{ padding: "8px 20px", fontSize: 14, minHeight: 44 }}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

@@ -169,6 +169,9 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
         position: "sticky",
         top: 0,
         zIndex: 40,
+        // iOS PWA (viewport-fit=cover): keep the chrome below the notch /
+        // Dynamic Island. Zero on devices without a safe area.
+        paddingTop: "env(safe-area-inset-top)",
       }}
     >
       <nav
@@ -198,8 +201,10 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
               padding: "4px 0 4px 10px",
               // Let the logo stretch across the row's free space (Brandon
               // 2026-09-13); capped so it never crowds the nav buttons.
+              // minWidth 120 (was 160): the 360px row (logo + pulse + burger)
+              // otherwise overflows — the pulse "ago" label hides <480px too.
               flex: "1 1 200px",
-              minWidth: 160,
+              minWidth: 120,
               maxWidth: 320,
             }}
             aria-label="Voicescape home"

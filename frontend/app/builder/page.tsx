@@ -1396,7 +1396,8 @@ function UsernameField({
             onChange(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 24))
           }
           placeholder="your-name"
-          style={{ fontSize: 15 }}
+          // 16px minimum — iOS Safari auto-zooms on smaller inputs.
+          style={{ fontSize: 16 }}
           aria-label="Blockpage name"
           autoComplete="off"
           spellCheck={false}

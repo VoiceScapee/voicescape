@@ -17,6 +17,7 @@ import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
 import { reportError } from "@/lib/report-error";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
+import { useDialogA11y } from "@/components/useDialogA11y";
 import { markClaimCongratsSeen, readClaimCongrats } from "@/lib/claim-congrats";
 import {
   buildTipProofUrl,
@@ -83,29 +84,6 @@ type LoadState =
 
 const TIP_PRESETS_USD = ["0.10", "1", "5", "10", "25"];
 const TIP_PRESETS_HBAR = ["1", "5", "10", "25", "50"];
-
-/**
- * Dialog accessibility: Escape closes the modal, focus moves into it on
- * open and returns to the previously focused element on close. Without
- * this, an aria-modal dialog is a broken promise to assistive tech —
- * keyboard users could tab behind the modal.
- */
-function useDialogA11y(onClose: () => void) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    const prev = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      prev?.focus?.();
-    };
-  }, [onClose]);
-  return dialogRef;
-}
 
 function TipBox({
   username,
