@@ -34,6 +34,7 @@ import {
   removePendingIntent,
   savePendingIntent,
 } from "./pending-intents";
+import { isWalletRejection, isWalletSessionAlive } from "./wallet-guards";
 import {
   MIRROR_CATCHUP_MARGIN_MS,
   getMirrorHeadTimestampMs,
@@ -93,12 +94,30 @@ export class WalletTimeoutError extends Error {
   }
 }
 
+/**
+ * Thrown when the Hedera mirror node can't be reached (transport failure),
+ * as opposed to a contract revert. Callers must NOT read this as "not
+ * registered" / "not found" — the chain state is simply unknowable right
+ * now, so UIs should say "couldn't reach Hedera" instead of asserting an
+ * absence.
+ */
+export class MirrorUnreachable extends Error {
+  constructor(
+    message = "Couldn't reach the Hedera mirror node — check your connection and try again.",
+  ) {
+    super(message);
+    this.name = "MirrorUnreachable";
+  }
+}
+
 export interface TxSender {
   /** "hedera" for Hedera wallets (HashPack / Blade / WalletConnect). */
   readonly kind: "hedera";
   /** 0x… address or 0.0.x account id, depending on kind. */
   readonly account: string;
-  /** Resolve a username. Returns null when the name is not registered. */
+  /** Resolve a username. Returns null when the name is not registered.
+   * Throws MirrorUnreachable when the mirror node can't be reached —
+   * callers must report "couldn't reach Hedera", never "not registered". */
   viewResolve(registryAddress: string, username: string): Promise<ResolveResult | null>;
   /**
    * Register a new page. Resolves to the transaction hash / id.
@@ -290,19 +309,7 @@ export function createHederaTxSender(
    * internals), proceed as before rather than blocking a working flow.
    */
   function isSessionAlive(): boolean {
-    try {
-      const client = (
-        dAppConnector as unknown as {
-          walletConnectClient?: { session?: { getAll?: () => unknown[] } };
-        }
-      ).walletConnectClient;
-      const sessions = client?.session?.getAll?.();
-      // getAll() returning undefined = can't determine; fail open.
-      if (sessions === undefined) return true;
-      return sessions.length > 0;
-    } catch {
-      return true;
-    }
+    return isWalletSessionAlive(dAppConnector);
   }
 
   async function executeWrite(
@@ -314,6 +321,14 @@ export function createHederaTxSender(
     intentLabel?: string,
   ): Promise<string> {
     const { dAppConnector: liveConnector, accountId } = requireWallet();
+    // Fail fast on a dead session BEFORE the gate — otherwise a stale
+    // session plus a stale intent produces "check HashScan" instead of the
+    // accurate "reconnect your wallet" message.
+    if (!isSessionAlive()) {
+      throw new Error(
+        "Wallet session expired — disconnect and reconnect your wallet, then try again.",
+      );
+    }
     // Reconcile first, write second: re-ask the mirror node about any
     // intent left behind by an interrupted session, and REFUSE the new
     // write while any of this account's intents are still unanswered.
@@ -321,13 +336,6 @@ export function createHederaTxSender(
     // duplicate payment. The check is time-bounded (10s per intent), so a
     // stalled mirror degrades to "unknown" (blocked) instead of hanging.
     await reconcileAndGate(checkTxLandedBounded, accountId.toString());
-    // Fail fast on a dead session — otherwise the wallet prompt never
-    // appears and the user stares at "Publishing…" for 90 seconds.
-    if (!isSessionAlive()) {
-      throw new Error(
-        "Wallet session expired — disconnect and reconnect your wallet, then try again.",
-      );
-    }
     const tx = new ContractExecuteTransaction()
       .setContractId(hederaContractId(evmAddress))
       // Swaps run HTS precompiles and need headroom; unused gas is refunded,
@@ -398,8 +406,9 @@ export function createHederaTxSender(
     } catch (e) {
       if (e instanceof Error && e.message === "WALLET_TIMEOUT" && !walletResponded) {
         // Wallet went silent — check whether the transaction actually
-        // executed on-chain before giving up.
-        const landed = await checkTxLanded(txId);
+        // executed on-chain before giving up. Bounded: a mirror stall here
+        // must not hang the user a second time after the 30s wallet wait.
+        const landed = await checkTxLandedBounded(txId);
         if (landed === "success") {
           removePendingIntent(txId);
           return txId;
@@ -421,6 +430,14 @@ export function createHederaTxSender(
         // (stale WalletConnect session, HashPack #291). Don't leave the user
         // hanging — tell them exactly how to fix it.
         throw new Error(STALE_CONNECTION_COPY);
+      }
+      // A rejected signature is never broadcast, so it can never land.
+      // Clear the intent BEFORE rethrowing: otherwise the stale intent sits
+      // in the ledger and every later write trips UnresolvedIntentError —
+      // whose "check HashScan" guidance would point at a transaction that
+      // was never submitted. Rejecting is routine and must not punish.
+      if (isWalletRejection(e)) {
+        removePendingIntent(txId);
       }
       throw e;
     }
@@ -449,9 +466,15 @@ export function createHederaTxSender(
           operator: result.getAddress(3),
           purpose: result.getString(4),
         };
-      } catch {
-        // resolvePage reverts with UsernameInvalid when the name is unknown.
-        return null;
+      } catch (e) {
+        if (e instanceof MirrorUnreachable) throw e;
+        // resolvePage reverts with UsernameInvalid when the name is unknown —
+        // a revert means "not registered". Anything else is a transport
+        // failure: don't report a live page as missing, throw instead.
+        if (e instanceof Error && /revert/i.test(e.message)) return null;
+        throw new MirrorUnreachable(
+          `Couldn't reach Hedera to resolve "${username}" — check your connection and try again.`,
+        );
       }
     },
     async sendRegister(registryAddress, username, ipfsHash, ownerType, operator, purpose) {
@@ -582,18 +605,31 @@ export async function mirrorContractCall(
       result?: unknown;
       _status?: { messages?: Array<{ message?: string }> };
     } | null;
-    if (!res.ok || !body || typeof body.result !== "string" || body.result === "0x") {
-      const detail = body?._status?.messages?.map((m) => m.message).join("; ");
-      throw new Error(`Mirror-node contract call failed${detail ? `: ${detail}` : "."}`);
+    if (!res.ok || !body || typeof body.result !== "string") {
+      throw new MirrorUnreachable(
+        "The Hedera mirror node didn't answer the contract query — it may be down. Try again in a moment.",
+      );
+    }
+    if (body.result === "0x") {
+      // Empty result = the contract reverted (e.g. UsernameInvalid).
+      // Plain error on purpose: viewResolve maps reverts to "not
+      // registered", while MirrorUnreachable means "couldn't ask".
+      throw new Error("Mirror-node contract call reverted (empty result).");
     }
     return body.result;
   } catch (e) {
+    if (e instanceof MirrorUnreachable) throw e;
     if (controller.signal.aborted) {
-      throw new Error(
+      throw new MirrorUnreachable(
         "Couldn't reach Hedera in time — check your connection and try again. Nothing was sent.",
       );
     }
-    throw e;
+    // e.g. TypeError on network failure. A revert throws a plain Error
+    // above, which passes through here untouched.
+    if (e instanceof Error && /reverted/.test(e.message)) throw e;
+    throw new MirrorUnreachable(
+      `Couldn't reach the Hedera mirror node: ${e instanceof Error ? e.message : String(e)}`,
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -615,8 +651,11 @@ export function createReadOnlySender(chain: ChainConfig): TxSender {
           raw,
         ) as unknown as [string, string, bigint, string, string];
         return { owner, ipfsHash, ownerType: Number(ownerType) === 1 ? 1 : 0, operator, purpose };
-      } catch {
-        // resolvePage reverts with UsernameInvalid when the name is unknown.
+      } catch (e) {
+        // A revert (plain Error from mirrorContractCall) means the name is
+        // unknown. MirrorUnreachable propagates: callers must say
+        // "couldn't reach Hedera", never "not registered".
+        if (e instanceof MirrorUnreachable) throw e;
         return null;
       }
     },

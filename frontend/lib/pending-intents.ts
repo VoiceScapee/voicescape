@@ -97,6 +97,15 @@ export function removePendingIntent(txId: string): void {
 
 export type LandedStatus = "success" | "failed" | "unknown" | "expired";
 
+/**
+ * HCS submit intents share this ledger (kind "hcs:…") but must NEVER gate
+ * contract writes: an unconfirmed forum post (tiny HCS fee) blocking a tip
+ * payment would be disproportionate. Each lane gates only its own kind.
+ */
+export function isHcsIntentKind(kind: string): boolean {
+  return kind.startsWith("hcs:");
+}
+
 export interface ReconcileSummary {
   /** Intents the mirror node answered definitively (now cleared). */
   resolved: number;
@@ -180,6 +189,11 @@ export async function reconcileAndGate(
   account: string,
 ): Promise<void> {
   await reconcilePendingIntents(checkLanded);
-  const blocked = listPendingIntents().filter((i) => i.account === account);
+  // HCS intents are reconciled (resolved ones get cleared) but never gate
+  // contract writes — see isHcsIntentKind. An unknown forum post must not
+  // block a payment.
+  const blocked = listPendingIntents().filter(
+    (i) => i.account === account && !isHcsIntentKind(i.kind),
+  );
   if (blocked.length > 0) throw new UnresolvedIntentError(blocked);
 }

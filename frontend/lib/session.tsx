@@ -366,11 +366,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
    */
   async function findLoginTxByMemo(accountId: string, commit: string): Promise<string | null> {
     try {
-      const res = await fetch(
-        `https://mainnet.mirrornode.hedera.com/api/v1/transactions` +
-          `?account.id=${encodeURIComponent(accountId)}` +
-          `&transactiontype=cryptotransfer&limit=10&order=desc`,
-      );
+      // Bounded per iteration: the 120s poll loop checks its deadline AFTER
+      // each fetch, so a hung fetch would stall the loop past the deadline.
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10_000);
+      let res: Response;
+      try {
+        res = await fetch(
+          `https://mainnet.mirrornode.hedera.com/api/v1/transactions` +
+            `?account.id=${encodeURIComponent(accountId)}` +
+            `&transactiontype=cryptotransfer&limit=10&order=desc`,
+          { signal: ctrl.signal },
+        );
+      } finally {
+        clearTimeout(timer);
+      }
       if (!res.ok) return null;
       const data = (await res.json()) as {
         transactions?: Array<{ transaction_id?: string; result?: string; memo_base64?: string }>;
