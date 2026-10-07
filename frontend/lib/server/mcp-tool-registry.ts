@@ -21,6 +21,8 @@ import {
   imageResult,
   lookupBlockpage,
   verifyTip,
+  verifyPurchaseTool,
+  myPurchasesTool,
   treasuryStats,
   recentTips,
   searchAgents,
@@ -180,6 +182,43 @@ export function registerTools(server: McpServer): void {
     },
     async ({ transaction_id }) =>
       withMcpErrorTelemetry("verify_tip", async () => toolResult(await verifyTip(transaction_id))),
+  );
+
+  server.registerTool(
+    "verify_purchase",
+    {
+      title: "Verify purchase",
+      description:
+        "Verify a wallet's marketplace purchase on-chain. Scans the Voicescape Tips contract (0.0.10854060) PurchaseCompleted logs on the Hedera mainnet mirror node for the wallet as buyer and the listing ref. Returns verified=true with the listing title and transaction id, or verified=false — never a fabricated receipt. Read-only.",
+      inputSchema: z.object({
+        wallet: z
+          .string()
+          .describe("Buyer wallet: 0.0.x account id or 0x EVM address"),
+        listing_ref: z
+          .string()
+          .describe("Marketplace listing id, e.g. bacon-badge"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ wallet, listing_ref }) =>
+      withMcpErrorTelemetry("verify_purchase", async () => toolResult(await verifyPurchaseTool(wallet, listing_ref))),
+  );
+
+  server.registerTool(
+    "my_purchases",
+    {
+      title: "My purchases",
+      description:
+        "List every verified on-chain marketplace purchase for a wallet, newest first, with listing titles and transaction ids. Derived from the Tips contract (0.0.10854060) PurchaseCompleted logs on the Hedera mainnet mirror node — the same cross-device source of truth as the dapp's My purchases page. Pass a 0.0.x account id or 0x EVM address. Read-only.",
+      inputSchema: z.object({
+        wallet: z
+          .string()
+          .describe("Buyer wallet: 0.0.x account id or 0x EVM address"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ wallet }) =>
+      withMcpErrorTelemetry("my_purchases", async () => toolResult(await myPurchasesTool(wallet))),
   );
 
   server.registerTool(

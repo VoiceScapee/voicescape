@@ -123,6 +123,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Verify a Hedera transaction against the Tips contract and decode the on-chain TipSent event into the exact 98/2 split.",
   ],
   [
+    "verify_purchase",
+    "Verify a wallet's marketplace purchase on-chain — returns the listing title and transaction id, never a fabricated receipt.",
+  ],
+  [
+    "my_purchases",
+    "Every verified on-chain marketplace purchase for a wallet, newest first — the same cross-device truth as My purchases.",
+  ],
+  [
     "treasury_stats",
     "Live treasury balance and recent inbound fee transfers, read from the Hedera mainnet mirror node.",
   ],

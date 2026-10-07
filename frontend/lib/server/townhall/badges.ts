@@ -308,6 +308,16 @@ export interface BadgeEnrichment {
   ownsPage: boolean;
   /** Completed an on-chain purchase of Bacon the Dino's badge listing. */
   baconBadge: boolean;
+  /** Every distinct marketplace listing the wallet bought on-chain (listingRef + resolved title). */
+  purchases: PurchasedListing[];
+}
+
+/** A verified on-chain marketplace purchase, resolved to its listing title. */
+export interface PurchasedListing {
+  /** The listingRef from the PurchaseCompleted event (the listing id). */
+  ref: string;
+  /** Listing title from the market topic; falls back to the ref when unknown. */
+  title: string;
 }
 
 export const EMPTY_ENRICHMENT: BadgeEnrichment = {
@@ -320,6 +330,7 @@ export const EMPTY_ENRICHMENT: BadgeEnrichment = {
   violations: 0,
   ownsPage: false,
   baconBadge: false,
+  purchases: [],
 };
 
 /**
@@ -357,6 +368,24 @@ export function badgesForUser(
   }
   // Purchased: Bacon the Dino's official badge from his blockpage store.
   if (e.baconBadge) give("bacon-badge");
+  // Generalized purchase loop: one display badge per verified on-chain
+  // purchase, named for the listing. These render on the buyer's blockpage
+  // through the same PageBadges component as every other badge. The OG
+  // bacon-badge keeps its special badge — its ref is excluded here so it
+  // never double-awards, no matter which layer built the enrichment.
+  for (const p of e.purchases) {
+    if (p.ref === BACON_BADGE_LISTING_REF) continue;
+    const id = `purchase:${p.ref}`;
+    if (!out.some((x) => x.id === id)) {
+      out.push({
+        id,
+        name: p.title,
+        description: `Purchased "${p.title}" — verified on-chain purchase.`,
+        icon: "📦",
+        category: "special",
+      });
+    }
+  }
 
   if (!s) return out;
 
@@ -642,10 +671,143 @@ export function hasBaconBadge(logs: TipsLog[], wallet: string, buyerTopics?: Set
   return false;
 }
 
+/**
+ * Every distinct listingRef the wallet bought on-chain (PurchaseCompleted
+ * with the wallet as buyer). The generalized form of hasBaconBadge: instead
+ * of matching one hardcoded listing, this returns all of them so any
+ * seller's listing closes the purchase→display loop. Fail-open → [].
+ */
+export function purchasedListingRefs(
+  logs: TipsLog[],
+  wallet: string,
+  buyerTopics?: Set<string>,
+): string[] {
+  const buyerSet =
+    buyerTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
+  if (buyerSet.size === 0) return [];
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const refs = new Set<string>();
+  for (const l of logs) {
+    if (l.topics?.[0]?.toLowerCase() !== PURCHASE_TOPIC0.toLowerCase()) continue;
+    if (!buyerSet.has(l.topics?.[1]?.toLowerCase() ?? "")) continue;
+    try {
+      const [listingRef] = coder.decode(PURCHASE_DATA_ABI, l.data ?? "0x") as unknown as [string, bigint, bigint];
+      if (typeof listingRef === "string" && listingRef.length > 0) refs.add(listingRef);
+    } catch {
+      /* undecodable log — skip */
+    }
+  }
+  return [...refs];
+}
+
+/**
+ * Resolve listingRefs to their titles from the market HCS topic (latest
+ * message per id wins). Unknown refs fall back to the ref itself so a
+ * purchase badge still renders. Never throws — fail-open to ref fallbacks.
+ */
+export async function resolveListingTitles(
+  hcs: HcsPort,
+  refs: string[],
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const r of refs) out.set(r, r);
+  if (refs.length === 0) return out;
+  try {
+    const topic = getTopicId("market");
+    if (!topic) return out;
+    const { aggregateListings } = await import("./votes");
+    const messages = await hcs.queryAll(topic);
+    const latest = aggregateListings(messages);
+    for (const r of refs) {
+      const m = latest.get(r);
+      const title = m?.contents?.title;
+      if (typeof title === "string" && title.trim().length > 0) out.set(r, title.trim());
+    }
+  } catch {
+    /* HCS read failed — ref fallbacks stand */
+  }
+  return out;
+}
+
+/** A verified on-chain purchase with its transaction receipt. */
+export interface VerifiedPurchase {
+  /** The listingRef from the PurchaseCompleted event (the listing id). */
+  listingRef: string;
+  /** Listing title from the market topic; falls back to the ref. */
+  title: string;
+  /**
+   * Transaction hash (0x…) of the purchase — the mirror-node log's
+   * transaction_hash. HashScan resolves it directly; the buyer can also
+   * look up the dotted tx id from it.
+   */
+  tx: string;
+  /** Consensus timestamp (seconds.nanos) for ordering. */
+  timestamp: string;
+}
+
+/**
+ * True when the wallet completed an on-chain purchase of the given
+ * listingRef. One shared on-chain truth for the delivery endpoint, the
+ * purchases API, and the MCP verify_purchase tool. Fail-open → false.
+ */
+export async function verifyPurchase(wallet: string, listingRef: string): Promise<boolean> {
+  try {
+    const topics = await walletTopicForms(wallet);
+    if (topics.size === 0) return false;
+    const logs = await fetchTipsContractLogs();
+    return purchasedListingRefs(logs, wallet, topics).includes(listingRef);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every verified on-chain purchase for the wallet, newest first, with
+ * listing titles resolved. Powers the chain-derived "my purchases" view
+ * and the MCP my_purchases tool. Fail-open → [].
+ */
+export async function walletPurchases(hcs: HcsPort, wallet: string): Promise<VerifiedPurchase[]> {
+  try {
+    const topics = await walletTopicForms(wallet);
+    if (topics.size === 0) return [];
+    const logs = await fetchTipsContractLogs();
+    const buyerSet = topics;
+    const coder = ethers.AbiCoder.defaultAbiCoder();
+    const seen = new Map<string, { tx: string; timestamp: string }>();
+    for (const l of logs) {
+      if (l.topics?.[0]?.toLowerCase() !== PURCHASE_TOPIC0.toLowerCase()) continue;
+      if (!buyerSet.has(l.topics?.[1]?.toLowerCase() ?? "")) continue;
+      try {
+        const [listingRef] = coder.decode(PURCHASE_DATA_ABI, l.data ?? "0x") as unknown as [string, bigint, bigint];
+        if (typeof listingRef !== "string" || listingRef.length === 0) continue;
+        if (!seen.has(listingRef)) {
+          seen.set(listingRef, {
+            tx: typeof l.transaction_hash === "string" ? l.transaction_hash : "",
+            timestamp: typeof l.timestamp === "string" ? l.timestamp : "",
+          });
+        }
+      } catch {
+        /* undecodable log — skip */
+      }
+    }
+    const refs = [...seen.keys()];
+    const titles = await resolveListingTitles(hcs, refs);
+    return refs
+      .map((ref) => ({
+        listingRef: ref,
+        title: titles.get(ref) ?? ref,
+        tx: seen.get(ref)!.tx,
+        timestamp: seen.get(ref)!.timestamp,
+      }))
+      .sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1));
+  } catch {
+    return [];
+  }
+}
+
 const PAGE_REGISTERED_ABI = [
   "event PageRegistered(string indexed username, address indexed owner, string ipfsHash, uint8 ownerType, address operator, string purpose)",
-];
-const PAGE_REGISTERED_IFACE = new ethers.Interface(PAGE_REGISTERED_ABI);
+];const PAGE_REGISTERED_IFACE = new ethers.Interface(PAGE_REGISTERED_ABI);
 const PAGE_REGISTERED_TOPIC0 = PAGE_REGISTERED_IFACE.getEvent("PageRegistered")!.topicHash;
 /** Cap on pages scanned when ranking agent registrations. */
 const AGENT_SCAN_PAGES = 10;
@@ -665,7 +827,7 @@ async function fetchLogPages(firstUrl: string, cap: number): Promise<NonNullable
   return out;
 }
 
-export type TipsLog = { topics?: string[]; timestamp?: string; data?: string };
+export type TipsLog = { topics?: string[]; timestamp?: string; data?: string; transaction_id?: string; transaction_hash?: string };
 
 /**
  * Fetch the tips-contract's logs unfiltered (bounded pages); fail-open → [].
@@ -908,6 +1070,7 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     violations: 0,
     ownsPage: false,
     baconBadge: false,
+    purchases: [],
   };
   if (wallet) {
     // Resolve every topic form the wallet can appear under (long-zero +
@@ -929,6 +1092,15 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
     enrichment.purchasesBought = activity.bought;
     enrichment.purchasesSold = activity.sold;
     enrichment.baconBadge = hasBaconBadge(logs, wallet, topics);
+    // Generalized purchase loop: every distinct listing the wallet bought
+    // gets a display badge (titles resolved from the market topic). The OG
+    // bacon-badge keeps its special badge; its ref is excluded from the
+    // generic loop so it never double-awards.
+    const refs = purchasedListingRefs(logs, wallet, topics).filter(
+      (r) => r !== BACON_BADGE_LISTING_REF,
+    );
+    const titles = await resolveListingTitles(hcs, refs);
+    enrichment.purchases = refs.map((r) => ({ ref: r, title: titles.get(r) ?? r }));
     if (agent) enrichment.agentRank = await agentPioneerRank(username);
     // Founder bypass: the founder wallet always qualifies for the Builder badge.
     applyFounderEnrichment(wallet, enrichment);

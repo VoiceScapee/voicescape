@@ -2753,3 +2753,92 @@ export async function listTipAssets(
       "Use quote_tip before any tip to preview exact amounts and preconditions.",
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: verify_purchase (marketplace buyer proof)              */
+/* ------------------------------------------------------------------ */
+
+export interface PurchaseProof {
+  verified: boolean;
+  wallet: string;
+  listing_ref: string;
+  listing_title: string | null;
+  transaction_id: string | null;
+  note: string;
+}
+
+/**
+ * Verify a wallet's marketplace purchase on-chain. Scans the Tips
+ * contract's PurchaseCompleted logs on the mirror node for the wallet as
+ * buyer and the listing ref. Read-only; never touches keys.
+ */
+export async function verifyPurchaseTool(
+  wallet: string,
+  listingRef: string,
+): Promise<PurchaseProof | { error: string }> {
+  const w = wallet.trim();
+  const ref = listingRef.trim();
+  if (!w || !ref) return { error: "wallet and listingRef are required" };
+  const { verifyPurchase, walletPurchases } = await import("./townhall/badges");
+  const { defaultHcsPort } = await import("./townhall/hcs");
+  const ok = await verifyPurchase(w, ref);
+  if (!ok) {
+    return {
+      verified: false,
+      wallet: w,
+      listing_ref: ref,
+      listing_title: null,
+      transaction_id: null,
+      note: "no PurchaseCompleted event found for this wallet and listing on the Tips contract (0.0.10854060)",
+    };
+  }
+  // Pull the tx + title for the receipt.
+  const all = await walletPurchases(defaultHcsPort(), w);
+  const hit = all.find((p) => p.listingRef === ref);
+  return {
+    verified: true,
+    wallet: w,
+    listing_ref: ref,
+    listing_title: hit?.title ?? ref,
+    transaction_id: hit?.tx ?? null,
+    note: "verified on-chain purchase — 98% went to the seller and 2% to the treasury in the same atomic transaction",
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: my_purchases (wallet purchase history)                 */
+/* ------------------------------------------------------------------ */
+
+export interface PurchasesList {
+  wallet: string;
+  purchases: Array<{
+    listing_ref: string;
+    title: string;
+    transaction_id: string;
+    timestamp: string;
+  }>;
+  note: string;
+}
+
+/**
+ * Every verified on-chain marketplace purchase for a wallet, newest first.
+ * Derived from the Tips contract's PurchaseCompleted logs — the same
+ * cross-device source of truth as /marketplace/purchases. Read-only.
+ */
+export async function myPurchasesTool(wallet: string): Promise<PurchasesList | { error: string }> {
+  const w = wallet.trim();
+  if (!w) return { error: "wallet is required" };
+  const { walletPurchases } = await import("./townhall/badges");
+  const { defaultHcsPort } = await import("./townhall/hcs");
+  const all = await walletPurchases(defaultHcsPort(), w);
+  return {
+    wallet: w,
+    purchases: all.map((p) => ({
+      listing_ref: p.listingRef,
+      title: p.title,
+      transaction_id: p.tx,
+      timestamp: p.timestamp,
+    })),
+    note: "verified on-chain purchases from the Tips contract (0.0.10854060) — each was a single atomic 98/2 transaction with no escrow",
+  };
+}

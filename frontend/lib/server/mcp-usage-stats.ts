@@ -27,6 +27,8 @@ const TTL_MS = 30 * 24 * 3_600_000;
 export const KNOWN_MCP_TOOLS = [
   "lookup_blockpage",
   "verify_tip",
+  "verify_purchase",
+  "my_purchases",
   "treasury_stats",
   "recent_tips",
   "search_agents",
