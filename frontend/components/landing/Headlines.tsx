@@ -71,7 +71,33 @@ export function Headlines() {
     };
   }, []);
 
-  if (!headlines || headlines.length === 0) return null;
+  // Honest loading state: shimmer skeleton reserves the section's space so
+  // late-arriving headlines don't shove content down (CLS). Empty/error
+  // still hides the section entirely — never a dead box.
+  if (headlines === null) {
+    return (
+      <section className="vs-section" style={{ paddingTop: 0 }} aria-hidden="true">
+        <style>{`
+          .vs-headlines-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+          @media (min-width: 700px) { .vs-headlines-grid { grid-template-columns: repeat(4, 1fr); } }
+        `}</style>
+        <p className="vs-label">
+          <T k="landing.headlinesLabel" />
+        </p>
+        <div className="vs-headlines-grid">
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="vs-glass vs-anim-shimmer"
+              style={{ borderRadius: 14, padding: 16, minHeight: 118 }}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (headlines.length === 0) return null;
 
   return (
     <section className="vs-section" style={{ paddingTop: 0 }}>

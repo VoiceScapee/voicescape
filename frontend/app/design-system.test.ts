@@ -123,8 +123,8 @@ describe("landing branding conformance", () => {
   const seo = readFileSync(join(here, "../lib/seo.ts"), "utf8");
   const footer = readFileSync(join(here, "../components/BuiltOnHedera.tsx"), "utf8");
 
-  it("splash hero uses the approved voicescape-logo.webp lockup, not the stale banner", () => {
-    expect(splash).toContain("/voicescape-logo.webp");
+  it("splash hero uses the approved voicescape-logo lockup (or its optimized splash variant), not the stale banner", () => {
+    expect(splash).toMatch(/\/voicescape-logo(-splash)?\.webp/);
     expect(splash).not.toContain("voicescape-banner");
   });
 

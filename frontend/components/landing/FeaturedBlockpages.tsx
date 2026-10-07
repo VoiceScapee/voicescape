@@ -31,6 +31,7 @@ interface FeaturedPage {
 
 export function FeaturedBlockpages() {
   const [pages, setPages] = useState<FeaturedPage[] | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const { t } = useLanguage();
 
   /** "1 follower" vs "N followers", localized via the existing follow keys. */
@@ -51,6 +52,8 @@ export function FeaturedBlockpages() {
         }
       } catch {
         /* section stays hidden on failure */
+      } finally {
+        if (alive) setLoaded(true);
       }
     };
     void load();
@@ -60,6 +63,34 @@ export function FeaturedBlockpages() {
       clearInterval(id);
     };
   }, []);
+
+  // Honest loading state: shimmer skeleton reserves the section's space so
+  // late-arriving cards don't shove content down (CLS). After load, empty/
+  // error still hides the section entirely — never a dead box.
+  if (!loaded) {
+    return (
+      <section className="vs-section" style={{ paddingTop: 0 }} aria-hidden="true">
+        <p className="vs-label">
+          <T k="landing.featuredLabel" />
+        </p>
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+            gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+          }}
+        >
+          {[0, 1, 2, 3].map((i) => (
+            <div
+              key={i}
+              className="vs-glass vs-anim-shimmer"
+              style={{ borderRadius: 14, padding: 18, minHeight: 132 }}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
 
   if (!pages) return null;
 
