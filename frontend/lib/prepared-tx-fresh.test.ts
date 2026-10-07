@@ -59,6 +59,53 @@ function mockMirrorSuccess() {
   );
 }
 
+describe("submitPreparedTx connector this-binding (2026-10-07)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMirrorSuccess();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /**
+   * Regression: the real DAppConnector defines signAndExecuteTransaction
+   * as a prototype method that calls this.request() internally. The old
+   * code detached it (const f = hc.signAndExecuteTransaction; f(...)),
+   * which threw "undefined is not an object (evaluating 'this.request')"
+   * on iOS and the wallet never received the request (no popup).
+   * This mock replicates the real shape — a class, not a vi.fn object.
+   */
+  class RealisticConnector {
+    public signCalls: object[] = [];
+    async request(_req: object): Promise<unknown> {
+      return { txHash: "ok" };
+    }
+    async signAndExecuteTransaction(params: object): Promise<unknown> {
+      this.signCalls.push(params);
+      return this.request({ method: "signAndExecuteTransaction", params });
+    }
+  }
+
+  it("keeps `this` bound when firing the signature request", async () => {
+    const hc = new RealisticConnector();
+    getHederaPairingMock.mockReturnValue({ hc, accountId: "0.0.123" } as never);
+    isPairingFreshMock.mockReturnValue(true);
+
+    const result = await submitPreparedTx(PAYLOAD, {
+      expectedOwnerAccountId: "0.0.123",
+    });
+
+    expect(result.confirmed).toBe(true);
+    expect(hc.signCalls).toHaveLength(1);
+    expect(hc.signCalls[0]).toEqual({
+      signerAccountId: PAYLOAD.signerAccountId,
+      transactionList: PAYLOAD.transactionList,
+    });
+  });
+});
+
 describe("submitPreparedTx fresh-pairing probe skip", () => {
   beforeEach(() => {
     vi.clearAllMocks();

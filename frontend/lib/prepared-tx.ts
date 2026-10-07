@@ -204,7 +204,14 @@ export async function submitPreparedTx(
   phase("signing");
   let timedOut = false;
   try {
-    const signAndExecute = pairing.hc.signAndExecuteTransaction as unknown as (
+    // signAndExecuteTransaction is a prototype method on DAppConnector
+    // that calls this.request() internally — it MUST stay bound to the
+    // connector. Calling it detached throws "undefined is not an object
+    // (evaluating 'this.request')" and the wallet never receives the
+    // request (no popup). The other call sites use the parenthesized
+    // (pairing.hc.method)(...) form which preserves `this`; here we bind
+    // explicitly because the reference is raced against a timeout.
+    const signAndExecute = pairing.hc.signAndExecuteTransaction.bind(pairing.hc) as unknown as (
       params: { signerAccountId: string; transactionList: string },
     ) => Promise<unknown>;
     await Promise.race([
