@@ -1,6 +1,8 @@
 # HCS-27 Leaf Rule — Voicescape Transparency Log
 
-**Topic:** `0.0.10908357` (Hedera mainnet)
+**Attestation topic:** `0.0.10908351` (Hedera mainnet, public — no submit key)
+**Verify:** https://hashscan.io/mainnet/topic/0.0.10908351
+**Anchor topic:** `0.0.10908357` (Hedera mainnet, admin-anchored checkpoints)
 **Verify:** https://hashscan.io/mainnet/topic/0.0.10908357
 **Log ID:** `agent-reviews`
 
@@ -9,10 +11,30 @@
 > by Connor Snitker), NOT an official Hedera standard.
 > We follow the draft spec for interoperability. Never claim official status.
 
+## Caller-pays model
+
+Per our cost invariant (users pay their own gas), **the platform never
+signs or pays for review-related chain writes**. When `review_agent_tipping`
+returns an unsigned attestation transaction:
+
+- The **caller** signs it with their own key and pays the HCS message fee
+  (~$0.0001 — fractions of a cent).
+- The single attestation message embeds **both** the public attestation
+  **and** the HCS-27 transparency leaf for the review.
+- The caller's one signature covers both. One transaction, one tiny fee.
+
+The transparency log **is** the public attestation topic's message history
+— anyone can rebuild the Merkle tree from it. No separate platform-paid
+write is needed for the transparency guarantee.
+
+The anchor topic (`0.0.10908357`) carries periodic Merkle-root checkpoints
+for validator convenience. These are **admin-triggered only** — never
+per-review, never from user-facing code paths.
+
 ## How to verify a review was included
 
-Each checkpoint published to the topic contains a Merkle root over a batch
-of review entries. To verify your review is in a checkpoint:
+Each attestation message on `0.0.10908351` contains its own HCS-27 leaf.
+To verify:
 
 ### 1. The leaf rule
 
@@ -27,26 +49,39 @@ Where:
 
 ### 2. What gets hashed (the entry)
 
-Each review entry is this JSON object (before canonicalization):
+Each attestation message has this shape:
 
 ```json
 {
-  "report_hash": "<sha256 of the full review report>",
+  "type": "voicescape.tipping_review.v1",
+  "reviewer": "voicescape-reviewer-v1",
   "subject": "<original subject string>",
-  "subject_account": "<resolved 0.0.x account>",
   "verdict": "clean | flagged | insufficient_data",
-  "confidence": "low | medium | high",
-  "summary": "<human-readable verdict summary>",
-  "tips_analyzed": "<number>",
-  "checked_at": "<ISO 8601 timestamp>",
-  "reviewer": "voicescape-reviewer-v1"
+  "report_hash": "<sha256 of the full review report>",
+  "attested_at": "<ISO 8601 timestamp>",
+  "hcs27": {
+    "leaf_hash": "<hex of SHA256(0x00 || JCS(entry))>",
+    "leaf_alg": "sha256(0x00 || jcs(entry))",
+    "merkle": "rfc9162",
+    "entry": {
+      "report_hash": "<sha256 of the full review report>",
+      "subject": "<original subject string>",
+      "subject_account": "<resolved 0.0.x account>",
+      "verdict": "clean | flagged | insufficient_data",
+      "confidence": "low | medium | high",
+      "summary": "<human-readable verdict summary>",
+      "tips_analyzed": "<number>",
+      "checked_at": "<ISO 8601 timestamp>",
+      "reviewer": "voicescape-reviewer-v1"
+    }
+  }
 }
 ```
 
-The full review (with per-tip evidence) is available via the
-`review_agent_tipping` MCP tool. The `report_hash` in the entry binds the
-leaf to the full report — recompute the report hash to verify the entry
-matches the review.
+To verify: recompute `SHA256(0x00 || JCS(entry))` and check it matches
+`hcs27.leaf_hash`. The full review (with per-tip evidence) is available via
+the `review_agent_tipping` MCP tool — recompute the report hash to verify
+the entry matches the review.
 
 ### 3. The tree
 
@@ -58,9 +93,12 @@ matches the review.
 - **Empty tree root:** `SHA256("")` =
   `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`
 
-### 4. The checkpoint message
+Rebuild the tree from all `hcs27.entry` values in the attestation topic's
+message history (in consensus order) to get the current root.
 
-Each topic message is JSON:
+### 4. Anchor checkpoints (admin-triggered)
+
+Periodic checkpoints may be published to `0.0.10908357` with this shape:
 
 ```json
 {
@@ -81,8 +119,8 @@ Each topic message is JSON:
   (normative requirement — validators reject anything else).
 - `prev` chains to the previous checkpoint's root (consistency proof).
   `null` on the first checkpoint.
-- `sig` is currently `null` — the HCS transaction itself provides payer
-  identity (the ops wallet `0.0.10857765` holds the topic submit key).
+- These are convenience anchors only. The attestation topic is the
+  source of truth.
 
 ### 5. Worked verification
 
@@ -100,13 +138,23 @@ def leaf_hash(entry):
 def node_hash(left, right):
     return hashlib.sha256(b'\x01' + left + right).digest()
 
-# 1. Fetch the latest checkpoint from the mirror node:
-#    GET https://mainnet.mirrornode.hedera.com/api/v1/topics/0.0.10908357/messages?limit=1&order=desc
-# 2. Base64-decode the `message` field, parse JSON
-# 3. Recompute the leaf for your review entry
-# 4. Recompute the root using the tree rules above
-# 5. Compare to metadata.root.rootHashB64u (base64url-decode first)
+# 1. Fetch attestation messages from the mirror node:
+#    GET https://mainnet.mirrornode.hedera.com/api/v1/topics/0.0.10908351/messages?order=asc
+# 2. Base64-decode each `message` field, parse JSON
+# 3. For each: recompute leaf_hash from hcs27.entry, check against hcs27.leaf_hash
+# 4. Recompute the Merkle root using the tree rules above
+# 5. Optionally compare against the latest anchor checkpoint on 0.0.10908357
 ```
+
+## What the caller pays
+
+| Item | Cost (approx) |
+|---|---|
+| HCS attestation message (with embedded leaf) | ~$0.0001 |
+| **Total per review** | **~$0.0001** |
+
+One transaction, one signature, one tiny fee — paid by the caller (the
+reviewer), never by the platform.
 
 ## Reference
 

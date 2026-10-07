@@ -5,21 +5,35 @@
  * on Hedera mainnet. The topic has a submit key — only our operator key
  * can write to it.
  *
+ * *** ADMIN-ONLY — NEVER AUTO-FIRE ON REVIEWS ***
+ *
+ * Per Brandon's cost invariant ("users pay their own gas"), the platform
+ * wallet MUST NEVER sign or pay for review-related chain writes. Review
+ * attestations are caller-paid: the reviewer's single signature on the
+ * attestation tx (to the public topic 0.0.10908351) covers both the
+ * attestation AND the embedded HCS-27 leaf. See buildAttestationTx in
+ * mcp-review.ts.
+ *
+ * This module exists ONLY for explicit admin-triggered anchor checkpoints
+ * (e.g. a periodic root published to the HCS-27 topic for validator
+ * convenience). It must never be called from any user-facing or
+ * review-triggered code path. The transparency log IS the public
+ * attestation topic's message history — checkpoints are derivable from it.
+ *
  * IMPORTANT: HCS-27 is a COMMUNITY DRAFT
  * (hiero-ledger/hiero-consensus-specifications, by Connor Snitker),
  * NOT an official Hedera standard. Never claim otherwise.
  *
- * Design:
+ * Design (for admin use only):
  * - Fail-open: if HCS27_PUBLISHER_KEY is not configured, or publishing
- *   fails, the caller gets a { published: false, reason } result and
- *   continues. Checkpoint publishing never blocks the review flow.
+ *   fails, the caller gets a { published: false, reason } result.
  * - Prev linkage: reads the last checkpoint from the topic via the mirror
  *   node to chain checkpoints together (consistency proof).
  * - The publisher key is the ops wallet's key (0.0.10857765), which holds
  *   the topic's submit key. Set HCS27_PUBLISHER_KEY in Vercel env.
  *
- * Cost: each checkpoint is one HCS message submit (~$0.0001 in HBAR),
- * paid by the ops wallet, not by users.
+ * Cost: each checkpoint is one HCS message submit (~$0.0001 in HBAR).
+ * Admin-triggered only — never per-review, never user-facing.
  */
 import {
   AccountId,

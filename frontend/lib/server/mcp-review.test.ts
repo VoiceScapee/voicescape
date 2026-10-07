@@ -3,7 +3,9 @@ import {
   reviewAgentTipping,
   hashReport,
   buildAttestationTx,
+  buildAttestationMessage,
 } from "./mcp-review";
+import { leafHashHexFromEntry } from "./hcs27/merkle";
 
 function mockFetch(responses: Record<string, any>) {
   return async (url: string | URL | Request) => {
@@ -212,5 +214,38 @@ describe("reviewAgentTipping", () => {
     const tx = await buildAttestationTx("0.0.12345", "abc123", "0.0.1", "clean");
     // May be null if SDK freeze needs network; just check it doesn't throw.
     expect(tx === null || typeof tx === "string").toBe(true);
+  });
+
+  it("buildAttestationMessage omits hcs27 when no leaf provided", () => {
+    const msg = buildAttestationMessage("hash123", "0.0.1", "clean");
+    expect(msg.type).toBe("voicescape.tipping_review.v1");
+    expect(msg.report_hash).toBe("hash123");
+    expect(msg).not.toHaveProperty("hcs27");
+  });
+
+  it("buildAttestationMessage embeds a verifiable HCS-27 leaf", () => {
+    const entry = {
+      report_hash: "abc123",
+      subject: "0.0.1",
+      subject_account: "0.0.1",
+      verdict: "clean",
+      confidence: "high",
+      summary: "test",
+      tips_analyzed: 5,
+      checked_at: "2026-10-07T00:00:00.000Z",
+      reviewer: "voicescape-reviewer-v1",
+    };
+    const leafHash = leafHashHexFromEntry(entry);
+    const msg = buildAttestationMessage("abc123", "0.0.1", "clean", {
+      leaf_hash: leafHash,
+      entry,
+    }) as { hcs27: { leaf_hash: string; entry: unknown } };
+
+    // The embedded leaf hash must recompute from the embedded entry —
+    // this is what lets verifiers check the attestation without
+    // trusting us.
+    expect(msg.hcs27.leaf_hash).toBe(leafHash);
+    expect(leafHashHexFromEntry(msg.hcs27.entry)).toBe(leafHash);
+    expect(msg.hcs27.leaf_hash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

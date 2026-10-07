@@ -214,10 +214,60 @@ export function hashReport(canonical: string): string {
   return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
+export interface HCS27LeafData {
+  leaf_hash: string;
+  entry: Record<string, unknown>;
+}
+
+/**
+ * Build the attestation message payload (pure, testable).
+ * Includes the HCS-27 leaf when provided — the caller's signature on the
+ * enclosing transaction covers both the attestation and the leaf.
+ */
+export function buildAttestationMessage(
+  reportHash: string,
+  subject: string,
+  verdict: TippingVerdict,
+  hcs27Leaf?: HCS27LeafData,
+): Record<string, unknown> {
+  const message: Record<string, unknown> = {
+    type: "voicescape.tipping_review.v1",
+    reviewer: REVIEWER_ID,
+    subject,
+    verdict,
+    report_hash: reportHash,
+    attested_at: new Date().toISOString(),
+  };
+  // Embed the HCS-27 leaf so the caller's signature covers the
+  // transparency commitment. Verifiers recompute the leaf from
+  // `entry` and check it matches `leaf_hash`.
+  // NOTE: HCS-27 is a community draft, not an official Hedera standard.
+  if (hcs27Leaf) {
+    message.hcs27 = {
+      leaf_hash: hcs27Leaf.leaf_hash,
+      leaf_alg: "sha256(0x00 || jcs(entry))",
+      merkle: "rfc9162",
+      entry: hcs27Leaf.entry,
+    };
+  }
+  return message;
+}
+
 /**
  * Build an UNSIGNED HCS attestation transaction committing the report
  * hash. The caller signs with their own key and submits — they become
- * the attestor of our review.
+ * the attestor of our review, and they pay the HCS message fee (~$0.0001).
+ *
+ * CALLER-PAYS MODEL: the attestation message embeds the HCS-27
+ * transparency leaf for this review, so the caller's single signature
+ * covers both the public attestation AND the leaf that anchors this
+ * review in the transparency Merkle tree. The platform never signs or
+ * pays for review-related chain writes.
+ *
+ * The transparency log IS the public attestation topic's message
+ * history — anyone can rebuild the Merkle tree from it using the leaf
+ * rule in docs/hcs27-leaf-rule.md. No separate platform-paid write
+ * is needed.
  *
  * Returns base64 of the frozen (unsigned) transaction bytes, or null if
  * the topic is not yet configured.
@@ -227,21 +277,21 @@ export async function buildAttestationTx(
   reportHash: string,
   subject: string,
   verdict: TippingVerdict,
+  hcs27Leaf?: HCS27LeafData,
 ): Promise<string | null> {
   if (!topicId || topicId === "0.0.0") return null;
   try {
-    const message = JSON.stringify({
-      type: "voicescape.tipping_review.v1",
-      reviewer: REVIEWER_ID,
+    const message = buildAttestationMessage(
+      reportHash,
       subject,
       verdict,
-      report_hash: reportHash,
-      attested_at: new Date().toISOString(),
-    });
+      hcs27Leaf,
+    );
     const tx = new TopicMessageSubmitTransaction()
       .setTopicId(TopicId.fromString(topicId))
-      .setMessage(message)
-      // Payer is left unset — the signing caller sets their own account.
+      .setMessage(JSON.stringify(message))
+      // Payer is left unset — the signing caller sets their own account
+      // and pays the HCS message fee.
       .setTransactionId(TransactionId.generate(AccountId.fromString("0.0.0")))
       .setNodeAccountIds([AccountId.fromString("0.0.3")])
       .freeze();
@@ -349,11 +399,34 @@ export async function reviewAgentTipping(
     reviewer: REVIEWER_ID,
   };
   const reportHash = hashReport(canonicalReport(reportBase));
+
+  // Build the HCS-27 transparency leaf for this review. The leaf entry
+  // mirrors the checkpoint entry schema in docs/hcs27-leaf-rule.md so
+  // verifiers can recompute the leaf hash from the attestation message.
+  // NOTE: HCS-27 is a community draft, not an official Hedera standard.
+  const leafEntry: Record<string, unknown> = {
+    report_hash: reportHash,
+    subject: reportBase.subject,
+    subject_account: reportBase.subject_account,
+    verdict: reportBase.verdict,
+    confidence: reportBase.confidence,
+    summary: reportBase.summary,
+    tips_analyzed: reportBase.tips_analyzed,
+    checked_at: reportBase.checked_at,
+    reviewer: reportBase.reviewer,
+  };
+  const { leafHashHexFromEntry } = await import("./hcs27/merkle");
+  const leafHash = leafHashHexFromEntry(leafEntry);
+
+  // Caller-pays: the unsigned tx embeds the leaf; the caller's single
+  // signature covers the attestation AND the transparency commitment.
+  // The platform never signs or pays for review chain writes.
   const attestationTx = await buildAttestationTx(
     attestationTopic,
     reportHash,
     subject,
     verdict,
+    { leaf_hash: leafHash, entry: leafEntry },
   );
 
   const review = {
@@ -361,34 +434,9 @@ export async function reviewAgentTipping(
     report_hash: reportHash,
     attestation_tx_base64: attestationTx,
     attestation_note: attestationTx
-      ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor"
+      ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor. You pay the HCS message fee (~$0.0001); the platform never pays for review chain writes."
       : "attestation topic not yet configured — verdict and evidence above are still fully verifiable via the mirror node",
   };
-
-  // Fire-and-forget: anchor this review in the HCS-27 transparency log.
-  // Fail-open — a publish failure never breaks the review itself.
-  // NOTE: HCS-27 is a community draft, not an official Hedera standard.
-  void (async () => {
-    try {
-      const { publishReviewCheckpoint, REVIEWS_LOG_ID } = await import(
-        "./hcs27/publisher"
-      );
-      const entry = {
-        report_hash: reportHash,
-        subject: reportBase.subject,
-        subject_account: reportBase.subject_account,
-        verdict: reportBase.verdict,
-        confidence: reportBase.confidence,
-        summary: reportBase.summary,
-        tips_analyzed: reportBase.tips_analyzed,
-        checked_at: reportBase.checked_at,
-        reviewer: reportBase.reviewer,
-      };
-      await publishReviewCheckpoint(REVIEWS_LOG_ID, [entry]);
-    } catch {
-      // Fail-open: transparency logging is best-effort.
-    }
-  })();
 
   return review;
 }
