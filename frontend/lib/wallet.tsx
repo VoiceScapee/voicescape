@@ -547,6 +547,14 @@ let hcAccountId: string | null = null;
 /** Full HIP-30 session account ("hedera:<network>:<account>") for change detection. */
 let hcSessionAccount: string | null = null;
 /**
+ * When the current pairing was approved (ms epoch) — null when unpaired.
+ * Powers the fresh-pairing probe skip in the sign pipeline: a pairing
+ * approved seconds ago is definitionally alive (the approval itself
+ * arrived over the relay), so the wallet-round-trip liveness probe —
+ * which some wallets don't answer even when healthy — is pure risk.
+ */
+let hcPairedAtMs: number | null = null;
+/**
  * Generation counter: every dropConnector() invalidates in-flight builds.
  * If the page-load restore is still importing the wallet library when the
  * user taps "connect", the explicit tap wins and the stale restore build
@@ -607,6 +615,7 @@ function dropConnector(): void {
   _initialized = false;
   hcAccountId = null;
   hcSessionAccount = null;
+  hcPairedAtMs = null;
   // Every DAppConnector build appends a fresh `wcm-modal` element to
   // document.body (the library's initUi is not idempotent), so rebuilding
   // the connector — e.g. on every explicit connect tap — leaked modal
@@ -686,6 +695,35 @@ export function sessionTopic(session: unknown): string | null {
 export function getHederaPairing(): { hc: DAppConnector; accountId: string } | null {
   if (!_connector || !hcAccountId) return null;
   return { hc: _connector, accountId: hcAccountId };
+}
+
+/** Stamp the current pairing as just approved. Call at every pairing site. */
+function markPairedNow(): void {
+  hcPairedAtMs = Date.now();
+}
+
+/**
+ * True when the current pairing was approved within `maxAgeMs`.
+ *
+ * A freshly-approved pairing is definitionally alive — the wallet's
+ * approval arrived over the WalletConnect relay seconds ago — so sign
+ * flows can skip the wallet-round-trip liveness probe and go straight to
+ * the signature request. The probe sends `hedera_signAndExecuteQuery`
+ * and requires the wallet app to answer; some wallets (HashPack on iOS
+ * after an app-switch) don't answer it even when the session is healthy,
+ * which produced false "stale" verdicts that blocked the signature
+ * entirely (2026-10-07 claim failure: probe failed → rewake failed →
+ * StaleWalletPairingError, sign request never sent). The signature
+ * request's own timeout remains the real liveness test for fresh
+ * pairings.
+ */
+export function isPairingFresh(maxAgeMs: number): boolean {
+  return hcPairedAtMs !== null && Date.now() - hcPairedAtMs < maxAgeMs;
+}
+
+/** Test hook: set the pairing timestamp directly. */
+export function __setPairedAtMsForTests(ms: number | null): void {
+  hcPairedAtMs = ms;
 }
 
 /**
@@ -986,6 +1024,7 @@ export async function restoreHederaPairing(): Promise<string | null> {
     const accountId = signer?.getAccountId?.()?.toString?.() ?? null;
     if (!accountId || !/^0\.0\.\d+$/.test(accountId)) return null;
     hcAccountId = accountId;
+    markPairedNow();
     // No session object here (signer-derived) — reconstruct the HIP-30
     // identity from the active chain for change detection.
     hcSessionAccount = `hedera:${networkFromChainKey(getActiveChain().key)}:${accountId}`;
@@ -1358,6 +1397,7 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
       throw new Error("Pairing succeeded but no Hedera account was returned.");
     }
     hcAccountId = accountId;
+    markPairedNow();
     // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
     // pairings now that the new one succeeded — sessions only, never
     // pending pairings (see disconnectStaleSessions).
@@ -1419,6 +1459,7 @@ async function connectHederaWallet(chain: ChainConfig): Promise<string> {
     throw new Error("Pairing succeeded but no Hedera account was returned.");
   }
   hcAccountId = accountId;
+  markPairedNow();
   // Fresh-pairing hygiene, surgically: drop stale sessions from earlier
   // pairings now that the new one succeeded — sessions only, never
   // pending pairings (see disconnectStaleSessions).

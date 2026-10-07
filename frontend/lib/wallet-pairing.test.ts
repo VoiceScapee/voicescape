@@ -8,11 +8,13 @@ import {
   IN_APP_HANDSHAKE_FAILED_COPY,
   IN_APP_MODAL_BLOCKED_COPY,
   isPairingCancelled,
+  isPairingFresh,
   isValidPairingUri,
   PairingCancelledError,
   sessionTopic,
   shouldSuggestWalletInstall,
   SingleFlight,
+  __setPairedAtMsForTests,
 } from "./wallet";
 
 describe("detectInjectedHederaWallet", () => {
@@ -434,5 +436,34 @@ describe("isValidPairingUri", () => {
   it("rejects non-wc strings and empty input", () => {
     expect(isValidPairingUri("")).toBe(false);
     expect(isValidPairingUri("https://example.com")).toBe(false);
+  });
+});
+
+describe("isPairingFresh — fresh-pairing probe skip", () => {
+  it("is false when no pairing was ever stamped", () => {
+    __setPairedAtMsForTests(null);
+    expect(isPairingFresh(120_000)).toBe(false);
+  });
+
+  it("is true right after stamping", () => {
+    __setPairedAtMsForTests(Date.now());
+    expect(isPairingFresh(120_000)).toBe(true);
+  });
+
+  it("is false when the pairing is older than the window", () => {
+    __setPairedAtMsForTests(Date.now() - 121_000);
+    expect(isPairingFresh(120_000)).toBe(false);
+  });
+
+  it("is true just inside the window", () => {
+    __setPairedAtMsForTests(Date.now() - 119_000);
+    expect(isPairingFresh(120_000)).toBe(true);
+  });
+
+  it("resets cleanly", () => {
+    __setPairedAtMsForTests(Date.now());
+    expect(isPairingFresh(120_000)).toBe(true);
+    __setPairedAtMsForTests(null);
+    expect(isPairingFresh(120_000)).toBe(false);
   });
 });
