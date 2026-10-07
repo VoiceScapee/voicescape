@@ -1345,12 +1345,20 @@ function PublicPageInner({ username }: { username: string }) {
   useEffect(() => {
     if (!widgetId || widBeaconFired.current) return;
     widBeaconFired.current = true;
+    // Frozen beacon spec (2026-10-07): the beacon is {wid, iid} — both
+    // required. If the widget didn't pass an iid, the chain is broken
+    // (widget too old or _iid missing from render_blockpage); firing
+    // without it would just 400, so skip and say why.
+    if (!invocationId) {
+      console.warn(
+        "[widget-beacon] skipping: wid present but iid missing from URL — widget did not forward _iid",
+      );
+      return;
+    }
     fetch("/api/widget-visit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(
-        invocationId ? { wid: widgetId, iid: invocationId } : { wid: widgetId },
-      ),
+      body: JSON.stringify({ wid: widgetId, iid: invocationId }),
       keepalive: true,
     }).catch(() => {
       /* best-effort */

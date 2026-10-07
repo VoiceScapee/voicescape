@@ -110,6 +110,13 @@ describe("blockpage preview widget", () => {
     expect(html).toContain("result.isError === true");
   });
 
+  it("captures _iid from error results (frozen beacon spec)", () => {
+    // The invocation id must be extracted before the error early-return,
+    // so the widget's call log records it even on failed renders.
+    const html = blockpagePreviewHtml();
+    expect(html).toContain("errData._iid");
+  });
+
   it("declares a restrictive widget CSP for _meta.ui.csp", () => {
     // Self-contained widget: inline script/style only, no network, no
     // images, no forms — the policy must reflect that, explicitly.

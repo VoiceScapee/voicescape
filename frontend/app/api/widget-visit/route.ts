@@ -4,29 +4,44 @@
  * diagnostic: render_blockpage issues a wid, the widget appends it to
  * open-link URLs, and this beacon proves the round trip completed.
  *
- * Optional `iid` carries the caller's JSON-RPC request id (invocation
- * correlation key, autonomaavalix's ask 2026-10-06) so independent
- * observers can join beacon rows against their request log.
+ * FROZEN BEACON SPEC (2026-10-07 — see frontend/docs/widget-beacon-spec.md):
+ * the beacon shape is {wid, iid}. Both fields are REQUIRED.
+ * - wid: 8-char widget-instance id minted by render_blockpage (1:1).
+ * - iid: the caller's JSON-RPC request id (invocation correlation key),
+ *   threaded through render_blockpage as _iid on success AND failure.
+ *
+ * Missing/empty iid is a HARD FAIL (400 + MISSING_IID), not a quiet
+ * null — autonomaavalix's ask 2026-10-07: silent drops make ingest-side
+ * validation impossible to debug.
  *
  * No auth — the wid is a random 8-char id (no PII), iid is opaque.
- * Invalid or unissued wids are ignored. Best-effort; always returns 200.
  */
 import { NextResponse } from "next/server";
 import { isWidgetId, logWidgetVisit, wasWidgetIssued } from "@/lib/server/widget-diagnostics";
+import {
+  WIDGET_VISIT_ERRORS,
+  type WidgetVisitErrorCode,
+} from "@/lib/server/widget-beacon";
+
+function err(code: WidgetVisitErrorCode) {
+  return NextResponse.json(
+    { ok: false, error: code, message: WIDGET_VISIT_ERRORS[code] },
+    { status: 400 },
+  );
+}
 
 export async function POST(req: Request) {
-  try {
-    const body = await req.json().catch(() => ({}));
-    const wid = (body as { wid?: unknown }).wid;
-    const iid = (body as { iid?: unknown }).iid;
-    if (isWidgetId(wid) && (await wasWidgetIssued(wid))) {
-      await logWidgetVisit(
-        wid,
-        typeof iid === "string" && iid.length > 0 && iid.length <= 128 ? iid : undefined,
-      );
-    }
-  } catch {
-    /* best-effort */
+  const body = await req.json().catch(() => ({}));
+  const wid = (body as { wid?: unknown }).wid;
+  const iid = (body as { iid?: unknown }).iid;
+
+  if (!isWidgetId(wid)) return err("INVALID_WID");
+  if (!(await wasWidgetIssued(wid))) return err("UNKNOWN_WID");
+  // iid is required: 1–128 chars. Empty/missing/wrong-type is a hard
+  // 400, never a silent null.
+  if (typeof iid !== "string" || iid.length === 0 || iid.length > 128) {
+    return err("MISSING_IID");
   }
+  await logWidgetVisit(wid, iid);
   return NextResponse.json({ ok: true });
 }

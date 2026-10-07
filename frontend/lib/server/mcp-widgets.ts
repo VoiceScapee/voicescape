@@ -231,6 +231,17 @@ window.__VOICESCAPE_PRELOAD__ = __PRELOAD_JSON__;
       var result = payload && payload.result ? payload.result : payload;
       // Honest failure state: a tool-level error must say so, never a dead card.
       if (result && (result.isError === true || result.error)) {
+        // Frozen beacon spec (2026-10-07): capture _iid from error
+        // payloads too — the invocation id is present on failed renders,
+        // and the widget's call log should record it for diagnostics.
+        try {
+          var errContent = result.content && result.content[0] && result.content[0].text;
+          var errParsed = JSON.parse(errContent);
+          var errData = errParsed && errParsed.data ? errParsed.data : errParsed;
+          if (errData && (typeof errData._iid === 'string' || typeof errData._iid === 'number')) {
+            invocationId = String(errData._iid);
+          }
+        } catch (e) { /* iid is best-effort on the error path */ }
         var errText = result.error ||
           (result.content && result.content[0] && result.content[0].text) ||
           'The lookup failed.';

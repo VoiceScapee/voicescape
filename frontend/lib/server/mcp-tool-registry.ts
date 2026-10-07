@@ -985,11 +985,21 @@ export function registerTools(server: McpServer): void {
         const name = username.trim().toLowerCase();
         if (!USERNAME_RE.test(name)) {
           const issue = usernameValidationIssue(username);
-          return toolError(issue.message, {
+          // Frozen beacon spec (2026-10-07): _iid rides on validation
+          // failures too — the caller needs the correlation key on every
+          // failed render.
+          const vIid = getRequestContext().requestId;
+          const vBody: Record<string, unknown> = {
+            error: issue.message,
             code: issue.code,
             retryable: issue.retryable,
             suggestions: issue.suggestions,
-          });
+          };
+          if (vIid !== null) vBody._iid = vIid;
+          return {
+            content: [{ type: "text", text: JSON.stringify(vBody, null, 2) }],
+            isError: true,
+          };
         }
         const data = await lookupBlockpage(name);
         // Mint a widget-instance id for open-link delivery diagnostics
@@ -1009,6 +1019,15 @@ export function registerTools(server: McpServer): void {
             _wid: wid,
             ...(iid !== null ? { _iid: iid } : {}),
           });
+        }
+        // Failure path (frozen beacon spec 2026-10-07): the caller's
+        // invocation id rides on FAILED renders too, not just success —
+        // support needs the correlation on the cases that generate
+        // tickets (autonomaavalix's ask). No _wid is minted: no widget
+        // was issued, so there is nothing to track delivery for.
+        const failIid = getRequestContext().requestId;
+        if (data && typeof data === "object" && failIid !== null) {
+          return toolResult({ ...data, _iid: failIid });
         }
         return toolResult(data);
       }),
