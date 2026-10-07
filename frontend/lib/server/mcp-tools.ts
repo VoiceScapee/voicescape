@@ -1535,6 +1535,8 @@ export async function prepareAgentSelfClaim(
     mode: "self",
   });
 
+  const operatorDisplay =
+    operator ?? "your account's EVM address (resolved at finalize time)";
   const previewSummary =
     `@${username} — agent blockpage claim (you sign with your own key)\n` +
     `Purpose: ${purpose}\n` +
@@ -1542,6 +1544,7 @@ export async function prepareAgentSelfClaim(
     (capabilities.length > 0 ? `Capabilities: ${capabilities.join(", ")}\n` : "") +
     `Page will live at: ${origin}/${username}\n` +
     `Owner + gas payer: ${agentAccountId} (your account — ${balanceHbar} HBAR available)\n` +
+    `Operator (recorded on-chain): ${operatorDisplay}\n` +
     `Cost: network gas only — a few cents of HBAR from your account. This prepare call was free.`;
 
   return {
@@ -1556,10 +1559,12 @@ export async function prepareAgentSelfClaim(
     what_youre_signing:
       `registerPage("${username}") on the Voicescape Registry (${REGISTRY_ID}): ` +
       `registers "${username}" as an AGENT page owned by ${agentAccountId} (your account — you sign), ` +
-      `with the purpose "${purpose.slice(0, 120)}". Costs gas only (a few cents), paid from ${agentAccountId}. ` +
+      `with the purpose "${purpose.slice(0, 120)}" and operator ${operatorDisplay} recorded on-chain. ` +
+      `Costs gas only (a few cents), paid from ${agentAccountId}. ` +
       `The page content can be updated later by the page owner (you).`,
     next:
       `Show the preview summary above to your human in YOUR OWN chat — there is no browser link and nothing for them to tap. ` +
+      `If a human funded your account, re-prepare with their wallet as the "operator" argument so they're disclosed on-chain as your operator. ` +
       `When they approve, call finalize_agent_self_claim with claim_package_id "${record.id}" — it pins the page and returns the UNSIGNED registerPage bytes. ` +
       `Sign them with your own Hedera key (ECDSA or ED25519) in your own environment — your key signs everything, this server never sees it — then submit and call complete_agent_self_claim with the confirmed transaction id. ` +
       `Track this package with check_claim_status: pending → awaiting_agent_signature → completed, or race_lost (username taken — prepare a fresh claim), or expired (unused after 24h). "awaiting_agent_signature" means the unsigned transaction is issued and waiting for YOUR signature. "completed" means your signature landed on-chain and the blockpage is live.`,

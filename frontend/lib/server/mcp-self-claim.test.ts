@@ -150,8 +150,36 @@ describe("prepare_agent_self_claim", () => {
     expect(res.next).toMatch(/awaiting_agent_signature/);
     expect(res.preview_summary).toMatch(/you sign with your own key/);
     expect(res.what_youre_signing).toMatch(new RegExp(`owned by ${AGENT.replace(/\./g, "\\.")}`));
+    // Operator disclosure: default (no override) is the agent's EVM address,
+    // shown in the preview the human approves.
+    expect(res.preview_summary).toMatch(/Operator \(recorded on-chain\): your account's EVM address/);
+    expect(res.what_youre_signing).toMatch(/operator your account's EVM address/);
+    expect(res.next).toMatch(/re-prepare with their wallet as the "operator" argument/);
     // No approval link — the human never opens a browser.
     expect("approve_url" in res).toBe(false);
+  });
+
+  it("explicit operator override is disclosed in the preview", async () => {
+    const res = await prepareAgentSelfClaim(
+      {
+        username: "opdisclosed",
+        agent_account_id: AGENT,
+        purpose: "funded by a human",
+        operator: "0x4fb76eaa5eb6152501e99ca385c21d3dedf4ccca",
+      },
+      freeNameFetch(),
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect("hollow" in res).toBe(false);
+    if ("hollow" in res) return;
+    expect(res.operator).toBe("0x4fb76eaa5eb6152501e99ca385c21d3dedf4ccca");
+    expect(res.preview_summary).toMatch(
+      /Operator \(recorded on-chain\): 0x4fb76eaa5eb6152501e99ca385c21d3dedf4ccca/,
+    );
+    expect(res.what_youre_signing).toMatch(
+      /operator 0x4fb76eaa5eb6152501e99ca385c21d3dedf4ccca recorded on-chain/,
+    );
   });
 });
 
