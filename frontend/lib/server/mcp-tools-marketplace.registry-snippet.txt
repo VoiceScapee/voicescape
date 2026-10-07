@@ -1,0 +1,85 @@
+REFERENCE ONLY — not compiled (kept as .txt so tsc/vitest ignore it).
+Paste these two blocks into frontend/lib/server/mcp-tool-registry.ts
+inside the register function, and add the import line below near the other
+mcp-tools imports:
+
+  import { createListingTool, uploadDigitalGoodTool } from "./mcp-tools-marketplace";
+
+Both tools call the pure functions directly (no session needed) and wrap
+results with toolResult/toolError like the other public tools.
+------------------------------------------------------------------------
+
+  /* ------------------- create_listing (write) ------------------- */
+  server.registerTool(
+    "create_listing",
+    {
+      title: "Create marketplace listing",
+      description:
+        "Create a Voicescape marketplace listing as a registered AGENT page — two steps, you sign everything yourself. STEP 1: call WITHOUT hcs_tx_id — validates your listing (title, description, price_usd_cents, goods_type, optional ipfs_hash from upload_digital_good) and returns the EXACT unsigned HCS JSON message plus the market topic to submit it to, and a listing_id. STEP 2: submit that message yourself with your OWN Hedera key (the wallet owning your agent blockpage) via TopicMessageSubmitTransaction — you pay the small HCS network fee — then call again with the SAME fields plus hcs_tx_id (0.0.x@seconds.nanos) AND listing_id (the id from step 1, bound into your HCS message). The server verifies on-chain that your wallet paid for the submit, it went to the market topic, and the message matches byte-for-byte, then confirms the listing. Buyers pay through the Tips contract (0.0.10854060): one atomic transaction splits 98% to your wallet and 2% to the treasury — no escrow. The payout address is always your page's owner wallet; unverified payout addresses are rejected. Listings are reversible (cancel from the dapp). Cost honesty: preparing is free; your HCS submit costs a tiny Hedera network fee (fractions of a cent).",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered agent blockpage username (3-32 lowercase letters/numbers/_/-)"),
+        title: z.string().min(1).max(120).describe("Listing title"),
+        description: z.string().min(1).max(2000).describe("What the buyer gets"),
+        price_usd_cents: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Price in USD cents (integer, 0 = free). Buyer pays the HBAR equivalent via the Tips contract."),
+        goods_type: z
+          .enum(["physical", "digital"])
+          .describe('physical = shipped item, digital = file bound via ipfs_hash'),
+        ipfs_hash: z
+          .string()
+          .optional()
+          .describe("Optional IPFS CID of the digital good, from upload_digital_good (Qm… or baf…)"),
+        hcs_tx_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 ONLY: the Hedera transaction id of your HCS submit (0.0.x@seconds.nanos). Omit for step 1."),
+        listing_id: z
+          .string()
+          .optional()
+          .describe("STEP 2 REQUIRED: the listing_id returned by step 1 (bound into your HCS message). May be set in step 1 to choose your own id (8-64 chars, lowercase/numbers/hyphens)."),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, title, description, price_usd_cents, goods_type, ipfs_hash, hcs_tx_id, listing_id }) =>
+      withMcpErrorTelemetry("create_listing", async () => {
+        const res = await createListingTool({
+          agent_username,
+          title,
+          description,
+          price_usd_cents,
+          goods_type,
+          ipfs_hash,
+          hcs_tx_id,
+          listing_id,
+        });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- upload_digital_good (write) ----------------- */
+  server.registerTool(
+    "upload_digital_good",
+    {
+      title: "Upload digital good",
+      description:
+        "Pin a digital-good file to IPFS and get back its CID, for attaching to a marketplace listing via create_listing's ipfs_hash. Pass the file as base64 (max 10 MB decoded). Only images (JPEG/PNG/GIF/WebP), PDFs, and ZIPs are accepted — the type is verified by magic bytes, so a disguised executable is rejected. Your filename is replaced with a neutral name before pinning (no PII reaches storage). Quota: same 5/day per-wallet limit as the dapp upload, shared across both surfaces. The CID is bound into your listing's on-chain message, so buyers can prove the exact file listed is the one they get. Requires a registered agent blockpage.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered agent blockpage username (3-32 lowercase letters/numbers/_/-)"),
+        file_base64: z.string().min(1).describe("Base64-encoded file bytes (max 10 MB decoded)"),
+        filename: z.string().min(1).describe("Original filename (extension hints the file kind)"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, file_base64, filename }) =>
+      withMcpErrorTelemetry("upload_digital_good", async () => {
+        const res = await uploadDigitalGoodTool({ agent_username, file_base64, filename });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
