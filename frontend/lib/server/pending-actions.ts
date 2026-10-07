@@ -9,34 +9,53 @@
  * older proposal — the agent is told to point the human at their Buddy
  * chat rather than dropping work on the floor.
  *
- * The inbox holds REFERENCES, not transactions: each entry points at a
- * claim package (lib/server/claim-packages.ts). Pinning the starter page
- * and building the frozen registerPage transaction happen at APPROVE time
- * (POST /api/claim-packages/[id]/finalize) with the actually connected
- * wallet as payer — whoever pairs owns it.
+ * The inbox holds REFERENCES, not transactions: a claim entry points at a
+ * claim package (lib/server/claim-packages.ts); an update entry carries the
+ * proposed page spec. Pinning and building the frozen transaction happen at
+ * APPROVE time (POST /api/claim-packages/[id]/finalize for claims,
+ * POST /api/agents/page-updates/[id]/finalize for updates) with the
+ * actually connected wallet as payer — whoever taps owns it.
  *
  * Never stores keys, never signs: signing happens in the user's wallet via
  * the DAppConnector pairing.
  */
 import { randomBytes } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
+import type { ClaimPageSpec } from "./page-customize";
+
+/** Proposal kinds the inbox can hold. */
+export type PendingActionKind = "agent-claim" | "agent-page-update";
+
+export interface PageUpdateProposalDetails {
+  /**
+   * The proposed new page content. Assembled + pinned to IPFS at APPROVE
+   * time (pinning at propose time orphans a page every untapped proposal).
+   */
+  spec: ClaimPageSpec;
+  /** Human-readable description of what changed — the agent's own words. */
+  changeSummary: string;
+  /** Capability token id that submitted it (audit trail). */
+  tokenId: string;
+}
 
 export interface PendingAction {
   id: string;
-  kind: "agent-claim";
+  kind: PendingActionKind;
   createdAt: number;
   /** Normalized "0.0.x" owner account id. */
   ownerAccountId: string;
   /** Short card label, e.g. "Agent blockpage claim". */
   label: string;
-  /** Card title, e.g. "Register @thechomps". */
+  /** Card title, e.g. "Register @thechomps" / "Update @thechomps". */
   title: string;
   /** Plain-words summary of what the signature does (from what_youre_signing). */
   summary: string;
   /** Cost copy, e.g. "Network gas only — a few cents of HBAR." */
   costEstimate: string;
-  /** Claim-package short id — finalized at approve time. */
-  claimPackageId: string;
+  /** Claim-package short id — agent-claim only, finalized at approve time. */
+  claimPackageId?: string;
+  /** Update details — agent-page-update only, pinned at approve time. */
+  pageUpdate?: PageUpdateProposalDetails;
 }
 
 /** Thrown when the owner's inbox is full — nothing is overwritten. */
@@ -65,11 +84,26 @@ async function readList(owner: string, store: KvStore): Promise<PendingAction[]>
     const list = JSON.parse(raw) as PendingAction[];
     if (!Array.isArray(list)) return [];
     return list.filter(
-      (p) => p && typeof p.id === "string" && typeof p.claimPackageId === "string",
+      (p) =>
+        p &&
+        typeof p.id === "string" &&
+        (p.kind === "agent-claim"
+          ? typeof p.claimPackageId === "string"
+          : p.kind === "agent-page-update" && p.pageUpdate && typeof p.pageUpdate === "object"),
     );
   } catch {
     return [];
   }
+}
+
+/** A single proposal by id, or null. */
+export async function getPendingActionById(
+  ownerAccountId: string,
+  id: string,
+  store: KvStore = getKvStore(),
+): Promise<PendingAction | null> {
+  const list = await readList(ownerAccountId.trim(), store);
+  return list.find((p) => p.id === id) ?? null;
 }
 
 /**
@@ -124,6 +158,71 @@ export async function getPendingActions(
   store: KvStore = getKvStore(),
 ): Promise<PendingAction[]> {
   return readList(ownerAccountId.trim(), store);
+}
+
+export interface StashPageUpdateInput {
+  owner_account_id: string;
+  /** Proposed new page content (assembled + pinned at approve time). */
+  spec: ClaimPageSpec;
+  /** Human-readable description of what changed — shown on the card. */
+  change_summary: string;
+  /** Capability token id that submitted it (audit trail). */
+  token_id: string;
+}
+
+/**
+ * Append a keyless-agent page-update proposal as the owner's pending
+ * action. Same inbox rules as claims: max MAX_PENDING_PER_OWNER, 24h TTL,
+ * nothing executes without the human's tap. The page is NOT pinned here —
+ * pinning happens at approve time, so untapped proposals orphan nothing.
+ * Throws PendingActionConflictError when the inbox is full; throws on
+ * invalid input. KV failures propagate. `store` is injectable for tests.
+ */
+export async function stashPageUpdateProposal(
+  input: StashPageUpdateInput,
+  store: KvStore = getKvStore(),
+): Promise<PendingAction> {
+  const owner = (input.owner_account_id ?? "").trim();
+  if (!/^\d+\.\d+\.\d+$/.test(owner)) {
+    throw new Error("stashPageUpdateProposal: bad owner account id");
+  }
+  const spec = input.spec;
+  if (!spec || typeof spec !== "object") throw new Error("stashPageUpdateProposal: missing spec");
+  const username = (spec.username ?? "").trim().toLowerCase();
+  if (!/^[a-z0-9_-]{3,32}$/.test(username)) {
+    throw new Error("stashPageUpdateProposal: bad username in spec");
+  }
+  const changeSummary = (input.change_summary ?? "").trim().slice(0, 500);
+  if (!changeSummary) throw new Error("stashPageUpdateProposal: missing change summary");
+  const tokenId = (input.token_id ?? "").trim();
+  if (!/^[0-9a-f]{16}$/.test(tokenId)) {
+    throw new Error("stashPageUpdateProposal: bad token id");
+  }
+
+  const list = await readList(owner, store);
+  if (list.length >= MAX_PENDING_PER_OWNER) {
+    throw new PendingActionConflictError(
+      `owner ${owner} already has ${list.length} pending proposals — ask the human to check their Buddy chat before preparing another`,
+    );
+  }
+  const action: PendingAction = {
+    id: randomBytes(8).toString("hex"),
+    kind: "agent-page-update",
+    createdAt: Date.now(),
+    ownerAccountId: owner,
+    label: "Agent page update",
+    title: `Update @${username}`,
+    summary: changeSummary,
+    costEstimate: "Network gas only — a few cents of HBAR. No fee to Voicescape.",
+    pageUpdate: {
+      spec: { ...spec, username },
+      changeSummary,
+      tokenId,
+    },
+  };
+  list.push(action);
+  await store.set(keyFor(owner), JSON.stringify(list), TTL_MS);
+  return action;
 }
 
 /**

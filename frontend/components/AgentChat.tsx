@@ -31,6 +31,7 @@ import { submitPreparedTx, type SubmitPreparedTxResult } from "@/lib/prepared-tx
 import { recordUsageEvent } from "@/lib/usage";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import { finalizeClaimPackage, ClaimLinkError } from "@/lib/claim-link";
+import { finalizePageUpdate, PageUpdateError } from "@/lib/page-updates";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
 import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
@@ -433,20 +434,38 @@ export default function AgentChat() {
     async (action: PendingAction): Promise<SubmitPreparedTxResult> => {
       const owner = overview?.ownerAccountId;
       if (!owner) throw new Error("Sign in with your wallet to approve proposals.");
-      const fin = await finalizeClaimPackage(action.claimPackageId, owner).catch((e) => {
-        throw new Error(
-          e instanceof ClaimLinkError ? e.message : "Couldn't prepare the transaction — try again in a moment.",
-        );
-      });
+      // Finalize per proposal kind: claims finalize their claim package;
+      // keyless-agent page updates pin the proposed page and build the
+      // unsigned updatePage with the owner as signer. Both end in the
+      // human's single wallet signature — the tap is the authorization.
+      let prepared: { unsignedTxBytes: string; signerAccountId: string; transactionId: string; ownerAccountId: string };
+      if (action.kind === "agent-page-update") {
+        const h = sessionHeader();
+        if (!h[SESSION_HEADER]) throw new Error("Sign in with your wallet to approve proposals.");
+        prepared = await finalizePageUpdate(action.id, h).catch((e) => {
+          throw new Error(
+            e instanceof PageUpdateError ? e.message : "Couldn't prepare the update — try again in a moment.",
+          );
+        });
+      } else {
+        if (!action.claimPackageId) {
+          throw new Error("This proposal is missing its claim package — ask your agent to prepare it again.");
+        }
+        prepared = await finalizeClaimPackage(action.claimPackageId, owner).catch((e) => {
+          throw new Error(
+            e instanceof ClaimLinkError ? e.message : "Couldn't prepare the transaction — try again in a moment.",
+          );
+        });
+      }
       return submitPreparedTx(
         {
-          transactionList: fin.unsignedTxBytes,
-          signerAccountId: fin.signerAccountId,
-          transactionId: fin.transactionId,
+          transactionList: prepared.unsignedTxBytes,
+          signerAccountId: prepared.signerAccountId,
+          transactionId: prepared.transactionId,
         },
         {
           restoreIfMissing: true,
-          expectedOwnerAccountId: fin.ownerAccountId,
+          expectedOwnerAccountId: prepared.ownerAccountId,
         },
       );
     },

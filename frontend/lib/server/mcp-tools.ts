@@ -38,6 +38,11 @@ import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
 import { getKvStore } from "./store";
+import { validateCapabilityToken } from "./capability-tokens";
+import {
+  stashPageUpdateProposal,
+  PendingActionConflictError,
+} from "./pending-actions";
 import { getPackageStatus, setPackageStatus } from "./package-status";
 import { buildRegisterTransaction, ONBOARD_RATE_LIMIT } from "./agents/executor";
 import {
@@ -1085,6 +1090,173 @@ export async function prepareAgentClaim(
       `means the human's signature landed on-chain and the blockpage is live — that is your cue ` +
       `the registration is done.`,
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: propose_page_update (keyless-agent operation)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A page-update proposal from a keyless agent. The agent NEVER signs:
+ * it authenticates with a bearer capability token (not a key), the server
+ * verifies the token's human owns the page on-chain, and the proposal
+ * lands in the human's approval inbox as a one-tap card. Nothing is
+ * pinned and no transaction is built until the human taps Approve —
+ * then their wallet signs updatePage once.
+ *
+ * Pure preparation — no keys, no signing, no submission, no spending.
+ * The human's single signature is the only thing that can execute it.
+ */
+export interface ProposePageUpdateArgs {
+  /** Bearer capability token issued to the human (NOT a private key). */
+  capability_token: string;
+  /** The registered username to update (must be owned by the token's human). */
+  username: string;
+  /** Plain-words description of what changed — shown on the approval card. */
+  change_summary: string;
+  /** Full desired page content below (not a diff — the complete new version). */
+  display_name: string;
+  purpose: string;
+  capabilities?: string[];
+  template_id?: string;
+  theme?: {
+    background?: string;
+    foreground?: string;
+    accent?: string;
+    fontFamily?: string;
+  };
+  socials?: { platform: string; url: string }[];
+  links?: { label: string; url: string }[];
+}
+
+export interface PageUpdateProposal {
+  proposal_id: string;
+  username: string;
+  owner_account_id: string;
+  change_summary: string;
+  status: "awaiting_human_approval";
+  expires_in: string;
+  next: string;
+}
+
+export async function proposePageUpdate(
+  args: ProposePageUpdateArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<PageUpdateProposal | { error: string }> {
+  // 1. Capability token — the ONLY auth. Must carry page:update:propose.
+  //    Fail closed: anything unexpected is a rejection, never a retry.
+  const validated = await validateCapabilityToken(args.capability_token, "page:update:propose");
+  if (!validated) {
+    return {
+      error:
+        "invalid, expired, or revoked capability token — ask the human to issue a fresh one (they do it once in their wallet session; the token is shown once and lives in secure credential storage, never in chat)",
+    };
+  }
+  const tokenOwner = validated.record.ownerAccountId;
+
+  // 2. Username validation FIRST — same machine-readable path as claims.
+  const username = (args.username ?? "").trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return { error: usernameValidationError(args.username) };
+  }
+
+  // 3. The page must exist AND be owned by the token's human. This is the
+  //    critical check: a token is bound to one human and can never touch
+  //    another human's page.
+  const page = await lookupBlockpage(username, fetchFn);
+  if (!page.found) {
+    return { error: `@${username} is not a registered blockpage — check the name with lookup_blockpage` };
+  }
+  if (!page.owner_account || page.owner_account !== tokenOwner) {
+    return {
+      error:
+        `your capability token was issued by ${tokenOwner}, but @${username} is owned by ` +
+        `${page.owner_account ?? "an unknown account"} — tokens only work on pages your human owns`,
+    };
+  }
+
+  // 4. Change summary — the human reads this on the approval card.
+  const changeSummary = (args.change_summary ?? "").trim().slice(0, 500);
+  if (!changeSummary) {
+    return { error: "change_summary is required — describe the update in plain words for the human" };
+  }
+
+  // 5. Content fields — same validation shape as claims (full desired
+  //    content, not a diff; read the current page first, then propose the
+  //    complete new version).
+  const displayName = (args.display_name ?? "").trim().slice(0, 60);
+  if (!displayName) return { error: "display_name is required" };
+  const purpose = (args.purpose ?? "").trim().slice(0, 500);
+  if (!purpose) return { error: "purpose is required" };
+  const capabilities = Array.isArray(args.capabilities)
+    ? args.capabilities.filter((c) => typeof c === "string").map((c) => c.slice(0, 40)).slice(0, 20)
+    : [];
+  const normSocials = Array.isArray(args.socials)
+    ? args.socials
+        .filter((s) => s && typeof s.platform === "string" && typeof s.url === "string")
+        .map((s) => ({ platform: s.platform.slice(0, 24), url: s.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+  const normLinks = Array.isArray(args.links)
+    ? args.links
+        .filter((l) => l && typeof l.label === "string" && typeof l.url === "string")
+        .map((l) => ({ label: l.label.slice(0, 40), url: l.url.slice(0, 500) }))
+        .slice(0, 12)
+    : null;
+  // Page URLs are public — https only, so a javascript: or data: URL can
+  // never be smuggled into the page.
+  const badUrl = [...(normSocials ?? []), ...(normLinks ?? [])].find(
+    (e) => !/^https:\/\/[^/\s]+\.[^/\s]+/.test(e.url.trim()),
+  );
+  if (badUrl) {
+    return { error: `invalid url "${badUrl.url.slice(0, 80)}" — links must be https:// URLs` };
+  }
+
+  // 6. Stash the proposal — nothing pinned, nothing built, until the tap.
+  //    ownerType/operator are preserved from the on-chain record (immutable
+  //    disclosure — an update can never change them).
+  try {
+    const action = await stashPageUpdateProposal({
+      owner_account_id: tokenOwner,
+      spec: {
+        username,
+        ownerType: page.owner_type ?? "agent",
+        displayName,
+        purpose,
+        capabilities,
+        operator: page.operator ?? "",
+        templateId: args.template_id ?? null,
+        theme: args.theme ?? null,
+        socials: normSocials,
+        links: normLinks,
+      },
+      change_summary: changeSummary,
+      token_id: validated.record.id,
+    });
+    return {
+      proposal_id: action.id,
+      username,
+      owner_account_id: tokenOwner,
+      change_summary: changeSummary,
+      status: "awaiting_human_approval",
+      expires_in: "24h",
+      next:
+        `Point the human at their Buddy chat approval inbox — the proposal is there as a one-tap card. ` +
+        `They review "${changeSummary.slice(0, 120)}", tap Approve, and sign ONCE in their wallet ` +
+        `(a few cents of HBAR network gas). Nothing is pinned and no transaction is built until they tap. ` +
+        `Untapped proposals expire after 24h. Do not resubmit the same proposal — if the inbox is full ` +
+        `(3 max), ask the human to clear it first.`,
+    };
+  } catch (e) {
+    if (e instanceof PendingActionConflictError) {
+      return {
+        error:
+          `${tokenOwner} already has 3 pending proposals — ask the human to check their Buddy chat ` +
+          `and approve or dismiss them before proposing another. Nothing was overwritten.`,
+      };
+    }
+    throw e;
+  }
 }
 
 /* ------------------------------------------------------------------ */

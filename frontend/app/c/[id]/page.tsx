@@ -169,6 +169,9 @@ export default function ClaimLinkPage() {
       const pairing = getHederaPairing();
       const paired = pairing?.accountId;
       if (!paired) throw new NoWalletPairingError("Connect your wallet first.");
+      if (!a.claimPackageId) {
+        throw new Error("This approval link is missing its claim package — ask your agent for a fresh one.");
+      }
       const fin = await finalizeClaimPackage(a.claimPackageId, paired).catch((e) => {
         reportError(e, "claim-approve", { action: "finalize-claim", walletState: "connected" });
         throw new Error(

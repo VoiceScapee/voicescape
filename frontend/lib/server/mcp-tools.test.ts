@@ -15,6 +15,7 @@ import {
   checkProfilePin,
   postAgentIntro,
   prepareAgentClaim,
+  proposePageUpdate,
   getStarted,
   quoteTip,
   trendingCreators,
@@ -1247,5 +1248,118 @@ describe("list_tip_assets", () => {
     const r = await listTipAssets(fetchFn);
     expect(r.hbar_usd).toBeNull();
     expect(r.assets).toHaveLength(2);
+  });
+});
+
+/* ------------------------- propose_page_update ------------------------- */
+
+describe("propose_page_update tool", () => {
+  const OWNER = "0.0.10425049";
+
+  beforeEach(async () => {
+    await resetKvStoreSingleton();
+  });
+
+  async function issueToken(scopes?: ("page:update:propose" | "page:read" | "media:pin")[]) {
+    const { issueCapabilityToken } = await import("./capability-tokens");
+    const { token } = await issueCapabilityToken(OWNER, { label: "test", scopes });
+    return token;
+  }
+
+  function pageFetch(ownerAccount: string | null = OWNER) {
+    return mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [
+        /accounts\/0xabc123/,
+        () => ok(ownerAccount ? { account: ownerAccount } : null),
+      ],
+    ]);
+  }
+
+  const BASE_ARGS = {
+    username: "forge",
+    change_summary: "Updated the bio text",
+    display_name: "Forge",
+    purpose: "test agent",
+  };
+
+  it("fails closed on a bad capability token", async () => {
+    const res = await proposePageUpdate(
+      { ...BASE_ARGS, capability_token: "vs_cap_" + "0".repeat(48) },
+      pageFetch(),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/capability token/i);
+  });
+
+  it("rejects when the token's human does not own the page", async () => {
+    const token = await issueToken();
+    const res = await proposePageUpdate(
+      { ...BASE_ARGS, capability_token: token },
+      pageFetch("0.0.99999999"),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/only work on pages your human owns/i);
+  });
+
+  it("rejects an unregistered username", async () => {
+    const token = await issueToken();
+    const fetchFn = mockFetch([[/contracts\/call$/, () => ok({ result: "0x" })]]);
+    const res = await proposePageUpdate({ ...BASE_ARGS, capability_token: token }, fetchFn);
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/not a registered blockpage/i);
+  });
+
+  it("enforces the scope: a read-only token cannot propose", async () => {
+    const token = await issueToken(["page:read"]);
+    const res = await proposePageUpdate({ ...BASE_ARGS, capability_token: token }, pageFetch());
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/capability token/i);
+  });
+
+  it("stashes the proposal and returns awaiting_human_approval", async () => {
+    const token = await issueToken();
+    const res = await proposePageUpdate({ ...BASE_ARGS, capability_token: token }, pageFetch());
+    expect("error" in res).toBe(false);
+    const okRes = res as unknown as {
+      proposal_id: string;
+      status: string;
+      owner_account_id: string;
+      expires_in: string;
+      next: string;
+    };
+    expect(okRes.proposal_id).toMatch(/^[0-9a-f]{16}$/);
+    expect(okRes.status).toBe("awaiting_human_approval");
+    expect(okRes.owner_account_id).toBe(OWNER);
+    expect(okRes.expires_in).toBe("24h");
+    expect(okRes.next).toMatch(/one-tap/i);
+  });
+
+  it("requires a change summary and content fields", async () => {
+    const token = await issueToken();
+    const noSummary = await proposePageUpdate(
+      { ...BASE_ARGS, change_summary: "  ", capability_token: token },
+      pageFetch(),
+    );
+    expect("error" in noSummary).toBe(true);
+    const noName = await proposePageUpdate(
+      { ...BASE_ARGS, display_name: "", capability_token: token },
+      pageFetch(),
+    );
+    expect("error" in noName).toBe(true);
+  });
+
+  it("rejects non-https URLs like the claim path", async () => {
+    const token = await issueToken();
+    const res = await proposePageUpdate(
+      {
+        ...BASE_ARGS,
+        capability_token: token,
+        links: [{ label: "evil", url: "javascript:alert(1)" }],
+      },
+      pageFetch(),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/https:\/\//);
   });
 });
