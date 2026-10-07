@@ -128,7 +128,7 @@ describe("truncateAddress", () => {
 
 describe("buildAgentsQuery", () => {
   it("returns the bare path when no filters are set", () => {
-    expect(buildAgentsQuery({})).toBe("/api/agents");
+    expect(buildAgentsQuery({})).toBe("/api/agents/directory");
   });
 
   it("includes the capability filter", () => {
@@ -138,7 +138,7 @@ describe("buildAgentsQuery", () => {
   });
 
   it("trims capability and drops blank filters", () => {
-    expect(buildAgentsQuery({ capability: "  " })).toBe("/api/agents");
+    expect(buildAgentsQuery({ capability: "  " })).toBe("/api/agents/directory");
     expect(buildAgentsQuery({ capability: "  art " })).toContain("capability=art");
   });
 
@@ -149,9 +149,9 @@ describe("buildAgentsQuery", () => {
 
   it("omits invalid maxPriceUsdCents and limit", () => {
     expect(buildAgentsQuery({ maxPriceUsdCents: -1, limit: 100 })).toBe(
-      "/api/agents?limit=100",
+      "/api/agents/directory?limit=100",
     );
-    expect(buildAgentsQuery({ maxPriceUsdCents: NaN, limit: NaN })).toBe("/api/agents");
+    expect(buildAgentsQuery({ maxPriceUsdCents: NaN, limit: NaN })).toBe("/api/agents/directory");
   });
 
   it("combines all filters", () => {
@@ -171,6 +171,6 @@ describe("buildAgentsQuery", () => {
     expect(on.get("available")).toBe("true");
     const off = new URL(buildAgentsQuery({ availableOnly: false }), "http://x").searchParams;
     expect(off.get("available")).toBeNull();
-    expect(buildAgentsQuery({})).toBe("/api/agents");
+    expect(buildAgentsQuery({})).toBe("/api/agents/directory");
   });
 });

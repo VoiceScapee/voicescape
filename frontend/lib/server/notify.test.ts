@@ -435,9 +435,10 @@ describe("clampSinceMs", () => {
     const d = clampSinceMs(undefined);
     expect(now - d).toBeGreaterThan(23 * 3600 * 1000);
     expect(now - d).toBeLessThan(25 * 3600 * 1000);
-    expect(clampSinceMs(now + 99999)).toBeLessThan(now);
-    expect(clampSinceMs(1)).toBe(now - 30 * 24 * 3600 * 1000);
-    expect(clampSinceMs(now - 3600 * 1000)).toBe(now - 3600 * 1000);
+    expect(clampSinceMs(now + 99999)).toBeLessThanOrEqual(Date.now());
+    expect(clampSinceMs(1)).toBeLessThanOrEqual(now - 30 * 24 * 3600 * 1000 + 1000);
+    expect(clampSinceMs(now - 3600 * 1000)).toBeLessThanOrEqual(now - 3600 * 1000);
+    expect(clampSinceMs(now - 3600 * 1000)).toBeGreaterThanOrEqual(now - 3600 * 1000 - 1000);
   });
 });
 

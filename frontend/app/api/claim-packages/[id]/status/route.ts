@@ -76,7 +76,13 @@ export async function GET(
       recorded.status === "awaiting_agent_signature"
     ) {
       const pkg = await getClaimPackage(id);
-      if (!pkg) {
+      // Belt-and-suspenders: even if the KV TTL hasn't fired yet, a package
+      // older than 24h is expired. This keeps the API consistent with the
+      // web approval page, which 404s once the package is gone.
+      const PACKAGE_TTL_MS = 24 * 3_600_000;
+      const pkgExpiredByAge =
+        !!pkg && Date.now() - new Date(pkg.createdAt).getTime() > PACKAGE_TTL_MS;
+      if (!pkg || pkgExpiredByAge) {
         await setPackageStatus("claim", id, "expired", {
           username: recorded.username,
           detail:

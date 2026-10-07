@@ -81,5 +81,5 @@ describe("docs match the live MCP tool count", () => {
       failures,
       failures.length ? "\n" + failures.join("\n") : "all doc tool counts are accurate",
     ).toEqual([]);
-  });
+  }, 30000); // importing the full tool registry is slow; allow headroom
 });

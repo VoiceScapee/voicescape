@@ -661,7 +661,7 @@ function BlockEditor({
             onChange={(e) => onChange({ ...block, message: e.target.value })}
           />
           <span className="vs-hint">
-            💸 You keep 98% of every tip — 2% keeps Voicescape running. The split is
+            💸 You keep 98% of every tip — 2% platform fee. The split is
             enforced on-chain, no middleman.
           </span>
         </label>
