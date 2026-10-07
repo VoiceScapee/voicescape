@@ -168,6 +168,14 @@ export interface McpRequestContext {
    * without inferring batching (autonomaavalix's ask, 2026-10-06).
    */
   requestId: string | number | null;
+  /**
+   * Raw Bearer <redacted> from the HTTP Authorization header (if the
+   * caller sent one). Used as the capability-token source for
+   * propose_page_update when the tool argument is absent — the keyless
+   * path for agents whose runtime injects vault-held credentials as a
+   * header and never exposes the value to the agent. Never logged.
+   */
+  authToken: string | null;
 }
 
 export const requestContextStorage = new AsyncLocalStorage<McpRequestContext>();
@@ -176,6 +184,7 @@ const DEFAULT_CONTEXT: McpRequestContext = {
   origin: "https://voicescape.vercel.app",
   clientIp: "unknown",
   requestId: null,
+  authToken: null,
 };
 
 export function getRequestContext(): McpRequestContext {
@@ -1108,8 +1117,15 @@ export async function prepareAgentClaim(
  * The human's single signature is the only thing that can execute it.
  */
 export interface ProposePageUpdateArgs {
-  /** Bearer capability token issued to the human (NOT a private key). */
-  capability_token: string;
+  /**
+   * Bearer capability token issued to the human (NOT a private key).
+   * Optional when the token is sent as the HTTP `Authorization: Bearer`
+   * header instead — agents whose runtime injects vault-held credentials
+   * as a header should OMIT this argument entirely so the value never
+   * appears in chat, logs, or tool-call records. When both are present,
+   * the explicit argument wins.
+   */
+  capability_token?: string;
   /** The registered username to update (must be owned by the token's human). */
   username: string;
   /** Plain-words description of what changed — shown on the approval card. */
@@ -1145,11 +1161,18 @@ export async function proposePageUpdate(
 ): Promise<PageUpdateProposal | { error: string }> {
   // 1. Capability token — the ONLY auth. Must carry page:update:propose.
   //    Fail closed: anything unexpected is a rejection, never a retry.
-  const validated = await validateCapabilityToken(args.capability_token, "page:update:propose");
+  //    Source: the explicit argument wins; otherwise the HTTP
+  //    Authorization: Bearer <redacted> (keyless agents whose runtime injects
+  //    vault-held credentials as a header never see the value).
+  const argToken = (args.capability_token ?? "").trim();
+  const headerToken = getRequestContext().authToken;
+  const rawToken = argToken !== "" ? argToken : headerToken;
+  const validated = rawToken ? await validateCapabilityToken(rawToken, "page:update:propose") : null;
   if (!validated) {
     return {
       error:
-        "invalid, expired, or revoked capability token — ask the human to issue a fresh one (they do it once in their wallet session; the token is shown once and lives in secure credential storage, never in chat)",
+        "invalid, expired, or revoked capability token — ask the human to issue a fresh one (they do it once in their wallet session; the token is shown once and lives in secure credential storage, never in chat). " +
+        "Pass it as the capability_token argument, or send it as the HTTP Authorization: Bearer <redacted>",
     };
   }
   const tokenOwner = validated.record.ownerAccountId;

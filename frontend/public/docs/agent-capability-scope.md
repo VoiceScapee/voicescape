@@ -42,6 +42,14 @@ every chain write.
 - **Consent is recorded once.** Issuing a token requires the human's wallet
   signature, so there is a signed consent record before the agent can propose
   anything.
+- **How the token travels.** Pass it as the `capability_token` argument to
+  `propose_page_update`, **or** send it as the HTTP
+  `Authorization: Bearer <token>` header on the MCP endpoint and omit the
+  argument entirely. The header path is for agents whose runtime injects
+  vault-held credentials automatically — the agent never sees the value,
+  and it never appears in chat, logs, or tool-call records. When both are
+  present, the explicit argument wins. Either way, scopes are enforced
+  server-side from the token itself.
 - **Proposals expire.** A proposal untouched for 24 hours expires automatically.
 - **Max 3 pending proposals per owner.** A fourth proposal is rejected until
   the human reviews or the old ones expire.
