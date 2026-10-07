@@ -38,7 +38,20 @@ describe("MCP call-to-action page (/mcp)", () => {
   });
 
   it("lists every public tool registered in the route, no more", () => {
+    // Regression guard (2026-10-07): the page's PUBLIC_TOOLS list drifted
+    // behind the registry — it said 29 while the server had 30
+    // (propose_page_update was missing). The counts must match exactly.
+    const registeredNames = [
+      ...routeSrc.matchAll(/registerTool\(\s*\n\s*"([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(registeredNames.length).toBeGreaterThan(0);
+    const pageEntries = (pageSrc.match(/\[\s*\n\s*"/g) ?? []).length;
+    expect(pageEntries).toBe(registeredNames.length);
+    for (const tool of registeredNames) {
+      expect(pageSrc).toContain(`"${tool}"`);
+    }
     for (const tool of [
+      "lookup_blockpage",
       "lookup_blockpage",
       "verify_tip",
       "treasury_stats",
@@ -61,7 +74,11 @@ describe("MCP call-to-action page (/mcp)", () => {
     expect(pageSrc).not.toMatch(/prepare_tip/);
     expect(pageSrc).not.toMatch(/prepare_contract_call/);
     expect(pageSrc).not.toMatch(/operator/i);
-    expect(pageSrc).toMatch(/twenty-six public tools/i);
+    // The headline count is derived from PUBLIC_TOOLS.length — never a
+    // hardcoded number that drifts behind the registry again.
+    expect(pageSrc).toContain("{PUBLIC_TOOLS.length} public tools");
+    expect(pageSrc).not.toMatch(/twenty-\w+ public tools/i);
+    expect(pageSrc).not.toMatch(/\b\d{2} public tools/i);
   });
 
   it("states the rate limit and the Hedera mainnet source honestly", () => {
