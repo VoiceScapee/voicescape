@@ -428,7 +428,7 @@ const en = {
   "tip.creatorGets": "{name} gets (98%)",
   "tip.treasuryGets": "Treasury gets (2%)",
   "tip.networkFee": "Network fee ≈ {fee} HBAR (paid to Hedera, not Voicescape)",
-  "tip.breakdownNote": "{hbar} HBAR in → {toCreator} to {name}, {fee} keeps Voicescape running. No hidden anything.",
+  "tip.breakdownNote": "{hbar} HBAR in → {toCreator} to {name}, {fee} to the founder's treasury (0.0.10424063). No hidden anything.",
   "tip.approveNote": "You'll approve this in your wallet —\nnothing moves until you say so.",
   "tip.confirmCta": "Tip ${amount}",
   "tip.confirmCtaHbar": "Tip {amount} HBAR",

@@ -295,12 +295,17 @@ export default function ListingDetailClient({ id }: { id: string }) {
       // baked into the transaction, so they hold for every outcome path.
       // (Same pattern as the tip flow.)
       const hbarAmt = hbarPrice ? usd / hbarPrice : null;
+      // Integer tinybar math mirrors the contract's 98/2 split exactly —
+      // never float multiplication for money display.
+      const buyTiny = hbarAmt != null ? BigInt(Math.round(hbarAmt * 1e8)) : null;
+      const buySeller = buyTiny != null ? Number((buyTiny * 98n) / 100n) / 1e8 : null;
+      const buyTreasury = buyTiny != null ? Number((buyTiny * 2n) / 100n) / 1e8 : null;
       setBuyReceiptLines(
         hbarAmt != null
           ? [
               { label: "You paid", value: `≈ ${hbarAmt.toFixed(4)} HBAR` },
-              { label: "Seller gets (98%)", value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
-              { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+              { label: "Seller gets (98%)", value: `≈ ${(buySeller ?? 0).toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${(buyTreasury ?? 0).toFixed(4)} HBAR` },
             ]
           : [],
       );

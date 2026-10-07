@@ -207,17 +207,22 @@ export default function TipModal({
       // Snapshot the breakdown for the success receipt — these amounts are
       // baked into the transaction, so they hold for every outcome path.
       const hbarAmt = isHbar ? hbarAmount : usd / (p as number);
+      // Integer tinybar math mirrors the contract's 98/2 split exactly —
+      // never float multiplication for money display.
+      const receiptTiny = BigInt(Math.round(hbarAmt * 1e8));
+      const receiptCreator = Number((receiptTiny * 98n) / 100n) / 1e8;
+      const receiptTreasury = Number((receiptTiny * 2n) / 100n) / 1e8;
       setReceiptLines(
         isHbar
           ? [
               { label: "You sent", value: `${hbarAmount} HBAR` },
-              { label: `@${author} gets (98%)`, value: `${(hbarAmt * 0.98).toFixed(4)} HBAR` },
-              { label: "Treasury gets (2%)", value: `${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+              { label: `@${author} gets (98%)`, value: `${receiptCreator.toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `${receiptTreasury.toFixed(4)} HBAR` },
             ]
           : [
               { label: "You sent", value: `$${usd} (≈ ${hbarAmt.toFixed(4)} HBAR)` },
-              { label: `@${author} gets (98%)`, value: `≈ ${(hbarAmt * 0.98).toFixed(4)} HBAR` },
-              { label: "Treasury gets (2%)", value: `≈ ${(hbarAmt * 0.02).toFixed(4)} HBAR` },
+              { label: `@${author} gets (98%)`, value: `≈ ${receiptCreator.toFixed(4)} HBAR` },
+              { label: "Treasury gets (2%)", value: `≈ ${receiptTreasury.toFixed(4)} HBAR` },
             ],
       );
       const id = await tipPage(author, isHbar ? hbarToWei(hbarAmount) : usdToWei(usd, p as number), sender);
