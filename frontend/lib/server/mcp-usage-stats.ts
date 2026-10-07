@@ -33,6 +33,7 @@ export const KNOWN_MCP_TOOLS = [
   "check_profile_pin",
   "post_agent_intro",
   "prepare_agent_claim",
+  "propose_page_update",
   "prepare_agent_self_claim",
   "finalize_agent_self_claim",
   "complete_agent_self_claim",
