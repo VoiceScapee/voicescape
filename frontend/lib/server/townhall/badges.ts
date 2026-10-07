@@ -735,7 +735,11 @@ export interface VerifiedPurchase {
   listingRef: string;
   /** Listing title from the market topic; falls back to the ref. */
   title: string;
-  /** Mirror-node transaction id (0.0.x@seconds.nanos). */
+  /**
+   * Transaction hash (0x…) of the purchase — the mirror-node log's
+   * transaction_hash. HashScan resolves it directly; the buyer can also
+   * look up the dotted tx id from it.
+   */
   tx: string;
   /** Consensus timestamp (seconds.nanos) for ordering. */
   timestamp: string;
@@ -778,7 +782,7 @@ export async function walletPurchases(hcs: HcsPort, wallet: string): Promise<Ver
         if (typeof listingRef !== "string" || listingRef.length === 0) continue;
         if (!seen.has(listingRef)) {
           seen.set(listingRef, {
-            tx: typeof l.transaction_id === "string" ? l.transaction_id : "",
+            tx: typeof l.transaction_hash === "string" ? l.transaction_hash : "",
             timestamp: typeof l.timestamp === "string" ? l.timestamp : "",
           });
         }
@@ -823,7 +827,7 @@ async function fetchLogPages(firstUrl: string, cap: number): Promise<NonNullable
   return out;
 }
 
-export type TipsLog = { topics?: string[]; timestamp?: string; data?: string; transaction_id?: string };
+export type TipsLog = { topics?: string[]; timestamp?: string; data?: string; transaction_id?: string; transaction_hash?: string };
 
 /**
  * Fetch the tips-contract's logs unfiltered (bounded pages); fail-open → [].
