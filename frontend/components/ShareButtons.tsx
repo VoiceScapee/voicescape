@@ -85,6 +85,8 @@ export function ShareButtons({ username }: { username: string }) {
     alignItems: "center",
     gap: 6,
     padding: "8px 16px",
+    /* 44px minimum tap target. */
+    minHeight: 44,
     borderRadius: 20,
     border: "1px solid var(--vs-border)",
     background: "var(--vs-card)",

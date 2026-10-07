@@ -68,16 +68,30 @@ body {
   font-family: var(--vs-font);
 }
 
-/* Layered fixed backdrop: violet glow top-left, blue glow top-right,
- * vertical navy gradient — plus a subtle 40px grid fading out at 72%. */
+/* Kill the default gray tap flash on Android Chrome; :active states
+ * already give feedback on tappable elements. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* App backdrop: flat color on body (iOS-safe — background-attachment: fixed
+ * janks on mobile Safari), layered gradients on the fixed body::before,
+ * 40px grid on the fixed body::after. Same look, no fixed attachment. */
 body {
+  background: #0b0e16;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background:
     radial-gradient(circle at 12% 5%, rgba(130, 89, 239, 0.18), transparent 26rem),
     radial-gradient(circle at 92% 18%, rgba(0, 49, 255, 0.13), transparent 30rem),
     linear-gradient(180deg, #0b0e16 0, #090b12 46%, #0c0f18 100%);
-  background-attachment: fixed;
 }
-body::before {
+body::after {
   content: "";
   position: fixed;
   inset: 0;
@@ -434,7 +448,8 @@ a {
 
 .vs-nav-burger {
   display: none;
-  padding: 8px 14px;
+  min-height: 44px;
+  padding: 12px 16px;
   font-size: 18px;
   line-height: 1;
   margin-left: auto;
@@ -589,7 +604,8 @@ a {
   color: var(--vs-text);
   padding: 10px 14px;
   font-family: var(--vs-font);
-  font-size: 15px;
+  /* 16px minimum: iOS Safari auto-zooms on focus for smaller inputs. */
+  font-size: 16px;
 }
 
 .vs-input:focus {
@@ -1270,6 +1286,8 @@ a {
   gap: 6px;
   flex: none;
   cursor: pointer;
+  /* 44px minimum tap target — it opens the explainer dialog. */
+  min-height: 44px;
   /* Glass pill: reads as tappable, stays quiet in the chrome. */
   background: rgba(94, 234, 212, 0.06);
   border: 1px solid rgba(94, 234, 212, 0.16);
@@ -1356,6 +1374,13 @@ a {
    number so it never shouts. */
 .vs-netpulse-ago {
   opacity: 0.55;
+}
+/* Narrow phones: the navbar row (logo + pulse + burger) can exceed 360px.
+   Drop the "ago" readout below 480px — dot + block number carry the signal. */
+@media (max-width: 480px) {
+  .vs-netpulse-ago {
+    display: none;
+  }
 }
 /* Explainer card: plain-language "what is this number" for first-time
    humans. Opens below the chip, right-aligned; tap scrim/✕/Escape to
