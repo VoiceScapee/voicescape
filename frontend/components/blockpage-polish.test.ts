@@ -42,12 +42,13 @@ describe("blockpage surface polish", () => {
   });
 
   it("link buttons with rejected URLs are filtered, not rendered dead", () => {
-    expect(rendererSrc).toContain(".filter((item) => safeExternalUrl(item.url))");
+    expect(rendererSrc).toContain(".filter((item) => safeExternalUrl(item.url)");
     expect(rendererSrc).not.toContain("href={url ?? undefined}");
   });
 
   it("trackless music blocks with no user text render nothing", () => {
-    expect(rendererSrc).toMatch(/if\s*\(!block\.title && !block\.note\)\s*return null/);
+    expect(rendererSrc).toMatch(/if \(tracks\.length === 0\)/);
+    expect(rendererSrc).toMatch(/if \(!block\.note\) return null/);
   });
 
   it("gallery tiles are perceivable (no blanket aria-hidden)", () => {

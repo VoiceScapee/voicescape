@@ -20,7 +20,8 @@ describe("FeaturedBlockpages (landing section)", () => {
     for (const k of [
       "landing.featuredLabel",
       "landing.featuredSub",
-      "landing.featuredFollowers",
+      "follow.follower_one",
+      "follow.followers",
       "landing.featuredBadges",
       "landing.liveBadge",
     ]) {
@@ -37,7 +38,7 @@ describe("FeaturedBlockpages (landing section)", () => {
   });
 
   it("shows follower and badge counts from the API — never hardcoded metrics", () => {
-    expect(src).toContain("{p.followers}");
+    expect(src).toContain("followerText(p.followers)");
     expect(src).toContain("{p.badges.length}");
     expect(src).not.toMatch(/join thousands|trusted by|millions/i);
   });
