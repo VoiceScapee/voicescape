@@ -25,6 +25,7 @@ function fakeAgent(username: string): DirectoryAgent {
     services: [],
     reputation: null,
     verifiedReviews: null,
+    trust: null,
     availability: null,
     registeredAt: null,
   };

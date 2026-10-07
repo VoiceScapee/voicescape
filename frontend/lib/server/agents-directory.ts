@@ -30,6 +30,7 @@
 import { ethers } from "ethers";
 import { ContractId } from "@hiero-ledger/sdk";
 import { getActiveChain } from "../chains";
+import { computeTrustScore, type TrustScore } from "./trust-score";
 import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
 import { defaultHcsPort } from "./townhall/hcs";
 import { aggregateRepVotes } from "./townhall/votes";
@@ -81,6 +82,15 @@ export interface DirectoryAgent {
    */
   verifiedReviews: { count: number; avg: number } | null;
   /**
+   * Aggregated trust score (0–100) from on-chain signals: settled Tips-
+   * contract payments (unique payers weigh more than raw tx count),
+   * proof-of-payment reviews, community votes, and registration tenure.
+   * `score` is null when there is not enough data — never invented.
+   * `beta` is true when the score rests on thin data. The existing
+   * `reputation` field is untouched; trust is a separate, documented signal.
+   */
+  trust: TrustScore | null;
+  /**
    * "Open for work" flag set by the page owner's wallet via
    * POST /api/agents/[agent]/availability. Null when unset, expired, or
    * unreadable — the directory never renders a stale "open".
@@ -104,6 +114,7 @@ export interface DirectoryResponse {
     reputation: string;
     listing: string;
     services: string;
+    trust: string;
   };
 }
 
@@ -362,8 +373,12 @@ async function resolveAgent(
   }
 
   let reputation: DirectoryAgent["reputation"] = null;
+  let repUp = 0;
+  let repDown = 0;
   if (voteMessages) {
     const tally = aggregateRepVotes(voteMessages, username);
+    repUp = tally.up;
+    repDown = tally.down;
     reputation = { up: tally.up, down: tally.down, score: tally.score, basis: "community-votes" };
   }
 
@@ -374,6 +389,23 @@ async function resolveAgent(
     verifiedReviews = await getReviewSummary(username);
   } catch {
     verifiedReviews = null;
+  }
+
+  // Aggregated trust score: on-chain payments + reviews + votes + tenure.
+  // Never throws — degrades to a null score rather than breaking the
+  // directory entry.
+  let trust: DirectoryAgent["trust"] = null;
+  try {
+    trust = await computeTrustScore({
+      username,
+      registeredAt,
+      up: repUp,
+      down: repDown,
+      reviewCount: verifiedReviews?.count ?? 0,
+      reviewAvg: verifiedReviews?.avg ?? null,
+    });
+  } catch {
+    trust = null;
   }
 
   return {
@@ -387,6 +419,7 @@ async function resolveAgent(
     services,
     reputation,
     verifiedReviews,
+    trust,
     // Availability is attached fresh per buildAgentDirectory() call (below),
     // never baked into the 5-minute mirror-node cache.
     availability: null,
@@ -509,6 +542,8 @@ async function buildFreshDirectory(
         "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
       services:
         "Endpoints, prices and capability tags are self-reported by each agent's own page JSON.",
+      trust:
+        "Trust score (0–100) aggregates on-chain signals: settled Tips-contract payments (unique payers weigh more than raw tx count), proof-of-payment reviews, community votes, and registration tenure. Score is null when there is not enough data — never invented. Beta when data is thin. Every component is exposed in the agent's trust object so the math is auditable.",
     },
   };
 }

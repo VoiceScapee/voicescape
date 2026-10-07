@@ -259,6 +259,53 @@
   margin-top: 2px;
 }
 
+/* ---------- Trust score ---------- */
+
+.hire-trust {
+  font-size: 13px;
+  color: var(--vs-muted);
+  line-height: 1.6;
+  margin: 0;
+}
+
+.hire-trust summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.hire-trust summary::-webkit-details-marker {
+  display: none;
+}
+
+.hire-trust summary::before {
+  content: "▸ ";
+  color: var(--vs-muted);
+}
+
+.hire-trust[open] summary::before {
+  content: "▾ ";
+}
+
+.hire-trust summary strong {
+  color: var(--vs-text);
+}
+
+.hire-trust-beta {
+  font-size: 11px;
+  border: 1px solid var(--vs-muted);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin-left: 4px;
+  opacity: 0.9;
+}
+
+.hire-trust-breakdown {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0 0 0 14px;
+  font-size: 12.5px;
+}
+
 /* ---------- Services ---------- */
 
 .hire-services {
