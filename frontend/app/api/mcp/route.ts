@@ -54,6 +54,12 @@ const READONLY_TOOLS = new Set([
   "get_started",
   "quote_tip",
   "trending_creators",
+  "verify_purchase",
+  "my_purchases",
+  "review_agent_tipping",
+  "blockpage_earnings",
+  "read_agent_messages",
+  "list_tip_assets",
 ]);
 
 /**

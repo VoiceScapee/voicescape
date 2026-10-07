@@ -2117,8 +2117,10 @@ export interface TipQuote {
 }
 
 const ACCOUNT_RE = /^0\.0\.\d+$/;
-/** Conservative network-fee estimate for a tip-sized transaction. */
-const EST_TIP_FEE_HBAR = "0.001";
+/** Conservative network-fee estimate for a tip-sized transaction.
+ * Grounded: mainnet tipPage calls observed at 0.053–0.090 HBAR (2026-10-03);
+ * 0.1 stays above the max observed so agents never under-budget. */
+const EST_TIP_FEE_HBAR = "0.1";
 
 function parseHbarToTinybar(s: string): bigint | null {
   const m = s.trim().match(/^(\d+)(?:\.(\d{1,8}))?$/);
@@ -2735,7 +2737,7 @@ export async function listTipAssets(
         name: "HBAR (native)",
         rail: "VoicescapeTips contract 0.0.10854060 — tipPage",
         split: "98% to creator, 2% to treasury, enforced atomically on-chain",
-        settles_in: "3-5 seconds, ~$0.0001 network fee",
+        settles_in: "3-5 seconds, ~$0.01 network fee (a few cents of HBAR)",
       },
       {
         asset: "USDC",
