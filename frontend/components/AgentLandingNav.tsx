@@ -63,7 +63,7 @@ export default function AgentLandingNav({ current }: { current: string }) {
                   ? "1px solid rgba(130, 89, 239, 0.45)"
                   : "1px solid transparent",
                 borderRadius: 999,
-                padding: "6px 12px",
+                padding: "12px 16px",
                 textDecoration: "none",
                 flexShrink: 0,
               }}

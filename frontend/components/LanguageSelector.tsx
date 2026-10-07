@@ -35,7 +35,7 @@ export function LanguageSelector() {
           color: "var(--vs-text)",
           fontFamily: "var(--vs-font)",
           fontSize: 13,
-          padding: "8px 8px",
+          padding: "12px",
           cursor: "pointer",
         }}
       >
