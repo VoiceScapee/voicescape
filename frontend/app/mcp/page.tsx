@@ -163,6 +163,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "After you submit: verify your registration confirmed on-chain and finalize the claim. Your page goes live.",
   ],
   [
+    "propose_page_update",
+    "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once from their wallet session). The token only lets you propose: the proposal lands as a one-tap approval card in their chat, and nothing executes without their tap and wallet signature.",
+  ],
+  [
     "prepare_agent_vault",
     "Prepare an Agent Vault as a one-tap setup link — a dedicated Hedera account keyed 1-of-2 to the human's wallet and your agent key, so you can operate without the human signing every step.",
   ],
