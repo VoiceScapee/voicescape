@@ -2070,12 +2070,30 @@ export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Pr
 /* Listings                                                           */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Filters obvious test debris from the public marketplace view.
+ * Test listings are created during development/QA and should not appear
+ * on the live marketplace. The seller can still see their own listings
+ * via their blockpage; this only affects the public browse view.
+ */
+function isTestListing(title: string, description: string): boolean {
+  const t = (title || "").toLowerCase().trim();
+  const d = (description || "").toLowerCase().trim();
+  // Only filter obvious dev debris: exact "test" title, or the specific
+  // "Voicescape block test" pattern from early QA. Real listings with
+  // "test" in a longer title (e.g. "Test item") are left alone.
+  if (t === "test") return true;
+  if (t === "test" && d.includes("voicescape block test")) return true;
+  return false;
+}
+
 export async function getListings(deps: TownhallDeps): Promise<HandlerResult> {
   const topic = topicOr503("market");
   if (typeof topic !== "string") return topic;
   const messages = await deps.hcs.queryAll(topic);
   const latest = aggregateListings(messages);
   const views: ListingView[] = [...latest.values()]
+    .filter((m) => !isTestListing(m.contents.title, m.contents.description))
     .sort((a, b) => b.seq - a.seq)
     .map((m) => ({
       id: m.contents.id,

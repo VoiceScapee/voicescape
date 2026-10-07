@@ -882,7 +882,7 @@ function TipBox({
                   </p>
                   <p>
                     <strong>The Tips contract</strong> splits your payment in a single transaction: 98% goes
-                    straight to the creator, 2% keeps Voicescape running. Nobody holds your money in
+                    straight to the creator, 2% platform fee. Nobody holds your money in
                     between.{" "}
                     <a href="https://hashscan.io/mainnet/contract/0.0.10854060" target="_blank" rel="noreferrer">
                       0.0.10854060
