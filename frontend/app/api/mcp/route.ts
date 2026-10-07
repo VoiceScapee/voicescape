@@ -179,13 +179,20 @@ async function handle(req: Request): Promise<Response> {
     });
   }
 
-  // The request context (origin, client IP) travels to the tools via
-  // AsyncLocalStorage — the MCP transport does not forward HTTP headers
-  // to tool handlers.
+  // The request context (origin, client IP, auth token) travels to the
+  // tools via AsyncLocalStorage — the MCP transport does not forward HTTP
+  // headers to tool handlers.
+  // Authorization: keyless agents whose runtime injects vault-held
+  // credentials as a header never see the token value; propose_page_update
+  // accepts it as the capability-token source so nothing lands in chat,
+  // logs, or tool-call records. The raw value is never logged anywhere.
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearerMatch = /^Bearer\s+(\S+)$/i.exec(authHeader.trim());
   const ctx = {
     origin: new URL(req.url).origin,
     clientIp: clientIpFromHeaders(req.headers),
     requestId,
+    authToken: bearerMatch ? bearerMatch[1] : null,
   };
   return requestContextStorage.run(ctx, () => mcpHandler(req));
 }
@@ -196,7 +203,7 @@ async function handle(req: Request): Promise<Response> {
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Last-Event-ID",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Last-Event-ID, Authorization",
   "Access-Control-Max-Age": "86400",
 };
 

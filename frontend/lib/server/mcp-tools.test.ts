@@ -546,7 +546,7 @@ describe("post_agent_intro tool", () => {
 
   function withIp<T>(ip: string, fn: () => Promise<T>): Promise<T> {
     return requestContextStorage.run(
-      { origin: "https://voicescape.vercel.app", clientIp: ip, requestId: null },
+      { origin: "https://voicescape.vercel.app", clientIp: ip, requestId: null, authToken: null },
       fn,
     );
   }
@@ -1313,6 +1313,58 @@ describe("propose_page_update tool", () => {
   it("enforces the scope: a read-only token cannot propose", async () => {
     const token = await issueToken(["page:read"]);
     const res = await proposePageUpdate({ ...BASE_ARGS, capability_token: token }, pageFetch());
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/capability token/i);
+  });
+
+  function withAuthToken<T>(token: string | null, fn: () => Promise<T>): Promise<T> {
+    return requestContextStorage.run(
+      {
+        origin: "https://voicescape.vercel.app",
+        clientIp: "test",
+        requestId: null,
+        authToken: token,
+      },
+      fn,
+    );
+  }
+
+  it("authenticates via the Authorization header when the argument is omitted", async () => {
+    const token = await issueToken();
+    const res = await withAuthToken(token, () => proposePageUpdate({ ...BASE_ARGS }, pageFetch()));
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect((res as { status: string }).status).toBe("awaiting_human_approval");
+    expect((res as { owner_account_id: string }).owner_account_id).toBe(OWNER);
+  });
+
+  it("fails closed with neither argument nor header token", async () => {
+    const res = await withAuthToken(null, () => proposePageUpdate({ ...BASE_ARGS }, pageFetch()));
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/capability token/i);
+  });
+
+  it("rejects an invalid header token", async () => {
+    const res = await withAuthToken("vs_cap_" + "0".repeat(48), () =>
+      proposePageUpdate({ ...BASE_ARGS }, pageFetch()),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/capability token/i);
+  });
+
+  it("explicit argument wins over the header token", async () => {
+    const token = await issueToken();
+    const res = await withAuthToken("vs_cap_" + "0".repeat(48), () =>
+      proposePageUpdate({ ...BASE_ARGS, capability_token: token }, pageFetch()),
+    );
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect((res as { status: string }).status).toBe("awaiting_human_approval");
+  });
+
+  it("enforces scope on the header token too", async () => {
+    const token = await issueToken(["page:read"]);
+    const res = await withAuthToken(token, () => proposePageUpdate({ ...BASE_ARGS }, pageFetch()));
     expect("error" in res).toBe(true);
     expect((res as { error: string }).error).toMatch(/capability token/i);
   });

@@ -449,11 +449,12 @@ export function registerTools(server: McpServer): void {
     {
       title: "Propose page update",
       description:
-        "Propose a content update to a blockpage your human owns — the KEYLESS operation path for agents that cannot hold private keys. Authenticate with a bearer capability_token (NOT a key — your human issues it once from their wallet session; it lives in your secure credential storage, never in chat). The token only lets you PROPOSE: the server verifies your human owns the page on-chain, pins nothing yet, and queues the proposal as a one-tap approval card in their Buddy chat. They review, tap Approve, and sign ONCE in their wallet (a few cents of HBAR gas) — nothing executes without that tap. Pass the FULL desired page content (not a diff): read the current page first, then propose the complete new version. The token cannot move funds, change ownership, touch keys, or do anything outside proposing updates — see /docs/agent-capability-scope.md for the exact allow-list and exclusions.",
+        "Propose a content update to a blockpage your human owns — the KEYLESS operation path for agents that cannot hold private keys. Authenticate with a bearer capability token (NOT a key — your human issues it once from their wallet session; it lives in your secure credential storage, never in chat): pass it as the capability_token argument, OR send it as the HTTP Authorization: Bearer <redacted> — if your runtime injects vault-held credentials as a header, OMIT the argument entirely so the value never appears in chat, logs, or tool-call records. The token only lets you PROPOSE: the server verifies your human owns the page on-chain, pins nothing yet, and queues the proposal as a one-tap approval card in their Buddy chat. They review, tap Approve, and sign ONCE in their wallet (a few cents of HBAR gas) — nothing executes without that tap. Pass the FULL desired page content (not a diff): read the current page first, then propose the complete new version. The token cannot move funds, change ownership, touch keys, or do anything outside proposing updates — see /docs/agent-capability-scope.md for the exact allow-list and exclusions.",
       inputSchema: z.object({
         capability_token: z
           .string()
-          .describe("Bearer capability token from your human (vs_cap_...) — NOT a private key. Must carry the page:update:propose scope."),
+          .optional()
+          .describe("Bearer capability token from your human (vs_cap_...) — NOT a private key. Must carry the page:update:propose scope. Omit this if you send the token as the HTTP Authorization: Bearer <redacted> instead."),
         username: z
           .string()
           .describe("Registered username to update — must be owned by the human who issued your token"),
