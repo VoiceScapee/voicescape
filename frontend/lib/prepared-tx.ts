@@ -30,6 +30,7 @@ import {
   restoreHederaPairing,
   rewakeHederaPairing,
   isWalletSessionAlive,
+  isPairingFresh,
   REWAKE_PROBE_TIMEOUT_MS,
   STALE_CONNECTION_COPY,
 } from "./wallet";
@@ -57,6 +58,14 @@ export class OwnerMismatchError extends Error {}
 const SIGN_TIMEOUT_MS = 30_000; // wallet signature prompt budget
 const CONFIRM_POLL_MS = 4_000; // mirror-node poll cadence
 const CONFIRM_DEADLINE_MS = 120_000; // 2 minutes, then hand the user the HashScan link
+/**
+ * Pairings approved within this window skip the wallet-round-trip liveness
+ * probe — the approval itself arrived over the relay seconds ago, so the
+ * pairing is definitionally alive. (2026-10-07: the probe's
+ * hedera_signAndExecuteQuery went unanswered by a freshly-paired HashPack
+ * on iOS, producing a false "stale" verdict that blocked the signature.)
+ */
+const FRESH_PAIRING_SKIP_PROBE_MS = 120_000;
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 
 /** "0.0.123@1700000000.000000000" -> "0.0.123-1700000000-000000000" (mirror/HASHScan form). */
@@ -141,28 +150,40 @@ export async function submitPreparedTx(
 
   // 2. Silent liveness probe. Read-only, never prompts, never throws.
   //    A dead pairing can't be fixed by the agent — surface it.
-  let alive = await isWalletSessionAlive();
-  if (!alive) {
-    // The relay socket often dies while the tab is backgrounded during an
-    // app-switch pairing: the session is persisted and healthy, only the
-    // transport is asleep. Re-wake once (rebuild from the persisted
-    // session, exactly like a page reload) and re-probe before calling it
-    // stale — the 2026-10-01 claim failure probed dead seconds after a
-    // good pairing, and this turns that case into a silent recovery.
-    // Never throws; a null re-wake falls through to the stale path below.
-    phase("checking");
-    const rewoken = await rewakeHederaPairing();
-    if (rewoken) {
-      pairing = rewoken;
-      alive = await isWalletSessionAlive(REWAKE_PROBE_TIMEOUT_MS);
+  //
+  //    SKIPPED for fresh pairings: the probe is a wallet-round-trip query
+  //    (hedera_signAndExecuteQuery) and some wallets don't answer it even
+  //    when the session is healthy — most visibly HashPack on iOS right
+  //    after a deep-link pairing. A pairing approved <2min ago is
+  //    definitionally alive (the approval arrived over the relay seconds
+  //    ago), so probing only risks a false "stale" verdict that blocks the
+  //    signature. The sign request below is the real liveness test: its own
+  //    30s timeout plus the verify-on-chain fallback handle a truly dead
+  //    wallet without misdiagnosing a live one.
+  if (!isPairingFresh(FRESH_PAIRING_SKIP_PROBE_MS)) {
+    let alive = await isWalletSessionAlive();
+    if (!alive) {
+      // The relay socket often dies while the tab is backgrounded during an
+      // app-switch pairing: the session is persisted and healthy, only the
+      // transport is asleep. Re-wake once (rebuild from the persisted
+      // session, exactly like a page reload) and re-probe before calling it
+      // stale — the 2026-10-01 claim failure probed dead seconds after a
+      // good pairing, and this turns that case into a silent recovery.
+      // Never throws; a null re-wake falls through to the stale path below.
+      phase("checking");
+      const rewoken = await rewakeHederaPairing();
+      if (rewoken) {
+        pairing = rewoken;
+        alive = await isWalletSessionAlive(REWAKE_PROBE_TIMEOUT_MS);
+      }
     }
-  }
-  if (!alive) {
-    reportError(new Error("stale wallet pairing for prepared tx"), "prepared-tx", {
-      action: "approve-action",
-      walletState: "connected",
-    });
-    throw new StaleWalletPairingError(STALE_CONNECTION_COPY);
+    if (!alive) {
+      reportError(new Error("stale wallet pairing for prepared tx"), "prepared-tx", {
+        action: "approve-action",
+        walletState: "connected",
+      });
+      throw new StaleWalletPairingError(STALE_CONNECTION_COPY);
+    }
   }
 
   // 3. Refuse to sign as the wrong account — the action names its owner.
