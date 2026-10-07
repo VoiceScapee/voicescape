@@ -13,6 +13,10 @@
  *              (TipSent logs via the mirror node).
  *   Proposals — the agent's pending actions, each with its inline one-tap
  *              approve (the same BuddyActionCard as the thread).
+ *   Agent tokens — issue / list / revoke capability tokens so a keyless AI
+ *              agent can propose page updates without ever touching a key
+ *              (AgentTokensCard; the token can't sign anything — every
+ *              on-chain write still needs the owner's wallet tap).
  *
  * Every figure is live Hedera mainnet data. Quiet honest states when
  * there's nothing happening ("No tips yet", "Nothing waiting on you") —
@@ -21,6 +25,7 @@
  */
 import { useState } from "react";
 import BuddyActionCard from "./BuddyActionCard";
+import AgentTokensCard from "./AgentTokensCard";
 import type { AgentOverview } from "@/lib/server/agent-overview";
 import type { PendingAction } from "@/lib/server/pending-actions";
 import type { SubmitPreparedTxResult } from "@/lib/prepared-tx";
@@ -180,6 +185,9 @@ export default function BuddyDashboard({
               />
             ))
           )}
+
+          <div style={SECTION_LABEL}>Agent tokens</div>
+          <AgentTokensCard />
         </div>
       )}
     </div>
