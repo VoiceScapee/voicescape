@@ -64,6 +64,34 @@ export async function GET(
         // Chain read failed — fall through to the recorded status.
       }
     }
+    // Lazy expiry: the package itself has a 24h TTL but the status record
+    // lives 7 days. A non-terminal record whose package is gone means the
+    // link expired unused — report "expired" (and write it) so polling
+    // agents get the same answer as the web approval page. Terminal
+    // records (completed / race_lost) are returned as-is: the package is
+    // deleted after completion, which is expected.
+    if (
+      recorded.status === "pending" ||
+      recorded.status === "awaiting_signature" ||
+      recorded.status === "awaiting_agent_signature"
+    ) {
+      const pkg = await getClaimPackage(id);
+      if (!pkg) {
+        await setPackageStatus("claim", id, "expired", {
+          username: recorded.username,
+          detail:
+            "this approval link expired without being used (24h TTL) — ask your agent for a fresh one if the human still wants to proceed",
+        });
+        return NextResponse.json({
+          package_id: recorded.packageId,
+          status: "expired",
+          updated_at: new Date().toISOString(),
+          ...(recorded.username ? { username: recorded.username } : {}),
+          detail:
+            "this approval link expired without being used (24h TTL) — ask your agent for a fresh one if the human still wants to proceed",
+        });
+      }
+    }
     return NextResponse.json({
       package_id: recorded.packageId,
       status: recorded.status,

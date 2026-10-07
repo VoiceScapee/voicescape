@@ -47,6 +47,26 @@ export function safeImageUrl(raw: unknown): string | null {
 }
 
 /**
+ * True when a URL is an obvious builder placeholder (example.com and its
+ * IANA siblings). The builder's blank blocks ship with example.com defaults;
+ * if a page is published without replacing them, the placeholder must never
+ * render as a live link. Renderers filter these out; the builder itself is
+ * unaffected (it shows the default for the user to replace).
+ */
+export function isPlaceholderUrl(raw: unknown): boolean {
+  if (typeof raw !== "string") return false;
+  const v = raw.trim().toLowerCase();
+  return (
+    v === "https://example.com" ||
+    v.startsWith("https://example.com/") ||
+    v === "http://example.com" ||
+    v.startsWith("http://example.com/") ||
+    v === "https://www.example.com" ||
+    v.startsWith("https://www.example.com/")
+  );
+}
+
+/**
  * Open an external URL from a tap/click.
  *
  * Wallet dapp browsers (in-app WebViews like HashPack's) silently swallow

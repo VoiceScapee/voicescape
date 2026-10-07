@@ -153,4 +153,41 @@ describe("GET /api/claim-packages/[id]/status self-healing", () => {
     const json = (await res.json()) as Record<string, unknown>;
     expect(json.status).toBe("awaiting_signature");
   });
+
+  it("reports expired when a waiting record's package is gone (24h TTL lapsed)", async () => {
+    // "b"*32 has a status record but the mocked getClaimPackage returns
+    // null for it — the package expired silently, the web approval page
+    // shows "invalid or expired", and the API must agree.
+    const goneId = "b".repeat(32);
+    store.set(goneId, {
+      packageId: goneId,
+      status: "awaiting_signature",
+      username: "ghostbot",
+      updatedAt: Date.now() - 4 * 24 * 3_600_000,
+    });
+    const res = await GET(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: goneId }),
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.status).toBe("expired");
+    expect(json.detail as string).toContain("24h TTL");
+    // Persisted, so the next poll doesn't re-derive it.
+    const recorded = store.get(goneId) as { status: string };
+    expect(recorded.status).toBe("expired");
+  });
+
+  it("keeps a terminal completed record even after the package is gone", async () => {
+    const goneId = "b".repeat(32);
+    store.set(goneId, {
+      packageId: goneId,
+      status: "completed",
+      username: "ghostbot",
+      updatedAt: Date.now() - 4 * 24 * 3_600_000,
+    });
+    const res = await GET(new Request("http://localhost/x"), {
+      params: Promise.resolve({ id: goneId }),
+    });
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.status).toBe("completed");
+  });
 });

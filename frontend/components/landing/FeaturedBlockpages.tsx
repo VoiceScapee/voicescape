@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { T } from "@/components/T";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 interface FeaturedBadge {
   id: string;
@@ -30,6 +31,13 @@ interface FeaturedPage {
 
 export function FeaturedBlockpages() {
   const [pages, setPages] = useState<FeaturedPage[] | null>(null);
+  const { t } = useLanguage();
+
+  /** "1 follower" vs "N followers", localized via the existing follow keys. */
+  const followerText = (n: number) =>
+    n === 1
+      ? t("follow.follower_one").replace("{n}", "1")
+      : t("follow.followers").replace("{n}", String(n));
 
   useEffect(() => {
     let alive = true;
@@ -133,9 +141,7 @@ export function FeaturedBlockpages() {
               className="vs-mono"
               style={{ fontSize: 11, color: "var(--vs-muted)", display: "flex", gap: 14 }}
             >
-              <span>
-                {p.followers} <T k="landing.featuredFollowers" />
-              </span>
+              <span>{followerText(p.followers)}</span>
               <span title={p.badges.map((b) => b.name).join(", ")}>
                 {p.badges.length} <T k="landing.featuredBadges" />
               </span>

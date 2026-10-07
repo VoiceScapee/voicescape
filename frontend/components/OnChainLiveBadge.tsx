@@ -22,7 +22,8 @@ export default function OnChainLiveBadge({ owner }: { owner: string }) {
       <span className="pv-chain-text">
         <strong>Live on Hedera</strong>
         <span className="pv-chain-sub">
-          Registered on-chain · owner <span className="vs-mono">{shortOwner}</span>
+          Registered on-chain · owner{" "}
+          <span className="vs-mono">{shortOwner}</span>
         </span>
       </span>
       <a

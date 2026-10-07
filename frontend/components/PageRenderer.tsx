@@ -10,7 +10,7 @@ import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
 import { getActiveChain } from "@/lib/chains";
 import { audioGatewayUrl } from "@/lib/ipfs";
-import { safeExternalUrl, safeImageUrl, openExternalUrl } from "@/lib/url";
+import { safeExternalUrl, safeImageUrl, openExternalUrl, isPlaceholderUrl } from "@/lib/url";
 import { PLATFORMS, isPlatformId } from "@/lib/socials";
 import { canonicalAddress } from "@/lib/session-message";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
@@ -105,9 +105,11 @@ function MusicBlock({
       : undefined;
 
   if (tracks.length === 0) {
-    // No tracks and no user text: render nothing — a "Now vibing to" header
-    // with no music behind it is decorative, not content.
-    if (!block.title && !block.note) return null;
+    // No tracks and no note: render nothing. The builder's blank music
+    // block ships with a default title ("My music") and zero tracks — a
+    // bare icon + title with nothing behind it is decorative, not content.
+    // A real note is user text and still renders (legacy text-only pages).
+    if (!block.note) return null;
     return (
       <section className="pv-block pv-music pv-glass" aria-label="Music">
         <div className="pv-music-legacy">
@@ -116,7 +118,7 @@ function MusicBlock({
           </div>
           <div className="pv-music-info">
             <p className="pv-music-title">{block.title || "Now vibing to"}</p>
-            {block.note && <p className="pv-music-note">{block.note}</p>}
+            <p className="pv-music-note">{block.note}</p>
           </div>
         </div>
       </section>
@@ -506,7 +508,7 @@ function BlockView({
       return (
         <section className="pv-block pv-links" aria-label="Links">
           {block.items
-            .filter((item) => safeExternalUrl(item.url))
+            .filter((item) => safeExternalUrl(item.url) && !isPlaceholderUrl(item.url))
             .map((item, i) => {
             const url = safeExternalUrl(item.url)!;
             return (
@@ -893,7 +895,7 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
       </h2>
       <div className="pv-links">
         {block.items
-          .filter((item) => safeExternalUrl(item.url))
+          .filter((item) => safeExternalUrl(item.url) && !isPlaceholderUrl(item.url))
           .map((item, i) => (
           <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url)!} target="_blank" rel="noreferrer">
             <IconLink size={18} />

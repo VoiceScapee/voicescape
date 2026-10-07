@@ -415,7 +415,11 @@ export function DannysVision({
         const logs = d.logs ?? [];
         let fresh = 0;
         for (const l of logs) {
-          const key = `${l.transaction_hash}:${l.timestamp}`;
+          // Key on the transaction hash alone: the mirror node can return
+          // the same log with a differently-formatted timestamp string
+          // across polls, which used to slip past the dedupe and render
+          // duplicate "Blockpage updated" feed rows.
+          const key = l.transaction_hash;
           if (!seen.current.registry.has(key)) {
             seen.current.registry.add(key);
             if (seen.current.primed) fresh++;
@@ -429,7 +433,7 @@ export function DannysVision({
             const t0 = (l.topics?.[0] ?? "").toLowerCase();
             const registered = t0 === PAGE_REGISTERED_TOPIC0;
             return {
-              id: `registry:${l.transaction_hash}:${l.timestamp}`,
+              id: `registry:${l.transaction_hash}`,
               color: GREEN,
               title: registered
                 ? "🟢 New blockpage registered"

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { safeExternalUrl, safeImageUrl, openExternalUrl } from "./url";
+import { safeExternalUrl, safeImageUrl, openExternalUrl, isPlaceholderUrl } from "./url";
 
 describe("safeExternalUrl", () => {
   it("allows https URLs", () => {
@@ -135,5 +135,24 @@ describe("safeImageUrl", () => {
     expect(safeImageUrl("")).toBeNull();
     expect(safeImageUrl(null)).toBeNull();
     expect(safeImageUrl(undefined)).toBeNull();
+  });
+});
+
+describe("isPlaceholderUrl", () => {
+  it("flags example.com builder defaults", () => {
+    expect(isPlaceholderUrl("https://example.com")).toBe(true);
+    expect(isPlaceholderUrl("https://example.com/book")).toBe(true);
+    expect(isPlaceholderUrl("http://example.com/api")).toBe(true);
+    expect(isPlaceholderUrl("https://www.example.com/x")).toBe(true);
+    expect(isPlaceholderUrl("  HTTPS://EXAMPLE.COM/  ")).toBe(true);
+  });
+
+  it("does not flag real URLs", () => {
+    expect(isPlaceholderUrl("https://voicescape.vercel.app")).toBe(false);
+    expect(isPlaceholderUrl("https://example.com.evil.com")).toBe(false);
+    expect(isPlaceholderUrl("https://notexample.com")).toBe(false);
+    expect(isPlaceholderUrl("")).toBe(false);
+    expect(isPlaceholderUrl(null)).toBe(false);
+    expect(isPlaceholderUrl(undefined)).toBe(false);
   });
 });

@@ -588,7 +588,9 @@ export default function HireAgentsClient() {
             <>
               <div className="hire-meta">
                 <span className="vs-chip">
-                  {data.count} agent{data.count === 1 ? "" : "s"}
+                  {data.count}
+                  {" "}
+                  {data.count === 1 ? "agent" : "agents"}
                 </span>
                 <span className="vs-mono">network: {data.network}</span>
                 {data.updatedAt ? (

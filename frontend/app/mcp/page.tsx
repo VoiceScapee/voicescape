@@ -330,8 +330,8 @@ export default function McpPage() {
         <section className="vs-card" style={{ marginTop: 20 }}>
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
-            Twenty-six public tools, open to everyone — the server never holds
-            keys, never signs, never spends.
+            {PUBLIC_TOOLS.length} public tools, open to everyone — the server
+            never holds keys, never signs, never spends.
           </p>
           <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
             {PUBLIC_TOOLS.map(([name, desc]) => (
