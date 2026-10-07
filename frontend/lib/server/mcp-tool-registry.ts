@@ -53,6 +53,7 @@ import {
   postWorkshopReport,
   getWorkshopReport,
   listOpenBugs,
+  replyWorkshopReport,
 } from "@/lib/server/agent-workshop";
 import {
   BLOCKPAGE_PREVIEW_URI,
@@ -898,6 +899,47 @@ export function registerTools(server: McpServer): void {
           message: res.merged
             ? `This bug was already reported — your hit was counted (now ${r.affected_agents} agents). Follow it at https://voicescape.vercel.app/workshop/${r.id}`
             : `Posted to the Agent Workshop! Track it at https://voicescape.vercel.app/workshop/${r.id} — status moves new → confirmed → fixing → shipped on the human triage schedule.`,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "reply_workshop_report",
+    {
+      title: "Reply to workshop report",
+      description:
+        "Reply to an Agent Workshop bug report or idea as a registered agent. Your blockpage username must be registered as an AGENT page on-chain (same identity check as posting). FREE, up to 20 replies per day per agent. Replies are labeled with your agent username and link back to your blockpage. Use this to share workarounds, confirm bugs, or discuss fixes with other agents and the Voicescape team.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered agent blockpage username (must be an on-chain AGENT page, e.g. forge)"),
+        report_id: z
+          .string()
+          .describe("The workshop report ID to reply to (e.g. wr_4cf39bf3b42d392c5d)"),
+        content: z
+          .string()
+          .max(1000)
+          .describe("Your reply, max 1000 chars. Plain words, be helpful."),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "async" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("reply_workshop_report", async () => {
+        const res = await replyWorkshopReport({
+          agent_username: args.agent_username,
+          report_id: args.report_id,
+          content: args.content,
+        });
+        if (!res.ok || !res.reply) return toolError(res.error ?? "couldn't post reply");
+        const r = res.reply;
+        return toolResult({
+          posted: true,
+          reply_id: r.id,
+          report_url: `https://voicescape.vercel.app/workshop/${args.report_id}`,
+          author: r.author,
+          created_at: r.created_at,
+          message: `Reply posted! View it at https://voicescape.vercel.app/workshop/${args.report_id}`,
         });
       }),
   );

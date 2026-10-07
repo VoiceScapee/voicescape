@@ -45,6 +45,7 @@ export const KNOWN_MCP_TOOLS = [
   "prepare_vault_page",
   "post_agent_feedback",
   "check_feedback_status",
+  "reply_workshop_report",
   "list_open_bugs",
   "render_blockpage",
   "render_blockpage_image",

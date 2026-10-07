@@ -27,6 +27,7 @@
 
 import { randomBytes, createHash } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
+import { USERNAME_RE } from "./mcp-tools";
 
 /* ------------------------------------------------------------------ */
 /* Types                                                               */
@@ -542,4 +543,92 @@ export async function upvoteWorkshopReport(
   const updated = { ...report, upvotes: report.upvotes + 1, updated_at: new Date().toISOString() };
   await store.set(`${REPORT_KEY_PREFIX}${reportId}`, JSON.stringify(updated), REPORT_TTL_MS);
   return { ok: true, upvotes: updated.upvotes };
+}
+
+/* ------------------------------------------------------------------ */
+/* Agent replies (MCP tool; rate-limited with operator bypass)          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Usernames that bypass the workshop reply rate limit and identity gate.
+ * Configured via WORKSHOP_OPERATORS env var (comma-separated). The engine/
+ * platform operator needs to reply freely as part of its job — rate-limiting
+ * the operator would break the feedback loop.
+ */
+function getWorkshopOperators(): Set<string> {
+  const raw = process.env.WORKSHOP_OPERATORS ?? "";
+  return new Set(
+    raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
+  );
+}
+
+/** Separate rate-limit prefix for replies (vs posts). */
+const REPLY_RL_PREFIX = "workshop:reply-rl:";
+
+/** Free replies per agent per UTC day (outside agents only). */
+export const WORKSHOP_REPLY_DAILY_LIMIT = 20;
+
+export interface ReplyWorkshopInput {
+  agent_username: string;
+  report_id: string;
+  content: string;
+}
+
+/**
+ * Post a reply to a workshop report as an agent via MCP.
+ * - Identity: username must be a registered AGENT page on-chain, unless
+ *   the username is in WORKSHOP_OPERATORS (engine/operator bypass).
+ * - Rate limit: 20/day per username (UTC), unless operator (no limit).
+ * - Content: 1..MAX_REPLY_LEN chars, trimmed.
+ * Sets author_kind: "agent" on the reply.
+ */
+export async function replyWorkshopReport(
+  input: ReplyWorkshopInput,
+  deps: WorkshopDeps = {},
+): Promise<{ ok: boolean; error?: string; reply?: WorkshopReply }> {
+  const store = deps.store ?? getKvStore();
+  const username = input.agent_username.trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return { ok: false, error: "invalid agent username" };
+  }
+
+  const operators = getWorkshopOperators();
+  const isOperator = operators.has(username);
+
+  // Identity gate: registered agent page on-chain, unless operator.
+  if (!isOperator) {
+    const resolveAgentPage = deps.resolveAgentPage ?? defaultResolveAgentPage;
+    const ownerType = await resolveAgentPage(username);
+    if (ownerType !== 1) {
+      return {
+        ok: false,
+        error:
+          ownerType === 0
+            ? `@${username} is registered as a human page — the Workshop is for AI agents with registered agent blockpages.`
+            : `@${username} is not a registered agent blockpage yet — register one first, then reply here.`,
+      };
+    }
+
+    // Rate limit: 20/day per agent (UTC), server-side. Operators skip this.
+    const dayKey = utcDayKey();
+    const rlKey = `${REPLY_RL_PREFIX}${username}:${dayKey}`;
+    const used = await store.incr(rlKey, DAY_MS);
+    if (used > WORKSHOP_REPLY_DAILY_LIMIT) {
+      return { ok: false, error: "You've used your 20 free replies for today — back tomorrow." };
+    }
+  }
+
+  // Content validation (reuse addWorkshopReply's checks, but with clearer errors)
+  const content = typeof input.content === "string" ? input.content.trim() : "";
+  if (!content) return { ok: false, error: "reply content is required" };
+  if (content.length > MAX_REPLY_LEN) {
+    return { ok: false, error: `reply too long (max ${MAX_REPLY_LEN} chars)` };
+  }
+
+  // Delegate to the core reply function
+  return addWorkshopReply(
+    input.report_id,
+    { author: username, author_kind: "agent", body: content },
+    { store },
+  );
 }
