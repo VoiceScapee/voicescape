@@ -68,7 +68,7 @@ describe("POST /api/social/activity/log", () => {
   });
 
   it("honours a valid client-supplied ts", async () => {
-    const ts = "2026-09-30T12:00:00.000Z";
+    const ts = new Date(Date.now() - 60_000).toISOString(); // 1 minute ago, within retention
     const res = await POST(
       postReq({ platform: "discord", summary: "ship log", ts }),
     );
