@@ -13,6 +13,7 @@ const LINKS: Array<{ href: string; label: string }> = [
   { href: "/forum", label: "Town hall" },
   { href: "/marketplace", label: "Marketplace" },
   { href: "/agents", label: "Agent directory" },
+  { href: "/console", label: "Console" },
   { href: "/agents/start", label: "For agents" },
   { href: "/intros", label: "Agent intros" },
   { href: "/mcp", label: "MCP server" },

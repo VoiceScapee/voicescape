@@ -1,0 +1,570 @@
+/* /console — agent console. Hand-rolled CSS (no Tailwind), following the
+   /agents/hire conventions: dark blockchain-modern, amber AGENT badges,
+   honest empty states. */
+
+.console-page {
+  --console-amber: #ffca72;
+  --console-amber-soft: rgba(255, 202, 114, 0.12);
+  --console-green: #34d399;
+}
+
+/* ---------- Tabs ---------- */
+
+.console-tabs {
+  display: flex;
+  gap: 8px;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+
+.console-tab {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vs-muted);
+  background: transparent;
+  border: 1px solid rgba(130, 89, 239, 0.25);
+  border-radius: 999px;
+  padding: 10px 20px;
+  cursor: pointer;
+}
+
+.console-tab-active {
+  color: var(--vs-text);
+  font-weight: 800;
+  background: rgba(130, 89, 239, 0.22);
+  border-color: rgba(130, 89, 239, 0.45);
+}
+
+/* ---------- Search / forms ---------- */
+
+.console-search {
+  display: grid;
+  grid-template-columns: 2fr 1fr auto auto;
+  gap: 12px;
+  align-items: end;
+  margin: 8px 0 24px;
+}
+
+.console-search-narrow {
+  grid-template-columns: 2fr auto;
+  max-width: 640px;
+}
+
+.console-form {
+  display: grid;
+  gap: 16px;
+  max-width: 640px;
+  margin: 8px 0 24px;
+}
+
+.console-search-field {
+  display: grid;
+  gap: 6px;
+}
+
+.console-field {
+  display: grid;
+  gap: 6px;
+}
+
+.console-field-inline {
+  min-width: 120px;
+}
+
+.console-available-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vs-text);
+  cursor: pointer;
+  padding: 10px 4px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.console-available-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #34d399;
+  cursor: pointer;
+}
+
+.console-mono-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.console-textarea {
+  resize: vertical;
+  min-height: 96px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.console-count {
+  color: var(--vs-muted);
+  font-weight: 400;
+}
+
+.console-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.console-row .vs-input {
+  flex: 1;
+  min-width: 220px;
+}
+
+/* ---------- Buttons ---------- */
+
+.console-btn {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--vs-text);
+  background: rgba(130, 89, 239, 0.16);
+  border: 1px solid rgba(130, 89, 239, 0.4);
+  border-radius: 10px;
+  padding: 10px 18px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.console-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.console-btn-primary {
+  background: rgba(130, 89, 239, 0.35);
+  border-color: rgba(130, 89, 239, 0.7);
+}
+
+.console-btn-ghost {
+  background: transparent;
+  border-color: rgba(130, 89, 239, 0.25);
+  font-weight: 600;
+}
+
+/* ---------- Cards ---------- */
+
+.console-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 20px;
+}
+
+.console-card {
+  border: 1px solid rgba(255, 202, 114, 0.25);
+  border-radius: 14px;
+  padding: 20px;
+  background: rgba(255, 202, 114, 0.04);
+  position: relative;
+}
+
+.console-card-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.console-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #1a1206;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--console-amber),
+    var(--console-amber) 8px,
+    #e8a93d 8px,
+    #e8a93d 16px
+  );
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+
+.console-badge-available {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: var(--console-green);
+  border: 1px solid rgba(52, 211, 153, 0.5);
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+
+.console-username {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.console-vs {
+  color: var(--vs-muted);
+  font-weight: 600;
+}
+
+.console-operator,
+.console-purpose {
+  font-size: 14px;
+  color: var(--vs-muted);
+  line-height: 1.6;
+  margin: 8px 0;
+}
+
+.console-operator code {
+  font-size: 12px;
+}
+
+.console-caps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0;
+  margin: 12px 0;
+}
+
+.console-cap {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vs-text);
+  background: rgba(130, 89, 239, 0.16);
+  border: 1px solid rgba(130, 89, 239, 0.35);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.console-services {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.console-services li {
+  font-size: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(130, 89, 239, 0.2);
+  border-radius: 10px;
+  background: rgba(10, 8, 24, 0.4);
+}
+
+.console-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 16px 0 8px;
+}
+
+.console-verify {
+  font-size: 13px;
+  color: var(--vs-muted);
+  margin: 8px 0 0;
+}
+
+.console-verify a {
+  color: var(--vs-cyan);
+}
+
+/* ---------- Trust / reputation ---------- */
+
+.console-trust,
+.console-rep {
+  font-size: 14px;
+  margin: 10px 0;
+  color: var(--vs-text);
+}
+
+.console-trust-empty {
+  color: var(--vs-muted);
+}
+
+.console-beta {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--console-amber);
+  border: 1px solid rgba(255, 202, 114, 0.5);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 8px;
+}
+
+.console-trust-breakdown {
+  margin: 8px 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--vs-muted);
+  display: grid;
+  gap: 4px;
+}
+
+.console-basis {
+  display: block;
+  font-size: 12px;
+  color: var(--vs-muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* ---------- Hire flow ---------- */
+
+.console-hireflow {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed rgba(255, 202, 114, 0.3);
+}
+
+.console-hireflow h4 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.console-hire-service {
+  font-size: 15px;
+  margin: 8px 0;
+}
+
+.console-step {
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid rgba(130, 89, 239, 0.2);
+  border-radius: 10px;
+  background: rgba(10, 8, 24, 0.4);
+}
+
+.console-step-title {
+  font-weight: 800;
+  font-size: 14px;
+  margin: 0 0 10px;
+}
+
+.console-optional {
+  font-weight: 400;
+  color: var(--vs-muted);
+  font-size: 12px;
+}
+
+.console-tipmodal-wrap {
+  margin-top: 12px;
+}
+
+.console-kv {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.console-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+/* ---------- Inbox / messages ---------- */
+
+.console-inbox-block {
+  margin: 24px 0;
+}
+
+.console-inbox-block h3 {
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.console-messages {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 12px;
+}
+
+.console-message {
+  border: 1px solid rgba(130, 89, 239, 0.2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(10, 8, 24, 0.4);
+}
+
+.console-message-meta {
+  font-size: 12px;
+  color: var(--vs-muted);
+  margin: 0 0 8px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.console-op {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vs-cyan);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.console-message-text {
+  font-size: 14px;
+  line-height: 1.7;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- Send / prepared ---------- */
+
+.console-prepared {
+  margin: 24px 0;
+  padding: 20px;
+  border: 1px solid rgba(255, 202, 114, 0.3);
+  border-radius: 14px;
+  background: rgba(255, 202, 114, 0.04);
+}
+
+.console-prepared h3 {
+  margin: 0 0 12px;
+  font-size: 17px;
+}
+
+.console-payload {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(130, 89, 239, 0.25);
+  border-radius: 10px;
+  padding: 14px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ---------- Connect ---------- */
+
+.console-connect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.console-connect-card h3 {
+  margin: 0 0 8px;
+}
+
+.console-connect-card p {
+  font-size: 14px;
+  color: var(--vs-muted);
+  line-height: 1.7;
+  margin: 0 0 14px;
+}
+
+/* ---------- States ---------- */
+
+.console-note {
+  font-size: 14px;
+  color: var(--vs-muted);
+  line-height: 1.7;
+  max-width: 720px;
+}
+
+.console-note a {
+  color: var(--vs-cyan);
+}
+
+.console-error {
+  font-size: 14px;
+  color: #f87171;
+  line-height: 1.6;
+}
+
+.console-ok {
+  font-size: 14px;
+  color: var(--console-green);
+  font-weight: 600;
+}
+
+.console-empty {
+  text-align: center;
+  padding: 48px 20px;
+  border: 1px dashed rgba(130, 89, 239, 0.3);
+  border-radius: 14px;
+  margin: 16px 0;
+}
+
+.console-empty h3 {
+  margin: 0 0 8px;
+}
+
+.console-empty p {
+  color: var(--vs-muted);
+  max-width: 560px;
+  margin: 0 auto 20px;
+  line-height: 1.7;
+}
+
+.console-meta {
+  margin: 0 0 16px;
+}
+
+.console-skeleton {
+  height: 280px;
+  border-radius: 14px;
+  background: rgba(130, 89, 239, 0.08);
+}
+
+.console-fineprint {
+  border-top: 1px solid rgba(130, 89, 239, 0.18);
+  padding-top: 24px;
+  margin-top: 8px;
+}
+
+.console-fineprint ul {
+  display: grid;
+  gap: 10px;
+  padding-left: 20px;
+  font-size: 14px;
+  color: var(--vs-muted);
+  line-height: 1.7;
+  max-width: 760px;
+}
+
+.console-fineprint strong {
+  color: var(--vs-text);
+}
+
+@media (max-width: 720px) {
+  .console-search {
+    grid-template-columns: 1fr;
+  }
+  .console-search-narrow {
+    grid-template-columns: 1fr;
+  }
+}
