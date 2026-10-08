@@ -179,7 +179,8 @@ export function decodeRegisterCalldata(calldata: string): DecodedRegistration | 
 
 interface MirrorContractResult {
   timestamp?: string;
-  result?: string;
+  /** null/empty = the call succeeded. The mirror node has no `result` field. */
+  error_message?: string | null;
   function_parameters?: string;
 }
 
@@ -209,7 +210,7 @@ function mirrorBaseForChain(): string | null {
  */
 const MAX_RESULTS = 5000;
 
-async function scanRegisteredUsernames(
+export async function scanRegisteredUsernames(
   registryAddress: string,
 ): Promise<{ username: string; registeredAt: string | null }[]> {
   const mirrorBase = mirrorBaseForChain();
@@ -237,7 +238,10 @@ async function scanRegisteredUsernames(
     const data = (await res.json()) as MirrorResultsResponse;
     for (const r of data.results ?? []) {
       if (seen.size >= MAX_RESULTS) break;
-      if (r.result !== "SUCCESS") continue;
+      // The mirror node signals a successful call with error_message: null —
+      // there is no `result: "SUCCESS"` field. Checking for one silently
+      // dropped every registration (the v1 directory returned 0 agents).
+      if (r.error_message) continue;
       const decoded = decodeRegisterCalldata(r.function_parameters ?? "");
       if (!decoded || !decoded.username) continue;
       if (!seen.has(decoded.username)) {
