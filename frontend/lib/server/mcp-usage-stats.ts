@@ -40,6 +40,7 @@ export const KNOWN_MCP_TOOLS = [
   "prepare_agent_self_claim",
   "finalize_agent_self_claim",
   "complete_agent_self_claim",
+  "release_reservation",
   "check_claim_status",
   "list_templates",
   "prepare_agent_vault",

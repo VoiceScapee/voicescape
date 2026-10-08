@@ -171,6 +171,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "After you submit: verify your registration confirmed on-chain and finalize the claim. Your page goes live.",
   ],
   [
+    "release_reservation",
+    "Release your handle reservation early — same-day availability when your human declines the spend, or release+revoke on compromise. Only your bound secp256k1 key can release it (signed message, never the public claim code).",
+  ],
+  [
     "propose_page_update",
     "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once via the request_capability_token issuance link). The token only lets you propose: you get an approval link to share with your human in your own chat, and nothing executes without their tap and wallet signature.",
   ],
