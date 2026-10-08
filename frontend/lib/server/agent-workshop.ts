@@ -25,7 +25,7 @@
  * username, not the caller.
  */
 
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes, createHash, timingSafeEqual } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
 import { USERNAME_RE } from "./mcp-tools";
 
@@ -257,6 +257,14 @@ export interface WorkshopDeps {
    * null as "not a registered agent" (fail closed).
    */
   resolveAgentPage?: (username: string) => Promise<1 | 0 | null>;
+  /**
+   * Server-side operator secret for the workshop reply bypass. When set,
+   * replyWorkshopReport grants the operator bypass only when the caller
+   * presents the matching operator_key. Falls back to the
+   * WORKSHOP_OPERATOR_KEY env var. Never read from any caller-controlled
+   * source other than the explicit operator_key argument.
+   */
+  operatorKey?: string;
 }
 
 async function defaultResolveAgentPage(username: string): Promise<1 | 0 | null> {
@@ -550,15 +558,20 @@ export async function upvoteWorkshopReport(
 /* ------------------------------------------------------------------ */
 
 /**
- * Usernames that bypass the workshop reply rate limit and identity gate.
+ * Usernames reserved for the workshop operator bypass.
+ *
+ * SECURITY (2026-10-08): these names NEVER grant the bypass by themselves.
+ * The bypass requires the caller to also present the server-side operator
+ * secret (WORKSHOP_OPERATOR_KEY env) via the operator_key argument. A
+ * caller-supplied username alone — including "danny_engine" — is untrusted
+ * input and grants nothing. Claiming a reserved operator name without a
+ * valid key is rejected outright (not fallen through to the normal path),
+ * so the engine identity can't be impersonated even via on-chain
+ * registration of the same name.
+ *
  * Configured via WORKSHOP_OPERATORS env var (comma-separated). The engine/
  * platform operator needs to reply freely as part of its job — rate-limiting
  * the operator would break the feedback loop.
- */
-/**
- * Built-in engine operator — the platform operator always bypasses rate limits
- * and identity gates, no env configuration needed. Additional operators can be
- * added via WORKSHOP_OPERATORS env var.
  */
 const BUILTIN_OPERATORS = ["danny_engine"];
 
@@ -566,6 +579,19 @@ function getWorkshopOperators(): Set<string> {
   const raw = process.env.WORKSHOP_OPERATORS ?? "";
   const fromEnv = raw.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   return new Set([...BUILTIN_OPERATORS, ...fromEnv]);
+}
+
+/**
+ * Constant-time operator-key check. Fail-closed: an unset/empty expected
+ * key never matches, so the bypass is unreachable until the operator
+ * secret is configured server-side.
+ */
+function operatorKeyMatches(provided: string, expected: string): boolean {
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(expected, "utf8");
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
 }
 
 /** Separate rate-limit prefix for replies (vs posts). */
@@ -578,13 +604,22 @@ export interface ReplyWorkshopInput {
   agent_username: string;
   report_id: string;
   content: string;
+  /**
+   * Operator proof. Required ONLY when agent_username is a reserved
+   * operator name (e.g. danny_engine): must match the server-side
+   * WORKSHOP_OPERATOR_KEY. Outside agents never need this and must
+   * never be asked for it. The value is compared server-side and is
+   * never logged or echoed back.
+   */
+  operator_key?: string;
 }
 
 /**
  * Post a reply to a workshop report as an agent via MCP.
  * - Identity: username must be a registered AGENT page on-chain, unless
- *   the username is in WORKSHOP_OPERATORS (engine/operator bypass).
- * - Rate limit: 20/day per username (UTC), unless operator (no limit).
+ *   the caller proves operator status (reserved operator name + valid
+ *   operator_key matching the server-side secret).
+ * - Rate limit: 20/day per username (UTC), unless proven operator (no limit).
  * - Content: 1..MAX_REPLY_LEN chars, trimmed.
  * Sets author_kind: "agent" on the reply.
  */
@@ -599,9 +634,24 @@ export async function replyWorkshopReport(
   }
 
   const operators = getWorkshopOperators();
-  const isOperator = operators.has(username);
+  const claimedOperator = operators.has(username);
+  // Operator proof is bound to the server-side secret, NEVER to the
+  // caller-supplied username alone. Fail closed when the secret is unset.
+  const expectedKey = (deps.operatorKey ?? process.env.WORKSHOP_OPERATOR_KEY ?? "").trim();
+  const isOperator =
+    claimedOperator && operatorKeyMatches((input.operator_key ?? "").trim(), expectedKey);
 
-  // Identity gate: registered agent page on-chain, unless operator.
+  // Reserved operator names can't fall through to the normal path:
+  // without a valid key this is impersonation, not a regular reply.
+  if (claimedOperator && !isOperator) {
+    return {
+      ok: false,
+      error:
+        "operator usernames require a valid operator key — if you're the platform operator, pass operator_key; otherwise pick your own registered agent username.",
+    };
+  }
+
+  // Identity gate: registered agent page on-chain, unless proven operator.
   if (!isOperator) {
     const resolveAgentPage = deps.resolveAgentPage ?? defaultResolveAgentPage;
     const ownerType = await resolveAgentPage(username);
@@ -637,4 +687,68 @@ export async function replyWorkshopReport(
     { author: username, author_kind: "agent", body: content },
     { store },
   );
+}
+
+/* ------------------------------------------------------------------ */
+/* Reply deletion (operator-only; no outside-agent path)                */
+/* ------------------------------------------------------------------ */
+
+export interface DeleteWorkshopReplyInput {
+  report_id: string;
+  reply_id: string;
+  /**
+   * Operator proof. REQUIRED: must match the server-side
+   * WORKSHOP_OPERATOR_KEY. There is no outside-agent path for deletion —
+   * this tool is operator-only by construction. The value is compared
+   * server-side and is never logged or echoed back.
+   */
+  operator_key?: string;
+}
+
+/**
+ * Delete a single workshop reply by ID. Operator-only.
+ * - Auth: operator_key must match the server-side WORKSHOP_OPERATOR_KEY
+ *   (constant-time compare, fail-closed when unset). Checked BEFORE any
+ *   data is read or written.
+ * - Validates report_id/reply_id formats; fails cleanly ("report not
+ *   found" / "reply not found") when either is missing.
+ * - Removes exactly one reply from the KV array by ID and writes it back.
+ */
+export async function deleteWorkshopReply(
+  input: DeleteWorkshopReplyInput,
+  deps: WorkshopDeps = {},
+): Promise<{ ok: boolean; error?: string; deleted?: string }> {
+  const store = deps.store ?? getKvStore();
+
+  // Operator gate FIRST, before touching any data. Fail closed: an unset
+  // or mismatched secret never grants deletion.
+  const expectedKey = (deps.operatorKey ?? process.env.WORKSHOP_OPERATOR_KEY ?? "").trim();
+  if (!operatorKeyMatches((input.operator_key ?? "").trim(), expectedKey)) {
+    return { ok: false, error: "operator key required — reply deletion is operator-only." };
+  }
+
+  const reportId = typeof input.report_id === "string" ? input.report_id.trim() : "";
+  const replyId = typeof input.reply_id === "string" ? input.reply_id.trim() : "";
+  if (!/^wr_[0-9a-f]{18}$/.test(reportId)) return { ok: false, error: "invalid report id" };
+  if (!/^wrp_[0-9a-f]{18}$/.test(replyId)) return { ok: false, error: "invalid reply id" };
+
+  const report = await getWorkshopReport(reportId, { store });
+  if (!report) return { ok: false, error: "report not found" };
+
+  const key = `${REPLIES_PREFIX}${reportId}`;
+  const raw = await store.get(key);
+  let replies: WorkshopReply[];
+  try {
+    replies = raw ? (JSON.parse(raw) as WorkshopReply[]) : [];
+    if (!Array.isArray(replies)) return { ok: false, error: "reply store corrupted" };
+  } catch {
+    return { ok: false, error: "reply store corrupted" };
+  }
+
+  const idx = replies.findIndex((r) => r && r.id === replyId);
+  if (idx === -1) return { ok: false, error: "reply not found" };
+
+  replies.splice(idx, 1);
+  await store.set(key, JSON.stringify(replies), REPORT_TTL_MS);
+  return { ok: true, deleted: replyId };
 }
