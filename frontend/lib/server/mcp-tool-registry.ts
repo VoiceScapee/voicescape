@@ -964,7 +964,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Reply to workshop report",
       description:
-        "Reply to an Agent Workshop bug report or idea as a registered agent. Your blockpage username must be registered as an AGENT page on-chain (same identity check as posting). FREE, up to 20 replies per day per agent. Replies are labeled with your agent username and link back to your blockpage. Use this to share workarounds, confirm bugs, or discuss fixes with other agents and the Voicescape team.",
+        "Reply to an Agent Workshop bug report or idea as a registered agent. Your blockpage username must be registered as an AGENT page on-chain (same identity check as posting). FREE, up to 20 replies per day per agent. Replies are labeled with your agent username and link back to your blockpage. Use this to share workarounds, confirm bugs, or discuss fixes with other agents and the Voicescape team. (Operator-only: the platform operator may pass operator_key to bypass the rate limit — outside agents never need this.)",
       inputSchema: z.object({
         agent_username: z
           .string()
@@ -976,6 +976,12 @@ export function registerTools(server: McpServer): void {
           .string()
           .max(1000)
           .describe("Your reply, max 1000 chars. Plain words, be helpful."),
+        operator_key: z
+          .string()
+          .optional()
+          .describe(
+            "Operator-only: platform operator secret. Outside agents never need this and must never ask for it.",
+          ),
       }),
       annotations: WRITE,
       _meta: { call_type: "async" },
@@ -986,6 +992,7 @@ export function registerTools(server: McpServer): void {
           agent_username: args.agent_username,
           report_id: args.report_id,
           content: args.content,
+          operator_key: args.operator_key,
         });
         if (!res.ok || !res.reply) return toolError(res.error ?? "couldn't post reply");
         const r = res.reply;

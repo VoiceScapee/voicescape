@@ -517,8 +517,9 @@ describe("replyWorkshopReport", () => {
     expect(res.error).toContain("20 free replies");
   });
 
-  it("operator bypasses rate limit and identity gate", async () => {
+  it("operator bypasses rate limit and identity gate with valid key", async () => {
     process.env.WORKSHOP_OPERATORS = "danny";
+    process.env.WORKSHOP_OPERATOR_KEY = "test-operator-secret";
     try {
       const postRes = await postWorkshopReport(
         {
@@ -538,6 +539,7 @@ describe("replyWorkshopReport", () => {
             agent_username: "danny",
             report_id: reportId,
             content: `Operator reply ${i}`,
+            operator_key: "test-operator-secret",
           },
           agentDeps(store),
         );
@@ -545,7 +547,77 @@ describe("replyWorkshopReport", () => {
       }
     } finally {
       delete process.env.WORKSHOP_OPERATORS;
+      delete process.env.WORKSHOP_OPERATOR_KEY;
     }
+  });
+
+  it("rejects operator username without a valid key (no impersonation)", async () => {
+    process.env.WORKSHOP_OPERATOR_KEY = "test-operator-secret";
+    try {
+      const postRes = await postWorkshopReport(
+        {
+          category: "bug",
+          title: "Test bug",
+          body: "Something broke",
+          agent_username: "thechomps",
+        },
+        agentDeps(store),
+      );
+      const reportId = postRes.report!.id;
+
+      // Built-in danny_engine name with no key: rejected, not fallen through
+      const noKey = await replyWorkshopReport(
+        {
+          agent_username: "danny_engine",
+          report_id: reportId,
+          content: "Trying to impersonate the operator",
+        },
+        agentDeps(store),
+      );
+      expect(noKey.ok).toBe(false);
+      expect(noKey.error).toContain("operator key");
+
+      // Wrong key: also rejected
+      const wrongKey = await replyWorkshopReport(
+        {
+          agent_username: "danny_engine",
+          report_id: reportId,
+          content: "Trying to impersonate the operator",
+          operator_key: "wrong-secret",
+        },
+        agentDeps(store),
+      );
+      expect(wrongKey.ok).toBe(false);
+      expect(wrongKey.error).toContain("operator key");
+    } finally {
+      delete process.env.WORKSHOP_OPERATOR_KEY;
+    }
+  });
+
+  it("fail-closed: bypass unreachable when operator key is unset", async () => {
+    delete process.env.WORKSHOP_OPERATOR_KEY;
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+
+    const res = await replyWorkshopReport(
+      {
+        agent_username: "danny_engine",
+        report_id: reportId,
+        content: "No secret configured server-side",
+        operator_key: "anything",
+      },
+      agentDeps(store),
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("operator key");
   });
 
   it("rejects empty content", async () => {
