@@ -35,23 +35,35 @@ const AGENT = {
   purpose: "A test agent for the directory regression suite.",
 };
 
-function registerCalldata(): string {
+// Second agent: registered WITHOUT disclosing an operator (the
+// bacon-the-dino case). Brandon's call 2026-10-08: show all agents.
+const AGENT_NO_OPERATOR = {
+  username: "test-agent-2",
+  ipfsHash: "QmTestPageHash456",
+  owner: "0x3333333333333333333333333333333333333333",
+  operator: "0x0000000000000000000000000000000000000000",
+  purpose: "An agent that did not disclose an operator.",
+};
+
+const AGENTS = [AGENT, AGENT_NO_OPERATOR];
+
+function registerCalldata(a: typeof AGENT): string {
   return iface.encodeFunctionData("registerPage", [
-    AGENT.username,
-    AGENT.ipfsHash,
+    a.username,
+    a.ipfsHash,
     1,
-    AGENT.operator,
-    AGENT.purpose,
+    a.operator,
+    a.purpose,
   ]);
 }
 
-function resolveResult(): string {
+function resolveResult(a: typeof AGENT): string {
   return iface.encodeFunctionResult("resolvePage", [
-    AGENT.owner,
-    AGENT.ipfsHash,
+    a.owner,
+    a.ipfsHash,
     1,
-    AGENT.operator,
-    AGENT.purpose,
+    a.operator,
+    a.purpose,
   ]);
 }
 
@@ -84,7 +96,7 @@ describe("contractIdString", () => {
 
 describe("decodeRegisterCalldata", () => {
   it("decodes a real registerPage call", () => {
-    const d = decodeRegisterCalldata(registerCalldata());
+    const d = decodeRegisterCalldata(registerCalldata(AGENT));
     expect(d).not.toBeNull();
     expect(d!.username).toBe(AGENT.username);
     expect(d!.ownerType).toBe(1);
@@ -107,22 +119,31 @@ describe("buildAgentDirectory with an EVM-address registry", () => {
           return {
             ok: true,
             json: async () => ({
-              results: [
-                {
-                  result: "SUCCESS",
-                  function_parameters: registerCalldata(),
-                  timestamp: "1789000000.000000000",
-                },
-              ],
+              results: AGENTS.map((a, i) => ({
+                result: "SUCCESS",
+                function_parameters: registerCalldata(a),
+                timestamp: `178900000${i}.000000000`,
+              })),
               links: { next: null },
             }),
           };
         }
         if (u.endsWith("/api/v1/contracts/call")) {
           expect(init?.method).toBe("POST");
-          return { ok: true, json: async () => ({ result: resolveResult() }) };
+          const posted = JSON.parse(String((init as any)?.body ?? "{}"));
+          const decoded = iface.decodeFunctionData(
+            "resolvePage",
+            posted.data as string,
+          );
+          const agent =
+            AGENTS.find((a) => a.username === decoded[0]) ?? AGENT;
+          return {
+            ok: true,
+            json: async () => ({ result: resolveResult(agent) }),
+          };
         }
-        if (u.includes(AGENT.ipfsHash)) {
+        const ipfsAgent = AGENTS.find((a) => u.includes(a.ipfsHash));
+        if (ipfsAgent) {
           return {
             ok: true,
             json: async () => ({
@@ -156,12 +177,22 @@ describe("buildAgentDirectory with an EVM-address registry", () => {
     expect(resultsUrl).toContain(`/contracts/${EVM_REGISTRY}/results`);
     expect(resultsUrl).not.toContain("0.0.d87f");
 
-    expect(dir.count).toBe(1);
+    expect(dir.count).toBe(2);
     expect(dir.agents[0].username).toBe(AGENT.username);
     expect(dir.agents[0].operator?.toLowerCase()).toBe(
       AGENT.operator.toLowerCase(),
     );
     expect(dir.agents[0].purpose).toBe(AGENT.purpose);
     expect(dir.registry).toBe(EVM_REGISTRY);
+  });
+
+  it("lists an agent that did not disclose an operator, with operator null", async () => {
+    const dir = await buildAgentDirectory("example.com", {});
+    const undisclosed = dir.agents.find(
+      (a) => a.username === AGENT_NO_OPERATOR.username,
+    );
+    expect(undisclosed).toBeDefined();
+    expect(undisclosed!.operator).toBeNull();
+    expect(undisclosed!.purpose).toBe(AGENT_NO_OPERATOR.purpose);
   });
 });

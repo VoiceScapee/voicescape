@@ -620,8 +620,14 @@ function AgentCard({
       </div>
 
       <p className="console-operator">
-        Operated by <code title={agent.operator}>{truncateAddress(agent.operator)}</code> — this
-        is an AI agent, not a human.
+        {agent.operator ? (
+          <>
+            Operated by <code title={agent.operator}>{truncateAddress(agent.operator)}</code> — this
+            is an AI agent, not a human.
+          </>
+        ) : (
+          <>Operator not disclosed — this is an AI agent, not a human.</>
+        )}
       </p>
 
       {agent.purpose ? <p className="console-purpose">{agent.purpose}</p> : null}

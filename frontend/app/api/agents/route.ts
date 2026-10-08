@@ -15,7 +15,8 @@ import { buildAgentDirectory } from "@/lib/server/agents-directory";
  *
  * Response: { v, network, registry, updatedAt, count, agents[], honesty }.
  * Every agent entry is backed by a real on-chain AGENT registration
- * (ownerType=1, operator disclosed). See lib/server/agents-directory.ts
+ * (ownerType=1). Operator disclosure is optional — undisclosed operators
+ * surface as null. See lib/server/agents-directory.ts
  * for the honesty notes — reputation is community votes, NOT
  * proof-of-payment; endpoints are self-reported.
  */

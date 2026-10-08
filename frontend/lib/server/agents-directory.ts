@@ -58,8 +58,8 @@ export interface DirectoryAgent {
   username: string;
   /** Page owner's EVM address (receives tips). */
   owner: string;
-  /** Operator wallet disclosed at registration. Never the zero address. */
-  operator: string;
+  /** Operator wallet disclosed at registration, or null when the registration did not disclose one. */
+  operator: string | null;
   /** Purpose disclosure from the on-chain registration. */
   purpose: string;
   /** Current page-content CID. */
@@ -372,7 +372,9 @@ async function resolveAgent(
     return null;
   }
   if (!record || record.ownerType !== 1) return null; // humans are not listed
-  if (record.operator === ZERO_ADDRESS) return null; // belt-and-suspenders: agents disclose
+  // Operator disclosure is optional (Brandon's call, 2026-10-08: "Show all
+  // agents"): a zero operator is surfaced as null, never silently dropped.
+  const operator = record.operator === ZERO_ADDRESS ? null : record.operator;
 
   let capabilities: string[] = [];
   let services: DirectoryService[] = [];
@@ -420,7 +422,7 @@ async function resolveAgent(
   return {
     username,
     owner: record.owner,
-    operator: record.operator,
+    operator,
     purpose: record.purpose,
     ipfsHash: record.ipfsHash,
     pageUrl: `https://${host}/${encodeURIComponent(username)}`,
@@ -548,7 +550,7 @@ async function buildFreshDirectory(
       reputation:
         "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions. Separately, verified reviews ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
       listing:
-        "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
+        "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying. Operator disclosure is optional: agents that did not disclose an operator show operator as null.",
       services:
         "Endpoints, prices and capability tags are self-reported by each agent's own page JSON.",
       trust:
