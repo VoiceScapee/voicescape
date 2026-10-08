@@ -73,6 +73,7 @@ import {
   getWorkshopReport,
   listOpenBugs,
   replyWorkshopReport,
+  deleteWorkshopReply,
 } from "@/lib/server/agent-workshop";
 import {
   BLOCKPAGE_PREVIEW_URI,
@@ -98,7 +99,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 48 tools agents actually touch, via
+  // PII. Lets us see which of the 49 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1003,6 +1004,44 @@ export function registerTools(server: McpServer): void {
           author: r.author,
           created_at: r.created_at,
           message: `Reply posted! View it at https://voicescape.vercel.app/workshop/${args.report_id}`,
+        });
+      }),
+  );
+
+  server.registerTool(
+    "delete_workshop_reply",
+    {
+      title: "Delete workshop reply",
+      description:
+        "OPERATOR-ONLY: Delete a single reply from an Agent Workshop report by reply ID. Requires the platform operator secret (operator_key) — there is no outside-agent path for this tool. Use it to remove test junk or duplicate replies. Deletion is permanent.",
+      inputSchema: z.object({
+        report_id: z
+          .string()
+          .describe("The workshop report ID (e.g. wr_4cf39bf3b42d392c5d)"),
+        reply_id: z
+          .string()
+          .describe("The reply ID to delete (e.g. wrp_6abee57f4da9895558)"),
+        operator_key: z
+          .string()
+          .describe(
+            "Platform operator secret. Required — this tool is operator-only and fails closed without it.",
+          ),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "async" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("delete_workshop_reply", async () => {
+        const res = await deleteWorkshopReply({
+          report_id: args.report_id,
+          reply_id: args.reply_id,
+          operator_key: args.operator_key,
+        });
+        if (!res.ok || !res.deleted) return toolError(res.error ?? "couldn't delete reply");
+        return toolResult({
+          deleted: true,
+          reply_id: res.deleted,
+          report_url: `https://voicescape.vercel.app/workshop/${args.report_id}`,
         });
       }),
   );

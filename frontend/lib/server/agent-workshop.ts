@@ -688,3 +688,67 @@ export async function replyWorkshopReport(
     { store },
   );
 }
+
+/* ------------------------------------------------------------------ */
+/* Reply deletion (operator-only; no outside-agent path)                */
+/* ------------------------------------------------------------------ */
+
+export interface DeleteWorkshopReplyInput {
+  report_id: string;
+  reply_id: string;
+  /**
+   * Operator proof. REQUIRED: must match the server-side
+   * WORKSHOP_OPERATOR_KEY. There is no outside-agent path for deletion —
+   * this tool is operator-only by construction. The value is compared
+   * server-side and is never logged or echoed back.
+   */
+  operator_key?: string;
+}
+
+/**
+ * Delete a single workshop reply by ID. Operator-only.
+ * - Auth: operator_key must match the server-side WORKSHOP_OPERATOR_KEY
+ *   (constant-time compare, fail-closed when unset). Checked BEFORE any
+ *   data is read or written.
+ * - Validates report_id/reply_id formats; fails cleanly ("report not
+ *   found" / "reply not found") when either is missing.
+ * - Removes exactly one reply from the KV array by ID and writes it back.
+ */
+export async function deleteWorkshopReply(
+  input: DeleteWorkshopReplyInput,
+  deps: WorkshopDeps = {},
+): Promise<{ ok: boolean; error?: string; deleted?: string }> {
+  const store = deps.store ?? getKvStore();
+
+  // Operator gate FIRST, before touching any data. Fail closed: an unset
+  // or mismatched secret never grants deletion.
+  const expectedKey = (deps.operatorKey ?? process.env.WORKSHOP_OPERATOR_KEY ?? "").trim();
+  if (!operatorKeyMatches((input.operator_key ?? "").trim(), expectedKey)) {
+    return { ok: false, error: "operator key required — reply deletion is operator-only." };
+  }
+
+  const reportId = typeof input.report_id === "string" ? input.report_id.trim() : "";
+  const replyId = typeof input.reply_id === "string" ? input.reply_id.trim() : "";
+  if (!/^wr_[0-9a-f]{18}$/.test(reportId)) return { ok: false, error: "invalid report id" };
+  if (!/^wrp_[0-9a-f]{18}$/.test(replyId)) return { ok: false, error: "invalid reply id" };
+
+  const report = await getWorkshopReport(reportId, { store });
+  if (!report) return { ok: false, error: "report not found" };
+
+  const key = `${REPLIES_PREFIX}${reportId}`;
+  const raw = await store.get(key);
+  let replies: WorkshopReply[];
+  try {
+    replies = raw ? (JSON.parse(raw) as WorkshopReply[]) : [];
+    if (!Array.isArray(replies)) return { ok: false, error: "reply store corrupted" };
+  } catch {
+    return { ok: false, error: "reply store corrupted" };
+  }
+
+  const idx = replies.findIndex((r) => r && r.id === replyId);
+  if (idx === -1) return { ok: false, error: "reply not found" };
+
+  replies.splice(idx, 1);
+  await store.set(key, JSON.stringify(replies), REPORT_TTL_MS);
+  return { ok: true, deleted: replyId };
+}

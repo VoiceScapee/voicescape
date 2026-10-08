@@ -3,7 +3,7 @@
  * All persistence is a fake in-memory KvStore — no network, no real store.
  * The on-chain agent check is injected (no RPC in tests).
  */
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import type { KvStore } from "./store";
 import {
   postWorkshopReport,
@@ -14,6 +14,7 @@ import {
   addWorkshopReply,
   listWorkshopReplies,
   replyWorkshopReport,
+  deleteWorkshopReply,
   upvoteWorkshopReport,
   normalizeSignature,
   normalizeUsername,
@@ -679,5 +680,153 @@ describe("replyWorkshopReport", () => {
     );
     expect(res.ok).toBe(false);
     expect(res.error).toContain("not found");
+  });
+});
+
+describe("deleteWorkshopReply", () => {
+  let store: FakeStore;
+  const OP_KEY = "test-operator-secret";
+
+  beforeEach(() => {
+    store = new FakeStore();
+    process.env.WORKSHOP_OPERATOR_KEY = OP_KEY;
+  });
+
+  afterEach(() => {
+    delete process.env.WORKSHOP_OPERATOR_KEY;
+  });
+
+  async function seedReportWithReplies(): Promise<{ reportId: string; replyIds: string[] }> {
+    const postRes = await postWorkshopReport(
+      {
+        category: "bug",
+        title: "Test bug",
+        body: "Something broke",
+        agent_username: "thechomps",
+      },
+      agentDeps(store),
+    );
+    const reportId = postRes.report!.id;
+    const replyIds: string[] = [];
+    for (const body of ["canonical reply", "test", "duplicate of canonical"]) {
+      const r = await addWorkshopReply(
+        reportId,
+        { author: "danny_engine", author_kind: "agent", body },
+        { store },
+      );
+      replyIds.push(r.reply!.id);
+    }
+    return { reportId, replyIds };
+  }
+
+  it("deletes an existing reply with a valid operator key", async () => {
+    const { reportId, replyIds } = await seedReportWithReplies();
+
+    const res = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[1], operator_key: OP_KEY },
+      { store },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.deleted).toBe(replyIds[1]);
+
+    const remaining = await listWorkshopReplies(reportId, { store });
+    expect(remaining.map((r) => r.id)).toEqual([replyIds[0], replyIds[2]]);
+  });
+
+  it("fails cleanly for a non-existent reply id", async () => {
+    const { reportId } = await seedReportWithReplies();
+
+    const res = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: "wrp_aaaaaaaaaaaaaaaaaa", operator_key: OP_KEY },
+      { store },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("reply not found");
+
+    // Nothing was removed
+    expect((await listWorkshopReplies(reportId, { store })).length).toBe(3);
+  });
+
+  it("fails cleanly for a non-existent report", async () => {
+    const res = await deleteWorkshopReply(
+      { report_id: "wr_aaaaaaaaaaaaaaaaaa", reply_id: "wrp_aaaaaaaaaaaaaaaaaa", operator_key: OP_KEY },
+      { store },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("report not found");
+  });
+
+  it("rejects deletion without an operator key", async () => {
+    const { reportId, replyIds } = await seedReportWithReplies();
+
+    const res = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[0] },
+      { store },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("operator");
+
+    // Nothing was removed
+    expect((await listWorkshopReplies(reportId, { store })).length).toBe(3);
+  });
+
+  it("rejects deletion with a wrong operator key", async () => {
+    const { reportId, replyIds } = await seedReportWithReplies();
+
+    const res = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[0], operator_key: "wrong-secret" },
+      { store },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("operator");
+
+    expect((await listWorkshopReplies(reportId, { store })).length).toBe(3);
+  });
+
+  it("fail-closed: deletion unreachable when operator key is unset", async () => {
+    delete process.env.WORKSHOP_OPERATOR_KEY;
+    const { reportId, replyIds } = await seedReportWithReplies();
+
+    const res = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[0], operator_key: "anything" },
+      { store },
+    );
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("operator");
+
+    expect((await listWorkshopReplies(reportId, { store })).length).toBe(3);
+  });
+
+  it("rejects malformed ids", async () => {
+    const badReport = await deleteWorkshopReply(
+      { report_id: "nope", reply_id: "wrp_aaaaaaaaaaaaaaaaaa", operator_key: OP_KEY },
+      { store },
+    );
+    expect(badReport.ok).toBe(false);
+    expect(badReport.error).toContain("invalid report id");
+
+    const badReply = await deleteWorkshopReply(
+      { report_id: "wr_aaaaaaaaaaaaaaaaaa", reply_id: "nope", operator_key: OP_KEY },
+      { store },
+    );
+    expect(badReply.ok).toBe(false);
+    expect(badReply.error).toContain("invalid reply id");
+  });
+
+  it("deleting the same reply twice fails the second time", async () => {
+    const { reportId, replyIds } = await seedReportWithReplies();
+
+    const first = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[0], operator_key: OP_KEY },
+      { store },
+    );
+    expect(first.ok).toBe(true);
+
+    const second = await deleteWorkshopReply(
+      { report_id: reportId, reply_id: replyIds[0], operator_key: OP_KEY },
+      { store },
+    );
+    expect(second.ok).toBe(false);
+    expect(second.error).toContain("reply not found");
   });
 });
