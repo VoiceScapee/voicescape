@@ -36,6 +36,11 @@
  *    data (txid `<payer>@<ts>`, cross-checked against transfers). The
  *    declaration picks WHICH transaction; the chain proves WHO paid.
  *    Dust below the floor is ignored at construction.
+ *  - Txid replay guard: txid→reservation_id binding at the completion
+ *    transition, first declarer wins (atomic SET NX). Same reservation
+ *    re-presenting its txid is allowed (idempotent retry); a different
+ *    reservation presenting a used txid is rejected. The declared set
+ *    is the complete funding universe.
  *  - Rejection leaves funds claimant-side: no server outbound. The
  *    "refund" is the claimant sweeping their own alias. Omnibus/exchange
  *    funding is priced, not merely imperfect — the cap enforces against
@@ -87,6 +92,12 @@ const BY_KEY_PREFIX = "claim-reservation-by-key:";
 const INDEX_KEY_PREFIX = "claim-reservation-index:";
 const TOMBSTONE_KEY_PREFIX = "claim-reservation-history:";
 const FUNDER_COUNT_PREFIX = "claim-funder-count:";
+/**
+ * Txid→reservation bindings. Txids are unique forever — 10y is effectively
+ * permanent (same as tombstones).
+ */
+const TXID_USE_PREFIX = "funding-txid-used:";
+const TXID_USE_TTL_MS = 10 * 365 * 24 * 3_600_000;
 
 const USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 /** secp256k1 compressed (02/03 + 32 bytes) or uncompressed (04 + 64 bytes). */
@@ -709,4 +720,44 @@ export async function checkFunderCap(
     };
   }
   return { ok: true, used: n };
+}
+
+/* ------------------------------------------------------------------ */
+/* Txid replay guard (first declarer wins)                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Txid→reservation binding at the completion transition (arion's replay
+ * guard): the same funding txid must never back two completions. First
+ * declarer wins via atomic SET NX; the same reservation re-presenting
+ * its own txid is allowed (idempotent retry on transient failure); a
+ * different reservation presenting a used txid is rejected. The declared
+ * set becomes the complete funding universe — closed world.
+ *
+ * The binding is written after verifyFundingTxid passes, before the
+ * funder-cap check — so even a cap-rejected completion consumes its
+ * txid (the funds were attributed; the txid can't back another claim).
+ */
+export async function claimFundingTxid(
+  fundingTxid: string,
+  reservationId: string,
+  store: KvStore = getKvStore(),
+): Promise<{ ok: true } | { error: string }> {
+  const txid = (fundingTxid ?? "").trim();
+  if (!TXID_RE.test(txid)) {
+    return { error: "invalid funding_txid — expected a Hedera transaction id like 0.0.1234@1234567890.123456789" };
+  }
+  const key = `${TXID_USE_PREFIX}${txid}`;
+  const replayError =
+    "funding transaction already used for another claim — each funding txid backs exactly one completion. " +
+    "Fund the alias with a fresh transaction and present its txid";
+  const existing = await store.get(key).catch(() => null);
+  if (existing != null) {
+    return existing === reservationId ? { ok: true } : { error: replayError };
+  }
+  const won = await store.setNx(key, reservationId, TXID_USE_TTL_MS);
+  if (won) return { ok: true };
+  // Lost the race between the read and the SET NX — re-read to decide.
+  const winner = await store.get(key).catch(() => null);
+  return winner === reservationId ? { ok: true } : { error: replayError };
 }

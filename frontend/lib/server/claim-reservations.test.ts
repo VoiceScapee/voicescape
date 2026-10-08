@@ -23,6 +23,7 @@ import {
   pubkeyHash,
   verifyFundingTxid,
   checkFunderCap,
+  claimFundingTxid,
   FUNDER_CAP,
   MIN_FUNDING_TINYBAR,
   RESERVATION_TTL_MS,
@@ -423,5 +424,50 @@ describe("checkFunderCap", () => {
 describe("constants", () => {
   it("fee floor is 1 HBAR", () => {
     expect(MIN_FUNDING_TINYBAR).toBe(100_000_000);
+  });
+});
+
+describe("claimFundingTxid — txid replay guard", () => {
+  const TX = "0.0.4242@1789520539.844492534";
+  const R1 = "res-one-00000000000000000000001";
+  const R2 = "res-two-00000000000000000000002";
+
+  it("first declarer wins; a different reservation presenting the same txid is rejected", async () => {
+    expect(await claimFundingTxid(TX, R1, store)).toEqual({ ok: true });
+    const second = await claimFundingTxid(TX, R2, store);
+    expect(second).toEqual(expect.objectContaining({ error: expect.any(String) }));
+    if ("error" in (second as object)) {
+      expect((second as { error: string }).error).toMatch(/already used for another claim/);
+    }
+  });
+
+  it("same reservation re-presenting its txid is allowed (idempotent retry)", async () => {
+    expect(await claimFundingTxid(TX, R1, store)).toEqual({ ok: true });
+    expect(await claimFundingTxid(TX, R1, store)).toEqual({ ok: true });
+    expect(await claimFundingTxid(TX, R1, store)).toEqual({ ok: true });
+  });
+
+  it("concurrent declarations: exactly one reservation wins", async () => {
+    const [a, b] = await Promise.all([
+      claimFundingTxid(TX, R1, store),
+      claimFundingTxid(TX, R2, store),
+    ]);
+    const oks = [a, b].filter((r) => "ok" in r);
+    const errs = [a, b].filter((r) => "error" in r);
+    expect(oks).toHaveLength(1);
+    expect(errs).toHaveLength(1);
+  });
+
+  it("different txids are independent", async () => {
+    expect(await claimFundingTxid("0.0.1@1.000000001", R1, store)).toEqual({ ok: true });
+    expect(await claimFundingTxid("0.0.1@1.000000002", R1, store)).toEqual({ ok: true });
+    expect(await claimFundingTxid("0.0.1@1.000000001", R2, store)).toEqual(
+      expect.objectContaining({ error: expect.any(String) }),
+    );
+  });
+
+  it("malformed txid is rejected", async () => {
+    const bad = await claimFundingTxid("not-a-txid", R1, store);
+    expect(bad).toEqual(expect.objectContaining({ error: expect.stringMatching(/invalid funding_txid/) }));
   });
 });
