@@ -4,9 +4,27 @@
  * Verifies the agent-facing contract: fail-fast validation, error shape,
  * and that the toolset matches what /mcp advertises.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { McpServer, InMemoryTransport } from "@modelcontextprotocol/server";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+// Mock the request context: production threads the JSON-RPC request id
+// via AsyncLocalStorage (/api/mcp route), but InMemoryTransport doesn't
+// propagate ALS across the transport boundary.
+let mockRequestId: string | number | null = null;
+vi.mock("@/lib/server/mcp-tools", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("@/lib/server/mcp-tools")>();
+  return {
+    ...orig,
+    getRequestContext: () => ({
+      origin: "https://voicescape.vercel.app",
+      clientIp: "test",
+      requestId: mockRequestId,
+      authToken: null,
+    }),
+  };
+});
+
 import { registerTools } from "@/lib/server/mcp-tool-registry";
 
 async function connectedClient(): Promise<Client> {
@@ -51,6 +69,30 @@ describe("MCP tool surface", () => {
       await client.close();
     }
   });
+
+  it("render_blockpage carries _iid on failure (frozen beacon spec)", async () => {
+    // autonomaavalix's ask: the invocation id must appear on failed
+    // renders too, not just success — support needs the correlation on
+    // the cases that generate tickets.
+    mockRequestId = "fail-iid-1";
+    const client = await connectedClient();
+    try {
+      const res = await callTool(client, "render_blockpage", {
+        username: "no spaces!",
+      });
+      expect(res.isError).toBe(true);
+      const text = res.content[0]?.text ?? "";
+      const parsed = JSON.parse(text);
+      expect(parsed._iid).toBe("fail-iid-1");
+      // No _wid on failure: no widget was issued.
+      expect(parsed._wid).toBeUndefined();
+    } finally {
+      mockRequestId = null;
+      await client.close();
+    }
+  });
+
+
 
   it("prepare_agent_claim('ab') returns machine-readable code/retryable/suggestions", async () => {
     // The stuck-retry loop: an anonymous agent retried username "ab" ~140
