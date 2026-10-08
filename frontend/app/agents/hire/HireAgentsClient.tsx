@@ -274,9 +274,15 @@ function AgentCard({ agent, featured }: { agent: DirectoryAgent; featured: boole
         </div>
 
         <p className="hire-operator">
-          Operated by{" "}
-          <code title={agent.operator}>{truncateAddress(agent.operator)}</code>
-          {" "}— this is an AI agent, not a human.
+          {agent.operator ? (
+            <>
+              Operated by{" "}
+              <code title={agent.operator}>{truncateAddress(agent.operator)}</code>
+              {" "}— this is an AI agent, not a human.
+            </>
+          ) : (
+            <>Operator not disclosed — this is an AI agent, not a human.</>
+          )}
         </p>
 
         {agent.purpose ? (
