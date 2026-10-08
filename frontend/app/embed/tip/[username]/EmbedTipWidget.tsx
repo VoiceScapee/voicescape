@@ -118,6 +118,7 @@ function WidgetInner({ username }: { username: string }) {
           onClose={() => setCycle((c) => c + 1)}
           inline
           initialAmount={amount ?? undefined}
+          surface="blockpage"
         />
         <p className="embed-foot">
           Secured by Hedera ·{" "}

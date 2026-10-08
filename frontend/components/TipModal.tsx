@@ -35,6 +35,13 @@ import { IconTip, IconClose, IconCheck } from "@/components/icons";
 import { useConfirmedTransaction } from "@/hooks/useConfirmedTransaction";
 import { WalletTimeoutError } from "@/lib/tx";
 import { recordConversionEvent } from "@/lib/metrics";
+import type { ConversionContext } from "@/lib/metrics";
+import {
+  dwellFlowOpen,
+  dwellReset,
+  dwellSettled,
+  dwellSignSubmit,
+} from "@/lib/dwell";
 import { reportError } from "@/lib/report-error";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import TipCelebration from "@/components/TipCelebration";
@@ -48,6 +55,7 @@ export default function TipModal({
   onClose,
   inline = false,
   initialAmount,
+  surface = "post",
 }: {
   author: string;
   onClose: () => void;
@@ -61,6 +69,11 @@ export default function TipModal({
    * presets, and the on-chain 98/2 split are unchanged.
    */
   initialAmount?: number;
+  /**
+   * Coarse surface label for telemetry ("blockpage" = /[username] tip
+   * panel, "post" = town-hall tip button). Anonymous aggregate only.
+   */
+  surface?: ConversionContext;
 }) {
   const { account, connect, getTxSender } = useWallet();
   const { session, signOut } = useSession();
@@ -93,6 +106,14 @@ export default function TipModal({
       window.dispatchEvent(new CustomEvent(TIP_PANEL_EVENT, { detail: false }));
     };
   }, []);
+  // Dwell-time telemetry: open a server-timestamped flow (T1) on mount.
+  // Fire-and-forget — telemetry never blocks the tip flow.
+  useEffect(() => {
+    void dwellFlowOpen(surface);
+    return () => {
+      dwellReset();
+    };
+  }, [surface]);
   const [price, setPrice] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [repairing, setRepairing] = useState(false);
@@ -124,11 +145,15 @@ export default function TipModal({
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
   // The receipt shows the network-assigned consensus timestamp, not the
-  // device clock — first-principles fair timing.
+  // device clock — first-principles fair timing. The same timestamp feeds
+  // dwell telemetry as T3 (settlement), server-validated on receipt.
   const confirmOpts = useMemo(
     () => ({
-      onConsensus: (ts: string | null) =>
-        setFinalizedAt(consensusTimestampToDate(ts ?? "") ?? new Date()),
+      onConsensus: (ts: string | null) => {
+        const at = consensusTimestampToDate(ts ?? "");
+        setFinalizedAt(at ?? new Date());
+        dwellSettled(at ? at.getTime() : null);
+      },
     }),
     [],
   );
@@ -227,12 +252,16 @@ export default function TipModal({
       );
       const id = await tipPage(author, isHbar ? hbarToWei(hbarAmount) : usdToWei(usd, p as number), sender);
       // Approved — start the finality clock and confirm the real on-chain
-      // outcome reactively.
+      // outcome reactively. The dwell T2 (signature submitted) is stamped
+      // server-side on receipt of the sign event below.
+      dwellSignSubmit();
       setApprovedAt(Date.now());
       setConfirmTxId(id);
     } catch (e) {
       if (e instanceof WalletTimeoutError) {
         // Wallet went silent after approval — don't guess; confirm on-chain.
+        // The signature was submitted (we have a tx id), so T2 still counts.
+        dwellSignSubmit();
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
       } else {
@@ -256,6 +285,9 @@ export default function TipModal({
     setFinalizedAt(null);
     setReceiptLines([]);
     setError(null);
+    // Fresh dwell flow for the next attempt (T1 re-stamped on open).
+    dwellReset();
+    void dwellFlowOpen(surface);
   };
 
   // One panel, two shells: the overlay dialog for in-app (town hall) use,
