@@ -47,6 +47,7 @@ import {
   releaseReservation as releaseClaimReservation,
   verifyFundingTxid,
   checkFunderCap,
+  claimFundingTxid,
   writeTombstone,
 } from "./claim-reservations";
 import { validateCapabilityToken, CAPABILITY_SCOPES } from "./capability-tokens";
@@ -2251,6 +2252,21 @@ export async function completeAgentSelfClaim(
       const verified = await verifyFundingTxid(fundingTxid, hold.funding_address, fetchFn);
       if ("error" in verified) {
         return { error: verified.error };
+      }
+      // Txid replay guard: bind txid→reservation_id, first declarer wins.
+      // Same reservation re-presenting its txid is allowed (idempotent
+      // retry); a different reservation presenting a used txid is rejected.
+      let bound: Awaited<ReturnType<typeof claimFundingTxid>> | null = null;
+      try {
+        bound = await claimFundingTxid(fundingTxid, hold.reservation_id);
+      } catch {
+        bound = null;
+      }
+      if (!bound) {
+        return { error: "txid binding unavailable — try again in a moment" };
+      }
+      if ("error" in bound) {
+        return { error: bound.error };
       }
       let cap: Awaited<ReturnType<typeof checkFunderCap>> | null = null;
       try {
