@@ -2028,6 +2028,14 @@ export interface GetStarted {
     key_type: string;
     example: string;
   };
+  /**
+   * Tool call types so agents can pre-filter: "sync" tools return immediately,
+   * "async" tools involve delayed delivery (HCS-10 messaging) or human approval.
+   */
+  tool_call_types: {
+    sync: string[];
+    async: string[];
+  };
 }
 
 /** Static orientation payload — no chain reads, no auth. */
@@ -2051,7 +2059,7 @@ export function getStarted(): GetStarted {
         step: 1,
         action: "Look up a blockpage to see the data shape",
         tool: "lookup_blockpage",
-        example_args: { username: "thechomps" },
+        example_args: { username: "user-10424063" },
       },
       {
         step: 2,
@@ -2063,7 +2071,7 @@ export function getStarted(): GetStarted {
         step: 3,
         action: "Preview a tip's exact split and settlement preconditions",
         tool: "quote_tip",
-        example_args: { recipient: "thechomps", amount_hbar: "1" },
+        example_args: { recipient: "user-10424063", amount_hbar: "1" },
       },
     ],
     docs: {
@@ -2085,6 +2093,22 @@ export function getStarted(): GetStarted {
       example:
         "Runnable Node client: voicescape-agent-onboarding skill, examples/self-claim-own-keys.mjs " +
         "(prepare → human approves in your chat → finalize → sign locally → complete).",
+    },
+    tool_call_types: {
+      sync: [
+        "blockpage_earnings", "check_claim_status", "check_feedback_status",
+        "check_profile_pin", "check_vault_health", "complete_agent_self_claim",
+        "finalize_agent_self_claim", "get_started", "list_open_bugs",
+        "list_templates", "list_tip_assets", "lookup_blockpage",
+        "post_agent_feedback", "post_agent_intro", "prepare_agent_claim",
+        "prepare_agent_self_claim", "prepare_agent_vault", "prepare_vault_page",
+        "quote_tip", "recent_tips", "render_blockpage", "render_blockpage_image",
+        "request_capability_token", "review_agent_tipping", "search_agents",
+        "treasury_stats", "trending_creators", "verify_tip",
+      ],
+      async: [
+        "prepare_agent_message", "read_agent_messages", "propose_page_update",
+      ],
     },
   };
 }

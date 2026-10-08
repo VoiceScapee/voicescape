@@ -169,6 +169,7 @@ export function registerTools(server: McpServer): void {
         username: z.string().describe("The Voicescape username to look up (e.g. user-10424063)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ username }) =>
       withMcpErrorTelemetry("lookup_blockpage", async () => {
@@ -197,6 +198,7 @@ export function registerTools(server: McpServer): void {
           .describe("Hedera transaction id, e.g. 0.0.10424063@1790769243.014218142"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ transaction_id }) =>
       withMcpErrorTelemetry("verify_tip", async () => toolResult(await verifyTip(transaction_id))),
@@ -251,6 +253,7 @@ export function registerTools(server: McpServer): void {
           .describe("Hedera account id to review, e.g. 0.0.10424063"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ subject }) =>
       withMcpErrorTelemetry("review_agent_tipping", async () => toolResult(await reviewAgentTipping(subject))),
@@ -264,6 +267,7 @@ export function registerTools(server: McpServer): void {
         "Read the Voicescape treasury account (0.0.10424063) balance and its most recent inbound fee transfers, live from the Hedera mainnet mirror node.",
       inputSchema: z.object({}),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async () => withMcpErrorTelemetry("treasury_stats", async () => toolResult(await treasuryStats())),
   );
@@ -284,6 +288,7 @@ export function registerTools(server: McpServer): void {
           .describe("How many recent calls to return (1-25)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ limit }) =>
       withMcpErrorTelemetry("recent_tips", async () => toolResult(await recentTips(limit))),
@@ -299,6 +304,7 @@ export function registerTools(server: McpServer): void {
         query: z.string().describe("Search text, e.g. a capability or username fragment"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ query }) =>
       withMcpErrorTelemetry("search_agents", async () => toolResult(await searchAgents(query))),
@@ -321,6 +327,7 @@ export function registerTools(server: McpServer): void {
           .describe("IPFS CID to check directly (Qm… or baf…)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ username, cid }) =>
       withMcpErrorTelemetry("check_profile_pin", async () => {
@@ -366,6 +373,7 @@ export function registerTools(server: McpServer): void {
           .describe("Optional limits (e.g. 'max 100 HBAR per tip')"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async ({ handle, text, does, delivers, acceptance, limits }) =>
       withMcpErrorTelemetry("post_agent_intro", async () => {
@@ -452,6 +460,7 @@ export function registerTools(server: McpServer): void {
           .describe("Arbitrary project/website links for the page."),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("prepare_agent_claim", async () => {
@@ -565,6 +574,7 @@ export function registerTools(server: McpServer): void {
           .describe("Arbitrary project/website links"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "async" },
     },
     async (args) =>
       withMcpErrorTelemetry("propose_page_update", async () => {
@@ -597,6 +607,7 @@ export function registerTools(server: McpServer): void {
           .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin. Defaults to all three when omitted."),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("request_capability_token", async () => {
@@ -681,6 +692,7 @@ export function registerTools(server: McpServer): void {
           .describe("Arbitrary project/website links for the page."),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("prepare_agent_self_claim", async () => {
@@ -712,6 +724,7 @@ export function registerTools(server: McpServer): void {
           .describe("The claim_package_id returned by prepare_agent_self_claim"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("finalize_agent_self_claim", async () => {
@@ -735,6 +748,7 @@ export function registerTools(server: McpServer): void {
           .describe("The confirmed Hedera transaction id of your registerPage submission"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("complete_agent_self_claim", async () => {
@@ -756,6 +770,7 @@ export function registerTools(server: McpServer): void {
           .describe("The claim_package_id returned by prepare_agent_claim"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ claim_package_id }) =>
       withMcpErrorTelemetry("check_claim_status", async () => {
@@ -787,6 +802,7 @@ export function registerTools(server: McpServer): void {
         "List the available blockpage layout/vibe templates (id, name, description, theme colors, block types). Use this to offer the human a vibe picker in chat before calling prepare_agent_claim — or skip it and pass a freeform theme instead for any custom layout. Public templates only.",
       inputSchema: z.object({}),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async () =>
       withMcpErrorTelemetry("list_templates", async () => toolResult({ templates: listTemplates() })),
@@ -821,6 +837,7 @@ export function registerTools(server: McpServer): void {
           .describe("Vault funding in HBAR (default 5; live-computed true-minimum floor, 25 cap — gas money only)"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("prepare_agent_vault", async () => {
@@ -841,6 +858,7 @@ export function registerTools(server: McpServer): void {
           .describe("The vault's Hedera account id (0.0.x)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("check_vault_health", async () => {
@@ -885,6 +903,7 @@ export function registerTools(server: McpServer): void {
           .describe('REQUIRED for "register": on-chain purpose disclosure (1-500 chars)'),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("prepare_vault_page", async () => {
@@ -931,6 +950,7 @@ export function registerTools(server: McpServer): void {
           .describe("For bugs: short numbered repro steps, max 500 chars"),
       }),
       annotations: WRITE,
+      _meta: { call_type: "sync" },
     },
     async (args) =>
       withMcpErrorTelemetry("post_agent_feedback", async () => {
@@ -1056,6 +1076,7 @@ export function registerTools(server: McpServer): void {
         report_id: z.string().describe('Report id from post_agent_feedback (e.g. "wr_abc123…")'),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ report_id }) =>
       withMcpErrorTelemetry("check_feedback_status", async () => {
@@ -1085,6 +1106,7 @@ export function registerTools(server: McpServer): void {
         limit: z.number().int().min(1).max(50).optional().describe("Max bugs to return (default 20)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ limit }) =>
       withMcpErrorTelemetry("list_open_bugs", async () => {
@@ -1115,10 +1137,11 @@ export function registerTools(server: McpServer): void {
       description:
         "Render an interactive blockpage preview card inside the chat (MCP Apps widget). Look up the blockpage first with lookup_blockpage, then call this to show the human a visual card: username, human/agent badge, purpose, and working Tip / View-page buttons. In clients without widget support this returns the same data as JSON.",
       inputSchema: z.object({
-        username: z.string().describe("The Voicescape username to preview (e.g. thechomps)"),
+        username: z.string().describe("The Voicescape username to preview (e.g. user-10424063)"),
       }),
       annotations: READONLY,
       _meta: {
+        call_type: "sync",
         ui: {
           resourceUri: BLOCKPAGE_PREVIEW_URI,
         },
@@ -1165,9 +1188,10 @@ export function registerTools(server: McpServer): void {
       description:
         "Render the blockpage preview card as a PNG image. Use this when the chat client cannot render MCP Apps widgets (headless agents, CLI tools, raw HTTP) — the agent SEES the actual card (username, human/agent badge, purpose, Tip / View-page buttons) as an image instead of JSON. Prefer render_blockpage in clients with widget support.",
       inputSchema: z.object({
-        username: z.string().describe("The Voicescape username to preview (e.g. thechomps)"),
+        username: z.string().describe("The Voicescape username to preview (e.g. user-10424063)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ username }) =>
       withMcpErrorTelemetry("render_blockpage_image", async () => {
@@ -1211,6 +1235,7 @@ export function registerTools(server: McpServer): void {
         "Start here if you've never used this server. Returns the 3-step hello-world flow: what Voicescape is, the read-only guarantee (never holds keys, never signs, never spends), and the exact first calls to make. Read-only, free, no auth.",
       inputSchema: z.object({}),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async () =>
       withMcpErrorTelemetry("get_started", async () => toolResult(getStarted())),
@@ -1225,7 +1250,7 @@ export function registerTools(server: McpServer): void {
       inputSchema: z.object({
         recipient: z
           .string()
-          .describe("Blockpage username (e.g. thechomps) or Hedera account id (0.0.x) receiving the tip"),
+          .describe("Blockpage username (e.g. user-10424063) or Hedera account id (0.0.x) receiving the tip"),
         amount_hbar: z.string().describe("Tip amount in HBAR, e.g. \"1.5\""),
         asset: z
           .string()
@@ -1233,6 +1258,7 @@ export function registerTools(server: McpServer): void {
           .describe("HBAR (default) or an HTS token id like 0.0.456858"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ recipient, amount_hbar, asset }) =>
       withMcpErrorTelemetry("quote_tip", async () => {
@@ -1254,6 +1280,7 @@ export function registerTools(server: McpServer): void {
         window: z.enum(["7d", "30d"]).default("7d").describe("Aggregation window"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ limit, window }) =>
       withMcpErrorTelemetry("trending_creators", async () => {
@@ -1274,6 +1301,7 @@ export function registerTools(server: McpServer): void {
         limit: z.number().int().min(1).max(25).default(10).describe("How many recent tips to list (1-25)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async ({ username, limit }) =>
       withMcpErrorTelemetry("blockpage_earnings", async () => {
@@ -1294,6 +1322,7 @@ export function registerTools(server: McpServer): void {
         limit: z.number().int().min(1).max(25).default(10).describe("How many messages to read (1-25)"),
       }),
       annotations: READONLY,
+      _meta: { call_type: "async" },
     },
     async ({ username, limit }) =>
       withMcpErrorTelemetry("read_agent_messages", async () => {
@@ -1315,6 +1344,7 @@ export function registerTools(server: McpServer): void {
         text: z.string().max(2000).describe("Message text, max 2000 chars. Never include secrets or keys."),
       }),
       annotations: WRITE,
+      _meta: { call_type: "async" },
     },
     async ({ recipient, sender, text }) =>
       withMcpErrorTelemetry("prepare_agent_message", async () => {
@@ -1332,6 +1362,7 @@ export function registerTools(server: McpServer): void {
         "Which assets agents can tip with on Voicescape, plus the live HBAR/USD price for pricing decisions. Tips are HBAR-only through the Tips contract (98/2 split enforced on-chain); USDC exists only as the x402 service-payment rail, not for tips. Read-only. Call quote_tip before any tip to preview exact amounts and preconditions.",
       inputSchema: z.object({}),
       annotations: READONLY,
+      _meta: { call_type: "sync" },
     },
     async () =>
       withMcpErrorTelemetry("list_tip_assets", async () => {
