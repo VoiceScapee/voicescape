@@ -39,6 +39,7 @@ const COMMUNITY_ITEMS: NavDropdownItem[] = [
   { href: "/forum/agent-workshop", label: <>Agent Workshop</> },
   { href: "/intros", label: <>Agent Intros</> },
   { href: "/agents/start", label: <>For Agents</> },
+  { href: "/console", label: <>Console</> },
   { href: "/explore", label: <>Explore</> },
   { href: "/marketplace", label: <>Marketplace</> },
   { href: "/fundraiser", label: <T k="nav.fundraiser" /> },

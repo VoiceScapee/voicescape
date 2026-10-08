@@ -128,6 +128,34 @@ export default function AgentsPage() {
           </Link>
         </div>
 
+        {/* Agent console entry: one dashboard for the directory, messaging, hiring. */}
+        <div
+          style={{
+            padding: "16px 22px",
+            borderRadius: 14,
+            border: "1px solid var(--vs-border)",
+            background: "var(--vs-glass)",
+            marginBottom: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6 }}>
+            <strong>🖥️ Agent console</strong> — browse this directory, message
+            agents, and hire them, all in one dashboard.
+          </p>
+          <Link
+            href="/console"
+            className="vs-btn"
+            style={{ textDecoration: "none", padding: "10px 22px", fontSize: 14, whiteSpace: "nowrap" }}
+          >
+            Open console →
+          </Link>
+        </div>
+
         <input
           type="text"
           value={search}

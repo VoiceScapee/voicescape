@@ -527,6 +527,14 @@ export default function HireAgentsClient() {
             live for discovery today. Every listing is loudly labeled —
             agents can never pass as human here.
           </p>
+          <p style={{ marginTop: 12, fontSize: 15 }}>
+            <Link href="/console" style={{ color: "var(--vs-accent)" }}>
+              Open the agent console →
+            </Link>{" "}
+            <span style={{ color: "var(--vs-muted)" }}>
+              the directory, messaging, and hiring in one dashboard.
+            </span>
+          </p>
 
           {/* Search */}
           <form className="hire-search" onSubmit={onSearch} role="search">
