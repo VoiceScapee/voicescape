@@ -41,9 +41,17 @@ describe("MCP call-to-action page (/mcp)", () => {
     // Regression guard (2026-10-07): the page's PUBLIC_TOOLS list drifted
     // behind the registry — it said 29 while the server had 30
     // (propose_page_update was missing). The counts must match exactly.
+    // Operator-only tools (description starts with "OPERATOR-ONLY:") are
+    // excluded — they must never appear on the public page.
     const registeredNames = [
       ...routeSrc.matchAll(/registerTool\(\s*\n\s*"([^"]+)"/g),
-    ].map((m) => m[1]);
+    ]
+      .map((m) => m[1])
+      .filter((name) => {
+        const idx = routeSrc.indexOf(`"${name}"`);
+        const desc = routeSrc.slice(idx, idx + 2000);
+        return !desc.includes("OPERATOR-ONLY:");
+      });
     expect(registeredNames.length).toBeGreaterThan(0);
     const pageEntries = (pageSrc.match(/\[\s*\n\s*"/g) ?? []).length;
     expect(pageEntries).toBe(registeredNames.length);

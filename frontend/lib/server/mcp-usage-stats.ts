@@ -48,6 +48,7 @@ export const KNOWN_MCP_TOOLS = [
   "post_agent_feedback",
   "check_feedback_status",
   "reply_workshop_report",
+  "delete_workshop_reply",
   "list_open_bugs",
   "render_blockpage",
   "render_blockpage_image",
