@@ -25,7 +25,7 @@ import { requestContextStorage } from "@/lib/server/mcp-tools";
 import { registerTools, SERVER_INSTRUCTIONS } from "@/lib/server/mcp-tool-registry";
 
 const mcpHandler = createMcpHandler(registerTools, {
-  serverInfo: { name: "voicescape", version: "1.0.0" },
+  serverInfo: { name: "voicescape", version: "1.1.0" },
   instructions: SERVER_INSTRUCTIONS,
 });
 

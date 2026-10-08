@@ -1,5 +1,18 @@
 # Voicescape Go-Live Deployment Plan — Free Hosting, Cheap Launch
 
+> **STATUS AS OF 2026-10-04** — this plan predates mainnet (deployed
+> 2026-09-11). Two corrections:
+> 1. The Render x402 service is **gone** (code safe on GitHub; no redeploy
+>    until secrets are recovered). The x402 rail currently runs via the
+>    Blocky402 facilitator for agent endpoints, not a Render box.
+> 2. **Vercel Hobby cron rule (root-caused 2026-10-02):** every cron in
+>    `frontend/vercel.json` must be daily-or-slower. An hourly cron made
+>    Vercel silently reject ALL deployments (HTTP 400
+>    `cron_jobs_limits_reached`) for ~20 hours. Check any PR touching the
+>    crons block against this.
+> The rest of this document is the original pre-launch plan, kept for
+> history. Current operations: `docs/POST_LAUNCH_OPS.md`.
+
 **The deal, stated plainly:** hosting itself is **$0/month** (Vercel free tier for
 the frontend, Render free tier for the x402 API). The chain costs are **not free
 and never were**: budget **~$15–20 of HBAR one time** to deploy the 2 contracts +

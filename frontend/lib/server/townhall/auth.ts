@@ -341,8 +341,11 @@ export interface AgentTokenClaims {
 export const AGENT_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Version keys outlive the longest token they can invalidate. */
 export const AGENT_TOKEN_VERSION_TTL_MS = 8 * 24 * 60 * 60 * 1000;
-/** Agent usernames: 3-24 chars, lowercase letters/digits/hyphens. */
-export const AGENT_USERNAME_RE = /^[a-z0-9][a-z0-9-]{1,22}[a-z0-9]$/;
+/** Agent usernames: 3-32 chars, lowercase letters/digits/_/- — matches the
+ * on-chain VoicescapeRegistry rules (the token username binds to a
+ * registered on-chain page, so the regex must accept everything the
+ * Registry does). */
+export const AGENT_USERNAME_RE = /^[a-z0-9_-]{3,32}$/;
 
 /** KV key holding the current revocation version for (wallet, agent). */
 export function agentTokenVersionKey(address: string, agentUsername: string): string {

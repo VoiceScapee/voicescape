@@ -90,7 +90,12 @@ describe("MCP call-to-action page (/mcp)", () => {
   });
 
   it("states the rate limit and the Hedera mainnet source honestly", () => {
-    expect(pageSrc).toContain("20 requests per hour");
+    // Two-tier limits: 100/hr read, 20/hr write. The old flat "20 requests
+    // per hour" copy was stale (fixed 2026-10-04) — this test pins the
+    // corrected wording so it can't silently regress.
+    expect(pageSrc).toContain("100 requests per hour per IP for read-only tools");
+    expect(pageSrc).toContain("20/hour for");
+    expect(pageSrc).not.toContain("20 requests per hour per IP. Everything reads");
     expect(pageSrc).toMatch(/Hedera mainnet/);
     expect(pageSrc).toMatch(/unverified/);
   });
