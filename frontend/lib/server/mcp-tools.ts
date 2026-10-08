@@ -12,6 +12,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
+import { randomBytes } from "node:crypto";
 import { ethers } from "ethers";
 import { PublicKey } from "@hiero-ledger/sdk";
 import {
@@ -39,6 +40,15 @@ import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
 import { getKvStore } from "./store";
+import {
+  reserveHandle,
+  getReservation,
+  deleteReservation,
+  releaseReservation as releaseClaimReservation,
+  verifyFundingTxid,
+  checkFunderCap,
+  writeTombstone,
+} from "./claim-reservations";
 import { validateCapabilityToken, CAPABILITY_SCOPES } from "./capability-tokens";
 import { createTokenRequest } from "./token-requests";
 import {
@@ -267,19 +277,34 @@ async function fetchJson(
   }
 }
 
+/**
+ * Thrown by mirrorContractCall. `networkFailure` is true only for
+ * transport-level failures (timeout / DNS / connection refused — fetchJson
+ * reports status 0). A clean "no result" (revert, empty result, HTTP
+ * error body) means the name is simply not registered.
+ */
+export class ContractCallError extends Error {
+  readonly networkFailure: boolean;
+  constructor(message: string, networkFailure: boolean) {
+    super(message);
+    this.name = "ContractCallError";
+    this.networkFailure = networkFailure;
+  }
+}
+
 /** eth_call-style read through the mirror node's contracts/call endpoint. */
 async function mirrorContractCall(
   fetchFn: FetchFn,
   to: string,
   data: string,
 ): Promise<string> {
-  const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/contracts/call`, {
+  const { ok, status, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/contracts/call`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ to, data, gas: 100_000 }),
   });
   if (!ok || !body || typeof body.result !== "string" || body.result === "0x") {
-    throw new Error("contract call failed");
+    throw new ContractCallError("contract call failed", status === 0);
   }
   return body.result as string;
 }
@@ -297,6 +322,23 @@ export interface BlockpageLookup {
   owner_type?: "human" | "agent";
   operator?: string;
   purpose?: string;
+  /**
+   * Soft-hold surface (reservable claims, converged spec v2, H3). Present
+   * when the name is NOT registered on-chain but a handle reservation
+   * exists. Soft hold, not a lock — a direct on-chain registerPage still
+   * wins; every surface says so.
+   */
+  reserved?: boolean;
+  /** ISO expiry of the reservation. */
+  reserved_until?: string;
+  /** "reserved (soft, unverified)" — or "availability unknown" when the
+   *  on-chain re-check timed out and we cannot confirm the name is free. */
+  reservation_label?: "reserved (soft, unverified)" | "availability unknown";
+  /** 0x funding address of the reservation holder (public — it must be funded). */
+  reservation_funding_address?: string;
+  /** "unknown" when the on-chain re-check failed at the transport level:
+   *  the name may or may not be free. Never silently open or taken. */
+  availability?: "unknown";
 }
 
 /**
@@ -304,6 +346,12 @@ export interface BlockpageLookup {
  * (mirror-node eth_call). Best-effort follow-up maps the owner's EVM
  * address to its 0.0.x account id. Returns { found: false } for unknown
  * names — never throws internals.
+ *
+ * Soft-hold surface: when the name is not registered on-chain but a
+ * handle reservation exists, the result carries the reservation
+ * (`reserved: true`, `reserved (soft, unverified)` + expiry). The read
+ * re-checks on-chain availability; a timed-out re-check surfaces
+ * `availability: "unknown"` instead of guessing.
  */
 export async function lookupBlockpage(
   username: string,
@@ -313,24 +361,33 @@ export async function lookupBlockpage(
   if (!USERNAME_RE.test(name)) {
     return { found: false, username: name };
   }
-  let raw: string;
+  let raw: string | null = null;
+  let networkFailure = false;
   try {
     raw = await mirrorContractCall(
       fetchFn,
       REGISTRY_EVM,
       RESOLVE_IFACE.encodeFunctionData("resolvePage", [name]),
     );
-  } catch {
-    // Contract reverts for unregistered names.
-    return { found: false, username: name };
+  } catch (e) {
+    // Contract reverts (or empty result) for unregistered names — the
+    // normal "free" case. A transport failure means we never got an
+    // answer at all.
+    networkFailure = e instanceof ContractCallError && e.networkFailure;
   }
-  let decoded: [string, string, bigint, string, string];
-  try {
-    decoded = RESOLVE_IFACE.decodeFunctionResult("resolvePage", raw) as unknown as typeof decoded;
-  } catch {
-    return { found: false, username: name };
+  let decoded: [string, string, bigint, string, string] | null = null;
+  if (raw !== null) {
+    try {
+      decoded = RESOLVE_IFACE.decodeFunctionResult(
+        "resolvePage",
+        raw,
+      ) as unknown as [string, string, bigint, string, string];
+    } catch {
+      decoded = null;
+    }
   }
-  const [owner, ipfsHash, ownerType, operator, purpose] = decoded;
+  if (decoded) {
+    const [owner, ipfsHash, ownerType, operator, purpose] = decoded;
   const ownerEvm = owner.toLowerCase();
 
   // Best-effort: EVM address -> 0.0.x account id. Fail-soft.
@@ -351,6 +408,37 @@ export async function lookupBlockpage(
     owner_type: Number(ownerType) === 1 ? "agent" : "human",
     operator: operator.toLowerCase(),
     purpose,
+  };
+  }
+
+  // Not registered on-chain (or the chain read failed): check the soft
+  // hold. A reservation is a public signal, never a lock.
+  const reservation = await getReservation(name).catch(() => null);
+  if (!reservation) {
+    return { found: false, username: name };
+  }
+  const reserved_until = new Date(reservation.expires_at).toISOString();
+  if (networkFailure) {
+    // The on-chain re-check timed out: we cannot confirm the name is
+    // still free. Surface "availability unknown" — never silently open
+    // or silently taken. The honesty property covers error states.
+    return {
+      found: false,
+      username: name,
+      reserved: true,
+      reserved_until,
+      reservation_funding_address: reservation.funding_address,
+      availability: "unknown",
+      reservation_label: "availability unknown",
+    };
+  }
+  return {
+    found: false,
+    username: name,
+    reserved: true,
+    reserved_until,
+    reservation_funding_address: reservation.funding_address,
+    reservation_label: "reserved (soft, unverified)",
   };
 }
 
@@ -1420,6 +1508,18 @@ export interface PrepareAgentSelfClaimArgs {
    * is the prepare_agent_claim path.
    */
   owner_type?: string;
+  /**
+   * Optional claimant-generated nonce for the handle reservation
+   * (hollow path). 1-128 chars [A-Za-z0-9_-]. Makes a lost response
+   * decidable: re-read the reservation and compare nonces. Defaults to a
+   * server-generated nonce when omitted.
+   */
+  nonce?: string;
+  /**
+   * Optional intro claim code from post_agent_intro — stored as a
+   * discoverable index on the reservation, never as a credential.
+   */
+  claim_code?: string;
 }
 
 export interface AgentSelfClaimPackage {
@@ -1441,9 +1541,11 @@ export interface AgentSelfClaimPackage {
 
 /**
  * Hollow-account funding address — returned when the agent passes
- * ecdsa_public_key instead of agent_account_id. No package is created
- * (no account exists yet); the agent retries with agent_account_id after
- * the human funds the address and the 0.0.x account auto-creates.
+ * ecdsa_public_key instead of agent_account_id. The handle is now softly
+ * reserved for the caller's key (7 days, one renewal) — the human funds
+ * the address and the agent retries with agent_account_id after the 0.0.x
+ * account auto-creates. Soft hold, not a lock: a direct on-chain
+ * registerPage still wins.
  */
 export interface HollowAccountAddress {
   hollow: true;
@@ -1451,6 +1553,19 @@ export interface HollowAccountAddress {
   purpose: string;
   /** The exact 0x EVM address for the human to fund (≥1 HBAR). */
   fund_address: string;
+  /**
+   * The soft handle reservation — null only when the reservation store
+   * was unreachable (the handle is then NOT held; the address still works).
+   */
+  reservation: {
+    reservation_id: string;
+    reserved_until: string;
+    funding_address: string;
+    renewals_used: number;
+    nonce: string;
+    /** True when this call returned the caller's existing reservation. */
+    existing: boolean;
+  } | null;
   next: string;
 }
 
@@ -1515,16 +1630,77 @@ export async function prepareAgentSelfClaim(
     } catch {
       return { error: "ecdsa_public_key is not a valid secp256k1 public key" };
     }
+
+    // 1. The name must be free on-chain (same check as the funded path).
+    let existing: BlockpageLookup;
+    try {
+      existing = await lookupBlockpage(username, fetchFn);
+    } catch {
+      return { error: "registry unavailable — try again in a moment" };
+    }
+    if (existing.found) {
+      return { error: `username "${username}" is already registered — pick another` };
+    }
+
+    // 2. Reservable claims (converged spec v2): atomically reserve the
+    //    handle for this key — the hold IS the feature for gated-treasury
+    //    agents whose human approval rail takes days. Soft hold, not a
+    //    lock: a direct on-chain registerPage still wins.
+    const nonce =
+      typeof args.nonce === "string" && args.nonce.trim() !== ""
+        ? args.nonce.trim().slice(0, 128)
+        : randomBytes(16).toString("hex");
+    let resv: Awaited<ReturnType<typeof reserveHandle>>;
+    try {
+      resv = await reserveHandle(
+        { username, claimant_pubkey: hex, nonce, claim_code: args.claim_code ?? null },
+        getKvStore(),
+      );
+    } catch {
+      // Store unreachable (fail closed): the funding address is pure key
+      // math and still valid, but the handle is NOT held — say so honestly.
+      return {
+        hollow: true,
+        username,
+        purpose,
+        fund_address: fundAddress,
+        reservation: null,
+        next:
+          `Have your human send at least 1 HBAR to ${fundAddress} from any Hedera wallet — ` +
+          `your 0.0.x account auto-creates the moment it lands (no signup, no extra step; ECDSA only). ` +
+          `WARNING: the handle reservation is temporarily unavailable — "${username}" is NOT held. ` +
+          `Fund quickly, or retry this call to reserve it. ` +
+          `Then call prepare_agent_self_claim again with agent_account_id set to your new account, ` +
+          `and continue: finalize_agent_self_claim → sign with your key → complete_agent_self_claim.`,
+      };
+    }
+    if (!resv.ok) {
+      return { error: resv.error };
+    }
+    const r = resv.reservation;
+    const reservedUntil = new Date(r.expires_at).toISOString();
     return {
       hollow: true,
       username,
       purpose,
       fund_address: fundAddress,
+      reservation: {
+        reservation_id: r.reservation_id,
+        reserved_until: reservedUntil,
+        funding_address: r.funding_address,
+        renewals_used: r.renewals_used,
+        nonce: r.nonce,
+        existing: resv.existing,
+      },
       next:
         `Have your human send at least 1 HBAR to ${fundAddress} from any Hedera wallet — ` +
         `your 0.0.x account auto-creates the moment it lands (no signup, no extra step; ECDSA only). ` +
+        `"${username}" is now softly reserved for your key until ${reservedUntil} (7 days, one renewal available) — ` +
+        `a soft hold, not a lock: a direct on-chain registerPage still wins. ` +
+        `If your human declines the spend, call release_reservation (signed with your key) to free the handle the same day. ` +
         `Then call prepare_agent_self_claim again with agent_account_id set to your new account, ` +
-        `and continue: finalize_agent_self_claim → sign with your key → complete_agent_self_claim.`,
+        `and continue: finalize_agent_self_claim → sign with your key → complete_agent_self_claim ` +
+        `(present the funding transaction id at completion — the server verifies it paid your alias).`,
     };
   }
   // The agent's OWN account — required, and it must exist AND be funded:
@@ -1556,6 +1732,26 @@ export async function prepareAgentSelfClaim(
   }
   if (existing.found) {
     return { error: `username "${username}" is already registered — pick another` };
+  }
+
+  // 1b. Soft-hold check (reservable claims, converged spec v2): if the
+  //     handle is reserved, it must be THIS agent's key — the reservation
+  //     binds handle → secp256k1 key, and the funded account's EVM address
+  //     is the hollow alias when this key was funded through it.
+  if (existing.reserved) {
+    let agentEvm = "";
+    try {
+      agentEvm = (await evmAddressForAccount(agentAccountId, fetchFn)).toLowerCase();
+    } catch {
+      agentEvm = "";
+    }
+    if (!agentEvm || existing.reservation_funding_address?.toLowerCase() !== agentEvm) {
+      return {
+        error:
+          `username "${username}" is reserved until ${existing.reserved_until ?? "unknown"} by another agent ` +
+          `(soft hold, not a lock — a direct on-chain registerPage still wins; poll lookup_blockpage for release)`,
+      };
+    }
   }
 
   // 2. The agent's account must exist AND hold HBAR — it pays the gas.
@@ -1801,6 +1997,26 @@ export async function finalizeAgentSelfClaim(
     return { error: `"${pkg.username}" was just registered by someone else — prepare a fresh claim with a different name` };
   }
 
+  // 1b. Soft-hold check (reservable claims, converged spec v2): if the
+  //     handle is reserved for a DIFFERENT key, steer away. The agent's
+  //     own reservation passes through — the hold is per-key.
+  const hold = await getReservation(pkg.username).catch(() => null);
+  if (hold) {
+    let agentEvm = "";
+    try {
+      agentEvm = (await evmAddressForAccount(agentAccountId, fetchFn)).toLowerCase();
+    } catch {
+      agentEvm = "";
+    }
+    if (!agentEvm || hold.funding_address.toLowerCase() !== agentEvm) {
+      return {
+        error:
+          `username "${pkg.username}" is reserved until ${new Date(hold.expires_at).toISOString()} by another agent ` +
+          `(soft hold, not a lock — a direct on-chain registerPage still wins; poll lookup_blockpage for release)`,
+      };
+    }
+  }
+
   // 2. The agent's account must still exist and still be funded — it pays
   //    the registerPage gas.
   try {
@@ -1928,6 +2144,14 @@ export async function finalizeAgentSelfClaim(
 export interface CompleteAgentSelfClaimArgs {
   claim_package_id: string;
   transaction_id: string;
+  /**
+   * Reservable-claims funding proof (converged spec v2): when this claim
+   * holds a handle reservation, present the Hedera transaction id that
+   * funded the hollow alias. Declared-then-verified — the declaration
+   * picks WHICH transaction, the chain proves WHO paid (dust-attack fix).
+   * Required when a reservation exists for the username.
+   */
+  funding_txid?: string;
 }
 
 /**
@@ -1999,12 +2223,117 @@ export async function completeAgentSelfClaim(
   }
 
   const origin = getRequestContext().origin.replace(/\/$/, "");
+
+  // Soft-hold completion (reservable claims, converged spec v2): when the
+  // username carries a reservation for THIS key, run declared-txid funding
+  // verification + the per-funder cap. The page is already verified
+  // registered-and-owned above — the reservation machinery governs
+  // funding attribution, never the on-chain truth. Another key's
+  // reservation is left to TTL (the soft hold doesn't block).
+  const hold = await getReservation(username).catch(() => null);
+  if (hold && agentAccountId) {
+    let agentEvm = "";
+    try {
+      agentEvm = (await evmAddressForAccount(agentAccountId, fetchFn)).toLowerCase();
+    } catch {
+      agentEvm = "";
+    }
+    if (agentEvm && hold.funding_address.toLowerCase() === agentEvm) {
+      const fundingTxid = (args.funding_txid ?? "").trim();
+      if (!fundingTxid) {
+        return {
+          error:
+            `this claim holds a handle reservation for "${username}" — present funding_txid ` +
+            `(the Hedera transaction id that funded your hollow alias ${hold.funding_address}) to complete. ` +
+            `The server verifies it paid your alias and attributes the funder from chain data.`,
+        };
+      }
+      const verified = await verifyFundingTxid(fundingTxid, hold.funding_address, fetchFn);
+      if ("error" in verified) {
+        return { error: verified.error };
+      }
+      let cap: Awaited<ReturnType<typeof checkFunderCap>> | null = null;
+      try {
+        cap = await checkFunderCap(verified.payer);
+      } catch {
+        cap = null;
+      }
+      if (!cap) {
+        return { error: "funder-cap check unavailable — try again in a moment" };
+      }
+      if ("error" in cap) {
+        // Reject: release the handle and leave the funds claimant-side.
+        // No server outbound exists — the "refund" is the claimant
+        // sweeping their own alias. Tombstone the rejection.
+        await deleteReservation(username, hold.reservation_id).catch(() => {});
+        await writeTombstone({
+          reservation_id: hold.reservation_id,
+          username,
+          terminal_state: "rejected-funder-cap",
+          pubkey_hash: hold.pubkey_hash,
+          funder: verified.payer,
+          funding_txid: fundingTxid,
+          reason: cap.error,
+          created_at: hold.created_at,
+          ended_at: Date.now(),
+        }).catch(() => {});
+        return {
+          error:
+            `${cap.error} — the handle has been released; ` +
+            `funds stay in your alias ${hold.funding_address} (sweep them yourself — no server outbound exists)`,
+        };
+      }
+      // Accepted: tombstone the completed reservation, then fall through
+      // to the existing completed marking below.
+      await deleteReservation(username, hold.reservation_id).catch(() => {});
+      await writeTombstone({
+        reservation_id: hold.reservation_id,
+        username,
+        terminal_state: "completed",
+        pubkey_hash: hold.pubkey_hash,
+        funder: verified.payer,
+        funding_txid: fundingTxid,
+        created_at: hold.created_at,
+        ended_at: Date.now(),
+      }).catch(() => {});
+    }
+  }
+
   await setPackageStatus("claim", id, "completed", {
     username,
     transactionId,
     detail: `registered on-chain — live at ${origin}/${username}`,
   });
   return { ok: true, username, page_url: `${origin}/${username}` };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: release_reservation (soft-hold release)                */
+/* ------------------------------------------------------------------ */
+
+export interface ReleaseReservationArgs {
+  username: string;
+  /**
+   * 128-hex (64-byte raw ECDSA r||s) signature over the UTF-8 bytes of
+   * `voicescape:release-reservation:v1:<username>:<reservation_id>`,
+   * made by the secp256k1 key the reservation is bound to. The intro
+   * claim code is public and never a credential — only the bound key
+   * can release.
+   */
+  signature: string;
+}
+
+/**
+ * Release a handle reservation early — same-day availability when the
+ * human declines the spend, or release+revoke on compromise (leaked
+ * claim code). Writes a released-by-claimant tombstone (an act, with an
+ * actor — distinct from expired-by-TTL). The handle is immediately
+ * reservable again; no cooldown.
+ */
+export async function releaseReservation(
+  args: ReleaseReservationArgs,
+): Promise<{ released: true; username: string } | { error: string }> {
+  return releaseClaimReservation(args.username ?? "", args.signature ?? "");
 }
 
 /* ------------------------------------------------------------------ */
@@ -2102,7 +2431,7 @@ export function getStarted(): GetStarted {
         "list_templates", "list_tip_assets", "lookup_blockpage",
         "post_agent_feedback", "post_agent_intro", "prepare_agent_claim",
         "prepare_agent_self_claim", "prepare_agent_vault", "prepare_vault_page",
-        "quote_tip", "recent_tips", "render_blockpage", "render_blockpage_image",
+        "quote_tip", "recent_tips", "release_reservation", "render_blockpage", "render_blockpage_image",
         "request_capability_token", "review_agent_tipping", "search_agents",
         "treasury_stats", "trending_creators", "verify_tip",
       ],

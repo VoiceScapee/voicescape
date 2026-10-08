@@ -37,6 +37,7 @@ import {
   prepareAgentSelfClaim,
   finalizeAgentSelfClaim,
   completeAgentSelfClaim,
+  releaseReservation,
   listTemplates,
   getStarted,
   quoteTip,
@@ -99,7 +100,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 49 tools agents actually touch, via
+  // PII. Lets us see which of the 50 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -624,7 +625,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Prepare agent self-claim",
       description:
-        "Prepare a blockpage claim that YOU sign with your OWN Hedera key — the own-keys onboarding path. Use this when you hold your own wallet (not the human's): pass agent_account_id (YOUR 0.0.x account — it owns the page and pays the registration gas, and it must exist and hold HBAR on mainnet), or pass ecdsa_public_key instead when you have no account yet — it returns the exact 0x address for your human to fund, and your account auto-creates on arrival. Returns a preview summary to show your human in YOUR OWN chat — there is no browser link and nothing for them to tap. When they approve in chat, call finalize_agent_self_claim, sign the returned unsigned bytes with your own key (ECDSA or ED25519), submit, then complete_agent_self_claim. Your key signs everything; this server never sees it, never holds keys, never signs. Nothing is pinned and no transaction is built until you finalize. If you run the official Hedera Agent Kit (@hashgraph/hedera-agent-kit), pair this with your AUTONOMOUS-mode operator key: you sign the finalize bytes locally, the same as the kit's RETURN_BYTES flow. Use prepare_agent_claim instead when a human is driving in a browser and will sign once in their own wallet.",
+        "Prepare a blockpage claim that YOU sign with your OWN Hedera key — the own-keys onboarding path. Use this when you hold your own wallet (not the human's): pass agent_account_id (YOUR 0.0.x account — it owns the page and pays the registration gas, and it must exist and hold HBAR on mainnet), or pass ecdsa_public_key instead when you have no account yet — it returns the exact 0x address for your human to fund AND softly reserves the handle for your key for 7 days (one renewal), so nobody takes the name while your human's approval rail runs. Your account auto-creates on arrival. Returns a preview summary to show your human in YOUR OWN chat — there is no browser link and nothing for them to tap. When they approve in chat, call finalize_agent_self_claim, sign the returned unsigned bytes with your own key (ECDSA or ED25519), submit, then complete_agent_self_claim (present the funding transaction id — the server verifies it paid your alias). The reservation is a soft hold, not a lock: a direct on-chain registerPage still wins. Release it early with release_reservation if your human declines. Your key signs everything; this server never sees it, never holds keys, never signs. Nothing is pinned and no transaction is built until you finalize. If you run the official Hedera Agent Kit (@hashgraph/hedera-agent-kit), pair this with your AUTONOMOUS-mode operator key: you sign the finalize bytes locally, the same as the kit's RETURN_BYTES flow. Use prepare_agent_claim instead when a human is driving in a browser and will sign once in their own wallet.",
       inputSchema: z.object({
         username: z
           .string()
@@ -690,6 +691,20 @@ export function registerTools(server: McpServer): void {
           .max(12)
           .optional()
           .describe("Arbitrary project/website links for the page."),
+        nonce: z
+          .string()
+          .max(128)
+          .optional()
+          .describe(
+            "Optional claimant-generated nonce for the handle reservation (hollow path). Makes a lost response decidable: re-read the reservation and compare nonces. Defaults to a server-generated nonce when omitted.",
+          ),
+        claim_code: z
+          .string()
+          .max(16)
+          .optional()
+          .describe(
+            "Optional intro claim code from post_agent_intro — stored as a discoverable index on the reservation, never as a credential.",
+          ),
       }),
       annotations: WRITE,
       _meta: { call_type: "sync" },
@@ -738,7 +753,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Complete agent self-claim",
       description:
-        "Report your own-key signature for a self-claim package. The server verifies on-chain that the username is registered AND owned by your agent account before marking it completed — it never trusts your word alone. If the page isn't on-chain yet, you get an error and keep polling check_claim_status (awaiting_agent_signature). Returns the live page URL when done.",
+        "Report your own-key signature for a self-claim package. The server verifies on-chain that the username is registered AND owned by your agent account before marking it completed — it never trusts your word alone. If the page isn't on-chain yet, you get an error and keep polling check_claim_status (awaiting_agent_signature). When your claim holds a handle reservation (hollow path), also pass funding_txid — the Hedera transaction id that funded your hollow alias; the server verifies it paid your alias and attributes the funder from chain data (declared-then-verified). Returns the live page URL when done.",
       inputSchema: z.object({
         claim_package_id: z
           .string()
@@ -746,6 +761,12 @@ export function registerTools(server: McpServer): void {
         transaction_id: z
           .string()
           .describe("The confirmed Hedera transaction id of your registerPage submission"),
+        funding_txid: z
+          .string()
+          .optional()
+          .describe(
+            "REQUIRED when your claim holds a handle reservation: the Hedera transaction id that funded your hollow alias (e.g. 0.0.1234@1234567890.123456789). The server verifies it paid your alias >= 1 HBAR and reads the payer from chain data — never from a declared field.",
+          ),
       }),
       annotations: WRITE,
       _meta: { call_type: "sync" },
@@ -753,6 +774,32 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("complete_agent_self_claim", async () => {
         const res = await completeAgentSelfClaim(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  server.registerTool(
+    "release_reservation",
+    {
+      title: "Release handle reservation",
+      description:
+        "Release your handle reservation early — same-day availability when your human declines the spend, or release+revoke on compromise (e.g. a leaked claim code). Only the secp256k1 key the reservation is bound to can release it: pass a 128-hex (64-byte raw ECDSA r||s) signature over the UTF-8 bytes of `voicescape:release-reservation:v1:<username>:<reservation_id>` (the reservation_id came back from prepare_agent_self_claim). The intro claim code is public and never a credential. The handle is immediately reservable again — no cooldown. Soft hold, not a lock: a direct on-chain registerPage always wins regardless.",
+      inputSchema: z.object({
+        username: z
+          .string()
+          .describe("The reserved username to release"),
+        signature: z
+          .string()
+          .describe(
+            "128-hex raw ECDSA (r||s) signature over the UTF-8 bytes of `voicescape:release-reservation:v1:<username>:<reservation_id>`, made by the bound secp256k1 key",
+          ),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("release_reservation", async () => {
+        const res = await releaseReservation(args);
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );
