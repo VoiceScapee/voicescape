@@ -28,7 +28,6 @@
  */
 
 import { ethers } from "ethers";
-import { ContractId } from "@hiero-ledger/sdk";
 import { getActiveChain } from "../chains";
 import { computeTrustScore, type TrustScore } from "./trust-score";
 import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
@@ -188,11 +187,21 @@ interface MirrorResultsResponse {
   links?: { next?: string | null };
 }
 
-function contractIdString(registryAddress: string): string {
+/** Exported for tests. */
+export function contractIdString(registryAddress: string): string {
   const a = registryAddress.trim();
   if (/^\d+\.\d+\.\d+$/.test(a)) return a;
-  // Long-zero EVM address -> shard.realm.num (same derivation tx.ts uses).
-  return ContractId.fromEvmAddress(0, 0, a).toString();
+  // Mirror-node REST accepts a 20-byte EVM address directly in the path —
+  // pass it through unchanged, including long-zero form. Do NOT run it
+  // through ContractId.fromEvmAddress(0, 0, a).toString(): for non-long-zero
+  // (CREATE-deployed) addresses that produces a bogus "0.0.<hex>" id which
+  // the mirror node 200s on but returns phantom results for, silently
+  // emptying the directory (root-caused 2026-10-08: /api/agents returned
+  // count 0 while the registry held live registrations).
+  if (/^0x[0-9a-fA-F]{40}$/.test(a)) return a;
+  throw new Error(
+    `Invalid registry address "${registryAddress}" — expected 0.0.N or a 20-byte EVM address.`,
+  );
 }
 
 function mirrorBaseForChain(): string | null {
