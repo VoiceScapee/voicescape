@@ -30,13 +30,13 @@ describe("token-requests issuance links", () => {
     const rec = await createTokenRequest({ label: "muse AI agent" }, store);
     expect(rec.id).toMatch(/^[0-9a-f]{32}$/);
     expect(rec.label).toBe("muse AI agent");
+    // Safe default: the original three propose scopes. Execution scopes
+    // (message:send, availability:write, draft:stage) and the spending scopes
+    // (purchase:propose, review:propose) must always be explicitly requested.
     expect(rec.scopes).toEqual([
       "page:update:propose",
       "page:read",
       "media:pin",
-      "message:send",
-      "availability:write",
-      "draft:stage",
     ]);
     expect(rec.createdAt).toBeGreaterThan(0);
   });
