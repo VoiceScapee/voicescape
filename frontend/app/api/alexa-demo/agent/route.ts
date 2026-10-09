@@ -95,9 +95,11 @@ const SYSTEM_PROMPT =
   '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}]}} ' +
   "Only use these tool names: lookup_blockpage, list_templates, " +
   "blockpage_earnings, list_tip_assets, check_profile_pin. " +
-  "If the user asks for a music blockpage (e.g. 'my music', 'music page'), " +
-  "call lookup_blockpage with username \"ash-rook\" — it is our live music " +
-  "blockpage — and set pageDraft.displayName from it. The server fetches the " +
+  "If the user asks to see a live music blockpage (e.g. 'show me a live " +
+  "music blockpage', 'my music', 'music page'), call lookup_blockpage with " +
+  "username \"ash-rook\" — it is our live music blockpage — and set " +
+  "pageDraft.displayName from it. Frame your spoken summary as showing the " +
+  "live example, not building something new. The server fetches the " +
   "full live page for the preview, so keep your own draft blocks short; the " +
   "real blocks win. Otherwise only include lookup_blockpage when the user " +
   "named a username. " +
