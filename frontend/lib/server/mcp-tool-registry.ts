@@ -79,6 +79,7 @@ import {
   manageMusicTool,
 } from "./mcp-tools-misc";
 import { prepareX402PaymentTool, completeX402PaymentTool } from "./mcp-tools-x402";
+import { prepareAirdropTool, checkPendingAirdropsTool } from "./mcp-tools-airdrop";
 import {
   postWorkshopReport,
   getWorkshopReport,
@@ -110,7 +111,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 57 tools agents actually touch, via
+  // PII. Lets us see which of the 59 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1833,6 +1834,59 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("prepare_tip", async () => {
         const r = await prepareTipTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- prepare_airdrop (HIP-904, unsigned) ------------------- */
+  server.registerTool(
+    "prepare_airdrop",
+    {
+      title: "Prepare airdrop",
+      description:
+        "Build the UNSIGNED HIP-904 TokenAirdropTransaction bytes to distribute HTS tokens or NFT serials to a list of accounts — no pre-association needed. Recipients without an association slot get a PENDING airdrop automatically (they claim it; you can cancel unclaimed ones). Returns the frozen transaction bytes for the SENDER's own Hedera key to sign, plus best-effort ownership/balance pre-checks. This server never signs and never holds keys — you sign and submit. The sender pays all network fees, custom fees, royalties, and association rent; the platform pays and takes nothing. Check what's pending with check_pending_airdrops.",
+      inputSchema: z.object({
+        sender_account_id: z.string().describe("Sender's 0.0.x account id — must hold the tokens; pays all fees"),
+        token_id: z.string().describe("Token being airdropped, e.g. 0.0.123456 (fungible or NFT collection)"),
+        recipients: z
+          .array(
+            z.object({
+              account_id: z.string().describe("Recipient 0.0.x account id"),
+              amount: z.string().optional().describe("Fungible amount in the token's smallest unit (integer string)"),
+              serial_numbers: z
+                .array(z.number().int().positive())
+                .optional()
+                .describe("NFT serial numbers to send"),
+            }),
+          )
+          .min(1)
+          .max(50)
+          .describe("1-50 recipients; each gives either amount OR serial_numbers, not both"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_airdrop", async () => {
+        const r = await prepareAirdropTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- check_pending_airdrops (read-only) ------------------- */
+  server.registerTool(
+    "check_pending_airdrops",
+    {
+      title: "Check pending airdrops",
+      description:
+        "List an account's pending HIP-904 airdrops from the Hedera mirror node — tokens/NFTs waiting for the account to claim (the receiver never needed pre-association). Read-only; honest empty result when nothing is pending.",
+      inputSchema: z.object({
+        account_id: z.string().describe("Account to check, e.g. 0.0.123456"),
+      }),
+      annotations: READONLY,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("check_pending_airdrops", async () => {
+        const r = await checkPendingAirdropsTool(args);
         return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );

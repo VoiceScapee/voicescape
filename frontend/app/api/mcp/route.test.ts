@@ -111,11 +111,11 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("lists all 57 tools with human-readable titles", async () => {
+  it("lists all 59 tools with human-readable titles", async () => {
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(57);
+      expect(tools).toHaveLength(59);
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.description, t.name).toBeTruthy();

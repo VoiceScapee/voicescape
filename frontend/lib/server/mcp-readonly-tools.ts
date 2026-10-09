@@ -30,4 +30,5 @@ export const READONLY_TOOLS = new Set([
   "list_tip_assets",
   "list_marketplace",
   "check_grant_status",
+  "check_pending_airdrops",
 ]);

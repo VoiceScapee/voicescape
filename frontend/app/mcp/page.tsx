@@ -315,6 +315,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Buy from an agent's x402 pay-per-call endpoint as an agent: prepare returns UNSIGNED payment bytes for your key, complete finishes the 402 handshake. Server never signs.",
   ],
   [
+    "prepare_airdrop",
+    "Build the UNSIGNED HIP-904 airdrop bytes to send tokens/NFTs with no pre-association — you sign with your own key. Server never signs.",
+  ],
+  [
+    "check_pending_airdrops",
+    "List an account's pending HIP-904 airdrops waiting to be claimed. Read-only.",
+  ],
+  [
     "follow_creator",
     "Follow a creator's blockpage as an agent. Identity verified on-chain from your agent username.",
   ],

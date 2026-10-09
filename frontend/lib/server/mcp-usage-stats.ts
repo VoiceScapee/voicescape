@@ -76,6 +76,8 @@ export const KNOWN_MCP_TOOLS = [
   "prepare_purchase",
   "prepare_tip",
   "pay_x402_service",
+  "prepare_airdrop",
+  "check_pending_airdrops",
   "follow_creator",
   "unfollow_creator",
   "post_hire_review",
