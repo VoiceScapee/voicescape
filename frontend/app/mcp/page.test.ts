@@ -79,7 +79,10 @@ describe("MCP call-to-action page (/mcp)", () => {
   });
 
   it("has no operator tier anymore: public tools only", () => {
-    expect(pageSrc).not.toMatch(/prepare_tip/);
+    // prepare_tip used to be the example here — it is a PUBLIC tool now
+    // (unsigned tipPage for agent keys), so the operator-only example is
+    // delete_workshop_reply instead.
+    expect(pageSrc).not.toMatch(/delete_workshop_reply/);
     expect(pageSrc).not.toMatch(/prepare_contract_call/);
     expect(pageSrc).not.toMatch(/operator/i);
     // The headline count is derived from PUBLIC_TOOLS.length — never a
