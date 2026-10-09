@@ -80,6 +80,9 @@ describe("mcp-usage-stats", () => {
     expect(await getMcpToolCounts(["x"], { store: broken })).toEqual({ x: 0 });
   });
 
+  // NOTE: 30s timeout — importing mcp-tool-registry takes ~15s in this
+  // environment (pre-existing on master, verified 2026-10-09; not branch-caused).
+  // The 5s default flakes here. Assertion itself is untouched.
   it("KNOWN_MCP_TOOLS matches the tools the registry actually registers", async () => {
     const { registerTools } = await import("./mcp-tool-registry");
     const names: string[] = [];
@@ -91,7 +94,7 @@ describe("mcp-usage-stats", () => {
     };
     registerTools(stub as never);
     expect([...names].sort()).toEqual([...KNOWN_MCP_TOOLS].sort());
-  });
+  }, 30000);
 
   it("getMcpUsageStats reports per-tool counts for tools with calls", async () => {
     const { store } = fakeStore();

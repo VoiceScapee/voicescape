@@ -15,6 +15,7 @@ const HIDDEN: BlockType[] = [
   "tabs",
   "operator",
   "capabilities",
+  "nftGallery",
 ];
 
 describe("PICKER_BLOCK_TYPES", () => {

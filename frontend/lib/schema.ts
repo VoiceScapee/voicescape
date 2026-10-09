@@ -34,6 +34,14 @@ export type Block =
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
   | { type: "music"; title?: string; tracks: MusicTrack[]; note?: string }
   | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // ":logo:" renders the first-party Voicescape logo; emoji still work; https: URLs (e.g. Buddy-generated IPFS artwork) render as images via safeImageUrl.
+  /**
+   * NFT Gallery: the owner's HTS NFT collection, read LIVE from the
+   * mirror node (token_id = 0.0.x). Artwork resolves through each NFT's
+   * wallet-readable (HIP-412) metadata JSON — the same document
+   * HashPack's NFT gallery reads. The block never custodies anything;
+   * buying happens through the existing marketplace flow.
+   */
+  | { type: "nftGallery"; token_id: string; title?: string }
   | { type: "top8"; title?: string; friends: { name: string; avatarEmoji?: string; url?: string }[] }
   // ---- Phase B (agent + commerce) blocks ----
   /** Paid API services an agent sells per call. "Pay per call" runs the x402 payment flow. */
@@ -190,6 +198,7 @@ export const BLOCK_TYPES = [
   "guestbook",
   "music",
   "gallery",
+  "nftGallery",
   "top8",
   "services",
   "capabilities",
@@ -230,6 +239,9 @@ const PICKER_HIDDEN: ReadonlySet<BlockType> = new Set([
   "tabs",
   "operator",
   "capabilities",
+  // nftGallery: showing an HTS drop isn't a first-timer job — agent
+  // templates and the NFT-drop onboarding flow pre-include the block.
+  "nftGallery",
 ]);
 
 export const PICKER_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter(
@@ -262,6 +274,8 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
       return { type: "music", title: "My music", tracks: [] };
     case "gallery":
       return { type: "gallery", images: ["🎨", "📸", "✨"] };
+    case "nftGallery":
+      return { type: "nftGallery", token_id: "", title: "NFT Gallery" };
     case "top8":
       return { type: "top8", title: "Top 8", friends: [] };
     case "services":
@@ -333,6 +347,15 @@ export function isValidPage(input: unknown): input is VoicescapePage {
       if (lb.platform !== "twitch" && lb.platform !== "youtube") return false;
       if (typeof lb.channel !== "string" || lb.channel.length > 64) return false;
       if (lb.title !== undefined && typeof lb.title !== "string") return false;
+    }
+    // NFT Gallery: token_id is the HTS collection (0.0.x); empty means
+    // the owner hasn't linked a collection yet — renders an honest
+    // empty state, never a broken one.
+    if (type === "nftGallery") {
+      const ng = b as Record<string, unknown>;
+      if (typeof ng.token_id !== "string" || ng.token_id.length > 32) return false;
+      if (ng.token_id && !/^0\.0\.\d+$/.test(ng.token_id)) return false;
+      if (ng.title !== undefined && typeof ng.title !== "string") return false;
     }
     // Chat blocks: optional title only.
     if (type === "chat") {
@@ -552,6 +575,14 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       if (effect === "dance" || effect === "marquee" || effect === "float")
         gallery.effect = effect;
       return gallery as unknown as Block;
+    }
+    case "nftGallery": {
+      const rawId = str(b.token_id) ?? "";
+      const tid = /^0\.0\.\d+$/.test(rawId.trim()) ? rawId.trim() : "";
+      const ng: Record<string, unknown> = { type: "nftGallery", token_id: tid };
+      const title = str(b.title);
+      if (title !== undefined) ng.title = title.slice(0, 60);
+      return ng as unknown as Block;
     }
     case "top8": {
       const top8: Record<string, unknown> = {
