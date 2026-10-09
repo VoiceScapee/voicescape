@@ -1412,13 +1412,12 @@ describe("propose_page_update tool", () => {
       };
       expect(ok.request_id).toMatch(/^[0-9a-f]{32}$/);
       expect(ok.label).toBe("muse AI agent");
+      // Safe default: the original three propose scopes. Execution scopes
+      // and spending scopes must always be explicitly requested.
       expect(ok.scopes).toEqual([
         "page:update:propose",
         "page:read",
         "media:pin",
-        "message:send",
-        "availability:write",
-        "draft:stage",
       ]);
       expect(ok.issuance_url).toMatch(new RegExp(`/t/${ok.request_id}$`));
       expect(ok.expires_in).toBe("24h");
