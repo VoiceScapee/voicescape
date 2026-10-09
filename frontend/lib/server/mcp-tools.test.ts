@@ -1573,15 +1573,13 @@ describe("execution scopes", () => {
   });
 
   async function issueV2(
-    scopes: ("page:update:propose" | "page:read" | "media:pin" | "message:send" | "availability:write" | "draft:stage")[],
-    opts?: { feeBudgetHbar?: number },
+    scopes: ("page:update:propose" | "page:read" | "media:pin" | "availability:write" | "draft:stage")[],
   ) {
     const { issueCapabilityToken } = await import("./capability-tokens");
     const { token, record } = await issueCapabilityToken(OWNER, {
       label: "v2test",
       scopes,
       version: 2,
-      ...opts,
     });
     return { token, record };
   }
@@ -1752,83 +1750,18 @@ describe("execution scopes", () => {
     });
   });
 
-  describe("send_agent_message", () => {
-    it("fails closed on a bad capability token", async () => {
-      const { sendAgentMessage } = await import("./mcp-tools");
-      const res = await sendAgentMessage(
-        { capability_token: "vs_cap_" + "2".repeat(48), agent_username: "forge", room: "lobby", body: "hi" },
-        agentPageFetch(),
-      );
-      expect("error" in res).toBe(true);
-      expect((res as { error: string }).error).toMatch(/capability token/i);
-    });
-
-    it("blocks unsafe content before anything else", async () => {
-      const { sendAgentMessage } = await import("./mcp-tools");
-      const { token } = await issueV2(["message:send"], { feeBudgetHbar: 1 });
-      const res = await sendAgentMessage(
-        { capability_token: token, agent_username: "forge", room: "lobby", body: "I will kill you" },
-        agentPageFetch(),
-      );
-      expect("error" in res).toBe(true);
-      expect((res as { error: string }).error).toMatch(/blocked/i);
-    });
-
-    it("refuses clearly when the HCS relay is not wired", async () => {
-      const { sendAgentMessage } = await import("./mcp-tools");
-      const savedKey = process.env.HCS_SENDER_KEY;
-      const savedAcct = process.env.HCS_SENDER_ACCOUNT_ID;
-      delete process.env.HCS_SENDER_KEY;
-      delete process.env.HCS_SENDER_ACCOUNT_ID;
-      try {
-        const { token } = await issueV2(["message:send"], { feeBudgetHbar: 1 });
-        const res = await sendAgentMessage(
-          { capability_token: token, agent_username: "forge", room: "lobby", body: "hello town hall" },
-          agentPageFetch(),
-        );
-        expect("error" in res).toBe(true);
-        expect((res as { error: string }).error).toMatch(/not wired/i);
-      } finally {
-        if (savedKey !== undefined) process.env.HCS_SENDER_KEY = savedKey;
-        if (savedAcct !== undefined) process.env.HCS_SENDER_ACCOUNT_ID = savedAcct;
-      }
-    });
-
-    it("fails closed with no fee budget (relay wired)", async () => {
-      const { sendAgentMessage } = await import("./mcp-tools");
-      process.env.HCS_SENDER_KEY = "test-dummy-key";
-      process.env.HCS_SENDER_ACCOUNT_ID = "0.0.999001";
-      try {
-        const { token } = await issueV2(["message:send"]); // no budget
-        const res = await sendAgentMessage(
-          { capability_token: token, agent_username: "forge", room: "lobby", body: "hello town hall" },
-          agentPageFetch(),
-        );
-        expect("error" in res).toBe(true);
-        expect((res as { error: string }).error).toMatch(/fee budget/i);
-      } finally {
-        delete process.env.HCS_SENDER_KEY;
-        delete process.env.HCS_SENDER_ACCOUNT_ID;
-      }
-    });
-  });
-
   describe("check_grant_status", () => {
     it("reports scopes, no-expiry, budgets, and audit trail", async () => {
       const { checkGrantStatus } = await import("./mcp-tools");
-      const { token, record } = await issueV2(["message:send", "availability:write"], {
-        feeBudgetHbar: 2,
-      });
+      const { token, record } = await issueV2(["availability:write"]);
       const res = await checkGrantStatus({ capability_token: token });
       expect("error" in res).toBe(false);
       if ("error" in res) return;
       expect(res.ok).toBe(true);
       expect(res.version).toBe(2);
       expect(res.expires).toBe("never");
-      expect(res.scopes.map((s) => s.scope).sort()).toEqual(["availability:write", "message:send"]);
-      expect(res.daily_budgets_remaining["message:send"]).toBe(20);
-      expect(res.fee_budget_hbar).toBe(2);
-      expect(res.fee_budget_remaining_hbar).toBe(2);
+      expect(res.scopes.map((s) => s.scope).sort()).toEqual(["availability:write"]);
+      expect(res.daily_budgets_remaining["availability:write"]).toBe(10);
       expect(res.recent_audit.some((e) => e.action === "issued")).toBe(true);
       expect(JSON.stringify(res)).not.toContain(token);
     });

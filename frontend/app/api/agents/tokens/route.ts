@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
       scopes: record.scopes,
       version: 2,
       expires_at: record.expiresAt,
-      note: "This token is shown once — store it in secure credential storage. It cannot sign anything. Propose-only scopes need your tap per proposal; execution scopes (message:send, availability:write, draft:stage) act immediately inside daily limits and are audit-logged. The token does not expire; revoke it instantly from this card.",
+      note: "This token is shown once — store it in secure credential storage. It cannot sign anything. Propose-only scopes need your tap per proposal; execution scopes (availability:write, draft:stage) act immediately inside daily limits and are audit-logged. All pass actions are free — no gas, no fees. The token does not expire; revoke it instantly from this card.",
     });
   } catch (e) {
     return NextResponse.json(

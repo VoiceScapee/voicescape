@@ -16,7 +16,6 @@ import {
   readTokenAudit,
   consumeScopeBudget,
   remainingScopeBudget,
-  recordFeeSpend,
   stageDraft,
   readDraft,
   TOKEN_TTL_MS,
@@ -132,32 +131,29 @@ describe("capability-tokens v2 — execution scopes", () => {
       OWNER,
       {
         label: "v2",
-        scopes: ["message:send", "availability:write", "draft:stage"],
+        scopes: ["availability:write", "draft:stage"],
         version: 2,
       },
       store,
     );
     expect(record.version).toBe(2);
     expect(record.expiresAt).toBeNull();
-    expect(record.scopes).toEqual(["message:send", "availability:write", "draft:stage"]);
+    expect(record.scopes).toEqual(["availability:write", "draft:stage"]);
     // v1 default preserved
     const v1 = await issueCapabilityToken(OWNER, { label: "v1" }, store);
     expect(v1.record.version).toBe(1);
     expect(v1.record.expiresAt).not.toBeNull();
 
-    const v = await validateCapabilityToken(token, "message:send", store);
+    const v = await validateCapabilityToken(token, "availability:write", store);
     expect(v).not.toBeNull();
     // v1 token does not carry the new scope
-    expect(await validateCapabilityToken(v1.token, "message:send", store)).toBeNull();
+    expect(await validateCapabilityToken(v1.token, "availability:write", store)).toBeNull();
   });
 
-  it("rejects unknown v2 scopes and bad fee budgets at issuance", async () => {
+  it("rejects unknown v2 scopes and bad agent accounts at issuance", async () => {
     const store = fakeStore();
     await expect(
       issueCapabilityToken(OWNER, { label: "x", scopes: ["chat:nuke"] as never }, store),
-    ).rejects.toThrow();
-    await expect(
-      issueCapabilityToken(OWNER, { label: "x", version: 2, feeBudgetHbar: 99 }, store),
     ).rejects.toThrow();
     await expect(
       issueCapabilityToken(OWNER, { label: "x", version: 2, agentAccountId: "nope" }, store),
@@ -199,22 +195,6 @@ describe("capability-tokens v2 — execution scopes", () => {
     expect(await remainingScopeBudget(other.record.tokenHash, "availability:write", store)).toBe(10);
   });
 
-  it("fee spend accounting enforces the budget", async () => {
-    const store = fakeStore();
-    const { record } = await issueCapabilityToken(
-      OWNER,
-      { label: "fee", scopes: ["message:send"], version: 2, feeBudgetHbar: 1 },
-      store,
-    );
-    expect(await recordFeeSpend(record, 0.001, store)).toBeCloseTo(0.001, 6);
-    expect(await recordFeeSpend(record, 0.999, store)).toBeCloseTo(1, 6);
-    // would exceed → null, spend unchanged
-    expect(await recordFeeSpend(record, 0.001, store)).toBeNull();
-    // no budget → null
-    const nobudget = await issueCapabilityToken(OWNER, { label: "nb", scopes: ["message:send"], version: 2 }, store);
-    expect(await recordFeeSpend(nobudget.record, 0.001, store)).toBeNull();
-  });
-
   it("draft staging round-trips, latest wins", async () => {
     const store = fakeStore();
     const { record } = await issueCapabilityToken(OWNER, { label: "d", version: 2 }, store);
@@ -230,11 +210,11 @@ describe("capability-tokens v2 — execution scopes", () => {
     const store = fakeStore();
     const { token, record } = await issueCapabilityToken(
       OWNER,
-      { label: "rev", scopes: ["message:send"], version: 2 },
+      { label: "rev", scopes: ["availability:write"], version: 2 },
       store,
     );
     expect(await revokeCapabilityToken(OWNER, record.id, store)).toBe(true);
-    expect(await validateCapabilityToken(token, "message:send", store)).toBeNull();
+    expect(await validateCapabilityToken(token, "availability:write", store)).toBeNull();
     expect(await validateCapabilityTokenLive(token, store)).toBeNull();
     const log = await readTokenAudit(record.id, store);
     expect(log[log.length - 1].action).toBe("revoked");

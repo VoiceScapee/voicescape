@@ -5,15 +5,19 @@
  * let a keyless AI agent SUBMIT proposals (page content updates) to its
  * human's approval inbox. v2 (execution scopes) additionally lets the agent
  * ACT directly — but ONLY on server-side state, inside pre-approved walls:
- * posting chat/forum messages (message:send), setting its availability
- * flag (availability:write), and staging page drafts (draft:stage).
+ * setting its availability flag (availability:write) and staging page
+ * drafts (draft:stage).
+ *
+ * Agents NEVER use the server's keys. Posting chat messages, signing, or
+ * any chain write needs the agent's OWN Hedera key — see
+ * prepare_agent_self_claim. A keyless agent's chat path is proposals with
+ * a per-tap human approval.
  *
  * What execution scopes can NEVER do:
  * - Move funds, change ownership, or touch keys. Chain writes need a real
  *   key signature: the agent's own key, or the human's per-tap signature.
- * - Spend the human's money except through Hedera-native allowances the
- *   human approved in their own wallet (HCS message fees, flat 0.001 HBAR
- *   per message, drawn via approved transfer — see hcs-operator.ts).
+ * - Spend the human's money. (purchase:propose only asks for per-tap
+ *   approval; the human signs the actual spend in their own wallet.)
  * - Publish a page change on-chain. draft:stage stages content for the
  *   human's review; the on-chain hash update still needs the human's key.
  *
@@ -24,14 +28,13 @@
  *   tokens are rejected, and comparison is constant-time.
  * - Scope is an allow-list. Only the scopes in CAPABILITY_SCOPES exist;
  *   nothing else can be granted: page:update:propose, page:read, media:pin,
- *   message:send, availability:write, draft:stage, purchase:propose,
- *   review:propose.
+ *   availability:write, draft:stage, purchase:propose, review:propose.
  * - Revocation is instant: deleting the KV record makes the next attempt
  *   fail closed. There is no on-chain delegate to unwind because the
  *   server never holds any key on the human's account.
  * - v1 tokens expire after 30 days. v2 tokens do NOT expire by default
- *   (Brandon, 2026-10-08) — the human's ongoing controls are the finite
- *   fee budget, instant revocation, and the audit trail.
+ *   (Brandon, 2026-10-08) — the human's ongoing controls are instant
+ *   revocation, the daily rate limits, and the audit trail.
  * - Execution scopes are rate-limited per token per day, and every
  *   execution is audit-logged (append-only, human-readable).
  */
@@ -43,7 +46,6 @@ export const CAPABILITY_SCOPES = [
   "page:update:propose",
   "page:read",
   "media:pin",
-  "message:send",
   "availability:write",
   "draft:stage",
   "purchase:propose",
@@ -71,7 +73,6 @@ const TOKEN_PREFIX = "vs_cap_";
 
 /** Per-scope daily execution caps for the v2 execution scopes. */
 export const SCOPE_DAILY_LIMITS: Partial<Record<CapabilityScope, number>> = {
-  "message:send": 20,
   "availability:write": 10,
   "draft:stage": 10,
 };
@@ -104,12 +105,6 @@ export interface CapabilityTokenRecord {
   version: 1 | 2;
   /** The agent's own Hedera account, when it has one (allowance reference). */
   agentAccountId?: string;
-  /** Human-approved HCS fee budget in HBAR for message:send (allowance to operator). */
-  feeBudgetHbar?: number;
-  /** Fee budget consumed so far, in HBAR. */
-  feeSpentHbar?: number;
-  /** Mirror-node tx id of the fee-allowance approval, for audit. */
-  feeAllowanceRef?: string;
 }
 
 export interface IssuedToken {
@@ -163,7 +158,7 @@ async function writeOwnerIndex(owner: string, ids: string[], store: KvStore, ttl
  * Returns the raw token ONCE — it is never retrievable afterwards.
  *
  * v2 (execution scopes): pass version: 2, expiresAt: null for no expiry,
- * and optional feeBudgetHbar / agentAccountId. v1 behavior (30-day expiry,
+ * and optional agentAccountId. v1 behavior (30-day expiry,
  * propose-only) is preserved when version is omitted.
  */
 export async function issueCapabilityToken(
@@ -175,9 +170,6 @@ export async function issueCapabilityToken(
     /** null = no expiry (v2 default). Omit = 30 days (v1 default). */
     expiresAt?: number | null;
     agentAccountId?: string;
-    /** Human-approved HCS fee budget in HBAR (1–5 band). */
-    feeBudgetHbar?: number;
-    feeAllowanceRef?: string;
   },
   store: KvStore = getKvStore(),
 ): Promise<IssuedToken> {
@@ -204,15 +196,6 @@ export async function issueCapabilityToken(
     if (!/^\d+\.\d+\.\d+$/.test(a)) throw new Error("capability-tokens: bad agent account id");
     agentAccountId = a;
   }
-  let feeBudgetHbar: number | undefined;
-  if (opts.feeBudgetHbar !== undefined) {
-    const f = Number(opts.feeBudgetHbar);
-    if (!Number.isFinite(f) || f < 0 || f > 5) {
-      throw new Error("capability-tokens: fee budget must be 0–5 HBAR");
-    }
-    feeBudgetHbar = Math.round(f * 1000) / 1000;
-  }
-
   const id = randomBytes(8).toString("hex");
   const raw = TOKEN_PREFIX + randomBytes(24).toString("hex");
   const now = Date.now();
@@ -234,8 +217,6 @@ export async function issueCapabilityToken(
     lastUsedAt: null,
     version,
     ...(agentAccountId ? { agentAccountId } : {}),
-    ...(feeBudgetHbar !== undefined ? { feeBudgetHbar, feeSpentHbar: 0 } : {}),
-    ...(opts.feeAllowanceRef ? { feeAllowanceRef: opts.feeAllowanceRef.slice(0, 120) } : {}),
   };
   const ttlMs = record.expiresAt === null ? NO_EXPIRY_TTL_MS : Math.max(record.expiresAt - now, 1_000);
   await store.set(KEY_BY_HASH + record.tokenHash, JSON.stringify(record), ttlMs);
@@ -511,37 +492,6 @@ export async function remainingScopeBudget(
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* Fee budget accounting (message:send draws)                           */
-/* ------------------------------------------------------------------ */
-
-/**
- * Record a fee draw against the token's human-approved fee budget.
- * Returns the new feeSpentHbar, or null when there is no budget or the
- * draw would exceed it. Persists to both hash and id records.
- */
-export async function recordFeeSpend(
-  record: CapabilityTokenRecord,
-  amountHbar: number,
-  store: KvStore = getKvStore(),
-): Promise<number | null> {
-  try {
-    const budget = record.feeBudgetHbar;
-    if (budget === undefined) return null;
-    const spent = record.feeSpentHbar ?? 0;
-    const next = Math.round((spent + amountHbar) * 1_000_000) / 1_000_000;
-    if (next - budget > 1e-9) return null; // would exceed budget
-    record.feeSpentHbar = next;
-    record.lastUsedAt = Date.now();
-    const body = JSON.stringify(record);
-    const ttlMs = ttlFor(record);
-    await store.set(KEY_BY_HASH + record.tokenHash, body, ttlMs);
-    await store.set(KEY_BY_ID + record.id, body, ttlMs);
-    return next;
-  } catch {
-    return null;
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* Staged page drafts (draft:stage scope)                               */
