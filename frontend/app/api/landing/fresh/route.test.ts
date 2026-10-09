@@ -123,7 +123,7 @@ describe("GET /api/landing/fresh", () => {
     expect(json.pages.map((p) => p.username)).toEqual(["goodpage"]);
   });
 
-  it("dedupes re-registrations keeping the latest, and excludes curated pages", async () => {
+  it("dedupes re-registrations keeping the latest, and hides test pages", async () => {
     stubMirror(
       mirrorResults([
         {
@@ -137,9 +137,14 @@ describe("GET /api/landing/fresh", () => {
           timestamp: "1791390000.000000000",
         },
         {
-          function_parameters: registerCalldata("forge", 1),
+          function_parameters: registerCalldata("danny", 1),
           error_message: null,
           timestamp: "1791480001.000000000",
+        },
+        {
+          function_parameters: registerCalldata("human-test-0913", 0),
+          error_message: null,
+          timestamp: "1791480002.000000000",
         },
       ]),
     );

@@ -42,11 +42,16 @@ describe("FreshBlockpages (landing section)", () => {
     expect(src).not.toMatch(/join thousands|trusted by|millions/i);
   });
 
-  it("is mounted on the landing page below the featured section", () => {
+  it("is mounted on the landing page below the lobby preview", () => {
     expect(pageSrc).toContain("<FreshBlockpages />");
-    const featIdx = pageSrc.indexOf("<FeaturedBlockpages />");
+    const chatIdx = pageSrc.indexOf("<ChatPreview />");
     const freshIdx = pageSrc.indexOf("<FreshBlockpages />");
-    expect(featIdx).toBeGreaterThanOrEqual(0);
-    expect(freshIdx).toBeGreaterThan(featIdx);
+    expect(chatIdx).toBeGreaterThanOrEqual(0);
+    expect(freshIdx).toBeGreaterThan(chatIdx);
+  });
+
+  it("is the only blockpage showcase section on the landing page", () => {
+    expect(pageSrc).not.toContain("<FeaturedBlockpages />");
+    expect(pageSrc).not.toContain("components/landing/FeaturedBlockpages");
   });
 });

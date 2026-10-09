@@ -35,8 +35,12 @@ const REGISTER_PAGE_SELECTOR = ethers
 const REGISTER_PAGE_TYPES = ["string", "string", "uint8", "address", "string"] as const;
 const ABI_CODER = new ethers.AbiCoder();
 
-/** Usernames already shown in the curated featured section — don't repeat cards. */
-const CURATED_USERNAMES = new Set(["user-10424063", "bacon-the-dino", "forge", "ash-rook"]);
+/**
+ * Internal test/dev pages — never showcase these as fresh. (Brandon's call
+ * 2026-10-08: the landing list is for real new pages earning views.)
+ * Add a username here if another test page pops up.
+ */
+const HIDDEN_USERNAMES = new Set(["danny", "danny-debug-1", "human-test-0913"]);
 
 /** How many fresh pages to show. */
 const MAX_FRESH_PAGES = 8;
@@ -122,7 +126,7 @@ async function recentRegistrations(): Promise<Registration[]> {
         continue; // undecodable calldata — skip
       }
       const key = username.toLowerCase();
-      if (!key || CURATED_USERNAMES.has(key) || seen.has(key)) continue;
+      if (!key || HIDDEN_USERNAMES.has(key) || seen.has(key)) continue;
       const ts = r.timestamp ? Math.floor(Number(r.timestamp)) : 0;
       seen.set(key, { username, ownerType, registeredAt: ts });
     }

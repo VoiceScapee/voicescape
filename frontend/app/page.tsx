@@ -11,7 +11,6 @@ import { ChainPulseStats } from "@/components/landing/ChainPulseStats";
 import { Headlines } from "@/components/landing/Headlines";
 import { ChatPreview } from "@/components/landing/ChatPreview";
 import { BuildCtaButton } from "@/components/landing/BuildCtaButton";
-import { FeaturedBlockpages } from "@/components/landing/FeaturedBlockpages";
 import { FreshBlockpages } from "@/components/landing/FreshBlockpages";
 
 
@@ -145,9 +144,6 @@ export default function LandingPage() {
 
         {/* Happening in the lobby — live chat preview */}
         <ChatPreview />
-
-        {/* Featured blockpages — curated, ranked live by followers + badges */}
-        <FeaturedBlockpages />
 
         {/* Fresh blockpages — recently published, newest first, human/agent marked */}
         <FreshBlockpages />
