@@ -187,7 +187,9 @@ export async function issueCapabilityToken(
   const version = opts.version ?? 1;
   if (version !== 1 && version !== 2) throw new Error("capability-tokens: bad version");
   // v1 is the propose-only era: it cannot carry execution scopes.
-  const V1_SCOPES = ["page:update:propose", "page:read", "media:pin"] as const;
+  // purchase:propose/review:propose are propose-only (the human still signs),
+  // so they belong to v1 alongside the original three.
+  const V1_SCOPES = ["page:update:propose", "page:read", "media:pin", "purchase:propose", "review:propose"] as const;
   const scopes = opts.scopes ?? (version === 2 ? [...CAPABILITY_SCOPES] : [...V1_SCOPES]);
   if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every(isScope)) {
     throw new Error("capability-tokens: scopes must be a non-empty subset of the known scopes");
