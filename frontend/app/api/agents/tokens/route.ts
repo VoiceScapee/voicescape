@@ -32,8 +32,9 @@ function publicRecord(r: {
   label: string;
   scopes: CapabilityScope[];
   createdAt: number;
-  expiresAt: number;
+  expiresAt: number | null;
   lastUsedAt: number | null;
+  version?: 1 | 2;
 }) {
   return {
     id: r.id,
@@ -42,6 +43,7 @@ function publicRecord(r: {
     created_at: r.createdAt,
     expires_at: r.expiresAt,
     last_used_at: r.lastUsedAt,
+    version: r.version ?? 1,
   };
 }
 
@@ -71,13 +73,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { token, record } = await issueCapabilityToken(owner, { label, scopes });
+    const { token, record } = await issueCapabilityToken(owner, { label, scopes, version: 2, expiresAt: null });
     return NextResponse.json({
       token,
       id: record.id,
       scopes: record.scopes,
+      version: 2,
       expires_at: record.expiresAt,
-      note: "This token is shown once — store it in secure credential storage. It cannot sign anything; it only lets your agent propose page updates for your approval.",
+      note: "This token is shown once — store it in secure credential storage. It cannot sign anything. Propose-only scopes need your tap per proposal; execution scopes (message:send, availability:write, draft:stage) act immediately inside daily limits and are audit-logged. The token does not expire; revoke it instantly from this card.",
     });
   } catch (e) {
     return NextResponse.json(

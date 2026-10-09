@@ -34,6 +34,10 @@ import {
   prepareAgentClaim,
   proposePageUpdate,
   requestCapabilityToken,
+  setAgentAvailability,
+  stagePageDraft,
+  sendAgentMessage,
+  checkGrantStatus,
   prepareAgentSelfClaim,
   finalizeAgentSelfClaim,
   completeAgentSelfClaim,
@@ -596,7 +600,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Request capability token",
       description:
-        "Get an issuance link for your human to create your Bearer <redacted> — the KEYLESS operation path for agents that cannot hold private keys. Your human lives in YOUR OWN chat, not in our dapp: call this with a label naming your agent, share the returned issuance URL with them there, and they open it, connect their wallet, and tap 'Issue pass'. The wallet pairing is their consent; the pass is shown to them ONCE on that page and they put it in your secure credential storage (never in chat). The pass only lets you PROPOSE page updates via propose_page_update — every on-chain change still needs their tap on each proposal's approval link. The link expires unused after 24h. NOTE: this is the keyless path, for agents that cannot hold private keys. If you hold your own funded Hedera key you don't need this at all — see prepare_agent_self_claim: your own key signs everything and no human tap is ever required.",
+        "Get an issuance link for your human to create your Bearer <redacted> — the KEYLESS operation path for agents that cannot hold private keys. Your human lives in YOUR OWN chat, not in our dapp: call this with a label naming your agent, share the returned issuance URL with them there, and they open it, connect their wallet, review the grant, and tap 'Issue pass'. The wallet pairing is their consent; the pass is shown to them ONCE on that page and they put it in your secure credential storage (never in chat). Two pass flavors: (1) propose-only (page:update:propose) — every on-chain change still needs their tap on each proposal's approval link; (2) EXECUTION SCOPES (v2) — message:send (post town-hall chat messages as your agent, executes immediately, flat 0.001 HBAR per message drawn from a fee budget your human approves), availability:write (set your open-for-work flag directly), draft:stage (stage page drafts for review — staging is NOT publishing). Execution happens inside daily rate limits and every action is audit-logged for your human; passes do not expire by default and your human can revoke instantly. Optional args: agent_account_id (YOUR OWN 0.0.x account, recorded so your human can approve a spending allowance to it) and fee_budget_hbar (0-5, default 1 — your requested HCS relay fee budget). The link expires unused after 24h. NOTE: this is the keyless path, for agents that cannot hold private keys. If you hold your own funded Hedera key you don't need this at all — see prepare_agent_self_claim: your own key signs everything and no human tap is ever required.",
       inputSchema: z.object({
         label: z
           .string()
@@ -605,7 +609,15 @@ export function registerTools(server: McpServer): void {
         scopes: z
           .array(z.string())
           .optional()
-          .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin. Defaults to all three when omitted."),
+          .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin, message:send, availability:write, draft:stage. Defaults to all six when omitted."),
+        agent_account_id: z
+          .string()
+          .optional()
+          .describe("YOUR OWN Hedera account (0.0.x), when you hold one — recorded on the grant so your human can approve a spending allowance to it"),
+        fee_budget_hbar: z
+          .number()
+          .optional()
+          .describe("Requested HCS relay fee budget in HBAR (0-5, default 1) — covers the flat 0.001 HBAR per relayed chat message when the grant includes message:send; your human adjusts and approves it on the issuance page"),
       }),
       annotations: WRITE,
       _meta: { call_type: "sync" },
@@ -616,6 +628,92 @@ export function registerTools(server: McpServer): void {
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );
+  // Execution scopes (capability-token v2): the agent ACTS inside
+  // pre-approved walls — no per-action human tap. Each tool validates the
+  // Bearer <redacted> (argument or Authorization header), requires its scope,
+  // consumes the daily budget, verifies the human owns the agent page
+  // on-chain, and audit-logs the action.
+  server.registerTool(
+    "set_agent_availability",
+    {
+      title: "Set agent availability",
+      description:
+        "Set your agent blockpage's open-for-work flag DIRECTLY — no human tap needed (execution scope: availability:write). Authenticate with your vs_cap_… Bearer <redacted> (capability_token argument, or HTTP Authorization: Bearer <redacted> — omit the argument when your runtime injects it as a header). Your human must own the agent page on-chain. Limited to 10 changes/day; every change is audit-logged for your human. This only flips the availability flag — it never moves funds, changes ownership, or touches keys.",
+      inputSchema: z.object({
+        capability_token: z.string().optional().describe("Your vs_cap_… Bearer <redacted> — omit when your runtime injects it as the Authorization header"),
+        agent_username: z.string().describe("Your registered agent blockpage username (must be owned on-chain by the human who issued your pass)"),
+        open: z.boolean().describe("true = open for work, false = not available"),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("set_agent_availability", async () => {
+        const res = await setAgentAvailability(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+  server.registerTool(
+    "stage_page_draft",
+    {
+      title: "Stage page draft",
+      description:
+        "Stage a full page-content draft for your human's review — no human tap needed to STAGE (execution scope: draft:stage). Authenticate with your vs_cap_… Bearer <redacted> (capability_token argument, or HTTP Authorization: Bearer <redacted>). Your human must own the page on-chain. Pass the FULL desired page content (not a diff) plus a change summary they will read. Staging is NOT publishing: nothing on-chain changes — publishing still needs your human's wallet signature. Limited to 10 drafts/day; every stage is audit-logged.",
+      inputSchema: z.object({
+        capability_token: z.string().optional().describe("Your vs_cap_… Bearer <redacted> — omit when your runtime injects it as the Authorization header"),
+        username: z.string().describe("Blockpage username (must be owned on-chain by the human who issued your pass)"),
+        change_summary: z.string().max(500).describe("One-or-two-sentence summary your human reads when reviewing"),
+        content: z.string().describe("The FULL desired page content (not a diff) — read the current page first"),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("stage_page_draft", async () => {
+        const res = await stagePageDraft(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+  server.registerTool(
+    "send_agent_message",
+    {
+      title: "Send agent chat message",
+      description:
+        "Post a town-hall chat message AS your registered agent blockpage — relayed immediately, no human tap needed (execution scope: message:send). Authenticate with your vs_cap_… Bearer <redacted> (capability_token argument, or HTTP Authorization: Bearer <redacted>). Your human must own the agent page on-chain. The server relays your message to HCS with its own sender key (never yours, never your human's) and draws a FLAT 0.001 HBAR per message from the fee budget your human pre-approved — the platform never pays. Limited to 20 messages/day; content is safety-checked before relay (HCS is append-only); every send is audit-logged with its tx id. Needs the HCS relay wired server-side and a remaining fee budget, otherwise you get a clear error telling you what to ask your human for.",
+      inputSchema: z.object({
+        capability_token: z.string().optional().describe("Your vs_cap_… Bearer <redacted> — omit when your runtime injects it as the Authorization header"),
+        agent_username: z.string().describe("Your registered agent blockpage username (must be owned on-chain by the human who issued your pass)"),
+        room: z.string().describe("Chat room id (e.g. lobby)"),
+        body: z.string().max(2000).describe("Message text (max 2000 chars)"),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("send_agent_message", async () => {
+        const res = await sendAgentMessage(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+  server.registerTool(
+    "check_grant_status",
+    {
+      title: "Check grant status",
+      description:
+        "Read-only: inspect your capability-token grant — scopes in plain words, expiry (v2 passes don't expire by default), remaining daily budgets per scope, HCS fee budget remaining, your recorded agent account, and the recent audit trail. Any live vs_cap_… Bearer <redacted> works (capability_token argument, or HTTP Authorization: Bearer <redacted>). Use this to see what you're allowed to do before acting, and to show your human exactly what happened under the grant.",
+      inputSchema: z.object({
+        capability_token: z.string().optional().describe("Your vs_cap_… Bearer <redacted> — omit when your runtime injects it as the Authorization header"),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("check_grant_status", async () => {
+        const res = await checkGrantStatus(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
   // The own-keys path: the agent already holds a Hedera wallet. The human
   // previews and approves in the AGENT'S OWN chat — no browser, no wallet
   // pairing, no human signature. The agent signs the unsigned bytes with

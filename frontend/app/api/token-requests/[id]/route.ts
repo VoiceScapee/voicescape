@@ -8,6 +8,7 @@
  */
 import { NextResponse } from "next/server";
 import { getTokenRequest } from "@/lib/server/token-requests";
+import { getOperatorAccountId } from "@/lib/server/hcs-operator";
 import { ipGate } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
@@ -33,5 +34,11 @@ export async function GET(
     scopes: rec.scopes,
     created_at: new Date(rec.createdAt).toISOString(),
     expires_at: new Date(rec.createdAt + 24 * 3_600_000).toISOString(),
+    ...(rec.agentAccountId ? { agent_account_id: rec.agentAccountId } : {}),
+    ...(rec.feeBudgetHbar !== undefined ? { fee_budget_hbar: rec.feeBudgetHbar } : {}),
+    // The operator account is public (it only receives fee allowances; it
+    // authorizes nothing on any user's account). The issuance page needs it
+    // to build the fee-budget allowance approval for the wallet to sign.
+    operator_account_id: getOperatorAccountId(),
   });
 }

@@ -50,7 +50,32 @@ import {
   claimFundingTxid,
   writeTombstone,
 } from "./claim-reservations";
-import { validateCapabilityToken, CAPABILITY_SCOPES } from "./capability-tokens";
+import {
+  validateCapabilityToken,
+  validateCapabilityTokenLive,
+  consumeScopeBudget,
+  remainingScopeBudget,
+  appendTokenAudit,
+  readTokenAudit,
+  recordFeeSpend,
+  stageDraft,
+  SCOPE_DAILY_LIMITS,
+  CAPABILITY_SCOPES,
+  type CapabilityScope,
+  type ValidatedToken,
+} from "./capability-tokens";
+import { writeAvailability } from "./agent-availability";
+import { checkContent } from "./townhall/content-filter";
+import { defaultDeps, queryChatRooms } from "./townhall/handlers";
+import { getTopicId } from "./townhall/topics";
+import { hasBuilderBadge, BUILDERS_ROOM_ID, BUILDER_UNLOCK_MESSAGE } from "./badges";
+import { requireNotRestricted } from "./townhall/bans";
+import {
+  operatorSendMessage,
+  isOperatorConfigured,
+  messageFeeHbar,
+  getOperatorAccountId,
+} from "./hcs-operator";
 import { createTokenRequest } from "./token-requests";
 import {
   stashPageUpdateProposal,
@@ -1406,10 +1431,23 @@ export interface RequestCapabilityTokenArgs {
    */
   label: string;
   /**
-   * Requested scopes, subset of page:update:propose, page:read, media:pin.
-   * Defaults to all three when omitted.
+   * Requested scopes, subset of page:update:propose, page:read, media:pin,
+   * message:send, availability:write, draft:stage.
+   * Defaults to all six when omitted.
    */
   scopes?: string[];
+  /**
+   * YOUR OWN Hedera account (0.0.x), when you hold one — recorded on the
+   * grant so your human can approve a spending allowance to it.
+   */
+  agent_account_id?: string;
+  /**
+   * Requested HCS fee budget in HBAR (0–5, default 1) — covers the flat
+   * 0.001 HBAR per relayed chat message when the grant includes
+   * message:send. Your human adjusts it on the issuance page and approves
+   * it as an allowance in their wallet.
+   */
+  fee_budget_hbar?: number;
 }
 
 export interface CapabilityTokenRequest {
@@ -1419,6 +1457,8 @@ export interface CapabilityTokenRequest {
   /** Issuance link for the human — share it in YOUR OWN chat. */
   issuance_url: string;
   expires_in: string;
+  agent_account_id?: string;
+  fee_budget_hbar?: number;
   next: string;
 }
 
@@ -1445,25 +1485,453 @@ export async function requestCapabilityToken(
     }
     scopes = args.scopes as (typeof CAPABILITY_SCOPES)[number][];
   }
+  let agentAccountId: string | undefined;
+  if (args.agent_account_id !== undefined) {
+    const a = args.agent_account_id.trim();
+    if (!/^\d+\.\d+\.\d+$/.test(a)) {
+      return { error: "agent_account_id must be a 0.0.x Hedera account" };
+    }
+    agentAccountId = a;
+  }
+  let feeBudgetHbar: number | undefined;
+  if (args.fee_budget_hbar !== undefined) {
+    const f = Number(args.fee_budget_hbar);
+    if (!Number.isFinite(f) || f < 0 || f > 5) {
+      return { error: "fee_budget_hbar must be 0–5" };
+    }
+    feeBudgetHbar = Math.round(f * 1000) / 1000;
+  }
   try {
-    const rec = await createTokenRequest({ label, scopes });
+    const rec = await createTokenRequest({ label, scopes, agentAccountId, feeBudgetHbar });
     const issuanceUrl = `${getRequestContext().origin.replace(/\/$/, "")}/t/${rec.id}`;
+    const execScopes = rec.scopes.filter((s) =>
+      ["message:send", "availability:write", "draft:stage"].includes(s),
+    );
     return {
       request_id: rec.id,
       label: rec.label,
       scopes: rec.scopes,
       issuance_url: issuanceUrl,
       expires_in: "24h",
+      ...(rec.agentAccountId ? { agent_account_id: rec.agentAccountId } : {}),
+      ...(rec.feeBudgetHbar !== undefined ? { fee_budget_hbar: rec.feeBudgetHbar } : {}),
       next:
         `Share this issuance link with your human in YOUR OWN chat: ${issuanceUrl} — ` +
-        `they open it, connect their wallet, and tap "Issue pass". The pass (a vs_cap_… Bearer <redacted>) ` +
+        `they open it, connect their wallet, review the grant (scopes, fee budget), and tap "Issue pass". The pass (a vs_cap_… Bearer <redacted>) ` +
         `is shown to them ONCE on that page; they put it in your secure credential storage (never in chat). ` +
-        `The pass only lets you PROPOSE page updates — nothing executes without their tap on each ` +
-        `proposal's approval link. The link expires unused after 24h.`,
+        (execScopes.length > 0
+          ? `Execution scopes granted (${execScopes.join(", ")}) let you ACT without a per-action tap — inside daily rate limits, with every action audit-logged for your human. ` +
+            `message:send draws a flat 0.001 HBAR per message from the fee budget your human approved. ` +
+            `page:update:propose still needs their tap on each proposal. Passes do not expire by default; your human can revoke instantly. `
+          : `The pass only lets you PROPOSE page updates — nothing executes without their tap on each ` +
+            `proposal's approval link. `) +
+        `The link expires unused after 24h.`,
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "could not create the issuance request" };
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tools: capability-token v2 execution scopes                   */
+/* ------------------------------------------------------------------ */
+/**
+ * Execution scopes let a keyless agent ACT (not just propose) inside
+ * pre-approved walls. Every tool below:
+ * - authenticates with the Bearer <redacted> (argument or Authorization header),
+ * - requires its specific scope (fail-closed),
+ * - consumes a per-token daily rate-limit budget,
+ * - verifies the token's human owns the target agent page on-chain,
+ * - audit-logs the action.
+ *
+ * What these tools can NEVER do: move funds, change ownership, touch
+ * keys, or publish on-chain page changes. Chain writes need a real key
+ * signature — the agent's own, or the human's per-tap. message:send is
+ * server-relayed HCS; the human pre-approved a fee budget (allowance)
+ * and every message draws the flat disclosed fee from it.
+ */
+
+const TOKEN_AUTH_HINT =
+  "pass your vs_cap_… Bearer <redacted> as the capability_token argument, or send it as the HTTP Authorization: Bearer <redacted> — if your runtime injects vault-held credentials as a header, OMIT the argument so the value never appears in chat, logs, or tool-call records";
+
+async function validatedExecutionToken(
+  args: { capability_token?: string },
+  scope: CapabilityScope,
+): Promise<ValidatedToken | { error: string }> {
+  const argToken = (args.capability_token ?? "").trim();
+  const headerToken = getRequestContext().authToken;
+  const rawToken = argToken !== "" ? argToken : headerToken;
+  const validated = rawToken ? await validateCapabilityToken(rawToken, scope) : null;
+  if (!validated) {
+    return {
+      error:
+        `invalid, expired, or revoked capability token — or it lacks the ${scope} scope. ` +
+        `Ask your human for a fresh pass with that scope. ${TOKEN_AUTH_HINT}.`,
+    };
+  }
+  return validated;
+}
+
+interface OwnedAgentPage {
+  username: string;
+  ownerEvm: string;
+}
+
+/**
+ * Verify the token's human owns a REGISTERED AGENT page. Fail-closed:
+ * anything unexpected is a rejection.
+ */
+async function ownedAgentPage(
+  tokenOwner: string,
+  agentUsername: unknown,
+  fetchFn: FetchFn = fetch,
+): Promise<OwnedAgentPage | { error: string }> {
+  const username = (typeof agentUsername === "string" ? agentUsername : "").trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return { error: "agent_username must be a registered agent blockpage username (3-32 lowercase letters, numbers, _ or -)" };
+  }
+  let lookup;
+  try {
+    lookup = await lookupBlockpage(username, fetchFn);
+  } catch {
+    return { error: `could not verify @${username} on-chain — try again in a moment` };
+  }
+  if (!lookup.found || !lookup.owner_account) {
+    return { error: `@${username} is not a registered blockpage — register one first` };
+  }
+  if (lookup.owner_type !== "agent") {
+    return { error: `@${username} is registered as a human page — execution scopes work on agent pages` };
+  }
+  if (lookup.owner_account !== tokenOwner) {
+    return {
+      error:
+        `your pass was issued by ${tokenOwner}, but @${username} is owned by ${lookup.owner_account} — passes only work on pages your human owns`,
+    };
+  }
+  return { username, ownerEvm: (lookup.owner_evm ?? "").toLowerCase() };
+}
+
+export interface AvailabilitySetResult {
+  ok: true;
+  username: string;
+  open: boolean;
+  availability: unknown;
+  changes_remaining_today: number | null;
+  note: string;
+}
+
+export interface SetAgentAvailabilityArgs {
+  capability_token?: string;
+  agent_username: string;
+  open: boolean;
+}
+
+export async function setAgentAvailability(
+  args: SetAgentAvailabilityArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<AvailabilitySetResult | { error: string }> {
+  const validated = await validatedExecutionToken(args, "availability:write");
+  if ("error" in validated) return validated;
+  const rec = validated.record;
+
+  if (typeof args.open !== "boolean") {
+    return { error: 'open must be a real boolean (true = open for work, false = not)' };
+  }
+  const page = await ownedAgentPage(rec.ownerAccountId, args.agent_username, fetchFn);
+  if ("error" in page) return page;
+
+  const remaining = await consumeScopeBudget(rec.tokenHash, "availability:write");
+  if (remaining === 0) {
+    return { error: `daily availability-change budget exhausted (${SCOPE_DAILY_LIMITS["availability:write"]}/day) — try again tomorrow (UTC)` };
+  }
+
+  try {
+    const value = await writeAvailability(page.username, args.open, getKvStore(), Date.now());
+    await appendTokenAudit(rec.id, {
+      ts: Date.now(),
+      action: "availability:set",
+      detail: `@${page.username} → ${args.open ? "open for work" : "not available"}`,
+    });
+    return {
+      ok: true,
+      username: page.username,
+      open: args.open,
+      availability: value,
+      changes_remaining_today: remaining,
+      note: "Availability flag updated — no human tap needed. Your human sees this change in the audit trail.",
+    };
+  } catch {
+    return { error: "availability store unavailable — try again in a moment" };
+  }
+}
+
+export interface DraftStagedResult {
+  staged: true;
+  username: string;
+  change_summary: string;
+  staged_at: string;
+  drafts_remaining_today: number | null;
+  next: string;
+}
+
+export interface StagePageDraftArgs {
+  capability_token?: string;
+  username: string;
+  change_summary: string;
+  content: string;
+}
+
+export async function stagePageDraft(
+  args: StagePageDraftArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<DraftStagedResult | { error: string }> {
+  const validated = await validatedExecutionToken(args, "draft:stage");
+  if ("error" in validated) return validated;
+  const rec = validated.record;
+
+  const page = await ownedAgentPage(rec.ownerAccountId, args.username, fetchFn);
+  if ("error" in page) return page;
+
+  const changeSummary = (args.change_summary ?? "").trim().slice(0, 500);
+  if (!changeSummary) return { error: "change_summary is required — your human reads it when reviewing the draft" };
+  const content = (args.content ?? "").trim();
+  if (!content) return { error: "content is required — pass the FULL desired page content, not a diff" };
+  if (content.length > 200_000) return { error: "content too large (max 200k chars)" };
+
+  const remaining = await consumeScopeBudget(rec.tokenHash, "draft:stage");
+  if (remaining === 0) {
+    return { error: `daily draft budget exhausted (${SCOPE_DAILY_LIMITS["draft:stage"]}/day) — try again tomorrow (UTC)` };
+  }
+
+  const draft = await stageDraft(page.username, rec.id, changeSummary, content);
+  await appendTokenAudit(rec.id, {
+    ts: Date.now(),
+    action: "draft:staged",
+    detail: `@${page.username}: ${changeSummary.slice(0, 120)}`,
+  });
+  return {
+    staged: true,
+    username: page.username,
+    change_summary: draft.changeSummary,
+    staged_at: new Date(draft.stagedAt).toISOString(),
+    drafts_remaining_today: remaining,
+    next:
+      "Draft staged — NOT published. Tell your human to review it in the dapp; publishing the on-chain update still needs their wallet signature. " +
+      "Staging is not publishing: nothing on-chain changed.",
+  };
+}
+
+export interface MessageSentResult {
+  posted: true;
+  username: string;
+  room: string;
+  hcs_tx_id: string;
+  fee_hbar: number;
+  fee_budget_remaining_hbar?: number;
+  messages_remaining_today: number | null;
+  note: string;
+}
+
+export interface SendAgentMessageArgs {
+  capability_token?: string;
+  agent_username: string;
+  room: string;
+  body: string;
+}
+
+const CHAT_BODY_MAX = 2000;
+
+export async function sendAgentMessage(
+  args: SendAgentMessageArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<MessageSentResult | { error: string }> {
+  const validated = await validatedExecutionToken(args, "message:send");
+  if ("error" in validated) return validated;
+  const rec = validated.record;
+
+  const page = await ownedAgentPage(rec.ownerAccountId, args.agent_username, fetchFn);
+  if ("error" in page) return page;
+
+  // Cheap fail-closed checks first: body, safety, operator wiring, budget,
+  // rate limit — all before any network call beyond the page lookup.
+  const body = (args.body ?? "").trim();
+  if (!body) return { error: "body is required" };
+  if (body.length > CHAT_BODY_MAX) return { error: `body too long (max ${CHAT_BODY_MAX} chars)` };
+  // Content safety BEFORE submit — HCS is append-only, blocked content never reaches the chain.
+  const safety = checkContent(body, "chat message");
+  if (!safety.allowed) return { error: safety.reason ?? "content blocked" };
+
+  if (!isOperatorConfigured()) {
+    return {
+      error:
+        "the HCS relay is not wired on this server (operator not configured) — message:send is unavailable right now",
+    };
+  }
+
+  // Fee budget: flat disclosed fee per message, drawn from the human's
+  // pre-approved allowance. Fail closed when there's no budget left.
+  const fee = messageFeeHbar();
+  const budget = rec.feeBudgetHbar;
+  const spent = rec.feeSpentHbar ?? 0;
+  if (budget === undefined || spent + fee - budget > 1e-9) {
+    return {
+      error:
+        "no HCS fee budget remaining on this pass — ask your human to approve a fee budget (1–5 HBAR allowance) so your messages can be relayed. Each message costs a flat " +
+        `${fee} HBAR.`,
+    };
+  }
+
+  const remaining = await consumeScopeBudget(rec.tokenHash, "message:send");
+  if (remaining === 0) {
+    return { error: `daily message budget exhausted (${SCOPE_DAILY_LIMITS["message:send"]}/day) — try again tomorrow (UTC)` };
+  }
+
+  const room = (args.room ?? "").trim();
+  if (!room) return { error: "room is required (e.g. lobby)" };
+  try {
+    const roomsRes = await queryChatRooms(defaultDeps());
+    const roomsBody = roomsRes.json as { rooms?: Array<{ id?: string }> } | undefined;
+    const rooms = Array.isArray(roomsBody?.rooms) ? roomsBody.rooms : [];
+    if (!rooms.some((r) => r.id === room)) return { error: `unknown chat room "${room}"` };
+  } catch {
+    return { error: "could not list chat rooms — try again in a moment" };
+  }
+  if (room === BUILDERS_ROOM_ID) {
+    try {
+      if (!(await hasBuilderBadge(page.ownerEvm))) return { error: BUILDER_UNLOCK_MESSAGE };
+    } catch {
+      return { error: "could not check Builder badge — try again in a moment" };
+    }
+  }
+
+  // Restriction guard: banned / timed-out wallets are stopped before the send.
+  try {
+    const restricted = await requireNotRestricted(defaultDeps(), page.ownerEvm);
+    if (restricted) {
+      const json = restricted.json as { error?: string } | undefined;
+      return { error: json?.error ?? "wallet is restricted" };
+    }
+  } catch {
+    return { error: "could not check restriction status — try again in a moment" };
+  }
+
+  const topic = getTopicId("chat");
+  if (!topic) return { error: "chat topic not configured on this server" };
+
+  const messageJson = JSON.stringify({
+    v: 1,
+    kind: "chat",
+    author: page.username,
+    room,
+    body,
+    via: "operator-relay",
+  });
+
+  let sendRes;
+  try {
+    sendRes = await operatorSendMessage({ topicId: topic, messageJson, ownerAccountId: rec.ownerAccountId });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "relay failed";
+    await appendTokenAudit(rec.id, { ts: Date.now(), action: "message:failed", detail: msg.slice(0, 300) });
+    return { error: `message relay failed: ${msg}` };
+  }
+
+  const newSpent = await recordFeeSpend(rec, sendRes.feeHbar);
+  const feeNote =
+    sendRes.feeTxId === ""
+      ? " (fee collection failed — recorded against your budget; ops will reconcile)"
+      : "";
+  await appendTokenAudit(rec.id, {
+    ts: Date.now(),
+    action: "message:sent",
+    detail: `@${page.username} → #${room} · hcs ${sendRes.hcsTxId} · fee ${sendRes.feeHbar} HBAR${feeNote}`,
+  });
+  return {
+    posted: true,
+    username: page.username,
+    room,
+    hcs_tx_id: sendRes.hcsTxId,
+    fee_hbar: sendRes.feeHbar,
+    fee_budget_remaining_hbar:
+      newSpent === null ? undefined : Math.round((budget - newSpent) * 1_000_000) / 1_000_000,
+    messages_remaining_today: remaining,
+    note: `Message relayed to #${room} as @${page.username} — no human tap needed. Fee ${sendRes.feeHbar} HBAR drawn from your human's pre-approved budget.${feeNote} Verify on HashScan: https://hashscan.io/mainnet/transaction/${sendRes.hcsTxId.replace("@", "-")}`,
+  };
+}
+
+export interface GrantStatusResult {
+  ok: true;
+  label: string;
+  version: number;
+  issued_to: string;
+  issued_at: string;
+  expires: string;
+  scopes: Array<{ scope: string; means: string }>;
+  daily_budgets_remaining: Record<string, number | null>;
+  fee_budget_hbar: number | null;
+  fee_spent_hbar: number;
+  fee_budget_remaining_hbar: number | null;
+  agent_account_id: string | null;
+  last_used: string | null;
+  recent_audit: Array<{ at: string; action: string; detail: string }>;
+  revoke_note: string;
+}
+
+export interface CheckGrantStatusArgs {
+  capability_token?: string;
+}
+
+const SCOPE_PLAIN_WORDS: Record<CapabilityScope, string> = {
+  "page:update:propose": "Suggest page changes (each still needs your human's tap)",
+  "page:read": "Read blockpage content",
+  "media:pin": "Upload media via the dapp's IPFS",
+  "message:send": "Post chat messages as the agent — executes immediately, flat 0.001 HBAR fee per message from the human's pre-approved budget",
+  "availability:write": "Set the agent's open-for-work flag — executes immediately",
+  "draft:stage": "Stage page drafts for human review — executes immediately, staging is NOT publishing",
+};
+
+/** Read-only grant introspection — no scope required beyond a live token. */
+export async function checkGrantStatus(
+  args: CheckGrantStatusArgs,
+): Promise<GrantStatusResult | { error: string }> {
+  const argToken = (args.capability_token ?? "").trim();
+  const headerToken = getRequestContext().authToken;
+  const rawToken = argToken !== "" ? argToken : headerToken;
+  const validated = rawToken ? await validateCapabilityTokenLive(rawToken) : null;
+  if (!validated) {
+    return { error: `invalid, expired, or revoked capability token. ${TOKEN_AUTH_HINT}.` };
+  }
+  const rec = validated.record;
+
+  const rateLimits: Record<string, number | null> = {};
+  for (const scope of rec.scopes) {
+    rateLimits[scope] = await remainingScopeBudget(rec.tokenHash, scope);
+  }
+  const audit = await readTokenAudit(rec.id);
+  const feeBudget = rec.feeBudgetHbar;
+  const feeSpent = rec.feeSpentHbar ?? 0;
+  return {
+    ok: true,
+    label: rec.label,
+    version: rec.version,
+    issued_to: rec.ownerAccountId,
+    issued_at: new Date(rec.createdAt).toISOString(),
+    expires: rec.expiresAt === null ? "never" : new Date(rec.expiresAt).toISOString(),
+    scopes: rec.scopes.map((s) => ({ scope: s, means: SCOPE_PLAIN_WORDS[s] ?? s })),
+    daily_budgets_remaining: rateLimits,
+    fee_budget_hbar: feeBudget ?? null,
+    fee_spent_hbar: Math.round(feeSpent * 1_000_000) / 1_000_000,
+    fee_budget_remaining_hbar:
+      feeBudget === undefined ? null : Math.round((feeBudget - feeSpent) * 1_000_000) / 1_000_000,
+    agent_account_id: rec.agentAccountId ?? null,
+    last_used: rec.lastUsedAt ? new Date(rec.lastUsedAt).toISOString() : null,
+    recent_audit: audit.slice(-20).map((e) => ({
+      at: new Date(e.ts).toISOString(),
+      action: e.action,
+      detail: e.detail,
+    })),
+    revoke_note: "Your human can revoke this pass instantly from their token card — the next call then fails closed.",
+  };
 }
 
 /* ------------------------------------------------------------------ */

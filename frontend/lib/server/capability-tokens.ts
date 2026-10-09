@@ -1,38 +1,74 @@
 /**
  * capability-tokens — bearer credentials for keyless agents.
  *
- * A capability token is NOT a key: it cannot sign anything. It only lets a
- * keyless AI agent SUBMIT proposals (page content updates) to its human's
- * approval inbox. Every on-chain write still requires the human's own
- * wallet signature — the token authorizes requests, never executions.
+ * A capability token is NOT a key: it cannot sign anything. v1 tokens only
+ * let a keyless AI agent SUBMIT proposals (page content updates) to its
+ * human's approval inbox. v2 (execution scopes) additionally lets the agent
+ * ACT directly — but ONLY on server-side state, inside pre-approved walls:
+ * posting chat/forum messages (message:send), setting its availability
+ * flag (availability:write), and staging page drafts (draft:stage).
+ *
+ * What execution scopes can NEVER do:
+ * - Move funds, change ownership, or touch keys. Chain writes need a real
+ *   key signature: the agent's own key, or the human's per-tap signature.
+ * - Spend the human's money except through Hedera-native allowances the
+ *   human approved in their own wallet (HCS message fees, flat 0.001 HBAR
+ *   per message, drawn via approved transfer — see hcs-operator.ts).
+ * - Publish a page change on-chain. draft:stage stages content for the
+ *   human's review; the on-chain hash update still needs the human's key.
  *
  * Security properties:
  * - The raw token is shown ONCE at issuance and never stored. KV holds
  *   only the SHA-256 hash. A KV dump yields no usable credential.
  * - Validation is fail-closed: unknown / expired / revoked / wrong-scope
  *   tokens are rejected, and comparison is constant-time.
- * - Scope is an allow-list. Only three scopes exist; nothing else can be
- *   granted: page:update:propose, page:read, media:pin.
+ * - Scope is an allow-list. Only the scopes in CAPABILITY_SCOPES exist;
+ *   nothing else can be granted.
  * - Revocation is instant: deleting the KV record makes the next attempt
  *   fail closed. There is no on-chain delegate to unwind because the
  *   server never holds any key on the human's account.
- * - Tokens expire after 30 days and are rotatable (issue new, revoke old).
+ * - v1 tokens expire after 30 days. v2 tokens do NOT expire by default
+ *   (Brandon, 2026-10-08) — the human's ongoing controls are the finite
+ *   fee budget, instant revocation, and the audit trail.
+ * - Execution scopes are rate-limited per token per day, and every
+ *   execution is audit-logged (append-only, human-readable).
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
 
 /** The complete scope universe. Nothing else can be granted. */
-export const CAPABILITY_SCOPES = ["page:update:propose", "page:read", "media:pin"] as const;
+export const CAPABILITY_SCOPES = [
+  "page:update:propose",
+  "page:read",
+  "media:pin",
+  "message:send",
+  "availability:write",
+  "draft:stage",
+] as const;
 export type CapabilityScope = (typeof CAPABILITY_SCOPES)[number];
 
-/** Token lifetime: 30 days. */
+/** v1 token lifetime: 30 days. v2 tokens default to no expiry. */
 export const TOKEN_TTL_MS = 30 * 24 * 3_600_000;
+/** KV TTL for non-expiring records (finite — KV requires it). */
+export const NO_EXPIRY_TTL_MS = 366 * 24 * 3_600_000;
 /** Raw token prefix — identifiable, never secret by itself. */
 const TOKEN_PREFIX = "vs_cap_";
+
+/** Per-scope daily execution caps for the v2 execution scopes. */
+export const SCOPE_DAILY_LIMITS: Partial<Record<CapabilityScope, number>> = {
+  "message:send": 20,
+  "availability:write": 10,
+  "draft:stage": 10,
+};
 
 const KEY_BY_HASH = "cap-tokens:by-hash:";
 const KEY_BY_ID = "cap-tokens:by-id:";
 const KEY_BY_OWNER = "cap-tokens:by-owner:";
+const KEY_AUDIT = "cap-tokens:audit:";
+const KEY_RATELIMIT = "cap-tokens:ratelimit:";
+const KEY_DRAFT = "cap-tokens:draft:";
+/** Max audit entries kept per token (oldest dropped). */
+const AUDIT_CAP = 200;
 
 export interface CapabilityTokenRecord {
   /** Public handle (16 hex chars). Safe to log. */
@@ -45,15 +81,32 @@ export interface CapabilityTokenRecord {
   /** Human-given label, e.g. "Clawd's ops token". */
   label: string;
   createdAt: number;
-  expiresAt: number;
+  /** null = no expiry (v2 default). v1 tokens carry a timestamp. */
+  expiresAt: number | null;
   revokedAt: number | null;
   lastUsedAt: number | null;
+  /** Token schema version: 1 = propose-only, 2 = execution scopes. */
+  version: 1 | 2;
+  /** The agent's own Hedera account, when it has one (allowance reference). */
+  agentAccountId?: string;
+  /** Human-approved HCS fee budget in HBAR for message:send (allowance to operator). */
+  feeBudgetHbar?: number;
+  /** Fee budget consumed so far, in HBAR. */
+  feeSpentHbar?: number;
+  /** Mirror-node tx id of the fee-allowance approval, for audit. */
+  feeAllowanceRef?: string;
 }
 
 export interface IssuedToken {
   /** The raw bearer token — shown ONCE. The caller must deliver it securely. */
   token: string;
   record: CapabilityTokenRecord;
+}
+
+export interface TokenAuditEntry {
+  ts: number;
+  action: string;
+  detail: string;
 }
 
 function hashToken(raw: string): string {
@@ -93,23 +146,65 @@ async function writeOwnerIndex(owner: string, ids: string[], store: KvStore, ttl
  * Issue a token. The human's session is the consent: callers must have
  * verified the human (e.g. via agentOwnerFromRequest) before calling.
  * Returns the raw token ONCE — it is never retrievable afterwards.
+ *
+ * v2 (execution scopes): pass version: 2, expiresAt: null for no expiry,
+ * and optional feeBudgetHbar / agentAccountId. v1 behavior (30-day expiry,
+ * propose-only) is preserved when version is omitted.
  */
 export async function issueCapabilityToken(
   ownerAccountId: string,
-  opts: { label: string; scopes?: CapabilityScope[] },
+  opts: {
+    label: string;
+    scopes?: CapabilityScope[];
+    version?: 1 | 2;
+    /** null = no expiry (v2 default). Omit = 30 days (v1 default). */
+    expiresAt?: number | null;
+    agentAccountId?: string;
+    /** Human-approved HCS fee budget in HBAR (1–5 band). */
+    feeBudgetHbar?: number;
+    feeAllowanceRef?: string;
+  },
   store: KvStore = getKvStore(),
 ): Promise<IssuedToken> {
   const owner = normalizeOwner(ownerAccountId);
   const label = (opts.label ?? "").trim().slice(0, 80);
   if (!label) throw new Error("capability-tokens: label is required");
-  const scopes = opts.scopes ?? [...CAPABILITY_SCOPES];
+  const version = opts.version ?? 1;
+  if (version !== 1 && version !== 2) throw new Error("capability-tokens: bad version");
+  // v1 is the propose-only era: it cannot carry execution scopes.
+  const V1_SCOPES = ["page:update:propose", "page:read", "media:pin"] as const;
+  const scopes = opts.scopes ?? (version === 2 ? [...CAPABILITY_SCOPES] : [...V1_SCOPES]);
   if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every(isScope)) {
     throw new Error("capability-tokens: scopes must be a non-empty subset of the known scopes");
+  }
+  if (version === 1 && !scopes.every((s) => (V1_SCOPES as readonly string[]).includes(s))) {
+    throw new Error("capability-tokens: v1 tokens are propose-only — execution scopes need version 2");
+  }
+
+  let agentAccountId: string | undefined;
+  if (opts.agentAccountId !== undefined) {
+    const a = opts.agentAccountId.trim();
+    if (!/^\d+\.\d+\.\d+$/.test(a)) throw new Error("capability-tokens: bad agent account id");
+    agentAccountId = a;
+  }
+  let feeBudgetHbar: number | undefined;
+  if (opts.feeBudgetHbar !== undefined) {
+    const f = Number(opts.feeBudgetHbar);
+    if (!Number.isFinite(f) || f < 0 || f > 5) {
+      throw new Error("capability-tokens: fee budget must be 0–5 HBAR");
+    }
+    feeBudgetHbar = Math.round(f * 1000) / 1000;
   }
 
   const id = randomBytes(8).toString("hex");
   const raw = TOKEN_PREFIX + randomBytes(24).toString("hex");
   const now = Date.now();
+  const expiresAt =
+    opts.expiresAt === undefined
+      ? version === 2
+        ? null
+        : now + TOKEN_TTL_MS
+      : opts.expiresAt;
   const record: CapabilityTokenRecord = {
     id,
     ownerAccountId: owner,
@@ -117,17 +212,29 @@ export async function issueCapabilityToken(
     scopes: [...new Set(scopes)],
     label,
     createdAt: now,
-    expiresAt: now + TOKEN_TTL_MS,
+    expiresAt,
     revokedAt: null,
     lastUsedAt: null,
+    version,
+    ...(agentAccountId ? { agentAccountId } : {}),
+    ...(feeBudgetHbar !== undefined ? { feeBudgetHbar, feeSpentHbar: 0 } : {}),
+    ...(opts.feeAllowanceRef ? { feeAllowanceRef: opts.feeAllowanceRef.slice(0, 120) } : {}),
   };
-  const ttlMs = Math.max(record.expiresAt - now, 1_000);
+  const ttlMs = record.expiresAt === null ? NO_EXPIRY_TTL_MS : Math.max(record.expiresAt - now, 1_000);
   await store.set(KEY_BY_HASH + record.tokenHash, JSON.stringify(record), ttlMs);
   await store.set(KEY_BY_ID + id, JSON.stringify(record), ttlMs);
   const ids = await readOwnerIndex(owner, store);
   ids.push(id);
   await writeOwnerIndex(owner, ids, store, ttlMs);
+  await appendTokenAudit(id, { ts: now, action: "issued", detail: `v${version} token issued (${record.scopes.length} scopes${record.expiresAt === null ? ", no expiry" : ""})` }, store);
   return { token: raw, record };
+}
+
+/** True when the record is live right now (not revoked, not expired). */
+function isLive(rec: CapabilityTokenRecord): boolean {
+  if (rec.revokedAt !== null) return false;
+  if (rec.expiresAt !== null && Date.now() >= rec.expiresAt) return false;
+  return true;
 }
 
 export interface ValidatedToken {
@@ -148,8 +255,36 @@ export async function validateCapabilityToken(
   if (!/^[0-9a-f]{48}$/.test(secret)) return null;
   if (!isScope(requiredScope)) return null;
 
+  const stored = await readByHash(rawToken, store);
+  if (!stored) return null;
+  if (!isLive(stored)) return null;
+  if (!Array.isArray(stored.scopes) || !stored.scopes.includes(requiredScope)) return null;
+
+  await touchUsage(stored, store);
+  return { record: stored };
+}
+
+/**
+ * Validate a token without requiring a specific scope — for read-only
+ * introspection (check_grant_status). Still fail-closed on unknown /
+ * revoked / expired.
+ */
+export async function validateCapabilityTokenLive(
+  rawToken: unknown,
+  store: KvStore = getKvStore(),
+): Promise<ValidatedToken | null> {
+  if (typeof rawToken !== "string" || !rawToken.startsWith(TOKEN_PREFIX)) return null;
+  const secret = rawToken.slice(TOKEN_PREFIX.length);
+  if (!/^[0-9a-f]{48}$/.test(secret)) return null;
+  const stored = await readByHash(rawToken, store);
+  if (!stored) return null;
+  if (!isLive(stored)) return null;
+  await touchUsage(stored, store);
+  return { record: stored };
+}
+
+async function readByHash(rawToken: string, store: KvStore): Promise<CapabilityTokenRecord | null> {
   const presentedHash = hashToken(rawToken);
-  let stored: CapabilityTokenRecord | null = null;
   try {
     const raw = await store.get(KEY_BY_HASH + presentedHash);
     if (!raw) return null;
@@ -158,25 +293,27 @@ export async function validateCapabilityToken(
     const a = Buffer.from(presentedHash, "hex");
     const b = Buffer.from(parsed.tokenHash, "hex");
     if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-    stored = parsed;
+    return parsed;
   } catch {
     return null;
   }
-  if (stored.revokedAt !== null) return null;
-  if (Date.now() >= stored.expiresAt) return null;
-  if (!Array.isArray(stored.scopes) || !stored.scopes.includes(requiredScope)) return null;
+}
 
+function ttlFor(rec: CapabilityTokenRecord): number {
+  return rec.expiresAt === null ? NO_EXPIRY_TTL_MS : Math.max(rec.expiresAt - Date.now(), 1_000);
+}
+
+async function touchUsage(stored: CapabilityTokenRecord, store: KvStore): Promise<void> {
   // Best-effort usage touch — never blocks validation.
   try {
     stored.lastUsedAt = Date.now();
-    const ttlMs = Math.max(stored.expiresAt - Date.now(), 1_000);
     const body = JSON.stringify(stored);
+    const ttlMs = ttlFor(stored);
     await store.set(KEY_BY_HASH + stored.tokenHash, body, ttlMs);
     await store.set(KEY_BY_ID + stored.id, body, ttlMs);
   } catch {
     /* usage tracking never blocks */
   }
-  return { record: stored };
 }
 
 /** The human's tokens (metadata only — raw tokens are never retrievable). */
@@ -192,7 +329,7 @@ export async function listCapabilityTokens(
       const raw = await store.get(KEY_BY_ID + id);
       if (!raw) continue;
       const rec = JSON.parse(raw) as CapabilityTokenRecord;
-      if (rec.revokedAt !== null || Date.now() >= rec.expiresAt) continue;
+      if (!isLive(rec)) continue;
       out.push(rec);
     } catch {
       /* skip unreadable entries */
@@ -230,7 +367,212 @@ export async function revokeCapabilityToken(
     owner,
     ids.filter((x) => x !== id),
     store,
-    Math.max(rec.expiresAt - Date.now(), 1_000),
+    ttlFor(rec),
   );
+  await appendTokenAudit(id, { ts: Date.now(), action: "revoked", detail: "revoked by the human" }, store);
   return true;
+}
+
+/* ------------------------------------------------------------------ */
+/* Audit log — append-only, human-readable, per token                   */
+/* ------------------------------------------------------------------ */
+
+/** Append an audit entry. Best-effort: never throws. */
+export async function appendTokenAudit(
+  tokenId: string,
+  entry: TokenAuditEntry,
+  store: KvStore = getKvStore(),
+): Promise<void> {
+  try {
+    const id = (tokenId ?? "").trim();
+    if (!/^[0-9a-f]{16}$/.test(id)) return;
+    const key = KEY_AUDIT + id;
+    const raw = await store.get(key);
+    let entries: TokenAuditEntry[] = [];
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (Array.isArray(parsed)) entries = parsed.filter(isAuditEntry);
+      } catch {
+        entries = [];
+      }
+    }
+    entries.push({
+      ts: typeof entry.ts === "number" ? entry.ts : Date.now(),
+      action: String(entry.action ?? "").slice(0, 40),
+      detail: String(entry.detail ?? "").slice(0, 500),
+    });
+    if (entries.length > AUDIT_CAP) entries = entries.slice(entries.length - AUDIT_CAP);
+    await store.set(key, JSON.stringify(entries), NO_EXPIRY_TTL_MS);
+  } catch {
+    /* audit never blocks */
+  }
+}
+
+function isAuditEntry(x: unknown): x is TokenAuditEntry {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    typeof (x as { ts?: unknown }).ts === "number" &&
+    typeof (x as { action?: unknown }).action === "string"
+  );
+}
+
+/** Read the audit trail, newest last. Empty array when none. */
+export async function readTokenAudit(
+  tokenId: string,
+  store: KvStore = getKvStore(),
+): Promise<TokenAuditEntry[]> {
+  try {
+    const id = (tokenId ?? "").trim();
+    if (!/^[0-9a-f]{16}$/.test(id)) return [];
+    const raw = await store.get(KEY_AUDIT + id);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter(isAuditEntry) : [];
+  } catch {
+    return [];
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-scope daily rate limits (v2 execution scopes)                   */
+/* ------------------------------------------------------------------ */
+
+function rateLimitKey(tokenHash: string, scope: CapabilityScope, day: string): string {
+  return `${KEY_RATELIMIT}${tokenHash}:${scope}:${day}`;
+}
+
+function utcDay(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Check AND consume one unit of a scope's daily budget. Returns the
+ * remaining budget after this call, or null when the scope has no limit
+ * or the budget is exhausted. Fail-closed on store errors for limited
+ * scopes (a broken counter must not become unlimited).
+ */
+export async function consumeScopeBudget(
+  tokenHash: string,
+  scope: CapabilityScope,
+  store: KvStore = getKvStore(),
+): Promise<number | null> {
+  const limit = SCOPE_DAILY_LIMITS[scope];
+  if (limit === undefined) return null; // no limit for this scope
+  const key = rateLimitKey(tokenHash, scope, utcDay());
+  try {
+    const raw = await store.get(key);
+    const used = raw ? parseInt(raw, 10) : 0;
+    if (!Number.isFinite(used) || used < 0) {
+      await store.set(key, "1", 24 * 3_600_000);
+      return limit - 1;
+    }
+    if (used >= limit) return 0; // exhausted — 0 remaining
+    await store.set(key, String(used + 1), 24 * 3_600_000);
+    return limit - (used + 1);
+  } catch {
+    return 0; // fail closed: treat store failure as exhausted
+  }
+}
+
+/** Remaining daily budget for a scope without consuming. */
+export async function remainingScopeBudget(
+  tokenHash: string,
+  scope: CapabilityScope,
+  store: KvStore = getKvStore(),
+): Promise<number | null> {
+  const limit = SCOPE_DAILY_LIMITS[scope];
+  if (limit === undefined) return null;
+  try {
+    const raw = await store.get(rateLimitKey(tokenHash, scope, utcDay()));
+    const used = raw ? parseInt(raw, 10) : 0;
+    if (!Number.isFinite(used) || used < 0) return limit;
+    return Math.max(0, limit - used);
+  } catch {
+    return 0;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Fee budget accounting (message:send draws)                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Record a fee draw against the token's human-approved fee budget.
+ * Returns the new feeSpentHbar, or null when there is no budget or the
+ * draw would exceed it. Persists to both hash and id records.
+ */
+export async function recordFeeSpend(
+  record: CapabilityTokenRecord,
+  amountHbar: number,
+  store: KvStore = getKvStore(),
+): Promise<number | null> {
+  try {
+    const budget = record.feeBudgetHbar;
+    if (budget === undefined) return null;
+    const spent = record.feeSpentHbar ?? 0;
+    const next = Math.round((spent + amountHbar) * 1_000_000) / 1_000_000;
+    if (next - budget > 1e-9) return null; // would exceed budget
+    record.feeSpentHbar = next;
+    record.lastUsedAt = Date.now();
+    const body = JSON.stringify(record);
+    const ttlMs = ttlFor(record);
+    await store.set(KEY_BY_HASH + record.tokenHash, body, ttlMs);
+    await store.set(KEY_BY_ID + record.id, body, ttlMs);
+    return next;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Staged page drafts (draft:stage scope)                               */
+/* ------------------------------------------------------------------ */
+
+export interface StagedDraft {
+  username: string;
+  tokenId: string;
+  changeSummary: string;
+  content: string;
+  stagedAt: number;
+}
+
+/**
+ * Stage a page draft for the human's review. Publishing still needs the
+ * human's key — staging is not publishing. One draft per username (latest
+ * wins).
+ */
+export async function stageDraft(
+  username: string,
+  tokenId: string,
+  changeSummary: string,
+  content: string,
+  store: KvStore = getKvStore(),
+): Promise<StagedDraft> {
+  const draft: StagedDraft = {
+    username,
+    tokenId,
+    changeSummary: changeSummary.slice(0, 500),
+    content: content.slice(0, 200_000),
+    stagedAt: Date.now(),
+  };
+  await store.set(KEY_DRAFT + username, JSON.stringify(draft), NO_EXPIRY_TTL_MS);
+  return draft;
+}
+
+/** Read the staged draft for a username, or null. */
+export async function readDraft(
+  username: string,
+  store: KvStore = getKvStore(),
+): Promise<StagedDraft | null> {
+  try {
+    const raw = await store.get(KEY_DRAFT + username);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as StagedDraft;
+    if (!d || d.username !== username || typeof d.content !== "string") return null;
+    return d;
+  } catch {
+    return null;
+  }
 }

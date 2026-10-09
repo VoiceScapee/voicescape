@@ -9,8 +9,16 @@ import type { KvStore } from "./store";
 import {
   issueCapabilityToken,
   validateCapabilityToken,
+  validateCapabilityTokenLive,
   listCapabilityTokens,
   revokeCapabilityToken,
+  appendTokenAudit,
+  readTokenAudit,
+  consumeScopeBudget,
+  remainingScopeBudget,
+  recordFeeSpend,
+  stageDraft,
+  readDraft,
   TOKEN_TTL_MS,
 } from "./capability-tokens";
 
@@ -40,7 +48,9 @@ describe("capability-tokens", () => {
     expect(token.startsWith("vs_cap_")).toBe(true);
     expect(record.ownerAccountId).toBe(OWNER);
     expect(record.revokedAt).toBeNull();
-    expect(record.expiresAt - record.createdAt).toBe(TOKEN_TTL_MS);
+    expect(record.version).toBe(1);
+    expect(record.expiresAt).not.toBeNull();
+    expect(record.expiresAt! - record.createdAt).toBe(TOKEN_TTL_MS);
 
     const v = await validateCapabilityToken(token, "page:update:propose", store);
     expect(v).not.toBeNull();
@@ -112,5 +122,129 @@ describe("capability-tokens", () => {
     await expect(
       issueCapabilityToken(OWNER, { label: "x", scopes: [] }, store),
     ).rejects.toThrow();
+  });
+});
+
+describe("capability-tokens v2 — execution scopes", () => {
+  it("issues a v2 token with new scopes and no expiry by default", async () => {
+    const store = fakeStore();
+    const { token, record } = await issueCapabilityToken(
+      OWNER,
+      {
+        label: "v2",
+        scopes: ["message:send", "availability:write", "draft:stage"],
+        version: 2,
+      },
+      store,
+    );
+    expect(record.version).toBe(2);
+    expect(record.expiresAt).toBeNull();
+    expect(record.scopes).toEqual(["message:send", "availability:write", "draft:stage"]);
+    // v1 default preserved
+    const v1 = await issueCapabilityToken(OWNER, { label: "v1" }, store);
+    expect(v1.record.version).toBe(1);
+    expect(v1.record.expiresAt).not.toBeNull();
+
+    const v = await validateCapabilityToken(token, "message:send", store);
+    expect(v).not.toBeNull();
+    // v1 token does not carry the new scope
+    expect(await validateCapabilityToken(v1.token, "message:send", store)).toBeNull();
+  });
+
+  it("rejects unknown v2 scopes and bad fee budgets at issuance", async () => {
+    const store = fakeStore();
+    await expect(
+      issueCapabilityToken(OWNER, { label: "x", scopes: ["chat:nuke"] as never }, store),
+    ).rejects.toThrow();
+    await expect(
+      issueCapabilityToken(OWNER, { label: "x", version: 2, feeBudgetHbar: 99 }, store),
+    ).rejects.toThrow();
+    await expect(
+      issueCapabilityToken(OWNER, { label: "x", version: 2, agentAccountId: "nope" }, store),
+    ).rejects.toThrow();
+  });
+
+  it("audit log records issuance and actions, newest last, capped", async () => {
+    const store = fakeStore();
+    const { record } = await issueCapabilityToken(OWNER, { label: "audit", version: 2 }, store);
+    await appendTokenAudit(record.id, { ts: 1, action: "test:one", detail: "first" }, store);
+    await appendTokenAudit(record.id, { ts: 2, action: "test:two", detail: "second" }, store);
+    const log = await readTokenAudit(record.id, store);
+    expect(log.length).toBe(3); // issued + two
+    expect(log[0].action).toBe("issued");
+    expect(log[2].action).toBe("test:two");
+    // raw token never in the audit
+    expect(JSON.stringify(log)).not.toContain("vs_cap_");
+  });
+
+  it("rate limits are per-scope per-day and fail closed", async () => {
+    const store = fakeStore();
+    const { record } = await issueCapabilityToken(
+      OWNER,
+      { label: "rl", scopes: ["availability:write"], version: 2 },
+      store,
+    );
+    // 10/day for availability:write
+    let remaining: number | null = null;
+    for (let i = 0; i < 10; i++) {
+      remaining = await consumeScopeBudget(record.tokenHash, "availability:write", store);
+    }
+    expect(remaining).toBe(0);
+    expect(await consumeScopeBudget(record.tokenHash, "availability:write", store)).toBe(0);
+    // unlimited scopes return null
+    expect(await consumeScopeBudget(record.tokenHash, "page:read", store)).toBeNull();
+    expect(await remainingScopeBudget(record.tokenHash, "page:read", store)).toBeNull();
+    // other tokens unaffected
+    const other = await issueCapabilityToken(OWNER, { label: "rl2", scopes: ["availability:write"], version: 2 }, store);
+    expect(await remainingScopeBudget(other.record.tokenHash, "availability:write", store)).toBe(10);
+  });
+
+  it("fee spend accounting enforces the budget", async () => {
+    const store = fakeStore();
+    const { record } = await issueCapabilityToken(
+      OWNER,
+      { label: "fee", scopes: ["message:send"], version: 2, feeBudgetHbar: 1 },
+      store,
+    );
+    expect(await recordFeeSpend(record, 0.001, store)).toBeCloseTo(0.001, 6);
+    expect(await recordFeeSpend(record, 0.999, store)).toBeCloseTo(1, 6);
+    // would exceed → null, spend unchanged
+    expect(await recordFeeSpend(record, 0.001, store)).toBeNull();
+    // no budget → null
+    const nobudget = await issueCapabilityToken(OWNER, { label: "nb", scopes: ["message:send"], version: 2 }, store);
+    expect(await recordFeeSpend(nobudget.record, 0.001, store)).toBeNull();
+  });
+
+  it("draft staging round-trips, latest wins", async () => {
+    const store = fakeStore();
+    const { record } = await issueCapabilityToken(OWNER, { label: "d", version: 2 }, store);
+    await stageDraft("my-agent", record.id, "v1 summary", "content one", store);
+    await stageDraft("my-agent", record.id, "v2 summary", "content two", store);
+    const d = await readDraft("my-agent", store);
+    expect(d?.content).toBe("content two");
+    expect(d?.changeSummary).toBe("v2 summary");
+    expect(await readDraft("nobody", store)).toBeNull();
+  });
+
+  it("revocation audit entry is written and validation fails after", async () => {
+    const store = fakeStore();
+    const { token, record } = await issueCapabilityToken(
+      OWNER,
+      { label: "rev", scopes: ["message:send"], version: 2 },
+      store,
+    );
+    expect(await revokeCapabilityToken(OWNER, record.id, store)).toBe(true);
+    expect(await validateCapabilityToken(token, "message:send", store)).toBeNull();
+    expect(await validateCapabilityTokenLive(token, store)).toBeNull();
+    const log = await readTokenAudit(record.id, store);
+    expect(log[log.length - 1].action).toBe("revoked");
+  });
+
+  it("validateCapabilityTokenLive works without a scope, still fail-closed", async () => {
+    const store = fakeStore();
+    const { token } = await issueCapabilityToken(OWNER, { label: "live", version: 2 }, store);
+    expect(await validateCapabilityTokenLive(token, store)).not.toBeNull();
+    expect(await validateCapabilityTokenLive("vs_cap_" + "0".repeat(48), store)).toBeNull();
+    expect(await validateCapabilityTokenLive("garbage", store)).toBeNull();
   });
 });

@@ -34,6 +34,10 @@ export interface TokenRequest {
   label: string;
   scopes: CapabilityScope[];
   createdAt: number;
+  /** The agent's own Hedera account, when it has one (for allowance reference). */
+  agentAccountId?: string;
+  /** Requested HCS fee budget in HBAR (1–5 band); human adjusts at issuance. */
+  feeBudgetHbar?: number;
 }
 
 function keyFor(id: string): string {
@@ -47,6 +51,8 @@ function isScope(s: unknown): s is CapabilityScope {
 export interface CreateTokenRequestInput {
   label: string;
   scopes?: CapabilityScope[];
+  agentAccountId?: string;
+  feeBudgetHbar?: number;
 }
 
 /** Create an issuance request. Returns the record (id is the /t/<id> path). */
@@ -60,11 +66,27 @@ export async function createTokenRequest(
   if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every(isScope)) {
     throw new Error("createTokenRequest: scopes must be a non-empty subset of the known scopes");
   }
+  let agentAccountId: string | undefined;
+  if (input.agentAccountId !== undefined) {
+    const a = input.agentAccountId.trim();
+    if (!/^\d+\.\d+\.\d+$/.test(a)) throw new Error("createTokenRequest: bad agent account id");
+    agentAccountId = a;
+  }
+  let feeBudgetHbar: number | undefined;
+  if (input.feeBudgetHbar !== undefined) {
+    const f = Number(input.feeBudgetHbar);
+    if (!Number.isFinite(f) || f < 0 || f > 5) {
+      throw new Error("createTokenRequest: fee budget must be 0–5 HBAR");
+    }
+    feeBudgetHbar = Math.round(f * 1000) / 1000;
+  }
   const record: TokenRequest = {
     id: randomBytes(16).toString("hex"),
     label,
     scopes: [...new Set(scopes)],
     createdAt: Date.now(),
+    ...(agentAccountId ? { agentAccountId } : {}),
+    ...(feeBudgetHbar !== undefined ? { feeBudgetHbar } : {}),
   };
   await store.set(keyFor(record.id), JSON.stringify(record), TTL_MS);
   return record;

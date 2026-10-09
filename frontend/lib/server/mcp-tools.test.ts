@@ -1412,7 +1412,14 @@ describe("propose_page_update tool", () => {
       };
       expect(ok.request_id).toMatch(/^[0-9a-f]{32}$/);
       expect(ok.label).toBe("muse AI agent");
-      expect(ok.scopes).toEqual(["page:update:propose", "page:read", "media:pin"]);
+      expect(ok.scopes).toEqual([
+        "page:update:propose",
+        "page:read",
+        "media:pin",
+        "message:send",
+        "availability:write",
+        "draft:stage",
+      ]);
       expect(ok.issuance_url).toMatch(new RegExp(`/t/${ok.request_id}$`));
       expect(ok.expires_in).toBe("24h");
       expect(ok.next).toMatch(/issuance link/i);
@@ -1554,5 +1561,324 @@ describe("my_purchases", () => {
   it("requires a wallet", async () => {
     const { myPurchasesTool } = await import("./mcp-tools");
     expect("error" in (await myPurchasesTool(""))).toBe(true);
+  });
+});
+
+/* ------------------------- execution scopes (v2) ------------------------- */
+
+describe("execution scopes", () => {
+  const OWNER = "0.0.10425049";
+
+  beforeEach(async () => {
+    await resetKvStoreSingleton();
+  });
+
+  async function issueV2(
+    scopes: ("page:update:propose" | "page:read" | "media:pin" | "message:send" | "availability:write" | "draft:stage")[],
+    opts?: { feeBudgetHbar?: number },
+  ) {
+    const { issueCapabilityToken } = await import("./capability-tokens");
+    const { token, record } = await issueCapabilityToken(OWNER, {
+      label: "v2test",
+      scopes,
+      version: 2,
+      ...opts,
+    });
+    return { token, record };
+  }
+
+  function agentPageFetch(ownerAccount: string | null = OWNER) {
+    return mockFetch([
+      [/contracts\/call$/, () => ok({ result: resolvePageResult() })],
+      [/accounts\/0xabc123/, () => ok(ownerAccount ? { account: ownerAccount } : null)],
+    ]);
+  }
+
+  describe("set_agent_availability", () => {
+    it("fails closed on a bad capability token", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const res = await setAgentAvailability(
+        { capability_token: "vs_cap_" + "0".repeat(48), agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/capability token/i);
+    });
+
+    it("rejects a propose-only token (wrong scope)", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const { token } = await issueV2(["page:update:propose"]);
+      const res = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/availability:write/);
+    });
+
+    it("rejects when the human does not own the agent page", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const { token } = await issueV2(["availability:write"]);
+      const res = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        agentPageFetch("0.0.99999999"),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/only work on pages your human owns/i);
+    });
+
+    it("rejects a human page (not an agent page)", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const { token } = await issueV2(["availability:write"]);
+      // owner_type 0n = human page
+      const humanFetch = mockFetch([
+        [
+          /contracts\/call$/,
+          () =>
+            ok({
+              result: RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+                "0xAbC1230000000000000000000000000000000001",
+                "QmTestHash",
+                0n,
+                "0x0000000000000000000000000000000000000000",
+                "human page",
+              ]),
+            }),
+        ],
+        [/accounts\/0xabc123/, () => ok({ account: OWNER })],
+      ]);
+      const res = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        humanFetch,
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/human page/i);
+    });
+
+    it("sets availability and consumes the daily budget", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const { token, record } = await issueV2(["availability:write"]);
+      const res = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(false);
+      if ("error" in res) return;
+      expect(res.ok).toBe(true);
+      expect(res.open).toBe(true);
+      expect(res.changes_remaining_today).toBe(9);
+
+      // audit trail records it
+      const { readTokenAudit } = await import("./capability-tokens");
+      const log = await readTokenAudit(record.id);
+      expect(log.some((e) => e.action === "availability:set")).toBe(true);
+
+      // exhaust the 10/day budget
+      for (let i = 0; i < 9; i++) {
+        await setAgentAvailability(
+          { capability_token: token, agent_username: "forge", open: i % 2 === 0 },
+          agentPageFetch(),
+        );
+      }
+      const exhausted = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in exhausted).toBe(true);
+      expect((exhausted as { error: string }).error).toMatch(/budget exhausted/i);
+    });
+
+    it("requires a real boolean for open", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const { token } = await issueV2(["availability:write"]);
+      const res = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: "yes" as unknown as boolean },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/boolean/i);
+    });
+  });
+
+  describe("stage_page_draft", () => {
+    it("stages a draft with a valid token (staging is not publishing)", async () => {
+      const { stagePageDraft } = await import("./mcp-tools");
+      const { readDraft } = await import("./capability-tokens");
+      const { token } = await issueV2(["draft:stage"]);
+      const res = await stagePageDraft(
+        {
+          capability_token: token,
+          username: "forge",
+          change_summary: "New bio",
+          content: '{"bio":"hello"}',
+        },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(false);
+      if ("error" in res) return;
+      expect(res.staged).toBe(true);
+      expect(res.next).toMatch(/NOT published/i);
+      const d = await readDraft("forge");
+      expect(d?.content).toBe('{"bio":"hello"}');
+    });
+
+    it("fails closed on wrong scope and bad token", async () => {
+      const { stagePageDraft } = await import("./mcp-tools");
+      const { token } = await issueV2(["page:read"]);
+      const wrongScope = await stagePageDraft(
+        { capability_token: token, username: "forge", change_summary: "x", content: "y" },
+        agentPageFetch(),
+      );
+      expect("error" in wrongScope).toBe(true);
+      const badToken = await stagePageDraft(
+        { capability_token: "vs_cap_" + "1".repeat(48), username: "forge", change_summary: "x", content: "y" },
+        agentPageFetch(),
+      );
+      expect("error" in badToken).toBe(true);
+    });
+
+    it("requires summary and content", async () => {
+      const { stagePageDraft } = await import("./mcp-tools");
+      const { token } = await issueV2(["draft:stage"]);
+      const noSummary = await stagePageDraft(
+        { capability_token: token, username: "forge", change_summary: "  ", content: "y" },
+        agentPageFetch(),
+      );
+      expect("error" in noSummary).toBe(true);
+      const noContent = await stagePageDraft(
+        { capability_token: token, username: "forge", change_summary: "x", content: "  " },
+        agentPageFetch(),
+      );
+      expect("error" in noContent).toBe(true);
+    });
+  });
+
+  describe("send_agent_message", () => {
+    it("fails closed on a bad capability token", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const res = await sendAgentMessage(
+        { capability_token: "vs_cap_" + "2".repeat(48), agent_username: "forge", room: "lobby", body: "hi" },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/capability token/i);
+    });
+
+    it("blocks unsafe content before anything else", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const { token } = await issueV2(["message:send"], { feeBudgetHbar: 1 });
+      const res = await sendAgentMessage(
+        { capability_token: token, agent_username: "forge", room: "lobby", body: "I will kill you" },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/blocked/i);
+    });
+
+    it("refuses clearly when the HCS relay is not wired", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const savedKey = process.env.HCS_SENDER_KEY;
+      const savedAcct = process.env.HCS_SENDER_ACCOUNT_ID;
+      delete process.env.HCS_SENDER_KEY;
+      delete process.env.HCS_SENDER_ACCOUNT_ID;
+      try {
+        const { token } = await issueV2(["message:send"], { feeBudgetHbar: 1 });
+        const res = await sendAgentMessage(
+          { capability_token: token, agent_username: "forge", room: "lobby", body: "hello town hall" },
+          agentPageFetch(),
+        );
+        expect("error" in res).toBe(true);
+        expect((res as { error: string }).error).toMatch(/not wired/i);
+      } finally {
+        if (savedKey !== undefined) process.env.HCS_SENDER_KEY = savedKey;
+        if (savedAcct !== undefined) process.env.HCS_SENDER_ACCOUNT_ID = savedAcct;
+      }
+    });
+
+    it("fails closed with no fee budget (relay wired)", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      process.env.HCS_SENDER_KEY = "test-dummy-key";
+      process.env.HCS_SENDER_ACCOUNT_ID = "0.0.999001";
+      try {
+        const { token } = await issueV2(["message:send"]); // no budget
+        const res = await sendAgentMessage(
+          { capability_token: token, agent_username: "forge", room: "lobby", body: "hello town hall" },
+          agentPageFetch(),
+        );
+        expect("error" in res).toBe(true);
+        expect((res as { error: string }).error).toMatch(/fee budget/i);
+      } finally {
+        delete process.env.HCS_SENDER_KEY;
+        delete process.env.HCS_SENDER_ACCOUNT_ID;
+      }
+    });
+  });
+
+  describe("check_grant_status", () => {
+    it("reports scopes, no-expiry, budgets, and audit trail", async () => {
+      const { checkGrantStatus } = await import("./mcp-tools");
+      const { token, record } = await issueV2(["message:send", "availability:write"], {
+        feeBudgetHbar: 2,
+      });
+      const res = await checkGrantStatus({ capability_token: token });
+      expect("error" in res).toBe(false);
+      if ("error" in res) return;
+      expect(res.ok).toBe(true);
+      expect(res.version).toBe(2);
+      expect(res.expires).toBe("never");
+      expect(res.scopes.map((s) => s.scope).sort()).toEqual(["availability:write", "message:send"]);
+      expect(res.daily_budgets_remaining["message:send"]).toBe(20);
+      expect(res.fee_budget_hbar).toBe(2);
+      expect(res.fee_budget_remaining_hbar).toBe(2);
+      expect(res.recent_audit.some((e) => e.action === "issued")).toBe(true);
+      expect(JSON.stringify(res)).not.toContain(token);
+    });
+
+    it("fails closed on a bad token and never leaks it", async () => {
+      const { checkGrantStatus } = await import("./mcp-tools");
+      const bad = "vs_cap_" + "3".repeat(48);
+      const res = await checkGrantStatus({ capability_token: bad });
+      expect("error" in res).toBe(true);
+      expect(JSON.stringify(res)).not.toContain(bad);
+    });
+  });
+
+  describe("adversarial", () => {
+    it("a revoked v2 token fails on every execution tool", async () => {
+      const { setAgentAvailability, stagePageDraft, checkGrantStatus } = await import("./mcp-tools");
+      const { revokeCapabilityToken } = await import("./capability-tokens");
+      const { token, record } = await issueV2(["availability:write", "draft:stage"]);
+      expect(await revokeCapabilityToken(OWNER, record.id)).toBe(true);
+      const a = await setAgentAvailability(
+        { capability_token: token, agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in a).toBe(true);
+      const d = await stagePageDraft(
+        { capability_token: token, username: "forge", change_summary: "x", content: "y" },
+        agentPageFetch(),
+      );
+      expect("error" in d).toBe(true);
+      const s = await checkGrantStatus({ capability_token: token });
+      expect("error" in s).toBe(true);
+    });
+
+    it("one token cannot spend another token's rate-limit budget", async () => {
+      const { setAgentAvailability } = await import("./mcp-tools");
+      const t1 = await issueV2(["availability:write"]);
+      const t2 = await issueV2(["availability:write"]);
+      for (let i = 0; i < 10; i++) {
+        await setAgentAvailability(
+          { capability_token: t1.token, agent_username: "forge", open: true },
+          agentPageFetch(),
+        );
+      }
+      // t1 exhausted; t2 unaffected
+      const res = await setAgentAvailability(
+        { capability_token: t2.token, agent_username: "forge", open: true },
+        agentPageFetch(),
+      );
+      expect("error" in res).toBe(false);
+    });
   });
 });
