@@ -61,17 +61,6 @@ export const DEFAULT_CAPABILITY_SCOPES: CapabilityScope[] = [
   "page:read",
   "media:pin",
 ];
-/**
- * Default grant when no scopes are requested: the original three. The two
- * newer scopes (purchase:propose, review:propose) are never granted by
- * default — purchase in particular authorizes spending the human's money,
- * so it must always be explicitly requested.
- */
-export const DEFAULT_CAPABILITY_SCOPES: CapabilityScope[] = [
-  "page:update:propose",
-  "page:read",
-  "media:pin",
-];
 
 /** v1 token lifetime: 30 days. v2 tokens default to no expiry. */
 export const TOKEN_TTL_MS = 30 * 24 * 3_600_000;
