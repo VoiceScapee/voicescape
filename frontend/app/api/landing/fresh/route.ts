@@ -24,10 +24,16 @@ export const revalidate = 300;
  * the username from the calldata. Failed calls are skipped; re-registrations
  * keep only the latest publish.
  *
+ * Pinned pages (PINNED_USERNAMES) always lead the list — resolved live the
+ * same way — then recent registrations follow newest-first.
+ *
  * Response: { pages: [{ username, displayName, avatarEmoji, ownerType,
- *   registeredAt }] } — registeredAt is the consensus timestamp in seconds.
- * Any failure degrades to { pages: [] } and the landing section hides
- * itself — never a dead box, never stale fake data.
+ *   registeredAt, pinned }] } — registeredAt is the consensus timestamp in
+ * seconds (0 for pinned pages, which aren't new registrations).
+ * If the mirror-node scan fails, the pinned showcase pages still resolve
+ * live (via the contract + IPFS, independent of the mirror node); the
+ * section hides only if nothing at all resolves — never a dead box,
+ * never stale fake data.
  */
 const REGISTER_PAGE_SELECTOR = ethers
   .id("registerPage(string,string,uint8,address,string)")
@@ -40,7 +46,25 @@ const ABI_CODER = new ethers.AbiCoder();
  * 2026-10-08: the landing list is for real new pages earning views.)
  * Add a username here if another test page pops up.
  */
-const HIDDEN_USERNAMES = new Set(["danny", "danny-debug-1", "human-test-0913"]);
+const HIDDEN_USERNAMES = new Set([
+  "danny",
+  "danny-debug-1",
+  "human-test-0913",
+  "echo",
+  "bacon-the-dino",
+]);
+
+/**
+ * Always show these pages at the top of the list, resolved live.
+ * (Brandon's call 2026-10-08: Ash Rook's music page and Blockpage Buddy
+ * belong on the landing page alongside the fresh registrations.)
+ * ownerType is the on-chain registration type, used only as a fallback if
+ * the live resolve fails — the live lookup always wins.
+ */
+const PINNED_PAGES: { username: string; ownerType: number }[] = [
+  { username: "ash-rook", ownerType: 0 },
+  { username: "forge", ownerType: 1 },
+];
 
 /** How many fresh pages to show. */
 const MAX_FRESH_PAGES = 8;
@@ -52,8 +76,10 @@ export interface FreshPage {
   displayName: string;
   avatarEmoji: string | null;
   ownerType: number;
-  /** Consensus timestamp of the registerPage transaction, in seconds. */
+  /** Consensus timestamp of the registerPage transaction, in seconds (0 when pinned). */
   registeredAt: number;
+  /** True for the pinned showcase pages — they render without the NEW pill. */
+  pinned: boolean;
 }
 
 interface ContractResult {
@@ -84,6 +110,7 @@ interface Registration {
   username: string;
   ownerType: number;
   registeredAt: number;
+  pinned: boolean;
 }
 
 /**
@@ -128,7 +155,7 @@ async function recentRegistrations(): Promise<Registration[]> {
       const key = username.toLowerCase();
       if (!key || HIDDEN_USERNAMES.has(key) || seen.has(key)) continue;
       const ts = r.timestamp ? Math.floor(Number(r.timestamp)) : 0;
-      seen.set(key, { username, ownerType, registeredAt: ts });
+      seen.set(key, { username, ownerType, registeredAt: ts, pinned: false });
     }
     const next = data.links?.next ?? null;
     url = next ? (next.startsWith("http") ? next : `${mirrorBaseUrl()}${next}`) : null;
@@ -143,6 +170,7 @@ async function loadFreshPage(reg: Registration): Promise<FreshPage> {
     avatarEmoji: null,
     ownerType: reg.ownerType,
     registeredAt: reg.registeredAt,
+    pinned: reg.pinned,
   };
   try {
     const resolved = await resolvePage(reg.username, CHAINS["hedera-mainnet"]);
@@ -164,6 +192,7 @@ async function loadFreshPage(reg: Registration): Promise<FreshPage> {
       // registration transaction's value.
       ownerType: Number(resolved.ownerType ?? reg.ownerType),
       registeredAt: reg.registeredAt,
+      pinned: reg.pinned,
     };
   } catch {
     return fallback;
@@ -173,9 +202,18 @@ async function loadFreshPage(reg: Registration): Promise<FreshPage> {
 export async function GET() {
   try {
     const regs = await recentRegistrations();
-    const pages = await Promise.all(regs.map(loadFreshPage));
-    // Newest first — the just-published pages lead.
-    pages.sort((a, b) => b.registeredAt - a.registeredAt);
+    const pinnedNames = new Set(PINNED_PAGES.map((p) => p.username.toLowerCase()));
+    // Pinned showcase pages first (Brandon's order), resolved live like the
+    // rest; skip any that also appear in recent registrations to avoid dupes.
+    const pinned: Registration[] = PINNED_PAGES.filter(
+      (p) => !HIDDEN_USERNAMES.has(p.username.toLowerCase()),
+    ).map((p) => ({ username: p.username, ownerType: p.ownerType, registeredAt: 0, pinned: true }));
+    const fresh = regs.filter((r) => !pinnedNames.has(r.username.toLowerCase()));
+    const pages = await Promise.all([...pinned, ...fresh].map(loadFreshPage));
+    // Pinned first, then newest-first.
+    pages.sort(
+      (a, b) => Number(b.pinned) - Number(a.pinned) || b.registeredAt - a.registeredAt,
+    );
     return NextResponse.json({ pages });
   } catch {
     return NextResponse.json({ pages: [] });

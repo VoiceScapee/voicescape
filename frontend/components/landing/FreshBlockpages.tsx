@@ -20,6 +20,7 @@ interface FreshPage {
   avatarEmoji: string | null;
   ownerType: number;
   registeredAt: number;
+  pinned: boolean;
 }
 
 export function FreshBlockpages() {
@@ -139,21 +140,23 @@ export function FreshBlockpages() {
                     @{p.username}
                   </div>
                 </div>
-                <span
-                  style={{
-                    marginLeft: "auto",
-                    fontSize: 10,
-                    fontWeight: 800,
-                    letterSpacing: "0.08em",
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    background: "#1f9d55",
-                    color: "#fff",
-                    flexShrink: 0,
-                  }}
-                >
-                  <T k="landing.freshNew" />
-                </span>
+                {!p.pinned && (
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      letterSpacing: "0.08em",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      background: "#1f9d55",
+                      color: "#fff",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <T k="landing.freshNew" />
+                  </span>
+                )}
               </div>
               <div
                 className="vs-mono"

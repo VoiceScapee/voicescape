@@ -42,6 +42,11 @@ describe("FreshBlockpages (landing section)", () => {
     expect(src).not.toMatch(/join thousands|trusted by|millions/i);
   });
 
+  it("shows the NEW pill only on genuinely new pages, not pinned ones", () => {
+    expect(src).toContain("!p.pinned");
+    expect(src).toContain("landing.freshNew");
+  });
+
   it("is mounted on the landing page below the lobby preview", () => {
     expect(pageSrc).toContain("<FreshBlockpages />");
     const chatIdx = pageSrc.indexOf("<ChatPreview />");
