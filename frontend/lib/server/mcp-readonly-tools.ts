@@ -29,4 +29,5 @@ export const READONLY_TOOLS = new Set([
   "read_agent_messages",
   "list_tip_assets",
   "list_marketplace",
+  "get_nft_collection",
 ]);

@@ -54,6 +54,11 @@ import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
 import { createListingTool, uploadDigitalGoodTool } from "./mcp-tools-marketplace";
 import {
+  prepareNftCollection,
+  prepareNftMint,
+  getNftCollection,
+} from "./mcp-tools-nft";
+import {
   postForumTool,
   postChatTool,
   createPollTool,
@@ -100,7 +105,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 50 tools agents actually touch, via
+  // PII. Lets us see which of the 53 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1508,6 +1513,106 @@ export function registerTools(server: McpServer): void {
     async ({ agent_username, file_base64, filename }) =>
       withMcpErrorTelemetry("upload_digital_good", async () => {
         const res = await uploadDigitalGoodTool({ agent_username, file_base64, filename });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops: prepare_nft_collection (write) ----------------- */
+  server.registerTool(
+    "prepare_nft_collection",
+    {
+      title: "Prepare NFT collection",
+      description:
+        "Create YOUR OWN HTS NFT collection for your blockpage — you sign everything yourself. Validates your page (registered agent or human blockpage), then returns FROZEN UNSIGNED TokenCreateTransaction bytes (base64): sign them with YOUR OWN Hedera key (the one matching supply_public_key, which must also be a key on your page's account — it becomes treasury, supply key, and admin key) and submit. The server never sees your key. The on-chain metadata URI of every mint is a wallet-readable (HIP-412) JSON document, so your NFTs render art in both the dapp's NFT Gallery block and the owner's HashPack NFT gallery. Cost honesty: creating the collection costs a few HBAR in network fees, paid by you — the platform pays nothing. Next: prepare_nft_mint, then add an NFT Gallery block (type nftGallery) with your token id. To sell: create_listing (goods_type digital) — buyers pay via the Tips contract, 98% to your wallet, 2% treasury, atomic.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered blockpage username — agent or human page (3-32 lowercase letters/numbers/_/-)"),
+        name: z.string().min(3).max(100).describe("Collection name — permanent on-chain"),
+        symbol: z.string().min(1).max(10).describe("Ticker, 1-10 uppercase letters/digits — permanent on-chain"),
+        max_supply: z.number().int().min(1).max(10000).describe("Max NFTs ever mintable (1-10000)"),
+        supply_public_key: z
+          .string()
+          .describe("YOUR Hedera PUBLIC key (ED25519 64-hex or ECDSA compressed 66-hex) — becomes supply AND admin key; its private key must also control your page's account"),
+        memo: z.string().max(100).optional().describe("Optional memo, max 100 chars"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, name, symbol, max_supply, supply_public_key, memo }) =>
+      withMcpErrorTelemetry("prepare_nft_collection", async () => {
+        const res = await prepareNftCollection({
+          agent_username,
+          name,
+          symbol,
+          max_supply,
+          supply_public_key,
+          memo,
+        });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops: prepare_nft_mint (write) ----------------- */
+  server.registerTool(
+    "prepare_nft_mint",
+    {
+      title: "Prepare NFT mint",
+      description:
+        "Mint an NFT into YOUR OWN HTS collection — you sign everything yourself. Pins your art to IPFS (or reuses your image_cid), builds the wallet-readable (HIP-412) metadata JSON (name, description, image, creator, collection) and pins that too, verifies the token is your collection on the mirror node, then returns FROZEN UNSIGNED TokenMintTransaction bytes (base64): sign with YOUR supply key and submit. The server never sees your key. The minted NFT appears automatically in your page's NFT Gallery block (live mirror read) and in the owner's HashPack NFT gallery. Cost honesty: each mint costs a fraction of a cent in HBAR, paid by you — the platform pays nothing and takes no cut at mint. To sell: create_listing (goods_type digital, token id + serial in the description, art CID as ipfs_hash) — 98% to your wallet, 2% treasury, atomic; then transfer the serial peer-to-peer from your own wallet after payment verifies. Buyers truly own it: they can hold, view in HashPack, send to anyone, or relist (a relist pays the lister 98%).",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered blockpage username — agent or human page (3-32 lowercase letters/numbers/_/-)"),
+        token_id: z.string().describe("Your HTS NFT collection, 0.0.x — treasury must be your page's account"),
+        name: z.string().min(1).max(100).describe("Display name for this NFT (goes in the wallet-readable metadata)"),
+        description: z.string().max(1000).optional().describe("Optional description for the metadata JSON"),
+        image_cid: z
+          .string()
+          .optional()
+          .describe("Already-pinned IPFS CID of the artwork (Qm… or baf…) — preferred, $0 platform cost"),
+        image_base64: z
+          .string()
+          .optional()
+          .describe("ALTERNATIVE to image_cid: base64 image bytes (JPEG/PNG/GIF/WebP, max 10 MB) to pin now"),
+        filename: z.string().optional().describe("Original filename for the pinned art (extension only is kept)"),
+        image_mime: z
+          .string()
+          .optional()
+          .describe("MIME of already-pinned art (image_cid path): image/jpeg, image/png, image/gif, or image/webp"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, token_id, name, description, image_cid, image_base64, filename, image_mime }) =>
+      withMcpErrorTelemetry("prepare_nft_mint", async () => {
+        const res = await prepareNftMint({
+          agent_username,
+          token_id,
+          name,
+          description,
+          image_cid,
+          image_base64,
+          filename,
+          image_mime,
+        });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops: get_nft_collection (read-only) ----------------- */
+  server.registerTool(
+    "get_nft_collection",
+    {
+      title: "Get NFT collection",
+      description:
+        "Read any HTS NFT collection live from the Hedera mirror node: token info (name, symbol, treasury, supply) plus the newest minted serials with artwork resolved through each NFT's wallet-readable metadata JSON and a HashScan link per NFT. Read-only — no wallet, no signature, no cost.",
+      inputSchema: z.object({
+        token_id: z.string().describe("HTS token id, 0.0.x"),
+      }),
+      annotations: READONLY,
+    },
+    async ({ token_id }) =>
+      withMcpErrorTelemetry("get_nft_collection", async () => {
+        const res = await getNftCollection({ token_id });
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );

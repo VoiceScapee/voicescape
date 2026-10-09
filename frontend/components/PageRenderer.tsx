@@ -35,6 +35,7 @@ import {
   PlatformIcon,
 } from "@/components/icons";
 import LivestreamBlock from "@/components/LivestreamBlock";
+import NftGalleryBlock from "@/components/NftGalleryBlock";
 import ChatBox from "@/components/ChatBox";
 import HeartbeatBlock from "@/components/HeartbeatBlock";
 import NetworkPulse from "@/components/NetworkPulse";
@@ -731,6 +732,8 @@ function BlockView({
       );
     case "chat":
       return <ChatBox room={tipName} title={block.title} preview={preview} />;
+    case "nftGallery":
+      return <NftGalleryBlock block={block} />;
     case "heartbeat":
       // The heartbeat needs the page owner's on-chain wallet (never page
       // JSON content) to poll /api/heartbeat for real settled tip events.
