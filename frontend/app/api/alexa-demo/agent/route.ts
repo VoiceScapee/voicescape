@@ -162,7 +162,24 @@ async function groqJson(prompt: string): Promise<string> {
 
 function cleanJson(raw: string): string {
   // Models sometimes wrap JSON in fences despite instructions; strip them.
-  return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  let s = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  // If there's prose around the JSON, extract the outermost object.
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start >= 0 && end > start) s = s.slice(start, end + 1);
+  return s;
+}
+
+async function planWithRetry(prompt: string, attempts = 2): Promise<AgentPlan> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return JSON.parse(await groqJson(prompt)) as AgentPlan;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("planner failed");
 }
 
 async function mcpRpc(method: string, params: Record<string, unknown>, id: number) {
@@ -199,13 +216,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "empty transcript" }, { status: 400 });
     }
 
-    // 1. Groq plans the build.
-    const planRaw = await groqJson(spoken);
+    // 1. Groq plans the build (one retry if the model fumbles the JSON).
     let plan: AgentPlan;
     try {
-      plan = JSON.parse(planRaw);
+      plan = await planWithRetry(spoken);
     } catch {
-      return NextResponse.json({ error: "planner returned invalid JSON" }, { status: 502 });
+      return NextResponse.json({ error: "The agent stumbled — try again." }, { status: 502 });
     }
 
     // 2. Call the LIVE MCP server over Streamable HTTP (spec 2025-11-25).
