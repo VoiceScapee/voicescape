@@ -60,7 +60,7 @@ beforeEach(() => {
   resolvePageMock.mockImplementation(async (username: string) => ({
     owner: "0x0000000000000000000000000000000000000001",
     ipfsHash: `Qm${username}`,
-    ownerType: username === "thechomps" ? 1 : 0,
+    ownerType: username === "thechomps" || username === "forge" ? 1 : 0,
     operator: "0x0000000000000000000000000000000000000000",
     purpose: "",
   }));
@@ -85,10 +85,19 @@ describe("GET /api/landing/fresh", () => {
     );
     const res = await GET();
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { pages: { username: string; ownerType: number }[] };
-    expect(json.pages.map((p) => p.username)).toEqual(["thechomps", "informinmotion"]);
-    expect(json.pages[0]?.ownerType).toBe(1);
-    expect(json.pages[1]?.ownerType).toBe(0);
+    const json = (await res.json()) as {
+      pages: { username: string; ownerType: number; pinned: boolean }[];
+    };
+    // Pinned showcase pages lead, then recent registrations newest-first.
+    expect(json.pages.map((p) => p.username)).toEqual([
+      "ash-rook",
+      "forge",
+      "thechomps",
+      "informinmotion",
+    ]);
+    expect(json.pages[2]?.ownerType).toBe(1);
+    expect(json.pages[2]?.pinned).toBe(false);
+    expect(json.pages[3]?.ownerType).toBe(0);
   });
 
   it("skips failed calls, non-register calls, and undecodable calldata", async () => {
@@ -120,10 +129,10 @@ describe("GET /api/landing/fresh", () => {
     );
     const res = await GET();
     const json = (await res.json()) as { pages: { username: string }[] };
-    expect(json.pages.map((p) => p.username)).toEqual(["goodpage"]);
+    expect(json.pages.map((p) => p.username)).toEqual(["ash-rook", "forge", "goodpage"]);
   });
 
-  it("dedupes re-registrations keeping the latest, and excludes curated pages", async () => {
+  it("dedupes re-registrations keeping the latest, and hides test pages", async () => {
     stubMirror(
       mirrorResults([
         {
@@ -137,7 +146,48 @@ describe("GET /api/landing/fresh", () => {
           timestamp: "1791390000.000000000",
         },
         {
-          function_parameters: registerCalldata("forge", 1),
+          function_parameters: registerCalldata("danny", 1),
+          error_message: null,
+          timestamp: "1791480001.000000000",
+        },
+        {
+          function_parameters: registerCalldata("human-test-0913", 0),
+          error_message: null,
+          timestamp: "1791480002.000000000",
+        },
+        {
+          function_parameters: registerCalldata("echo", 1),
+          error_message: null,
+          timestamp: "1791480003.000000000",
+        },
+        {
+          function_parameters: registerCalldata("bacon-the-dino", 0),
+          error_message: null,
+          timestamp: "1791480004.000000000",
+        },
+      ]),
+    );
+    const res = await GET();
+    const json = (await res.json()) as {
+      pages: { username: string; registeredAt: number; pinned: boolean }[];
+    };
+    // Pinned showcase pages lead; test pages never appear.
+    expect(json.pages.map((p) => p.username)).toEqual(["ash-rook", "forge", "repag"]);
+    expect(json.pages[2]?.registeredAt).toBe(1791480000);
+    expect(json.pages[2]?.pinned).toBe(false);
+  });
+
+  it("pins ash-rook then forge first, with live data and no dupes", async () => {
+    stubMirror(
+      mirrorResults([
+        {
+          function_parameters: registerCalldata("thechomps", 1),
+          error_message: null,
+          timestamp: "1791480000.000000000",
+        },
+        {
+          // pinned page also freshly registered — must not duplicate
+          function_parameters: registerCalldata("ash-rook", 0),
           error_message: null,
           timestamp: "1791480001.000000000",
         },
@@ -145,13 +195,17 @@ describe("GET /api/landing/fresh", () => {
     );
     const res = await GET();
     const json = (await res.json()) as {
-      pages: { username: string; registeredAt: number }[];
+      pages: { username: string; displayName: string; ownerType: number; pinned: boolean }[];
     };
-    expect(json.pages.map((p) => p.username)).toEqual(["repag"]);
-    expect(json.pages[0]?.registeredAt).toBe(1791480000);
+    expect(json.pages.map((p) => p.username)).toEqual(["ash-rook", "forge", "thechomps"]);
+    expect(json.pages[0]?.pinned).toBe(true);
+    expect(json.pages[0]?.displayName).toBe("Title Qmash-rook");
+    expect(json.pages[1]?.pinned).toBe(true);
+    expect(json.pages[1]?.ownerType).toBe(1); // Buddy is an agent
+    expect(json.pages[2]?.pinned).toBe(false);
   });
 
-  it("fails open to an empty list when the mirror node errors", async () => {
+  it("still shows pinned pages when the mirror node errors", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -160,8 +214,13 @@ describe("GET /api/landing/fresh", () => {
     );
     const res = await GET();
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { pages: unknown[] };
-    expect(json.pages).toEqual([]);
+    const json = (await res.json()) as {
+      pages: { username: string; pinned: boolean }[];
+    };
+    // Pinned showcase pages resolve via contract + IPFS, independent of the
+    // mirror node — they stay up while fresh registrations degrade away.
+    expect(json.pages.map((p) => p.username)).toEqual(["ash-rook", "forge"]);
+    expect(json.pages.every((p) => p.pinned)).toBe(true);
   });
 
   it("still lists a page when IPFS resolution fails", async () => {
@@ -179,7 +238,7 @@ describe("GET /api/landing/fresh", () => {
     const json = (await res.json()) as {
       pages: { username: string; displayName: string }[];
     };
-    expect(json.pages.map((p) => p.username)).toEqual(["nometa"]);
-    expect(json.pages[0]?.displayName).toBe("@nometa");
+    expect(json.pages.map((p) => p.username)).toEqual(["ash-rook", "forge", "nometa"]);
+    expect(json.pages[2]?.displayName).toBe("@nometa");
   });
 });
