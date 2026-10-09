@@ -192,6 +192,63 @@ async function planWithRetry(prompt: string, attempts = 2): Promise<AgentPlan> {
   throw lastErr instanceof Error ? lastErr : new Error("planner failed");
 }
 
+/**
+ * Deterministic fallback when the AI planner is unreachable (the free
+ * planning endpoint is flaky): handles the demo's known prompts with no
+ * model call. The MCP calls that follow are still 100% live — only the
+ * "thinking" step is rule-based.
+ */
+function fallbackPlan(spoken: string): AgentPlan {
+  const lower = spoken.toLowerCase();
+  const steps = ["Heard your request", "Planning over the live MCP server"];
+  if (/music|ash.?rook/.test(lower)) {
+    steps.push('Looking up the live "ash-rook" music blockpage');
+    return {
+      speak:
+        "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
+      steps,
+      toolCalls: [{ name: "lookup_blockpage", arguments: { username: "ash-rook" } }],
+      pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
+    };
+  }
+  const userMatch = lower.match(/(?:look\s*up|show me)(?: the)? blockpage ([a-z0-9][a-z0-9\-_]*)/);
+  if (userMatch) {
+    const username = userMatch[1];
+    steps.push(`Looking up the live "${username}" blockpage`);
+    return {
+      speak: `Here's the live ${username} blockpage, pulled straight from Voicescape.`,
+      steps,
+      toolCalls: [{ name: "lookup_blockpage", arguments: { username } }],
+      pageDraft: { displayName: username, blocks: [] },
+    };
+  }
+  if (/photo|portfolio/.test(lower)) {
+    steps.push("Listing live page templates");
+    return {
+      speak: "Here's a photography portfolio starter, built from live Voicescape templates.",
+      steps,
+      toolCalls: [{ name: "list_templates", arguments: {} }],
+      pageDraft: {
+        displayName: "Photography portfolio",
+        purpose: "A portfolio page starter",
+        theme: { background: "#0f172a", foreground: "#f1f5f9", accent: "#38bdf8" },
+        blocks: [{ type: "text", content: "A portfolio page — your photos, your story, tips open." }],
+      },
+    };
+  }
+  steps.push("Drafting a preview");
+  return {
+    speak: "Here's a blockpage preview I put together for you.",
+    steps,
+    toolCalls: [],
+    pageDraft: {
+      displayName: "Your page",
+      theme: { background: "#0f172a", foreground: "#f1f5f9", accent: "#38bdf8" },
+      blocks: [{ type: "text", content: spoken.slice(0, 140) }],
+    },
+  };
+}
+
 /** Pull the username out of a successful lookup_blockpage tool result. */
 function lookedUpUsername(results: Array<{ tool: string; result: unknown }>): string | null {
   for (const t of results) {
@@ -284,12 +341,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "empty transcript" }, { status: 400 });
     }
 
-    // 1. Groq plans the build (one retry if the model fumbles the JSON).
+    // 1. Plan the build: AI planner first, deterministic fallback if the
+    //    free planning endpoint is down (the MCP calls after this are
+    //    still live either way).
     let plan: AgentPlan;
+    let plannedBy: string;
     try {
       plan = await planWithRetry(spoken);
+      plannedBy = "ai";
     } catch {
-      return NextResponse.json({ error: "The agent stumbled — try again." }, { status: 502 });
+      plan = fallbackPlan(spoken);
+      plannedBy = "fallback";
     }
 
     // 2. Call the LIVE MCP server over Streamable HTTP (spec 2025-11-25).
