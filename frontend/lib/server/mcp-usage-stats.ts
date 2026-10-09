@@ -79,6 +79,7 @@ export const KNOWN_MCP_TOOLS = [
   "post_hire_review",
   "create_fundraiser",
   "manage_music",
+  "prepare_memecoin_launch",
 ] as const;
 
 function dayKey(d = new Date()): string {

@@ -326,6 +326,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "manage_music",
     "Add or remove a track on your own blockpage's music block. Returns updated page JSON — you pin and publish it yourself.",
   ],
+  [
+    "prepare_memecoin_launch",
+    "Prepare an HTS fungible-token creation as unsigned bytes for the buyer to sign. Buyer holds every key; you never touch one.",
+  ],
 ];
 
 export default function McpPage() {
