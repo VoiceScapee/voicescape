@@ -155,7 +155,13 @@ export default function AlexaDemoPage() {
     setTranscript("");
     setError(null);
     setListening(true);
-    recog.start();
+    try {
+      recog.start();
+    } catch (e) {
+      setListening(false);
+      recogRef.current = null;
+      setError("Mic couldn't start — type your prompt below instead.");
+    }
   }, [runAgent]);
 
   const theme = agent?.pageDraft.theme ?? {};
@@ -176,6 +182,10 @@ export default function AlexaDemoPage() {
         <p className="mt-2 text-slate-400">
           Speak a prompt. The agent plans over Voicescape&apos;s live MCP server
           and your blockpage preview builds itself.
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Works today on any device with a browser and a mic — phone, PC,
+          tablet. Voice builds it, you claim it on the dapp.
         </p>
 
         {/* Voice button */}
@@ -270,6 +280,8 @@ export default function AlexaDemoPage() {
               <p className="mt-3 text-xs text-slate-500">
                 Live MCP: {agent.mcp.serverName} · spec {agent.mcp.protocolVersion} ·
                 Streamable HTTP
+                {agent.toolResults.length > 0 &&
+                  ` · tools called: ${agent.toolResults.map((t) => t.tool).join(", ")}`}
               </p>
             )}
           </section>
@@ -341,6 +353,20 @@ export default function AlexaDemoPage() {
             {agent.disclaimer && (
               <p className="mt-3 text-center text-xs text-slate-500">{agent.disclaimer}</p>
             )}
+            <div className="mt-4 text-center">
+              <a
+                href="https://voicescape.vercel.app"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block rounded-lg px-5 py-2.5 font-semibold text-slate-950"
+                style={{ background: accent }}
+              >
+                Make it yours on the live dapp →
+              </a>
+              <p className="mt-2 text-xs text-slate-500">
+                Claiming happens in your own wallet — the agent previews, you own it.
+              </p>
+            </div>
           </section>
         )}
       </div>
