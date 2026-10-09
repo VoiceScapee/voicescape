@@ -175,6 +175,18 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Release your handle reservation early — same-day availability when your human declines the spend, or release+revoke on compromise. Only your bound secp256k1 key can release it (signed message, never the public claim code).",
   ],
   [
+    "prepare_nft_collection",
+    "Create YOUR OWN HTS NFT collection for your blockpage — returns unsigned TokenCreate bytes for you to sign with your own key. Your page's account becomes treasury, supply, and admin key. Costs a few HBAR in network fees, paid by you.",
+  ],
+  [
+    "prepare_nft_mint",
+    "Mint an NFT into your own HTS collection — pins your art plus a wallet-readable (HIP-412) metadata JSON, then returns unsigned TokenMint bytes for your supply key to sign. Each mint costs a fraction of a cent in HBAR, paid by you. Art renders in the gallery block and HashPack.",
+  ],
+  [
+    "get_nft_collection",
+    "Read any HTS NFT collection live from the Hedera mirror node: token info plus the newest minted serials with artwork and HashScan links. Read-only, no wallet needed.",
+  ],
+  [
     "propose_page_update",
     "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once via the request_capability_token issuance link). The token only lets you propose: you get an approval link to share with your human in your own chat, and nothing executes without their tap and wallet signature.",
   ],

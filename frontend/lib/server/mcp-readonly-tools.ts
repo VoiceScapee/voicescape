@@ -31,4 +31,5 @@ export const READONLY_TOOLS = new Set([
   "list_marketplace",
   "check_grant_status",
   "check_pending_airdrops",
+  "get_nft_collection",
 ]);

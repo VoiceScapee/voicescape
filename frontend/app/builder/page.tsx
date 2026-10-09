@@ -189,6 +189,8 @@ function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) 
       return <IconGrid size={size} />;
     case "badges":
       return <IconSpark size={size} />;
+    case "nftGallery":
+      return <IconGrid size={size} />;
   }
 }
 
@@ -673,6 +675,38 @@ function BlockEditor({
           connection to Hedera mainnet and pulses when real tips settle. No
           setup needed.
         </p>
+      )}
+
+      {block.type === "nftGallery" && (
+        <>
+          <label className="vb-field">
+            <span className="vs-label">Collection token ID</span>
+            <input
+              className="vs-input"
+              value={block.token_id}
+              maxLength={32}
+              placeholder="0.0.123456"
+              onChange={(e) => onChange({ ...block, token_id: e.target.value })}
+              aria-label="HTS NFT collection token ID"
+            />
+          </label>
+          <label className="vb-field">
+            <span className="vs-label">Title</span>
+            <input
+              className="vs-input"
+              value={block.title ?? ""}
+              maxLength={60}
+              placeholder="NFT Gallery"
+              onChange={(e) => onChange({ ...block, title: e.target.value })}
+              aria-label="Gallery title"
+            />
+          </label>
+          <p className="vs-hint">
+            Paste your HTS NFT collection ID (from prepare_nft_collection).
+            The block reads Hedera live — mints appear automatically, and
+            buyers associate + purchase from here.
+          </p>
+        </>
       )}
 
       {block.type === "badges" && (
