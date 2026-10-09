@@ -53,6 +53,8 @@ const HIDDEN_USERNAMES = new Set([
   "echo",
   "bacon-the-dino",
   "user-10425049",
+  // Brandon's own founder page — re-registered 2026-09-11, not a new page.
+  "user-10424063",
 ]);
 
 /**
