@@ -271,6 +271,19 @@ export interface DwellDayStats {
   buckets: Partial<Record<DwellBucket, number>>;
   violations: Partial<Record<DwellViolation, number>>;
   cohortFlows: number;
+  /**
+   * Tail mass: count of completed flows in the lt_5s bucket — the honest
+   * upper bound on "decided before landing". Pre-arrival decision is
+   * invisible: a flow the human decided before T1 compresses the T1→T2
+   * interval exactly like fast conviction, and no client clock can split
+   * them. So we publish the bound — the mass of the short-dwell tail —
+   * rather than pretending to separate the two. Dwell bounds the visible
+   * interval (T1→T2, server-observed); the tail mass bounds the invisible
+   * one (everything before T1). Neither touches a client clock.
+   */
+  tailMass: number;
+  /** tailMass / completed, when completed > 0. */
+  tailMassFraction: number | null;
 }
 
 const DWELL_BUCKETS: DwellBucket[] = ["lt_5s", "5s_30s", "30s_2m", "2m_10m", "gt_10m"];
@@ -290,7 +303,15 @@ export async function getDwellStats(
   const out: DwellDayStats[] = [];
   for (let i = 0; i < days; i++) {
     const date = utcDate(new Date(nowMs - i * 86400_000));
-    const day: DwellDayStats = { date, completed: 0, buckets: {}, violations: {}, cohortFlows: 0 };
+    const day: DwellDayStats = {
+      date,
+      completed: 0,
+      buckets: {},
+      violations: {},
+      cohortFlows: 0,
+      tailMass: 0,
+      tailMassFraction: null,
+    };
     const num = async (key: string): Promise<number> => {
       try {
         const raw = await store.get(key);
@@ -310,6 +331,10 @@ export async function getDwellStats(
       const n = await num(`metrics:daily:${date}:dwell_violation:${v}`);
       if (n > 0) day.violations[v] = n;
     }
+    // Tail mass = the short-dwell tail's mass: upper bound on
+    // "decided before landing" (see DwellDayStats.tailMass).
+    day.tailMass = day.buckets["lt_5s"] ?? 0;
+    if (day.completed > 0) day.tailMassFraction = day.tailMass / day.completed;
     out.push(day);
   }
   return out;
@@ -338,6 +363,7 @@ export interface DwellAdminResult {
 export async function getDwellStatsAdmin(
   deps: DwellAdminDeps,
   cred: unknown,
+  nowMs: number = Date.now(),
 ): Promise<DwellAdminResult> {
   if (cred == null) {
     return { status: 401, json: { error: "sign in with your wallet to view metrics" } };
@@ -348,7 +374,7 @@ export async function getDwellStatsAdmin(
     return { status: 403, json: { error: "metrics are private — founders only" } };
   }
   try {
-    const days = await getDwellStats(deps.store);
+    const days = await getDwellStats(deps.store, 7, nowMs);
     return { status: 200, json: { days, dayCount: 7 } };
   } catch {
     return { status: 503, json: { error: "could not read metrics — try again in a moment" } };

@@ -23,7 +23,11 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { agentOwnerFromRequest } from "@/lib/server/agent-session";
-import { getPendingActionById } from "@/lib/server/pending-actions";
+import {
+  getPendingActionById,
+  buildProposalManifest,
+  proposalDigest,
+} from "@/lib/server/pending-actions";
 import { lookupBlockpage } from "@/lib/server/mcp-tools";
 import { assembleClaimPage } from "@/lib/server/page-customize";
 import { publishPageJson } from "@/lib/server/publish.js";
@@ -104,5 +108,13 @@ export async function POST(
     summary: action.summary,
     costEstimate: action.costEstimate,
     note: "Review the summary, then sign once in your wallet. Network gas only — a few cents of HBAR.",
+    // The approval record links the proposal digest + manifest, so the
+    // human's signed tap is checkable evidence a stranger can re-verify:
+    // recompute keccak256(canonical(static + immutableRefs)) and compare.
+    // Proposals stashed before digests existed get them computed here.
+    proposalDigest:
+      action.pageUpdate.digest ||
+      proposalDigest(action.pageUpdate.spec, action.pageUpdate.manifest),
+    proposalManifest: action.pageUpdate.manifest || buildProposalManifest(action.pageUpdate.spec),
   });
 }
