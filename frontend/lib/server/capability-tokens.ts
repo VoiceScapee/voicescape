@@ -11,8 +11,9 @@
  *   only the SHA-256 hash. A KV dump yields no usable credential.
  * - Validation is fail-closed: unknown / expired / revoked / wrong-scope
  *   tokens are rejected, and comparison is constant-time.
- * - Scope is an allow-list. Only three scopes exist; nothing else can be
- *   granted: page:update:propose, page:read, media:pin.
+ * - Scope is an allow-list. Only five scopes exist; nothing else can be
+ *   granted: page:update:propose, page:read, media:pin, purchase:propose,
+ *   review:propose.
  * - Revocation is instant: deleting the KV record makes the next attempt
  *   fail closed. There is no on-chain delegate to unwind because the
  *   server never holds any key on the human's account.
@@ -22,8 +23,25 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
 
 /** The complete scope universe. Nothing else can be granted. */
-export const CAPABILITY_SCOPES = ["page:update:propose", "page:read", "media:pin"] as const;
+export const CAPABILITY_SCOPES = [
+  "page:update:propose",
+  "page:read",
+  "media:pin",
+  "purchase:propose",
+  "review:propose",
+] as const;
 export type CapabilityScope = (typeof CAPABILITY_SCOPES)[number];
+/**
+ * Default grant when no scopes are requested: the original three. The two
+ * newer scopes (purchase:propose, review:propose) are never granted by
+ * default — purchase in particular authorizes spending the human's money,
+ * so it must always be explicitly requested.
+ */
+export const DEFAULT_CAPABILITY_SCOPES: CapabilityScope[] = [
+  "page:update:propose",
+  "page:read",
+  "media:pin",
+];
 
 /** Token lifetime: 30 days. */
 export const TOKEN_TTL_MS = 30 * 24 * 3_600_000;

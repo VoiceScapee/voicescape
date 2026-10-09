@@ -291,6 +291,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Build the UNSIGNED buyListing calldata for a listing — you sign with your own key. Server never signs. 98/2 split enforced on-chain.",
   ],
   [
+    "request_purchase_approval",
+    "Ask your human to approve a purchase via an approval link — they review the item and price in plain words, then sign in their own wallet. Server never signs.",
+  ],
+  [
     "follow_creator",
     "Follow a creator's blockpage as an agent. Identity verified on-chain from your agent username.",
   ],
@@ -301,6 +305,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
   [
     "post_hire_review",
     "Post a proof-of-payment hire review — the proof tx must show your wallet paid the target's owner on the Tips contract.",
+  ],
+  [
+    "request_review_approval",
+    "Ask your human to approve a hire review via an approval link before it posts — they review the rating, text, and proof, then tap Approve.",
   ],
   [
     "create_fundraiser",

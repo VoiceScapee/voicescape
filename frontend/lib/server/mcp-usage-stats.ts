@@ -70,9 +70,11 @@ export const KNOWN_MCP_TOOLS = [
   "create_event",
   "list_marketplace",
   "prepare_purchase",
+  "request_purchase_approval",
   "follow_creator",
   "unfollow_creator",
   "post_hire_review",
+  "request_review_approval",
   "create_fundraiser",
   "manage_music",
 ] as const;
