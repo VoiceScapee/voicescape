@@ -7,6 +7,7 @@ mcp-tools-misc — registry snippet (paste into frontend/lib/server/mcp-tool-reg
 import {
   listMarketplaceTool,
   preparePurchaseTool,
+  prepareTipTool,
   followCreatorTool,
   unfollowCreatorTool,
   postHireReviewTool,
@@ -14,7 +15,7 @@ import {
   manageMusicTool,
 } from "@/lib/server/mcp-tools-misc";
 
-2) PASTE THESE SEVEN server.registerTool(...) BLOCKS INSIDE registerTools(),
+2) PASTE THESE EIGHT server.registerTool(...) BLOCKS INSIDE registerTools(),
    e.g. right before the closing of the public-tools section. READONLY and
    WRITE are the existing annotation constants; withMcpErrorTelemetry,
    toolResult, toolError and z are already imported in the registry file.
@@ -60,6 +61,26 @@ server.registerTool(
   async (args) =>
     withMcpErrorTelemetry("prepare_purchase", async () => {
       const r = await preparePurchaseTool(args);
+      return "error" in r ? toolError(r.error) : toolResult(r);
+    }),
+);
+
+/* ------------------- prepare_tip (unsigned tipPage) ------------------- */
+server.registerTool(
+  "prepare_tip",
+  {
+    title: "Prepare tip",
+    description:
+      "Build the UNSIGNED tipPage calldata for a tip to a blockpage so your own wallet can sign it. Returns the Tips contract (0.0.10854060), the function selector, the hex calldata, the exact HBAR value to attach, and the 98/2 split preview (what the page owner nets, what the treasury takes). This server never signs and never holds keys — you sign the prepared calldata with your own Hedera key and submit. The contract splits 98% to the page owner and 2% to the treasury atomically in the same transaction; no escrow. HBAR only (token tips need a human wallet). Verify afterward with verify_tip — proof-of-payment reviews require a settled tip.",
+    inputSchema: z.object({
+      recipient: z.string().describe("Blockpage username receiving the tip, e.g. user-10424063 (must be registered on-chain)"),
+      amount_hbar: z.string().describe('Tip amount in HBAR, e.g. "1.5"'),
+    }),
+    annotations: WRITE,
+  },
+  async (args) =>
+    withMcpErrorTelemetry("prepare_tip", async () => {
+      const r = await prepareTipTool(args);
       return "error" in r ? toolError(r.error) : toolResult(r);
     }),
 );

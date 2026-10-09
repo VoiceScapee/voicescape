@@ -11,6 +11,7 @@ import { ethers } from "ethers";
 import {
   listMarketplaceTool,
   preparePurchaseTool,
+  prepareTipTool,
   followCreatorTool,
   unfollowCreatorTool,
   postHireReviewTool,
@@ -264,6 +265,87 @@ describe("prepare_purchase", () => {
     const res = await preparePurchaseTool({ listing_id: "badge-1" }, purchaseDeps(ACTIVE_LISTING), bad);
     expect("error" in res).toBe(true);
     expect((res as { error: string }).error).toMatch(/HBAR\/USD/);
+  });
+});
+
+/* ------------------------- prepare_tip ------------------------- */
+
+const TIP_PAGES = {
+  "creator-bob": { owner: OWNER_B },
+};
+
+describe("prepare_tip", () => {
+  const TIP_IFACE = new ethers.Interface(TIPS_ABI);
+
+  it("builds unsigned tipPage calldata with the HBAR value and 98/2 preview", async () => {
+    const res = (await prepareTipTool(
+      { recipient: "creator-bob", amount_hbar: "1" },
+      registryFetch(TIP_PAGES),
+    )) as {
+      unsigned_calldata: string;
+      function_selector: string;
+      value_tinybar: string;
+      value_hbar: string;
+      creator_net_hbar: string;
+      treasury_fee_hbar: string;
+      contract: string;
+      function: string;
+      recipient: { username: string };
+      instructions: string;
+    };
+    expect(res.contract).toBe("0.0.10854060");
+    expect(res.function).toBe("tipPage(string username)");
+    expect(res.value_tinybar).toBe("100000000");
+    expect(res.value_hbar).toBe("1");
+    // 98/2 split preview: 1 HBAR -> 0.98 creator, 0.02 treasury
+    expect(res.creator_net_hbar).toBe("0.98");
+    expect(res.treasury_fee_hbar).toBe("0.02");
+    const decoded = TIP_IFACE.decodeFunctionData("tipPage", res.unsigned_calldata);
+    expect(decoded[0]).toBe("creator-bob");
+    expect(res.function_selector).toBe(TIP_IFACE.getFunction("tipPage")!.selector);
+    expect(res.recipient.username).toBe("creator-bob");
+    expect(res.instructions).toMatch(/UNSIGNED/);
+    expect(res.instructions).toMatch(/YOUR OWN Hedera key/);
+    expect(res.instructions).toMatch(/verify_tip/);
+  });
+
+  it("handles fractional amounts with exact tinybar math", async () => {
+    const res = (await prepareTipTool(
+      { recipient: "creator-bob", amount_hbar: "0.5" },
+      registryFetch(TIP_PAGES),
+    )) as { value_tinybar: string; creator_net_hbar: string; treasury_fee_hbar: string };
+    expect(res.value_tinybar).toBe("50000000");
+    expect(res.creator_net_hbar).toBe("0.49");
+    expect(res.treasury_fee_hbar).toBe("0.01");
+  });
+
+  it("errors on an unregistered blockpage", async () => {
+    const res = await prepareTipTool(
+      { recipient: "ghost-page", amount_hbar: "1" },
+      registryFetch(TIP_PAGES),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/not registered/);
+  });
+
+  it("rejects a 0.0.x account id — tipPage takes a username", async () => {
+    const res = await prepareTipTool(
+      { recipient: "0.0.12345", amount_hbar: "1" },
+      registryFetch(TIP_PAGES),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/not a valid blockpage username/);
+  });
+
+  it("rejects invalid and zero amounts", async () => {
+    for (const amount_hbar of ["abc", "0", "-1", ""]) {
+      const res = await prepareTipTool(
+        { recipient: "creator-bob", amount_hbar },
+        registryFetch(TIP_PAGES),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/not a positive HBAR amount/);
+    }
   });
 });
 

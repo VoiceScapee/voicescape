@@ -1,10 +1,10 @@
 /**
  * Voicescape MCP server — P2/P3 parity tool implementations (v1).
  *
- * These seven tools close the audit gaps so agents can do what humans can:
- * browse the marketplace, prepare a purchase, follow/unfollow creators,
- * post proof-of-payment hire reviews, create fundraisers, and manage the
- * music block on their own blockpage.
+ * These eight tools close the audit gaps so agents can do what humans can:
+ * browse the marketplace, prepare a purchase, prepare a tip, follow/unfollow
+ * creators, post proof-of-payment hire reviews, create fundraisers, and manage
+ * the music block on their own blockpage.
  *
  * AGENT IDENTITY MODEL: every write tool takes `agent_username` — the
  * caller's registered blockpage — and resolves it ON-CHAIN via the
@@ -56,6 +56,7 @@ import {
 } from "./agents/reviews";
 import { checkContent } from "./townhall/content-filter";
 import { getTipsAddress } from "../contracts";
+import { tinybarToHbar } from "../tx-proof";
 import { mirrorBaseUrl } from "./townhall/topics";
 import { writeGoal, type GoalDeps } from "./goals";
 
@@ -453,6 +454,115 @@ export async function preparePurchaseTool(
       `msg.sender's value 98% to the seller and 2% to the treasury in the same atomic transaction — ` +
       `no escrow, no platform custody. Verify the purchase afterward with verify_purchase. ` +
       `Never put your private key in a tool argument or chat message.`,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: prepare_tip (unsigned tipPage for an agent's own key)  */
+/* ------------------------------------------------------------------ */
+
+export interface PrepareTipArgs {
+  recipient: string;
+  amount_hbar: string;
+}
+
+export interface PreparedTip {
+  recipient: { username: string; owner_account: string | null };
+  /** Tips contract in 0.0.x form — the ContractId for the SDK call. */
+  contract: string;
+  contract_evm: string;
+  /** Canonical Solidity signature of the called function. */
+  function: string;
+  function_selector: string;
+  /** Hex-encoded tipPage(username) calldata — UNSIGNED. */
+  unsigned_calldata: string;
+  /** Payable value the tipper attaches (the tip amount in HBAR). */
+  value_tinybar: string;
+  value_hbar: string;
+  /** 98/2 preview: what the page owner nets and what the treasury takes. */
+  creator_net_hbar: string;
+  treasury_fee_hbar: string;
+  est_network_fee_hbar: string;
+  instructions: string;
+}
+
+/**
+ * Parse "1.5" -> tinybar bigint. Mirrors the parser in mcp-tools.ts
+ * (kept local so this module doesn't grow new cross-file deps).
+ */
+function parseHbarAmount(s: string): bigint | null {
+  const m = s.trim().match(/^(\d+)(?:\.(\d{1,8}))?$/);
+  if (!m) return null;
+  try {
+    return BigInt(m[1]) * 100_000_000n + BigInt((m[2] ?? "").padEnd(8, "0"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prepare an unsigned tipPage tip for an agent's own wallet to sign.
+ * Mirrors prepare_purchase: the server builds exact calldata, the agent
+ * signs with its OWN Hedera key. tipPage takes the recipient's blockpage
+ * USERNAME (resolved on-chain via the Registry) — not a 0.0.x account —
+ * so the recipient must be a registered page. HBAR only: HTS token tips
+ * go through the in-wallet SaucerSwap flow, which needs a human wallet.
+ *
+ * Non-custodial invariant: nothing here is signed and nothing is
+ * submitted. The contract splits 98% to the page owner and 2% to the
+ * treasury atomically — no escrow, no platform custody.
+ */
+export async function prepareTipTool(
+  args: PrepareTipArgs,
+  fetchFn: FetchFn = fetch,
+): Promise<PreparedTip | { error: string }> {
+  const username = (args.recipient ?? "").toString().trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return {
+      error:
+        `recipient "${args.recipient}" is not a valid blockpage username — ` +
+        `tipPage takes a registered page name (e.g. user-10424063), not a 0.0.x account id`,
+    };
+  }
+  const page = await lookupBlockpage(username, fetchFn);
+  if (!page.found) {
+    return { error: `blockpage "${username}" is not registered on-chain` };
+  }
+  const grossTinybar = parseHbarAmount(args.amount_hbar ?? "");
+  if (grossTinybar === null || grossTinybar <= 0n) {
+    return {
+      error: `amount_hbar "${args.amount_hbar}" is not a positive HBAR amount (e.g. "1.5")`,
+    };
+  }
+
+  const iface = new ethers.Interface(TIPS_ABI);
+  const calldata = iface.encodeFunctionData("tipPage", [username]);
+  const selector = iface.getFunction("tipPage")!.selector;
+  const treasury = (grossTinybar * 2n) / 100n;
+  const creator = grossTinybar - treasury;
+
+  return {
+    recipient: { username, owner_account: page.owner_account ?? null },
+    contract: TIPS_CONTRACT_ID,
+    contract_evm: TIPS_CONTRACT_EVM,
+    function: "tipPage(string username)",
+    function_selector: selector,
+    unsigned_calldata: calldata,
+    value_tinybar: grossTinybar.toString(),
+    value_hbar: tinybarToHbar(grossTinybar),
+    creator_net_hbar: tinybarToHbar(creator),
+    treasury_fee_hbar: tinybarToHbar(treasury),
+    est_network_fee_hbar: "0.1",
+    instructions:
+      "This calldata is UNSIGNED — the server never signed it and never will. " +
+      `Sign and submit it with YOUR OWN Hedera key as the tipper: build a ContractExecuteTransaction ` +
+      `targeting ContractId ${TIPS_CONTRACT_ID}, gas 300_000, function "tipPage" with param ` +
+      `(string "${username}") — or pass the unsigned_calldata hex as the raw function params — ` +
+      `attach ${tinybarToHbar(grossTinybar)} HBAR (${grossTinybar.toString()} tinybar) as the payable value, ` +
+      `sign with the tipper's key, and submit. You are the tipper because you sign: the contract pays ` +
+      `msg.value 98% to the page owner and 2% to the treasury in the same atomic transaction — ` +
+      `no escrow, no platform custody. Verify the tip afterward with verify_tip (proof-of-payment ` +
+      `reviews require a settled tip). Never put your private key in a tool argument or chat message.`,
   };
 }
 
