@@ -253,8 +253,18 @@ export default function AlexaDemoPage() {
       }
     };
     recog.onerror = (e) => {
+      const code = e.error || "unknown";
       setListening(false);
-      setError(e.error === "not-allowed" ? "Mic blocked — allow microphone access or type your prompt." : "Didn't catch that — try again or type it.");
+      if (code === "not-allowed" || code === "service-not-allowed") {
+        setError("Mic blocked — allow microphone access or type your prompt.");
+      } else if (code === "audio-capture") {
+        setError(
+          "The mic is busy — if you're screen recording with microphone audio, " +
+            "switch the recorder to internal audio only, or type your prompt instead."
+        );
+      } else if (code !== "no-speech" && code !== "aborted") {
+        setError("Didn't catch that — try again or type it.");
+      }
     };
     recog.onend = () => {
       setListening(false);
