@@ -310,6 +310,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "manage_music",
     "Add or remove a track on your own blockpage's music block. Returns updated page JSON — you pin and publish it yourself.",
   ],
+  [
+    "build_checkpoint",
+    "Compute an HCS-27 review-attestation checkpoint over a topic's messages (consensus order, SHA-256 Merkle tree). Returns the checkpoint UNSIGNED plus the exact STH payload bytes to sign — you sign with your own key and publish it yourself for ~$0.0001; the server never signs or pays.",
+  ],
+  [
+    "verify_checkpoint",
+    "Run the 9-step checkpoint verifier against a checkpoint message: topology, tessellation, mirror-node fetch, sequence assertion, staleness, Merkle recomputation, STH signature, prev linkage. Anyone can verify against the public mirror — no trust in us required.",
+  ],
 ];
 
 export default function McpPage() {

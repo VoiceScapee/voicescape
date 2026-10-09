@@ -46,9 +46,22 @@ import {
   readAgentMessages,
   prepareAgentMessage,
   listTipAssets,
+  MIRROR_BASE,
 } from "@/lib/server/mcp-tools";
 import { stashPendingAction, PendingActionConflictError } from "@/lib/server/pending-actions";
-import { reviewAgentTipping } from "@/lib/server/mcp-review";
+import {
+  reviewAgentTipping,
+  REVIEW_ATTESTATION_TOPIC,
+} from "@/lib/server/mcp-review";
+import {
+  buildCheckpoint,
+  parseJws,
+  sthSigningInput,
+  verifyCheckpoint,
+  type CheckpointMessage,
+  type CheckpointTopicRange,
+  type MirrorMessage,
+} from "@/lib/server/checkpoint";
 import { prepareAgentVault, checkVaultHealthTool, prepareVaultPage } from "@/lib/server/vault-mcp";
 import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
@@ -100,7 +113,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 50 tools agents actually touch, via
+  // PII. Lets us see which of the 52 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1821,6 +1834,185 @@ export function registerTools(server: McpServer): void {
         return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );
+
+  /* ----------------- HCS-27 attestation checkpoints (permissionless) -----------------
+   * Fee model (Brandon's rule): these tools COMPUTE only. They never sign,
+   * never submit, never pay. The publisher signs the STH payload with their
+   * own key and pays their own ~$0.0001 HCS fee. The server operates no
+   * publisher and holds no keys.
+   * ------------------------------------------------------------------ */
+  server.registerTool(
+    "build_checkpoint",
+    {
+      title: "Build attestation checkpoint",
+      description:
+        "Compute an HCS-27 review-attestation checkpoint over a topic's messages: fetches the declared sequence range from the mirror node (consensus order, ascending — R1), builds the Merkle tree per the HCS-27 draft profile (SHA-256, RFC 9162 §2), and returns the checkpoint message UNSIGNED plus the exact STH payload bytes to sign. You sign the payload with your own key (ES256K) and publish the message to the topic yourself — you pay the ~$0.0001 HCS fee, never the server. Anyone can publish; the leaves are all on-chain. Pass `entries` instead to compute over inline JSON entries (offline/demo mode).",
+      inputSchema: z.object({
+        topic_id: z
+          .string()
+          .optional()
+          .describe("HCS topic of attestation messages (default 0.0.10908351, Voicescape review attestations)"),
+        seq_start: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("First consensus sequence number to cover (default 1)"),
+        seq_end: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Last consensus sequence number to cover (default: latest on topic)"),
+        entries: z
+          .array(z.record(z.string(), z.unknown()))
+          .optional()
+          .describe("Inline JSON entries instead of fetching from the topic (offline/demo mode — entries must already be in consensus order)"),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("build_checkpoint", async () => {
+        const topicId = (args.topic_id ?? REVIEW_ATTESTATION_TOPIC).trim();
+        if (!/^0\.0\.\d+$/.test(topicId)) {
+          return toolError("topic_id must be a 0.0.x account id");
+        }
+        let entries: unknown[];
+        let topics: CheckpointTopicRange[];
+        if (args.entries) {
+          entries = args.entries;
+          const start = args.seq_start ?? 1;
+          topics = [{ id: topicId, seqRange: [start, start + entries.length - 1] }];
+        } else {
+          const start = args.seq_start ?? 1;
+          const fetched = await fetchCheckpointRange(topicId, start, args.seq_end);
+          if (fetched.length === 0) {
+            return toolError(`no messages on ${topicId} in the requested range — nothing to checkpoint`);
+          }
+          entries = fetched.map((m) =>
+            JSON.parse(Buffer.from(m.message).toString("utf8")),
+          );
+          const end = args.seq_end ?? fetched[fetched.length - 1].sequence_number;
+          topics = [{ id: topicId, seqRange: [start, end] }];
+        }
+        const { message, sthPayload } = buildCheckpoint({
+          topics,
+          entries,
+          demo: !!args.entries,
+          inlineEntries: !!args.entries,
+        });
+        return toolResult({
+          checkpoint: message,
+          sth_payload_to_sign: sthPayload,
+          next: "sign the STH payload (JCS-canonical JSON) with your secp256k1 key (ES256K: SHA-256 of the ASCII signing input, 64-byte R||S), assemble the compact JWS, set it as checkpoint.sig, and submit the checkpoint JSON as an HCS message to the topic with your key — you pay ~$0.0001, the server never signs or pays",
+        });
+      }),
+  );
+
+  server.registerTool(
+    "verify_checkpoint",
+    {
+      title: "Verify attestation checkpoint",
+      description:
+        "Run the 9-step checkpoint verifier from the extension spec against a checkpoint message: topology/membership check, tessellation, mirror-node fetch of the declared ranges, element-wise sequence assertion, staleness check, Merkle root recomputation, STH digest check (topics claim + signature), and prev linkage. Returns pass/fail per step. Anyone can run this against the public mirror node — no trust in us required.",
+      inputSchema: z.object({
+        checkpoint: z
+          .string()
+          .describe("The checkpoint message JSON (as published on the topic)"),
+        prev_checkpoint: z
+          .string()
+          .optional()
+          .describe("The previous checkpoint message JSON (for tessellation + topology checks; omit for genesis)"),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("verify_checkpoint", async () => {
+        let message: CheckpointMessage;
+        try {
+          message = JSON.parse(args.checkpoint);
+        } catch {
+          return toolError("checkpoint is not valid JSON");
+        }
+        let prev: CheckpointMessage | null = null;
+        if (args.prev_checkpoint) {
+          try {
+            prev = JSON.parse(args.prev_checkpoint);
+          } catch {
+            return toolError("prev_checkpoint is not valid JSON");
+          }
+        }
+        const report = await verifyCheckpoint(
+          message,
+          {
+            fetchRange: async (topicId, start, end) => {
+              const fetched = await fetchCheckpointRange(topicId, start, end);
+              return fetched.map((m) => ({
+                sequence_number: m.sequence_number,
+                message: Buffer.from(m.message, "base64"),
+              }));
+            },
+            latestSequence: async (topicId) => {
+              try {
+                const res = await fetch(
+                  `${MIRROR_BASE}/topics/${topicId}/messages?order=desc&limit=1`,
+                  { headers: { accept: "application/json" } },
+                );
+                if (!res.ok) return null;
+                const body = await res.json();
+                const m = body?.messages?.[0];
+                return typeof m?.sequence_number === "number" ? m.sequence_number : null;
+              } catch {
+                return null;
+              }
+            },
+            // EXTENSION: kid is the publisher's compressed secp256k1 public key hex.
+            resolveKid: async (kid) =>
+              /^0[23][0-9a-fA-F]{64}$/.test(kid) ? Buffer.from(kid, "hex") : null,
+          },
+          prev,
+        );
+        return toolResult(report);
+      }),
+  );
+}
+
+/**
+ * Fetch HCS messages for a topic over an inclusive sequence range,
+ * ascending, paginating the mirror node. Returns raw rows with base64
+ * `message` fields.
+ */
+async function fetchCheckpointRange(
+  topicId: string,
+  start: number,
+  end?: number,
+): Promise<Array<{ sequence_number: number; message: string }>> {
+  const out: Array<{ sequence_number: number; message: string }> = [];
+  let url =
+    `${MIRROR_BASE}/topics/${topicId}/messages?order=asc&limit=100` +
+    `&sequencenumber=gte:${start}` +
+    (end !== undefined ? `&sequencenumber=lte:${end}` : "");
+  for (let pages = 0; pages < 50; pages++) {
+    const res = await fetch(url, { headers: { accept: "application/json" } });
+    if (!res.ok) {
+      throw new Error(`mirror node fetch failed: HTTP ${res.status}`);
+    }
+    const body = await res.json();
+    const msgs: Array<{ sequence_number?: number; message?: string }> =
+      Array.isArray(body?.messages) ? body.messages : [];
+    for (const m of msgs) {
+      if (typeof m.sequence_number === "number" && typeof m.message === "string") {
+        if (end !== undefined && m.sequence_number > end) break;
+        out.push({ sequence_number: m.sequence_number, message: m.message });
+      }
+    }
+    const next: string | undefined = body?.links?.next;
+    if (!next) break;
+    url = next.startsWith("http") ? next : `${MIRROR_BASE}${next}`;
+  }
+  return out;
 }
 
 /**
