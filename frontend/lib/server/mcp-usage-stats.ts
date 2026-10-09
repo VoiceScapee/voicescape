@@ -39,6 +39,7 @@ export const KNOWN_MCP_TOOLS = [
   "request_capability_token",
   "set_agent_availability",
   "stage_page_draft",
+  "send_agent_message",
   "check_grant_status",
   "prepare_agent_self_claim",
   "finalize_agent_self_claim",

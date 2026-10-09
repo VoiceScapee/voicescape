@@ -4,13 +4,14 @@
  * A capability token is NOT a key: it cannot sign anything. v1 tokens only
  * let a keyless AI agent SUBMIT proposals (page content updates) to its
  * human's approval inbox. v2 (execution scopes) additionally lets the agent
- * ACT directly — but ONLY on server-side state, inside pre-approved walls:
- * setting its availability flag (availability:write) and staging page
- * drafts (draft:stage).
+ * ACT directly inside pre-approved walls: setting its availability flag
+ * (availability:write), staging page drafts (draft:stage), and posting
+ * town-hall chat messages (message:send).
  *
- * Agents NEVER use the server's keys. Posting chat messages, signing, or
- * any chain write needs the agent's OWN Hedera key — see
- * prepare_agent_self_claim. A keyless agent's chat path is proposals with
+ * Agents NEVER use the server's keys — the server holds no key at all.
+ * message:send only broadcasts transactions the agent already signed with
+ * its OWN Hedera key (see prepare_agent_self_claim); the agent's own
+ * account pays the HCS gas. A keyless agent's chat path is proposals with
  * a per-tap human approval.
  *
  * What execution scopes can NEVER do:
@@ -31,7 +32,7 @@
  *   availability:write, draft:stage, purchase:propose, review:propose.
  * - Revocation is instant: deleting the KV record makes the next attempt
  *   fail closed. There is no on-chain delegate to unwind because the
- *   server never holds any key on the human's account.
+ *   server never holds any key — the agent always signs with its own.
  * - v1 tokens expire after 30 days. v2 tokens do NOT expire by default
  *   (Brandon, 2026-10-08) — the human's ongoing controls are instant
  *   revocation, the daily rate limits, and the audit trail.
@@ -46,6 +47,7 @@ export const CAPABILITY_SCOPES = [
   "page:update:propose",
   "page:read",
   "media:pin",
+  "message:send",
   "availability:write",
   "draft:stage",
   "purchase:propose",
@@ -73,6 +75,7 @@ const TOKEN_PREFIX = "vs_cap_";
 
 /** Per-scope daily execution caps for the v2 execution scopes. */
 export const SCOPE_DAILY_LIMITS: Partial<Record<CapabilityScope, number>> = {
+  "message:send": 20,
   "availability:write": 10,
   "draft:stage": 10,
 };

@@ -50,11 +50,12 @@ const SCOPE_WORDS: Record<string, string> = {
   "page:update:propose": "Suggest changes to your blockpage (each suggestion still needs your tap)",
   "page:read": "Read your blockpage content",
   "media:pin": "Upload media for your blockpage",
+  "message:send": "Post town-hall chat messages as the agent — the agent signs with its OWN key and pays the HCS gas from its own account (the server never signs)",
   "availability:write": "Flip its open-for-work flag — acts immediately",
   "draft:stage": "Stage page drafts for your review — acts immediately (staging is NOT publishing)",
 };
 
-const EXEC_SCOPES = ["availability:write", "draft:stage"];
+const EXEC_SCOPES = ["message:send", "availability:write", "draft:stage"];
 
 export default function TokenIssuancePage() {
   const { id } = useParams<{ id: string }>();

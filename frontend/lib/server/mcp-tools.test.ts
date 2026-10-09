@@ -4,7 +4,7 @@
  * Every mirror-node call is driven by a fixture fetch; the real network is
  * never touched.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ethers } from "ethers";
 import {
   lookupBlockpage,
@@ -1573,13 +1573,15 @@ describe("execution scopes", () => {
   });
 
   async function issueV2(
-    scopes: ("page:update:propose" | "page:read" | "media:pin" | "availability:write" | "draft:stage")[],
+    scopes: ("page:update:propose" | "page:read" | "media:pin" | "message:send" | "availability:write" | "draft:stage")[],
+    agentAccountId?: string,
   ) {
     const { issueCapabilityToken } = await import("./capability-tokens");
     const { token, record } = await issueCapabilityToken(OWNER, {
       label: "v2test",
       scopes,
       version: 2,
+      ...(agentAccountId ? { agentAccountId } : {}),
     });
     return { token, record };
   }
@@ -1747,6 +1749,216 @@ describe("execution scopes", () => {
         agentPageFetch(),
       );
       expect("error" in noContent).toBe(true);
+    });
+  });
+
+  describe("send_agent_message (agent-key pre-signed relay)", () => {
+    const CHAT_TOPIC = "0.0.55555";
+    const PAGE_OWNER = "0.0.99999"; // mock page owner_account
+    const USERNAME = "testagent";
+    const ROOM = "lobby";
+    const BODY = "hello from my own key";
+
+    let savedTopic: string | undefined;
+    beforeEach(() => {
+      savedTopic = process.env.TOWNHALL_TOPIC_CHAT;
+      process.env.TOWNHALL_TOPIC_CHAT = CHAT_TOPIC;
+    });
+    afterEach(() => {
+      if (savedTopic === undefined) delete process.env.TOWNHALL_TOPIC_CHAT;
+      else process.env.TOWNHALL_TOPIC_CHAT = savedTopic;
+    });
+
+    function agentPageFetch(ownerAccount: string | null = PAGE_OWNER, ownerType = 1) {
+      const result = RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+        "0xAbC1230000000000000000000000000000000001",
+        "QmTestHash",
+        BigInt(ownerType),
+        "0x0000000000000000000000000000000000000000",
+        "test agent",
+      ]);
+      return mockFetch([
+        [/contracts\/call$/, () => ok({ result })],
+        [/accounts\/0xabc123/, () => ok(ownerAccount ? { account: ownerAccount } : null)],
+      ]);
+    }
+
+    function testDeps(depOverrides: Record<string, unknown> = {}) {
+      return {
+        listRooms: async () => [ROOM],
+        isRestricted: async () => false,
+        ...depOverrides,
+      } as never;
+    }
+
+    async function signChatTx(opts: {
+      topic?: string;
+      message?: string;
+      payer?: string;
+      kind?: "chat" | "transfer";
+    }): Promise<string> {
+      const sdk = await import("@hiero-ledger/sdk");
+      const key = sdk.PrivateKey.generateECDSA();
+      const client = sdk.Client.forMainnet();
+      try {
+        let tx: InstanceType<typeof sdk.Transaction>;
+        if (opts.kind === "transfer") {
+          tx = new sdk.TransferTransaction()
+            .setTransactionId(sdk.TransactionId.generate(sdk.AccountId.fromString(opts.payer ?? PAGE_OWNER)))
+            .addHbarTransfer(opts.payer ?? PAGE_OWNER, new sdk.Hbar(-1))
+            .addHbarTransfer("0.0.2", new sdk.Hbar(1))
+            .freezeWith(client) as unknown as InstanceType<typeof sdk.Transaction>;
+        } else {
+          tx = new sdk.TopicMessageSubmitTransaction()
+            .setTopicId(sdk.TopicId.fromString(opts.topic ?? CHAT_TOPIC))
+            .setMessage(opts.message ?? "x")
+            .setTransactionId(sdk.TransactionId.generate(sdk.AccountId.fromString(opts.payer ?? PAGE_OWNER)))
+            .freezeWith(client) as unknown as InstanceType<typeof sdk.Transaction>;
+        }
+        await tx.sign(key);
+        return Buffer.from(tx.toBytes()).toString("base64");
+      } finally {
+        client.close();
+      }
+    }
+
+    function canonicalMsg(body: string = BODY, room: string = ROOM, author: string = USERNAME) {
+      return JSON.stringify({ v: 1, kind: "chat", author, room, body });
+    }
+
+    async function callTool(overrides: Record<string, unknown> = {}, depOverrides: Record<string, unknown> = {}) {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const { token } = await issueV2(["message:send"], PAGE_OWNER);
+      return sendAgentMessage(
+        {
+          capability_token: token,
+          agent_username: USERNAME,
+          room: ROOM,
+          body: BODY,
+          ...overrides,
+        } as never,
+        agentPageFetch(),
+        testDeps(depOverrides),
+      );
+    }
+
+    it("fails closed on a bad capability token", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const res = await sendAgentMessage(
+        { capability_token: "vs_cap_" + "0".repeat(48), agent_username: USERNAME, room: ROOM, body: BODY } as never,
+        agentPageFetch(),
+        testDeps(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/capability token/i);
+    });
+
+    it("fails closed when the token lacks the message:send scope", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const { token } = await issueV2(["availability:write"], PAGE_OWNER);
+      const res = await sendAgentMessage(
+        { capability_token: token, agent_username: USERNAME, room: ROOM, body: BODY } as never,
+        agentPageFetch(),
+        testDeps(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/message:send/);
+    });
+
+    it("returns the exact payload to sign when no signed bytes are given", async () => {
+      const res = await callTool({ signed_tx_base64: undefined });
+      expect("error" in res).toBe(false);
+      const r = res as { needs_signature: boolean; topic_id: string; message_json: string; payer_must_be: string };
+      expect(r.needs_signature).toBe(true);
+      expect(r.topic_id).toBe(CHAT_TOPIC);
+      expect(r.message_json).toBe(canonicalMsg());
+      expect(r.payer_must_be).toBe(PAGE_OWNER);
+    });
+
+    it("rejects garbage signed bytes", async () => {
+      const res = await callTool({ signed_tx_base64: "not-valid-base64!!!" });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/not valid transaction bytes/i);
+    });
+
+    it("rejects a non-topic-submit transaction", async () => {
+      const b64 = await signChatTx({ kind: "transfer" });
+      const res = await callTool({ signed_tx_base64: b64 });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/TopicMessageSubmitTransaction/);
+    });
+
+    it("rejects a transaction for the wrong topic", async () => {
+      const b64 = await signChatTx({ topic: "0.0.66666", message: canonicalMsg() });
+      const res = await callTool({ signed_tx_base64: b64 });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/wrong topic/i);
+    });
+
+    it("rejects a signed message that does not match the request", async () => {
+      const b64 = await signChatTx({ message: canonicalMsg("different body") });
+      const res = await callTool({ signed_tx_base64: b64 });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/does not match/i);
+    });
+
+    it("rejects when the payer is not the page owner (anti-impersonation)", async () => {
+      const b64 = await signChatTx({ payer: "0.0.11111", message: canonicalMsg() });
+      const res = await callTool({ signed_tx_base64: b64 });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/payer must be the page owner/i);
+    });
+
+    it("rejects a pass that is not bound to the signing agent", async () => {
+      const { sendAgentMessage } = await import("./mcp-tools");
+      const { token } = await issueV2(["message:send"], "0.0.22222"); // different agent
+      const b64 = await signChatTx({ message: canonicalMsg() });
+      const res = await sendAgentMessage(
+        { capability_token: token, agent_username: USERNAME, room: ROOM, body: BODY, signed_tx_base64: b64 } as never,
+        agentPageFetch(),
+        testDeps(),
+      );
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/not for @/i);
+    });
+
+    it("broadcasts a valid agent-signed tx and audit-logs it", async () => {
+      const b64 = await signChatTx({ message: canonicalMsg() });
+      const broadcast = async () => ({ txId: "0.0.99999@1700000000.000000000" });
+      const mirrorFetch = (async () => ({
+        ok: true,
+        json: async () => ({ transactions: [{ result: "SUCCESS" }] }),
+      })) as unknown as typeof fetch;
+      const res = await callTool({ signed_tx_base64: b64 }, { broadcast, mirrorFetch });
+      expect("error" in res).toBe(false);
+      const r = res as { posted: boolean; hcs_tx_id: string; payer: string; username: string; note: string };
+      expect(r.posted).toBe(true);
+      expect(r.payer).toBe(PAGE_OWNER);
+      expect(r.username).toBe(USERNAME);
+      expect(r.hcs_tx_id.startsWith(PAGE_OWNER + "@")).toBe(true);
+      expect(r.note).toMatch(/hashscan/i);
+    });
+
+    it("refuses to broadcast the same signed tx twice", async () => {
+      const b64 = await signChatTx({ message: canonicalMsg() });
+      let calls = 0;
+      const broadcast = async () => {
+        calls++;
+        return { txId: "0.0.99999@1700000001.000000000" };
+      };
+      const mirrorFetch = (async () => ({ ok: false, status: 404, json: async () => ({}) })) as unknown as typeof fetch;
+      const first = await callTool({ signed_tx_base64: b64 }, { broadcast, mirrorFetch });
+      expect("error" in first).toBe(false);
+      const second = await callTool({ signed_tx_base64: b64 }, { broadcast, mirrorFetch });
+      expect("error" in second).toBe(true);
+      expect((second as { error: string }).error).toMatch(/already broadcast/i);
+      expect(calls).toBe(1);
+    });
+
+    it("blocks unsafe content before anything else", async () => {
+      const res = await callTool({ body: "contact me at evil@example.com" });
+      expect("error" in res).toBe(true);
+      expect((res as { error: string }).error).toMatch(/blocked/i);
     });
   });
 

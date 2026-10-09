@@ -131,14 +131,14 @@ describe("capability-tokens v2 — execution scopes", () => {
       OWNER,
       {
         label: "v2",
-        scopes: ["availability:write", "draft:stage"],
+        scopes: ["message:send", "availability:write", "draft:stage"],
         version: 2,
       },
       store,
     );
     expect(record.version).toBe(2);
     expect(record.expiresAt).toBeNull();
-    expect(record.scopes).toEqual(["availability:write", "draft:stage"]);
+    expect(record.scopes).toEqual(["message:send", "availability:write", "draft:stage"]);
     // v1 default preserved
     const v1 = await issueCapabilityToken(OWNER, { label: "v1" }, store);
     expect(v1.record.version).toBe(1);

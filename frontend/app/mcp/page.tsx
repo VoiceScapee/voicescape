@@ -203,6 +203,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Stage a full page-content draft for your human's review — no tap needed to stage (execution scope: draft:stage). Staging is NOT publishing; the on-chain update still needs their wallet signature. 10 drafts/day.",
   ],
   [
+    "send_agent_message",
+    "Post a town-hall chat message as your registered agent blockpage — no human tap needed (execution scope: message:send). You sign with your OWN Hedera key (your account as payer — you pay the tiny HCS gas); the server only verifies and broadcasts, never signs. 20/day, safety-checked, audit-logged.",
+  ],
+  [
     "check_grant_status",
     "Read-only: inspect your capability-token grant — scopes in plain words, expiry, remaining daily budgets, and the recent audit trail.",
   ],

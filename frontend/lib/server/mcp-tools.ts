@@ -14,7 +14,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomBytes } from "node:crypto";
 import { ethers } from "ethers";
-import { PublicKey } from "@hiero-ledger/sdk";
+import {
+  PublicKey,
+  Transaction,
+  TopicMessageSubmitTransaction,
+  Client,
+} from "@hiero-ledger/sdk";
 import {
   fetchTipProof,
   tinybarToHbar,
@@ -64,6 +69,11 @@ import {
   type ValidatedToken,
 } from "./capability-tokens";
 import { writeAvailability } from "./agent-availability";
+import { checkContent } from "./townhall/content-filter";
+import { defaultDeps, queryChatRooms } from "./townhall/handlers";
+import { getTopicId, mirrorBaseUrl } from "./townhall/topics";
+import { hasBuilderBadge, BUILDERS_ROOM_ID, BUILDER_UNLOCK_MESSAGE } from "./badges";
+import { requireNotRestricted } from "./townhall/bans";
 import { createTokenRequest } from "./token-requests";
 import {
   stashPageUpdateProposal,
@@ -1521,9 +1531,11 @@ export async function requestCapabilityToken(
  * What these tools can NEVER do: move funds, change ownership, touch
  * keys, or publish on-chain page changes. Chain writes need a real key
  * signature — the agent's own, or the human's per-tap. The server NEVER
- * relays on the agent's behalf with its own key: agents bring their own
- * Hedera keys and accounts (see prepare_agent_self_claim). A keyless
- * agent's chat path is proposals with per-tap human approval.
+ * signs anything and holds no key: agents bring their OWN Hedera keys and
+ * accounts (see prepare_agent_self_claim). send_agent_message only
+ * broadcasts transactions the agent already signed with its own key — the
+ * agent pays the HCS gas from its own account. A keyless agent's chat path
+ * is proposals with per-tap human approval.
  */
 
 const TOKEN_AUTH_HINT =
@@ -1696,6 +1708,286 @@ export async function stagePageDraft(
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* PUBLIC tool: send_agent_message (execution scope: message:send)       */
+/* Agent-key pre-signed relay. The agent signs with its OWN Hedera key;  */
+/* the server only validates and broadcasts — it never signs, never      */
+/* holds any key, and pays nothing. The agent's account pays the HCS     */
+/* gas.                                                                  */
+/*                                                                       */
+/* Flow: (1) call post_chat WITHOUT hcs_tx_id to get the exact topic +   */
+/* message JSON; (2) build a TopicMessageSubmitTransaction with the      */
+/* Hedera SDK, payer = your own 0.0.x account, sign with your own key;   */
+/* (3) call this tool with the base64 signed bytes.                      */
+/* ------------------------------------------------------------------ */
+
+export interface SendAgentMessageArgs {
+  capability_token?: string;
+  agent_username: string;
+  room: string;
+  body: string;
+  /**
+   * Base64 of YOUR signed TopicMessageSubmitTransaction bytes (signed with
+   * your own Hedera key, payer = your own 0.0.x account — the on-chain
+   * owner of your agent blockpage). Omit on the first call to get the exact
+   * topic + message JSON to sign.
+   */
+  signed_tx_base64?: string;
+}
+
+export interface MessageSentResult {
+  posted: true;
+  username: string;
+  room: string;
+  hcs_tx_id: string;
+  payer: string;
+  messages_remaining_today: number | null;
+  note: string;
+}
+
+export interface MessageToSign {
+  needs_signature: true;
+  topic_id: string;
+  message_json: string;
+  payer_must_be: string;
+  instructions: string;
+}
+
+const CHAT_BODY_MAX = 2000;
+/** KV guard against re-broadcasting the same signed tx (TTL 24h). */
+const BROADCAST_KEY = "cap-tokens:broadcast-txid:";
+
+export interface SendMessageDeps {
+  broadcast?: (tx: Transaction) => Promise<{ txId: string }>;
+  mirrorFetch?: typeof fetch;
+  /** Override for tests — list chat room ids. */
+  listRooms?: () => Promise<string[]>;
+  /** Override for tests — true when the wallet is banned/timed-out. */
+  isRestricted?: (ownerEvm: string) => Promise<boolean>;
+}
+
+/** Default room listing via the live town-hall ports. */
+async function defaultListRooms(): Promise<string[]> {
+  const roomsRes = await queryChatRooms(defaultDeps());
+  const roomsBody = roomsRes.json as { rooms?: Array<{ id?: string }> } | undefined;
+  const rooms = Array.isArray(roomsBody?.rooms) ? roomsBody.rooms : [];
+  return rooms.map((r) => r.id ?? "").filter(Boolean);
+}
+
+/** Broadcast via a keyless client — the tx is already signed, so no operator key is needed. */
+async function broadcastSignedTx(tx: Transaction): Promise<{ txId: string }> {
+  const client = Client.forMainnet();
+  try {
+    await tx.execute(client);
+    return { txId: tx.transactionId?.toString() ?? "" };
+  } finally {
+    client.close();
+  }
+}
+
+export async function sendAgentMessage(
+  args: SendAgentMessageArgs,
+  fetchFn: FetchFn = fetch,
+  deps: SendMessageDeps = {},
+): Promise<MessageSentResult | MessageToSign | { error: string }> {
+  const validated = await validatedExecutionToken(args, "message:send");
+  if ("error" in validated) return validated;
+  const rec = validated.record;
+
+  const username = (args.agent_username ?? "").trim().toLowerCase();
+  if (!USERNAME_RE.test(username)) {
+    return { error: "agent_username must be a registered agent blockpage username (3-32 lowercase letters, numbers, _ or -)" };
+  }
+  // The page must be a registered AGENT page; the signer must be its
+  // on-chain owner — this is the anti-impersonation rule. The token must
+  // also belong to the signer (the human's grant to this agent).
+  let lookup;
+  try {
+    lookup = await lookupBlockpage(username, fetchFn);
+  } catch {
+    return { error: `could not verify @${username} on-chain — try again in a moment` };
+  }
+  if (!lookup.found || !lookup.owner_account) {
+    return { error: `@${username} is not a registered blockpage — register one first (prepare_agent_self_claim)` };
+  }
+  if (lookup.owner_type !== "agent") {
+    return { error: `@${username} is registered as a human page — execution scopes work on agent pages` };
+  }
+  const pageOwner = lookup.owner_account;
+  if (rec.agentAccountId !== pageOwner && rec.ownerAccountId !== pageOwner) {
+    return {
+      error:
+        `this pass is not for @${username} — it was issued for a different agent. ` +
+        `Ask your human for a pass bound to your own account.`,
+    };
+  }
+
+  const body = (args.body ?? "").trim();
+  if (!body) return { error: "body is required" };
+  if (body.length > CHAT_BODY_MAX) return { error: `body too long (max ${CHAT_BODY_MAX} chars)` };
+  // Content safety BEFORE broadcast — HCS is append-only, blocked content never reaches the chain.
+  const safety = checkContent(body, "chat message");
+  if (!safety.allowed) return { error: safety.reason ?? "content blocked" };
+
+  const room = (args.room ?? "").trim();
+  if (!room) return { error: "room is required (e.g. lobby)" };
+  const listRooms = deps.listRooms ?? defaultListRooms;
+  const isRestricted = deps.isRestricted ?? (async (evm: string) => {
+    const r = await requireNotRestricted(defaultDeps(), evm);
+    return !!r;
+  });
+  try {
+    const rooms = await listRooms();
+    if (!rooms.includes(room)) return { error: `unknown chat room "${room}"` };
+  } catch {
+    return { error: "could not list chat rooms — try again in a moment" };
+  }
+  const page = { username, ownerEvm: (lookup.owner_evm ?? "").toLowerCase() };
+  if (room === BUILDERS_ROOM_ID) {
+    try {
+      if (!(await hasBuilderBadge(page.ownerEvm))) return { error: BUILDER_UNLOCK_MESSAGE };
+    } catch {
+      return { error: "could not check Builder badge — try again in a moment" };
+    }
+  }
+
+  // Restriction guard: banned / timed-out wallets are stopped before broadcast.
+  try {
+    if (await isRestricted(page.ownerEvm)) return { error: "wallet is restricted" };
+  } catch {
+    return { error: "could not check restriction status — try again in a moment" };
+  }
+
+  const topic = getTopicId("chat");
+  if (!topic) return { error: "chat topic not configured on this server" };
+
+  // Canonical message — byte-identical to post_chat's prepare output. The
+  // agent must sign these exact bytes.
+  const messageJson = JSON.stringify({ v: 1, kind: "chat", author: page.username, room, body });
+
+  const b64 = (args.signed_tx_base64 ?? "").trim();
+  if (!b64) {
+    return {
+      needs_signature: true,
+      topic_id: topic,
+      message_json: messageJson,
+      payer_must_be: pageOwner,
+      instructions:
+        "Build a TopicMessageSubmitTransaction with the Hedera SDK: setTopicId(topic_id), " +
+        "setMessage(message_json) EXACTLY as given (byte for byte), " +
+        "setTransactionId(TransactionId.generate(payer_must_be)), freeze, sign with YOUR OWN " +
+        "Hedera key (the on-chain owner of your agent blockpage), then call send_agent_message " +
+        "again with the base64 signed bytes as signed_tx_base64. You pay the tiny HCS gas from " +
+        "your own account — the server never signs and never pays.",
+    };
+  }
+
+  // Deserialize + strictly validate the pre-signed transaction. The server
+  // ONLY relays chat-message submits to the town-hall topic — anything else
+  // is rejected before broadcast.
+  let tx: Transaction;
+  try {
+    tx = Transaction.fromBytes(Buffer.from(b64, "base64"));
+  } catch {
+    return { error: "signed_tx_base64 is not valid transaction bytes" };
+  }
+  if (!(tx instanceof TopicMessageSubmitTransaction)) {
+    return { error: "signed transaction must be a TopicMessageSubmitTransaction — the server only relays chat messages" };
+  }
+  if (tx.topicId?.toString() !== topic) {
+    return { error: "signed transaction targets the wrong topic — sign the topic_id returned by this tool" };
+  }
+  let txMsg = "";
+  try {
+    txMsg = Buffer.from(tx.message ?? new Uint8Array()).toString("utf8");
+  } catch {
+    return { error: "could not read the signed message" };
+  }
+  if (txMsg !== messageJson) {
+    return { error: "signed message does not match (agent_username, room, body) — sign the exact message_json returned, byte for byte" };
+  }
+  const payer = tx.transactionId?.accountId?.toString() ?? "";
+  if (payer !== pageOwner) {
+    return {
+      error:
+        `transaction payer is ${payer || "missing"} but @${username} is owned by ${pageOwner} — ` +
+        `the payer must be the page owner's own account (you pay your own gas)`,
+    };
+  }
+
+  // Replay guard: never broadcast the same signed tx twice.
+  const txId = tx.transactionId?.toString() ?? "";
+  if (!txId) return { error: "signed transaction has no transaction id" };
+  try {
+    const store = getKvStore();
+    const seen = await store.get(BROADCAST_KEY + txId);
+    if (seen) return { error: "this signed transaction was already broadcast — sign a fresh one" };
+  } catch {
+    /* KV down → continue; the network dedupes by tx id within its window */
+  }
+
+  const remaining = await consumeScopeBudget(rec.tokenHash, "message:send");
+  if (remaining === 0) {
+    return { error: `daily message budget exhausted (${SCOPE_DAILY_LIMITS["message:send"]}/day) — try again tomorrow (UTC)` };
+  }
+
+  const broadcast = deps.broadcast ?? broadcastSignedTx;
+  try {
+    await broadcast(tx);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "broadcast failed";
+    await appendTokenAudit(rec.id, { ts: Date.now(), action: "message:failed", detail: msg.slice(0, 300) });
+    return { error: `broadcast failed: ${msg} — check the signature is valid and your account holds HBAR for gas` };
+  }
+  try {
+    await getKvStore().set(BROADCAST_KEY + txId, "1", 24 * 3_600_000);
+  } catch {
+    /* best-effort */
+  }
+
+  // Best-effort landing check on the mirror node (short poll, never blocks long).
+  const mirrorFetch = deps.mirrorFetch ?? fetch;
+  let landed = false;
+  try {
+    const [acct, ts] = txId.split("@");
+    const mirrorId = `${acct}-${ts.replace(".", "-")}`;
+    for (let i = 0; i < 3 && !landed; i++) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 2500));
+      const mr = await mirrorFetch(`${mirrorBaseUrl()}/api/v1/transactions/${mirrorId}`);
+      if (mr.ok) {
+        const mj = (await mr.json()) as { transactions?: Array<{ result?: string }> };
+        const r = mj.transactions?.[0]?.result;
+        if (r) landed = r === "SUCCESS";
+        if (r) break;
+      }
+    }
+  } catch {
+    /* best-effort */
+  }
+
+  await appendTokenAudit(rec.id, {
+    ts: Date.now(),
+    action: "message:sent",
+    detail: `@${page.username} → #${room} · hcs ${txId} · payer ${payer} (own key, own gas)${landed ? "" : " · landing unconfirmed"}`,
+  });
+  const hashscanTx = txId.replace("@", "-");
+  return {
+    posted: true,
+    username: page.username,
+    room,
+    hcs_tx_id: txId,
+    payer,
+    messages_remaining_today: remaining,
+    note:
+      `Message broadcast to #${room} as @${page.username} — signed with YOUR key, gas paid by ${payer}. ` +
+      (landed
+        ? "Confirmed on the mirror node. "
+        : "Broadcast accepted; confirm it landed: ") +
+      `Verify on HashScan: https://hashscan.io/mainnet/transaction/${hashscanTx}`,
+  };
+}
+
+
 export interface GrantStatusResult {
   ok: true;
   label: string;
@@ -1719,6 +2011,7 @@ const SCOPE_PLAIN_WORDS: Record<CapabilityScope, string> = {
   "page:update:propose": "Suggest page changes (each still needs your human's tap)",
   "page:read": "Read blockpage content",
   "media:pin": "Upload media via the dapp's IPFS",
+  "message:send": "Post town-hall chat messages as the agent — you sign with your OWN Hedera key and pay the HCS gas from your own account (20/day)",
   "availability:write": "Set the agent's open-for-work flag — executes immediately",
   "draft:stage": "Stage page drafts for human review — executes immediately, staging is NOT publishing",
   "purchase:propose": "Ask your human to approve a marketplace purchase via approval link — they review the item and price in plain words",
