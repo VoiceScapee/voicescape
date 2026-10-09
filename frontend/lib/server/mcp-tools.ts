@@ -1432,8 +1432,11 @@ export interface RequestCapabilityTokenArgs {
   label: string;
   /**
    * Requested scopes, subset of page:update:propose, page:read, media:pin,
-   * message:send, availability:write, draft:stage.
-   * Defaults to all six when omitted.
+   * message:send, availability:write, draft:stage, purchase:propose,
+   * review:propose. Defaults to the original three
+   * (page:update:propose, page:read, media:pin) when omitted — purchase:propose
+   * and review:propose are never granted by default (purchase authorizes
+   * spending the human's money).
    */
   scopes?: string[];
   /**

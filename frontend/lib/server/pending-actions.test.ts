@@ -198,3 +198,115 @@ describe("pending-actions page-update proposals", () => {
     expect(await getPendingActionByPublicId(action.id, store)).toBeNull();
   });
 });
+
+describe("pending-actions purchase proposals", () => {
+  let store: KvStore;
+  beforeEach(() => { store = fakeStore(); });
+
+  const PURCHASE = {
+    listingId: "badge-1",
+    title: "Bacon Badge",
+    seller: "creator-bob",
+    sellerEvm: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    contractId: "0.0.10854060",
+    priceUsdCents: 100,
+    valueTinybar: "500000000",
+    valueHbar: "5.00000000",
+  };
+
+  it("stashes and reads back a purchase proposal with its payload", async () => {
+    const { stashPurchaseProposal } = await import("./pending-actions");
+    const action = await stashPurchaseProposal(
+      { owner_account_id: "0.0.10425049", purchase: PURCHASE, token_id: "a1b2c3d4e5f60718" },
+      store,
+    );
+    expect(action.kind).toBe("purchase");
+    expect(action.purchase?.listingId).toBe("badge-1");
+
+    // The new kind survives the readList filter and the public-id lookup.
+    const listed = await getPendingActions("0.0.10425049", store);
+    expect(listed).toHaveLength(1);
+    expect(listed[0].kind).toBe("purchase");
+    const byId = await getPendingActionByPublicId(action.id, store);
+    expect(byId?.purchase?.valueHbar).toBe("5.00000000");
+  });
+
+  it("rejects bad input and a full inbox", async () => {
+    const { stashPurchaseProposal } = await import("./pending-actions");
+    await expect(
+      stashPurchaseProposal(
+        { owner_account_id: "0.0.10425049", purchase: { ...PURCHASE, sellerEvm: "nope" }, token_id: "a1b2c3d4e5f60718" },
+        store,
+      ),
+    ).rejects.toThrow(/bad seller EVM/);
+    for (let i = 0; i < MAX_PENDING_PER_OWNER; i++) {
+      await stashPurchaseProposal(
+        { owner_account_id: "0.0.10425049", purchase: PURCHASE, token_id: "a1b2c3d4e5f60718" },
+        store,
+      );
+    }
+    await expect(
+      stashPurchaseProposal(
+        { owner_account_id: "0.0.10425049", purchase: PURCHASE, token_id: "a1b2c3d4e5f60718" },
+        store,
+      ),
+    ).rejects.toBeInstanceOf(PendingActionConflictError);
+  });
+});
+
+describe("pending-actions hire-review proposals", () => {
+  let store: KvStore;
+  beforeEach(() => { store = fakeStore(); });
+
+  const REVIEW = {
+    reviewerUsername: "reviewer-agent",
+    reviewerEvm: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    targetUsername: "target-agent",
+    targetEvm: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    rating: 5,
+    text: "Fast delivery.",
+    proofTxId: "0.0.7@1700000000.000000000",
+    proofKind: "purchase" as const,
+  };
+
+  it("stashes and reads back a review proposal with its payload", async () => {
+    const { stashReviewProposal } = await import("./pending-actions");
+    const action = await stashReviewProposal(
+      { owner_account_id: "0.0.10425049", review: REVIEW, token_id: "a1b2c3d4e5f60718" },
+      store,
+    );
+    expect(action.kind).toBe("hire-review");
+    expect(action.hireReview?.targetUsername).toBe("target-agent");
+
+    const listed = await getPendingActions("0.0.10425049", store);
+    expect(listed).toHaveLength(1);
+    const byId = await getPendingActionByPublicId(action.id, store);
+    expect(byId?.hireReview?.proofTxId).toBe("0.0.7@1700000000.000000000");
+  });
+
+  it("rejects self-reviews, bad ratings, and bad proof kinds", async () => {
+    const { stashReviewProposal } = await import("./pending-actions");
+    await expect(
+      stashReviewProposal(
+        { owner_account_id: "0.0.10425049", review: { ...REVIEW, targetUsername: "reviewer-agent" }, token_id: "a1b2c3d4e5f60718" },
+        store,
+      ),
+    ).rejects.toThrow(/own page/);
+    await expect(
+      stashReviewProposal(
+        { owner_account_id: "0.0.10425049", review: { ...REVIEW, rating: 6 }, token_id: "a1b2c3d4e5f60718" },
+        store,
+      ),
+    ).rejects.toThrow(/rating must be 1-5/);
+    await expect(
+      stashReviewProposal(
+        {
+          owner_account_id: "0.0.10425049",
+          review: { ...REVIEW, proofKind: "airdrop" as unknown as "tip" },
+          token_id: "a1b2c3d4e5f60718",
+        },
+        store,
+      ),
+    ).rejects.toThrow(/bad proof kind/);
+  });
+});

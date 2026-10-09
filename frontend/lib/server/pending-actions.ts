@@ -25,7 +25,55 @@ import { getKvStore, type KvStore } from "./store";
 import type { ClaimPageSpec } from "./page-customize";
 
 /** Proposal kinds the inbox can hold. */
-export type PendingActionKind = "agent-claim" | "agent-page-update";
+export type PendingActionKind =
+  | "agent-claim"
+  | "agent-page-update"
+  | "purchase"
+  | "hire-review";
+
+/** Purchase details stashed for a "purchase" pending action. */
+export interface PurchaseProposalDetails {
+  /** Marketplace listing id. */
+  listingId: string;
+  /** Listing title shown on the approval card. */
+  title: string;
+  /** Seller display (username or address). */
+  seller: string;
+  /** Seller EVM address for the buyListing call. */
+  sellerEvm: string;
+  /** Tips contract id "0.0.x" receiving the call. */
+  contractId: string;
+  /** Price in USD cents (listing's listed price). */
+  priceUsdCents: number;
+  /** Payable value in tinybar for the buyListing call. */
+  valueTinybar: string;
+  /** Same value in HBAR for the card. */
+  valueHbar: string;
+  /** Capability token id that submitted it (audit trail). */
+  tokenId: string;
+}
+
+/** Hire-review details stashed for a "hire-review" pending action. */
+export interface HireReviewProposalDetails {
+  /** Reviewing agent's username. */
+  reviewerUsername: string;
+  /** Reviewing agent's owner EVM address. */
+  reviewerEvm: string;
+  /** Reviewed page's username. */
+  targetUsername: string;
+  /** Reviewed page's owner EVM address. */
+  targetEvm: string;
+  /** 1-5 stars. */
+  rating: number;
+  /** Review text (may be empty). */
+  text: string;
+  /** Proof-of-payment transaction id backing the review. */
+  proofTxId: string;
+  /** Kind of the proven payment ("tip" | "purchase"). */
+  proofKind: "tip" | "purchase";
+  /** Capability token id that submitted it (audit trail). */
+  tokenId: string;
+}
 
 /**
  * Manifest class for a page-update proposal (adopted from the receipts
@@ -172,6 +220,10 @@ export interface PendingAction {
   claimPackageId?: string;
   /** Update details — agent-page-update only, pinned at approve time. */
   pageUpdate?: PageUpdateProposalDetails;
+  /** Purchase details — purchase only; the buyer signs buyListing at tap time. */
+  purchase?: PurchaseProposalDetails;
+  /** Review details — hire-review only; posted server-side at tap time. */
+  hireReview?: HireReviewProposalDetails;
 }
 
 /** Thrown when the owner's inbox is full — nothing is overwritten. */
@@ -216,7 +268,13 @@ async function readList(owner: string, store: KvStore): Promise<PendingAction[]>
         typeof p.id === "string" &&
         (p.kind === "agent-claim"
           ? typeof p.claimPackageId === "string"
-          : p.kind === "agent-page-update" && p.pageUpdate && typeof p.pageUpdate === "object"),
+          : p.kind === "agent-page-update"
+            ? p.pageUpdate && typeof p.pageUpdate === "object"
+            : p.kind === "purchase"
+              ? p.purchase && typeof p.purchase === "object"
+              : p.kind === "hire-review"
+                ? p.hireReview && typeof p.hireReview === "object"
+                : false),
     );
   } catch {
     return [];
@@ -366,6 +424,154 @@ export async function stashPageUpdateProposal(
       tokenId,
       manifest,
       digest,
+    },
+  };
+  list.push(action);
+  await store.set(keyFor(owner), JSON.stringify(list), TTL_MS);
+  await store.set(idIndexKey(action.id), owner, TTL_MS);
+  return action;
+}
+
+export interface StashPurchaseInput {
+  owner_account_id: string;
+  /** Listing + buy params — snapshotted so the card can't drift. */
+  purchase: Omit<PurchaseProposalDetails, "tokenId">;
+  /** Capability token id that submitted it (audit trail). */
+  token_id: string;
+}
+
+/**
+ * Append a purchase-approval request as the owner's pending action. Same
+ * inbox rules as claims/updates: max MAX_PENDING_PER_OWNER, 24h TTL,
+ * nothing executes without the human's tap. The buyListing call data is
+ * already fully determined (seller, listing ref, value) — at tap time the
+ * human's own wallet signs it; the server never signs and never submits.
+ * Throws PendingActionConflictError when the inbox is full; throws on
+ * invalid input. KV failures propagate. `store` is injectable for tests.
+ */
+export async function stashPurchaseProposal(
+  input: StashPurchaseInput,
+  store: KvStore = getKvStore(),
+): Promise<PendingAction> {
+  const owner = (input.owner_account_id ?? "").trim();
+  if (!/^\d+\.\d+\.\d+$/.test(owner)) {
+    throw new Error("stashPurchaseProposal: bad owner account id");
+  }
+  const p = input.purchase;
+  if (!p || typeof p !== "object") throw new Error("stashPurchaseProposal: missing purchase");
+  const listingId = (p.listingId ?? "").toString().trim();
+  if (!listingId) throw new Error("stashPurchaseProposal: missing listing id");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(p.sellerEvm ?? "")) {
+    throw new Error("stashPurchaseProposal: bad seller EVM address");
+  }
+  if (!/^\d+$/.test((p.valueTinybar ?? "").toString()) || BigInt(p.valueTinybar as string) <= 0n) {
+    throw new Error("stashPurchaseProposal: bad payable value");
+  }
+  const tokenId = (input.token_id ?? "").trim();
+  if (!/^[0-9a-f]{16}$/.test(tokenId)) {
+    throw new Error("stashPurchaseProposal: bad token id");
+  }
+
+  const list = await readList(owner, store);
+  if (list.length >= MAX_PENDING_PER_OWNER) {
+    throw new PendingActionConflictError(
+      `owner ${owner} already has ${list.length} pending proposals — ask the human to check their Buddy chat before preparing another`,
+    );
+  }
+  const action: PendingAction = {
+    id: randomBytes(8).toString("hex"),
+    kind: "purchase",
+    createdAt: Date.now(),
+    ownerAccountId: owner,
+    label: "Marketplace purchase",
+    title: `Buy "${p.title}"`,
+    summary: `Buy "${p.title}" from ${p.seller} for ${p.valueHbar} HBAR. The Tips contract splits it 98% to the seller and 2% to the platform, atomically — no escrow, no custody.`,
+    costEstimate: `${p.valueHbar} HBAR for the item plus a few cents of HBAR network gas. No fee to Voicescape beyond the on-chain 2%.`,
+    purchase: { ...p, listingId, tokenId },
+  };
+  list.push(action);
+  await store.set(keyFor(owner), JSON.stringify(list), TTL_MS);
+  await store.set(idIndexKey(action.id), owner, TTL_MS);
+  return action;
+}
+
+export interface StashReviewInput {
+  owner_account_id: string;
+  /** Review content — validated; the proof tx is verified, NOT claimed, here. */
+  review: Omit<HireReviewProposalDetails, "tokenId">;
+  /** Capability token id that submitted it (audit trail). */
+  token_id: string;
+}
+
+/**
+ * Append a hire-review approval request as the owner's pending action.
+ * Same inbox rules: max MAX_PENDING_PER_OWNER, 24h TTL, nothing posts
+ * without the human's tap. The proof-of-payment tx is verified at request
+ * time but only CLAIMED at approve time — an untapped request never burns
+ * the proof. Throws PendingActionConflictError when the inbox is full;
+ * throws on invalid input. KV failures propagate. `store` is injectable
+ * for tests.
+ */
+export async function stashReviewProposal(
+  input: StashReviewInput,
+  store: KvStore = getKvStore(),
+): Promise<PendingAction> {
+  const owner = (input.owner_account_id ?? "").trim();
+  if (!/^\d+\.\d+\.\d+$/.test(owner)) {
+    throw new Error("stashReviewProposal: bad owner account id");
+  }
+  const r = input.review;
+  if (!r || typeof r !== "object") throw new Error("stashReviewProposal: missing review");
+  const reviewerUsername = (r.reviewerUsername ?? "").toString().trim().toLowerCase();
+  const targetUsername = (r.targetUsername ?? "").toString().trim().toLowerCase();
+  if (!/^[a-z0-9_-]{3,32}$/.test(reviewerUsername)) {
+    throw new Error("stashReviewProposal: bad reviewer username");
+  }
+  if (!/^[a-z0-9_-]{3,32}$/.test(targetUsername)) {
+    throw new Error("stashReviewProposal: bad target username");
+  }
+  if (reviewerUsername === targetUsername) {
+    throw new Error("stashReviewProposal: cannot review your own page");
+  }
+  if (!Number.isInteger(r.rating) || r.rating < 1 || r.rating > 5) {
+    throw new Error("stashReviewProposal: rating must be 1-5");
+  }
+  if (r.proofKind !== "tip" && r.proofKind !== "purchase") {
+    throw new Error("stashReviewProposal: bad proof kind");
+  }
+  const text = (r.text ?? "").toString().slice(0, 2000);
+  const proofTxId = (r.proofTxId ?? "").toString().trim();
+  if (!proofTxId) throw new Error("stashReviewProposal: missing proof transaction");
+  const tokenId = (input.token_id ?? "").trim();
+  if (!/^[0-9a-f]{16}$/.test(tokenId)) {
+    throw new Error("stashReviewProposal: bad token id");
+  }
+
+  const list = await readList(owner, store);
+  if (list.length >= MAX_PENDING_PER_OWNER) {
+    throw new PendingActionConflictError(
+      `owner ${owner} already has ${list.length} pending proposals — ask the human to check their Buddy chat before preparing another`,
+    );
+  }
+  const action: PendingAction = {
+    id: randomBytes(8).toString("hex"),
+    kind: "hire-review",
+    createdAt: Date.now(),
+    ownerAccountId: owner,
+    label: "Hire review",
+    title: `Review @${targetUsername}`,
+    summary: `@${reviewerUsername} rates @${targetUsername} ${r.rating}/5, backed by on-chain payment ${proofTxId}.`,
+    costEstimate: "Posting the review costs nothing — the proof payment is already settled on-chain.",
+    hireReview: {
+      reviewerUsername,
+      reviewerEvm: (r.reviewerEvm ?? "").toString().toLowerCase(),
+      targetUsername,
+      targetEvm: (r.targetEvm ?? "").toString().toLowerCase(),
+      rating: r.rating,
+      text,
+      proofTxId,
+      proofKind: r.proofKind,
+      tokenId,
     },
   };
   list.push(action);

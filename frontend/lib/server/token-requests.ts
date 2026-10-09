@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { getKvStore, type KvStore } from "./store";
 import {
   CAPABILITY_SCOPES,
+  DEFAULT_CAPABILITY_SCOPES,
   type CapabilityScope,
 } from "./capability-tokens";
 
@@ -62,7 +63,7 @@ export async function createTokenRequest(
 ): Promise<TokenRequest> {
   const label = (input.label ?? "").trim().slice(0, 80);
   if (!label) throw new Error("createTokenRequest: label is required");
-  const scopes = input.scopes ?? [...CAPABILITY_SCOPES];
+  const scopes = input.scopes ?? [...DEFAULT_CAPABILITY_SCOPES];
   if (!Array.isArray(scopes) || scopes.length === 0 || !scopes.every(isScope)) {
     throw new Error("createTokenRequest: scopes must be a non-empty subset of the known scopes");
   }

@@ -115,7 +115,7 @@ describe("MCP tool surface", () => {
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(59);
+      expect(tools).toHaveLength(61);
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.description, t.name).toBeTruthy();

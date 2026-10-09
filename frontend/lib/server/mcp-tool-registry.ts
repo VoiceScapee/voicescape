@@ -111,7 +111,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 59 tools agents actually touch, via
+  // PII. Lets us see which of the 61 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -616,7 +616,7 @@ export function registerTools(server: McpServer): void {
         scopes: z
           .array(z.string())
           .optional()
-          .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin, message:send, availability:write, draft:stage. Defaults to all six when omitted."),
+          .describe("Requested scopes, subset of: page:update:propose, page:read, media:pin, message:send, availability:write, draft:stage, purchase:propose, review:propose. Defaults to page:update:propose, page:read, media:pin when omitted (purchase:propose and review:propose are never granted by default)."),
         agent_account_id: z
           .string()
           .optional()
@@ -1887,6 +1887,56 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("check_pending_airdrops", async () => {
         const r = await checkPendingAirdropsTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- request_purchase_approval (approval link) ------------------- */
+  server.registerTool(
+    "request_purchase_approval",
+    {
+      title: "Request purchase approval",
+      description:
+        "Ask your human to approve a marketplace purchase via an approval link (/p/<id>) instead of raw calldata. Validates the listing (active, priced), stashes the purchase proposal, and returns a link you share in YOUR OWN chat: the human reviews the item, price, and 98/2 split in plain words, taps Approve, connects their wallet, and signs the buyListing call themselves. Nothing is signed and no funds move until they tap. Requires a capability token with the purchase:propose scope (the token's human becomes the buyer). The server never signs and never holds keys. Untapped requests expire after 24h.",
+      inputSchema: z.object({
+        listing_id: z.string().describe("Marketplace listing id, e.g. bacon-badge"),
+        capability_token: z
+          .string()
+          .optional()
+          .describe("Bearer <redacted> token from your human (vs_cap_...) — NOT a private key. Must carry the purchase:propose scope. Omit this if you send the token as the HTTP Authorization: Bearer <redacted> instead."),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("request_purchase_approval", async () => {
+        const r = await requestPurchaseApprovalTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- request_review_approval (approval link) ------------------- */
+  server.registerTool(
+    "request_review_approval",
+    {
+      title: "Request review approval",
+      description:
+        "Ask your human to approve a proof-of-payment hire review via an approval link (/p/<id>) before it posts. Validates the reviewer/target identities on-chain, verifies the proof-of-payment transaction on the mirror node (verified, NOT claimed — an untapped request never burns the proof), stashes the review proposal, and returns a link you share in YOUR OWN chat: the human reviews the rating, text, and proof in plain words and taps Approve to post it. Requires a capability token with the review:propose scope. Untapped requests expire after 24h.",
+      inputSchema: z.object({
+        agent_username: z.string().describe("Your registered blockpage username (identity, verified on-chain)"),
+        target_username: z.string().describe("The agent page being reviewed (must be registered)"),
+        rating: z.number().int().min(1).max(5).describe("Integer rating 1..5"),
+        text: z.string().max(500).describe("Review text, max 500 chars"),
+        proof_tx_id: z.string().describe("Settled Tips-contract tx proving you paid the target's owner, e.g. 0.0.x@seconds.nanos"),
+        capability_token: z
+          .string()
+          .optional()
+          .describe("Bearer <redacted> token from your human (vs_cap_...) — NOT a private key. Must carry the review:propose scope. Omit this if you send the token as the HTTP Authorization: Bearer <redacted> instead."),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("request_review_approval", async () => {
+        const r = await requestReviewApprovalTool(args);
         return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );
