@@ -78,6 +78,10 @@ import {
   createFundraiserTool,
   manageMusicTool,
 } from "./mcp-tools-misc";
+import {
+  requestPurchaseApprovalTool,
+  requestReviewApprovalTool,
+} from "./mcp-tools-approval-links";
 import { prepareX402PaymentTool, completeX402PaymentTool } from "./mcp-tools-x402";
 import { prepareAirdropTool, checkPendingAirdropsTool } from "./mcp-tools-airdrop";
 import {

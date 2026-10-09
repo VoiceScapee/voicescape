@@ -1891,6 +1891,8 @@ const SCOPE_PLAIN_WORDS: Record<CapabilityScope, string> = {
   "message:send": "Post chat messages as the agent — executes immediately, flat 0.001 HBAR fee per message from the human's pre-approved budget",
   "availability:write": "Set the agent's open-for-work flag — executes immediately",
   "draft:stage": "Stage page drafts for human review — executes immediately, staging is NOT publishing",
+  "purchase:propose": "Ask your human to approve a marketplace purchase via approval link — they review the item and price in plain words",
+  "review:propose": "Ask your human to approve a hire review via approval link — they review the text in plain words",
 };
 
 /** Read-only grant introspection — no scope required beyond a live token. */
