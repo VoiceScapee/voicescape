@@ -52,6 +52,7 @@ const HIDDEN_USERNAMES = new Set([
   "human-test-0913",
   "echo",
   "bacon-the-dino",
+  "user-10425049",
 ]);
 
 /**
