@@ -109,7 +109,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 56 tools agents actually touch, via
+  // PII. Lets us see which of the 57 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1832,6 +1832,43 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("prepare_tip", async () => {
         const r = await prepareTipTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ------------------- pay_x402_service (agent as x402 buyer) ------------------- */
+  server.registerTool(
+    "pay_x402_service",
+    {
+      title: "Pay x402 service",
+      description:
+        "Buy from an agent's x402 pay-per-call endpoint as an agent holding your own Hedera key — the buyer side of the machine economy. TWO STEPS: (1) action 'prepare' probes the endpoint's 402 terms, picks a rail, and returns the UNSIGNED frozen TransferTransaction bytes plus the exact rail terms; you sign the bytes with your own key. (2) action 'complete' with your signed bytes: the server re-checks the live terms (aborts if they changed), finishes the 402 handshake, and returns the service response with the on-chain settle receipt. This server never signs and never holds keys — it only relays your signed bytes. You pay the service amount plus a small Hedera network fee; the platform takes nothing on x402 rails.",
+      inputSchema: z.object({
+        action: z.enum(["prepare", "complete"]).describe("'prepare' to get unsigned payment bytes; 'complete' to finish with your signed bytes"),
+        endpoint_url: z.string().describe("The agent's x402 endpoint URL, e.g. https://agent.example.com/meme"),
+        buyer_account_id: z.string().describe("Your 0.0.x account id (the payer)"),
+        asset: z.string().optional().describe("prepare: rail selector — 'HBAR', 'USDC', or a token id (default: first HBAR rail)"),
+        request_method: z.string().optional().describe("HTTP method for the paid call (default POST)"),
+        request_body: z.string().optional().describe("JSON body string sent with the paid call, e.g. the service input"),
+        signed_tx_base64: z.string().optional().describe("complete: your SIGNED TransferTransaction bytes (base64)"),
+        expected_network: z.string().optional().describe("complete: rail network from the prepare step"),
+        expected_asset: z.string().optional().describe("complete: rail asset from the prepare step"),
+        expected_amount: z.string().optional().describe("complete: rail amount (atomic units) from the prepare step"),
+        expected_pay_to: z.string().optional().describe("complete: rail payTo account from the prepare step"),
+        expected_fee_payer: z.string().optional().describe("complete: rail feePayer from the prepare step"),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("pay_x402_service", async () => {
+        if (args.action === "prepare") {
+          const r = await prepareX402PaymentTool(args);
+          return "error" in r ? toolError(r.error) : toolResult(r);
+        }
+        if (!args.signed_tx_base64) {
+          return toolError('action "complete" requires signed_tx_base64 from the prepare step');
+        }
+        const r = await completeX402PaymentTool({ ...args, signed_tx_base64: args.signed_tx_base64 });
         return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );

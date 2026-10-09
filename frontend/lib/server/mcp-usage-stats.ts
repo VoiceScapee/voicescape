@@ -75,6 +75,7 @@ export const KNOWN_MCP_TOOLS = [
   "list_marketplace",
   "prepare_purchase",
   "prepare_tip",
+  "pay_x402_service",
   "follow_creator",
   "unfollow_creator",
   "post_hire_review",
