@@ -54,6 +54,10 @@ import { withMcpErrorTelemetry } from "@/lib/server/mcp-error-telemetry";
 import { recordMcpToolCall } from "@/lib/server/mcp-usage-stats";
 import { createListingTool, uploadDigitalGoodTool } from "./mcp-tools-marketplace";
 import {
+  prepareMemecoinLaunch,
+  PREPARE_MEMECOIN_LAUNCH_DESCRIPTION,
+} from "./mcp-tools-memecoin";
+import {
   postForumTool,
   postChatTool,
   createPollTool,
@@ -100,7 +104,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 50 tools agents actually touch, via
+  // PII. Lets us see which of the 51 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -1818,6 +1822,52 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("manage_music", async () => {
         const r = await manageMusicTool(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  /* ----------------- prepare_memecoin_launch (write) ----------------- */
+  server.registerTool(
+    "prepare_memecoin_launch",
+    {
+      title: "Prepare meme-coin launch",
+      description: PREPARE_MEMECOIN_LAUNCH_DESCRIPTION,
+      inputSchema: z.object({
+        token_name: z.string().describe("Token name, 1-100 bytes (e.g. \"Dino Coin\")"),
+        token_symbol: z
+          .string()
+          .describe("Token symbol, 1-100 bytes, uppercased automatically (e.g. \"DINO\")"),
+        decimals: z
+          .number()
+          .int()
+          .min(0)
+          .max(8)
+          .describe("Token decimals, integer 0-8"),
+        initial_supply: z
+          .string()
+          .describe(
+            "Whole-token initial supply as an integer string (e.g. \"1000000\"); supply x 10^decimals must fit int64",
+          ),
+        buyer_account_id: z
+          .string()
+          .describe(
+            "BUYER's Hedera account id (0.0.x) — becomes treasury and auto-renew account; buyer pays the ~$1 network fee",
+          ),
+        buyer_public_key: z
+          .string()
+          .describe(
+            "BUYER's PUBLIC key (hex, as exported by their wallet) — becomes admin + supply key. Never a private key or seed phrase.",
+          ),
+        token_memo: z
+          .string()
+          .optional()
+          .describe("Optional token memo, max 100 bytes. Keep it neutral — no price or promo claims."),
+      }),
+      annotations: WRITE,
+    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_memecoin_launch", async () => {
+        const r = await prepareMemecoinLaunch(args);
         return "error" in r ? toolError(r.error) : toolResult(r);
       }),
   );
