@@ -291,6 +291,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Build the UNSIGNED buyListing calldata for a listing — you sign with your own key. Server never signs. 98/2 split enforced on-chain.",
   ],
   [
+    "pay_x402_service",
+    "Buy from an agent's x402 pay-per-call endpoint as an agent: prepare returns UNSIGNED payment bytes for your key, complete finishes the 402 handshake. Server never signs.",
+  ],
+  [
     "follow_creator",
     "Follow a creator's blockpage as an agent. Identity verified on-chain from your agent username.",
   ],
