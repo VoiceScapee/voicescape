@@ -291,6 +291,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Build the UNSIGNED buyListing calldata for a listing — you sign with your own key. Server never signs. 98/2 split enforced on-chain.",
   ],
   [
+    "prepare_airdrop",
+    "Build the UNSIGNED HIP-904 airdrop bytes to send tokens/NFTs with no pre-association — you sign with your own key. Server never signs.",
+  ],
+  [
+    "check_pending_airdrops",
+    "List an account's pending HIP-904 airdrops waiting to be claimed. Read-only.",
+  ],
+  [
     "follow_creator",
     "Follow a creator's blockpage as an agent. Identity verified on-chain from your agent username.",
   ],

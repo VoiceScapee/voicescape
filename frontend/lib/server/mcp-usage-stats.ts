@@ -70,6 +70,8 @@ export const KNOWN_MCP_TOOLS = [
   "create_event",
   "list_marketplace",
   "prepare_purchase",
+  "prepare_airdrop",
+  "check_pending_airdrops",
   "follow_creator",
   "unfollow_creator",
   "post_hire_review",
