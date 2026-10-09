@@ -12,7 +12,10 @@
  * Groq auth: this host's credential helper is Python-only, so the route
  * spawns ~/workspace/skills/groq/bin/groq_chat.py as a child process and
  * feeds it the request on stdin. The raw key never crosses into Node code.
- * That makes this route host-local (demo runtime), not serverless-portable.
+ * On Vercel (serverless) the child process can't run, so the route falls
+ * back to Pollinations' keyless HTTPS endpoint ($0, no key) for planning.
+ * Either way the MCP calls are identical: live server, Streamable HTTP,
+ * spec 2025-11-25.
  */
 import { spawn } from "child_process";
 import { NextRequest, NextResponse } from "next/server";
@@ -75,32 +78,28 @@ function sanitize(value: unknown): unknown {
   return value;
 }
 
-async function groqJson(prompt: string): Promise<string> {
+const SYSTEM_PROMPT =
+  "You are the planner for the Voicescape Voice Builder demo. " +
+  "Voicescape is a Hedera-mainnet social dapp where creators own blockpages " +
+  "(profile pages) and keep 98% of every on-chain tip. " +
+  "You plan a page draft from the user's spoken request and pick live MCP " +
+  "tools to call. Read-only tools only. " +
+  "Reply with JSON ONLY, no markdown fences, matching this shape: " +
+  '{"speak":"1-2 sentence spoken summary","steps":["what you did, 2-5 items"],' +
+  '"toolCalls":[{"name":"lookup_blockpage","arguments":{"username":"name"}}],' +
+  '"pageDraft":{"displayName":"...","purpose":"...","theme":{"background":"#hex","foreground":"#hex","accent":"#hex"},' +
+  '"socials":[{"platform":"x|instagram|youtube|tiktok|website","url":"https://..."}],' +
+  '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}]}} ' +
+  "Only use these tool names: lookup_blockpage, list_templates, " +
+  "blockpage_earnings, list_tip_assets, check_profile_pin. " +
+  "Only include lookup_blockpage when the user named a username. " +
+  "Never invent usernames, wallet data, or earnings numbers — if you " +
+  "don't know, say so in speak and keep the draft generic.";
+
+async function groqChildJson(messages: unknown): Promise<string> {
   const body = JSON.stringify({
     model: GROQ_MODEL,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are the planner for the Voicescape Voice Builder demo. " +
-          "Voicescape is a Hedera-mainnet social dapp where creators own blockpages " +
-          "(profile pages) and keep 98% of every on-chain tip. " +
-          "You plan a page draft from the user's spoken request and pick live MCP " +
-          "tools to call. Read-only tools only. " +
-          "Reply with JSON ONLY, no markdown fences, matching this shape: " +
-          '{"speak":"1-2 sentence spoken summary","steps":["what you did, 2-5 items"],' +
-          '"toolCalls":[{"name":"lookup_blockpage","arguments":{"username":"name"}}],' +
-          '"pageDraft":{"displayName":"...","purpose":"...","theme":{"background":"#hex","foreground":"#hex","accent":"#hex"},' +
-          '"socials":[{"platform":"x|instagram|youtube|tiktok|website","url":"https://..."}],' +
-          '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}]}} ' +
-          "Only use these tool names: lookup_blockpage, list_templates, " +
-          "blockpage_earnings, list_tip_assets, check_profile_pin. " +
-          "Only include lookup_blockpage when the user named a username. " +
-          "Never invent usernames, wallet data, or earnings numbers — if you " +
-          "don't know, say so in speak and keep the draft generic.",
-      },
-      { role: "user", content: prompt },
-    ],
+    messages,
     max_tokens: 2048,
     temperature: 0.7,
   });
@@ -121,9 +120,49 @@ async function groqJson(prompt: string): Promise<string> {
   if (parsed.error) throw new Error(`groq: ${parsed.error} ${parsed.detail ?? ""}`);
   const content: string = parsed.choices?.[0]?.message?.content ?? "";
   if (!content) throw new Error("groq: empty plan");
+  return content;
+}
+
+/**
+ * Keyless HTTPS fallback for serverless (Vercel preview): the Python
+ * credential helper can't run there, so plan via Pollinations' free
+ * OpenAI-compatible endpoint. $0, no key. Demo-only.
+ */
+async function pollinationsJson(messages: unknown): Promise<string> {
+  const res = await fetch("https://text.pollinations.ai/openai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "openai",
+      messages,
+      max_tokens: 2048,
+      temperature: 0.7,
+    }),
+  });
+  if (!res.ok) throw new Error(`pollinations: HTTP ${res.status}`);
+  const parsed = await res.json();
+  const content: string = parsed.choices?.[0]?.message?.content ?? "";
+  if (!content) throw new Error("pollinations: empty plan");
+  return content;
+}
+
+async function groqJson(prompt: string): Promise<string> {
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT },
+    { role: "user", content: prompt },
+  ];
+  // Serverless (Vercel preview) can't spawn the Python credential helper.
+  if (process.env.VERCEL) return cleanJson(await pollinationsJson(messages));
+  try {
+    return cleanJson(await groqChildJson(messages));
+  } catch {
+    return cleanJson(await pollinationsJson(messages));
+  }
+}
+
+function cleanJson(raw: string): string {
   // Models sometimes wrap JSON in fences despite instructions; strip them.
-  const cleaned = content.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-  return cleaned;
+  return raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
 }
 
 async function mcpRpc(method: string, params: Record<string, unknown>, id: number) {
