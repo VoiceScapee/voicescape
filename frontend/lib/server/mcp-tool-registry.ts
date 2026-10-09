@@ -78,6 +78,7 @@ import {
   createFundraiserTool,
   manageMusicTool,
 } from "./mcp-tools-misc";
+import { prepareX402PaymentTool, completeX402PaymentTool } from "./mcp-tools-x402";
 import {
   postWorkshopReport,
   getWorkshopReport,
