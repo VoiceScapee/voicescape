@@ -25,6 +25,54 @@ const GROQ_MODEL = "openai/gpt-oss-20b";
 const MCP_ENDPOINT = "https://voicescape.vercel.app/api/mcp";
 const MCP_PROTOCOL_VERSION = "2025-11-25";
 
+/** Every language the Voicescape dapp ships (frontend/lib/i18n/dictionaries.ts). */
+const VOICE_LANG_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  zh: "Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+  vi: "Vietnamese",
+  id: "Indonesian",
+  th: "Thai",
+  tl: "Tagalog",
+  tr: "Turkish",
+  hi: "Hindi",
+  ar: "Arabic",
+  pt: "Portuguese",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  sv: "Swedish",
+  lt: "Lithuanian",
+  ro: "Romanian",
+  ms: "Malay",
+};
+
+/** Fallback "here's the live music page" line when the AI planner is down. */
+const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
+  en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
+  es: "Esta es la blockpage de música en vivo de Ash Rook — una página real de Voicescape, con música sonando dentro de la vista previa.",
+  zh: "这是 Ash Rook 的现场音乐 blockpage——Voicescape 上的真实页面，预览中正在播放音乐。",
+  ja: "Ash Rookのライブ音楽ブロックページです — Voicescapeの実際のページで、プレビュー内で音楽が流れています。",
+  ko: "Ash Rook의 라이브 음악 블록페이지입니다 — Voicescape의 실제 페이지이며, 미리보기 안에서 음악이 재생 중입니다。",
+  vi: "Đây là blockpage nhạc trực tiếp của Ash Rook — một trang thật trên Voicescape, với nhạc đang phát trong bản xem trước.",
+  id: "Ini adalah blockpage musik live Ash Rook — halaman asli di Voicescape, dengan musik yang diputar di dalam pratinjau.",
+  th: "นี่คือบล็อกเพจเพลงสดของ Ash Rook — เพจจริงบน Voicescape พร้อมเสียงเพลงที่เล่นอยู่ในตัวอย่าง",
+  tl: "Ito ang live music blockpage ni Ash Rook — isang tunay na page sa Voicescape, na may tumutugtog na musika sa loob ng preview.",
+  tr: "İşte Ash Rook canlı müzik blok sayfası — Voicescape'te gerçek bir sayfa, önizlemenin içinde müzik çalıyor.",
+  hi: "यह Ash Rook का लाइव संगीत ब्लॉकपेज है — Voicescape पर एक असली पेज, जिसके प्रीव्यू में संगीत बज रहा है।",
+  ar: "هذه هي صفحة الموسيقى المباشرة لـ Ash Rook — صفحة حقيقية على Voicescape، مع موسيقى تُشغَّل داخل المعاينة.",
+  pt: "Esta é a blockpage de música ao vivo do Ash Rook — uma página real na Voicescape, com música tocando dentro da pré-visualização.",
+  fr: "Voici la blockpage de musique en direct d'Ash Rook — une vraie page sur Voicescape, avec de la musique qui joue dans l'aperçu.",
+  de: "Das ist Ash Rooks Live-Musik-Blockpage — eine echte Seite auf Voicescape, mit Musik direkt in der Vorschau.",
+  it: "Questa è la blockpage di musica dal vivo di Ash Rook — una pagina reale su Voicescape, con musica in riproduzione nell'anteprima.",
+  sv: "Här är Ash Rooks livemusik-blockpage — en riktig sida på Voicescape, med musik som spelas i förhandsvisningen.",
+  lt: "Tai „Ash Rook“ gyvos muzikos blokpuslapis — tikras puslapis „Voicescape“, kurio peržiūroje groja muzika.",
+  ro: "Aceasta este blockpage-ul de muzică live al lui Ash Rook — o pagină reală pe Voicescape, cu muzică redată în previzualizare.",
+  ms: "Ini ialah blockpage muzik secara langsung Ash Rook — halaman sebenar di Voicescape, dengan muzik dimainkan di dalam pratonton.",
+};
+
 /** Read-only / preview-only tools the demo is allowed to call. */
 const ALLOWED_TOOLS = new Set([
   "lookup_blockpage",
@@ -156,9 +204,13 @@ async function pollinationsJson(messages: unknown): Promise<string> {
   return content;
 }
 
-async function groqJson(prompt: string): Promise<string> {
+async function groqJson(prompt: string, langName: string): Promise<string> {
+  const langSuffix =
+    langName === "English"
+      ? ""
+      : ` The user speaks ${langName}: write your "speak" and "steps" in ${langName}.`;
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: SYSTEM_PROMPT + langSuffix },
     { role: "user", content: prompt },
   ];
   // Serverless (Vercel preview) can't spawn the Python credential helper.
@@ -180,11 +232,11 @@ function cleanJson(raw: string): string {
   return s;
 }
 
-async function planWithRetry(prompt: string, attempts = 2): Promise<AgentPlan> {
+async function planWithRetry(prompt: string, langName: string, attempts = 2): Promise<AgentPlan> {
   let lastErr: unknown = null;
   for (let i = 0; i < attempts; i++) {
     try {
-      return JSON.parse(await groqJson(prompt)) as AgentPlan;
+      return JSON.parse(await groqJson(prompt, langName)) as AgentPlan;
     } catch (e) {
       lastErr = e;
     }
@@ -198,14 +250,16 @@ async function planWithRetry(prompt: string, attempts = 2): Promise<AgentPlan> {
  * model call. The MCP calls that follow are still 100% live — only the
  * "thinking" step is rule-based.
  */
-function fallbackPlan(spoken: string): AgentPlan {
+function fallbackPlan(spoken: string, langCode: string): AgentPlan {
   const lower = spoken.toLowerCase();
   const steps = ["Heard your request", "Planning over the live MCP server"];
-  if (/music|ash.?rook/.test(lower)) {
+  // "music" in the dapp's languages, so the fallback works globally too.
+  const musicRe =
+    /music|música|音乐|音楽|음악|nhạc|musik|เพลง|musika|müzik|संगीत|موسيقى|musique|ash.?rook/;
+  if (musicRe.test(lower)) {
     steps.push('Looking up the live "ash-rook" music blockpage');
     return {
-      speak:
-        "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
+      speak: FALLBACK_MUSIC_SPEAK[langCode] ?? FALLBACK_MUSIC_SPEAK.en,
       steps,
       toolCalls: [{ name: "lookup_blockpage", arguments: { username: "ash-rook" } }],
       pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
@@ -371,11 +425,16 @@ async function mcpRpc(method: string, params: Record<string, unknown>, id: numbe
 
 export async function POST(req: NextRequest) {
   try {
-    const { transcript } = (await req.json()) as { transcript?: string };
+    const { transcript, lang } = (await req.json()) as {
+      transcript?: string;
+      lang?: string;
+    };
     const spoken = (transcript ?? "").trim();
     if (!spoken) {
       return NextResponse.json({ error: "empty transcript" }, { status: 400 });
     }
+    const langCode = typeof lang === "string" && VOICE_LANG_NAMES[lang] ? lang : "en";
+    const langName = VOICE_LANG_NAMES[langCode];
 
     // 1. Plan the build: AI planner first, deterministic fallback if the
     //    free planning endpoint is down (the MCP calls after this are
@@ -383,10 +442,10 @@ export async function POST(req: NextRequest) {
     let plan: AgentPlan;
     let plannedBy: string;
     try {
-      plan = await planWithRetry(spoken);
+      plan = await planWithRetry(spoken, langName);
       plannedBy = "ai";
     } catch {
-      plan = fallbackPlan(spoken);
+      plan = fallbackPlan(spoken, langCode);
       plannedBy = "fallback";
     }
 

@@ -176,6 +176,30 @@ const DEMO_SUGGESTIONS = [
   "Look up the blockpage user-10424063",
 ];
 
+// Every language the Voicescape dapp ships (lib/i18n/dictionaries.ts).
+const VOICE_LANGS = [
+  { code: "en", label: "English", bcp47: "en-US" },
+  { code: "es", label: "Español", bcp47: "es-ES" },
+  { code: "zh", label: "中文", bcp47: "zh-CN" },
+  { code: "ja", label: "日本語", bcp47: "ja-JP" },
+  { code: "ko", label: "한국어", bcp47: "ko-KR" },
+  { code: "vi", label: "Tiếng Việt", bcp47: "vi-VN" },
+  { code: "id", label: "Bahasa Indonesia", bcp47: "id-ID" },
+  { code: "th", label: "ไทย", bcp47: "th-TH" },
+  { code: "tl", label: "Tagalog", bcp47: "fil-PH" },
+  { code: "tr", label: "Türkçe", bcp47: "tr-TR" },
+  { code: "hi", label: "हिन्दी", bcp47: "hi-IN" },
+  { code: "ar", label: "العربية", bcp47: "ar-SA" },
+  { code: "pt", label: "Português", bcp47: "pt-BR" },
+  { code: "fr", label: "Français", bcp47: "fr-FR" },
+  { code: "de", label: "Deutsch", bcp47: "de-DE" },
+  { code: "it", label: "Italiano", bcp47: "it-IT" },
+  { code: "sv", label: "Svenska", bcp47: "sv-SE" },
+  { code: "lt", label: "Lietuvių", bcp47: "lt-LT" },
+  { code: "ro", label: "Română", bcp47: "ro-RO" },
+  { code: "ms", label: "Bahasa Melayu", bcp47: "ms-MY" },
+];
+
 export default function AlexaDemoPage() {
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
@@ -186,6 +210,9 @@ export default function AlexaDemoPage() {
   const [agent, setAgent] = useState<AgentResponse | null>(null);
   const [visibleSteps, setVisibleSteps] = useState(0);
   const [autoSpeak, setAutoSpeak] = useState(true);
+  const [lang, setLang] = useState("en");
+
+  const langEntry = VOICE_LANGS.find((l) => l.code === lang) ?? VOICE_LANGS[0];
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
   useEffect(() => {
@@ -197,11 +224,18 @@ export default function AlexaDemoPage() {
     };
   }, []);
 
-  const speak = useCallback((text: string) => {
+  const speak = useCallback((text: string, bcp47: string, code: string) => {
     if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
+    u.lang = bcp47;
     u.rate = 1.02;
+    // Prefer a voice matching the selected language when available.
+    const voices = window.speechSynthesis.getVoices();
+    const match =
+      voices.find((v) => v.lang.toLowerCase().startsWith(code.toLowerCase())) ??
+      voices.find((v) => v.lang.toLowerCase().startsWith(bcp47.split("-")[0].toLowerCase()));
+    if (match) u.voice = match;
     window.speechSynthesis.speak(u);
   }, []);
 
@@ -213,23 +247,25 @@ export default function AlexaDemoPage() {
       setError(null);
       setAgent(null);
       setVisibleSteps(0);
+      const bcp47 = langEntry.bcp47;
+      const code = langEntry.code;
       try {
         const res = await fetch("/api/alexa-demo/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: prompt }),
+          body: JSON.stringify({ transcript: prompt, lang: code }),
         });
         const data = (await res.json()) as AgentResponse;
         if (!res.ok) throw new Error(data.error ?? "agent failed");
         setAgent(data);
-        if (autoSpeak && data.speak) speak(data.speak);
+        if (autoSpeak && data.speak) speak(data.speak, bcp47, code);
       } catch (e) {
         setError(e instanceof Error ? e.message : "something went wrong");
       } finally {
         setBusy(false);
       }
     },
-    [busy, autoSpeak, speak]
+    [busy, autoSpeak, speak, langEntry]
   );
 
   // Stagger the build-log steps so the page visibly "builds itself".
@@ -247,7 +283,7 @@ export default function AlexaDemoPage() {
     }
     window.speechSynthesis?.cancel();
     const recog = new SR();
-    recog.lang = "en-US";
+    recog.lang = langEntry.bcp47;
     recog.interimResults = true;
     recog.maxAlternatives = 1;
     let finalText = "";
@@ -288,7 +324,7 @@ export default function AlexaDemoPage() {
       recogRef.current = null;
       setError("Mic couldn't start — type your prompt below instead.");
     }
-  }, [runAgent]);
+  }, [runAgent, langEntry]);
 
   const theme = agent?.pageDraft.theme ?? {};
   const bg = theme.background ?? "#0f172a";
@@ -317,6 +353,24 @@ export default function AlexaDemoPage() {
           Works today on any device with a browser and a mic — phone, PC,
           tablet. Voice builds it, you claim it on the dapp.
         </p>
+        <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+          <span aria-hidden>🌐</span>
+          <label htmlFor="voice-lang" className="text-xs uppercase tracking-widest text-slate-500">
+            Voice language
+          </label>
+          <select
+            id="voice-lang"
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100"
+          >
+            {VOICE_LANGS.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* Voice button */}
         <div className="mt-8 flex flex-col items-center gap-4">
