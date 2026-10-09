@@ -95,12 +95,18 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
     );
   }
   if (type === "livestream" && block.platform === "youtube" && str(block.channel)) {
+    // Prefer the resolved direct video ID (reliable); fall back to the
+    // channel resolver embed.
+    const videoId = str(block.videoId);
+    const src = videoId
+      ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0`
+      : `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(str(block.channel))}&autoplay=1&mute=1&rel=0`;
     return (
       <div className="mx-4 mt-3 overflow-hidden rounded-lg" style={{ border: `1px solid ${accent}44` }}>
         <div className="aspect-video w-full">
           <iframe
             className="h-full w-full"
-            src={`https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(str(block.channel))}&autoplay=1&mute=1&rel=0`}
+            src={src}
             title={str(block.title) || "Live stream"}
             allow="autoplay; encrypted-media; picture-in-picture"
             allowFullScreen

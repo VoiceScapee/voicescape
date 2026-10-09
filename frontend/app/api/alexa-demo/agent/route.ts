@@ -249,6 +249,42 @@ function fallbackPlan(spoken: string): AgentPlan {
   };
 }
 
+/**
+ * Resolve a YouTube channel's current live video ID by scraping the
+ * channel's /live page (same technique as the dapp's /api/youtube-live).
+ * The direct video embed is reliable; the live_stream?channel= resolver
+ * embed proved unreliable in production. Returns null when it can't tell.
+ */
+async function resolveYouTubeVideoId(channel: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://www.youtube.com/channel/${encodeURIComponent(channel)}/live`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (!/"isLive":true/.test(html)) return null;
+    const counts = new Map<string, number>();
+    for (const m of html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)) {
+      counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+    }
+    let best: string | null = null;
+    let bestN = 0;
+    for (const [id, n] of counts) {
+      if (n > bestN) {
+        best = id;
+        bestN = n;
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
 /** Pull the username out of a successful lookup_blockpage tool result. */
 function lookedUpUsername(results: Array<{ tool: string; result: unknown }>): string | null {
   for (const t of results) {
@@ -390,6 +426,23 @@ export async function POST(req: NextRequest) {
       livePage = await fetchLivePage(liveUsername);
       if (livePage) {
         steps.push(`Pulled the live ${liveUsername} blockpage for the preview`);
+        // Resolve YouTube livestream channels to direct video IDs — the
+        // live_stream?channel= resolver embed is unreliable; the direct
+        // video embed (same as the dapp uses) plays.
+        for (const b of livePage.blocks) {
+          if (
+            b.type === "livestream" &&
+            b.platform === "youtube" &&
+            typeof b.channel === "string" &&
+            b.channel
+          ) {
+            const videoId = await resolveYouTubeVideoId(b.channel);
+            if (videoId) {
+              b.videoId = videoId;
+              steps.push("Found the live music stream — it's playing in the preview");
+            }
+          }
+        }
       }
     }
 
