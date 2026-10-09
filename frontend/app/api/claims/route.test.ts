@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { NextRequest } from "next/server";
 import { PrivateKey } from "@hiero-ledger/sdk";
-import { POST as reservePOST } from "./reserve/route";
+import { POST as reservePOST, GET as statusGET } from "./reserve/route";
 import { POST as releasePOST } from "./release/route";
 import { releaseMessage } from "@/lib/server/claim-reservations";
 import { resetKvStoreSingleton } from "@/lib/server/store";
@@ -107,5 +107,63 @@ describe("POST /api/claims/release", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { released: boolean };
     expect(body.released).toBe(true);
+  });
+});
+
+describe("GET /api/claims/reserve (reservation status read)", () => {
+  const statusReq = (username: string | null): NextRequest => {
+    const url =
+      username === null
+        ? "https://voicescape.vercel.app/api/claims/reserve"
+        : `https://voicescape.vercel.app/api/claims/reserve?username=${encodeURIComponent(username)}`;
+    return new NextRequest(url, {
+      method: "GET",
+      headers: { "x-forwarded-for": "10.9.9.9" },
+    });
+  };
+
+  it("400 without a username", async () => {
+    const res = await statusGET(statusReq(null));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns reserved:false for an unreserved handle", async () => {
+    const res = await statusGET(statusReq("nobodyhere"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { reserved: boolean; username: string };
+    expect(body.reserved).toBe(false);
+    expect(body.username).toBe("nobodyhere");
+  });
+
+  it("returns reservation state pre-funding for a live reservation", async () => {
+    const { pub } = freshPub();
+    const created = (await (await reservePOST(
+      req({ username: "statuscheck", claimant_pubkey: pub, nonce: "n1" }),
+    )).json()) as { funding_address: string; reserved_until: string };
+    const res = await statusGET(statusReq("statuscheck"));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      reserved: boolean;
+      reserved_until: string;
+      renewals_used: number;
+      funding_address: string;
+      soft_hold: boolean;
+    };
+    expect(body.reserved).toBe(true);
+    expect(body.reserved_until).toBe(created.reserved_until);
+    expect(body.renewals_used).toBe(0);
+    expect(body.funding_address).toBe(created.funding_address);
+    expect(body.soft_hold).toBe(true);
+  });
+
+  it("never reveals the claimant key", async () => {
+    const { pub } = freshPub();
+    await reservePOST(req({ username: "statuskey", claimant_pubkey: pub, nonce: "n1" }));
+    const res = await statusGET(statusReq("statuskey"));
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.reserved).toBe(true);
+    expect("secp256k1_public_key" in body).toBe(false);
+    expect("pubkey_hash" in body).toBe(false);
+    expect("nonce" in body).toBe(false);
   });
 });

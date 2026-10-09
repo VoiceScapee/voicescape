@@ -20,11 +20,119 @@
  * the DAppConnector pairing.
  */
 import { randomBytes } from "node:crypto";
+import { ethers } from "ethers";
 import { getKvStore, type KvStore } from "./store";
 import type { ClaimPageSpec } from "./page-customize";
 
 /** Proposal kinds the inbox can hold. */
 export type PendingActionKind = "agent-claim" | "agent-page-update";
+
+/**
+ * Manifest class for a page-update proposal (adopted from the receipts
+ * thread). The proposal declares what the signed tap covers:
+ * - static: content fully visible at approve time — "see exactly what
+ *   you're about to publish" covers these.
+ * - immutableRefs: hash-addressed refs (ipfs://, data: URIs, bare CIDs).
+ *   Fetch, hash, compare at audit — a violation is provable.
+ * - mutableRefs: plain URLs (socials, links). Only the DECLARED SET is
+ *   checkable; content drift behind these URLs is undecidable at audit
+ *   time. Bound as a declaration, not a commitment — the code and docs
+ *   must say so, not imply otherwise.
+ */
+export interface ProposalManifest {
+  static: {
+    displayName: string;
+    purpose: string;
+    capabilities: string[];
+    theme: string | null;
+    templateId: string | null;
+  };
+  immutableRefs: string[];
+  mutableRefs: string[];
+}
+
+/**
+ * Classify a ref URL as immutable (hash-addressed) or mutable (plain URL).
+ * Immutable: ipfs://…, data:…, or a bare CID (Qm… / bafy… / bafk…).
+ * Everything else — https:// socials, link URLs — is mutable: the declared
+ * set is checkable, the content behind it is not.
+ */
+export function classifyRef(url: string): "immutable" | "mutable" {
+  const u = (url ?? "").trim();
+  const lower = u.toLowerCase();
+  if (lower.startsWith("ipfs://") || lower.startsWith("data:")) return "immutable";
+  if (/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(u)) return "immutable";
+  if (/^bafy[a-z2-7]+$/.test(lower) || /^bafk[a-z2-7]+$/.test(lower)) return "immutable";
+  return "mutable";
+}
+
+/** Build the manifest class for a proposal spec. */
+export function buildProposalManifest(spec: ClaimPageSpec): ProposalManifest {
+  const urls: string[] = [];
+  for (const s of spec.socials ?? []) {
+    if (s && typeof s.url === "string" && s.url.trim()) urls.push(s.url.trim());
+  }
+  for (const l of spec.links ?? []) {
+    if (l && typeof l.url === "string" && l.url.trim()) urls.push(l.url.trim());
+  }
+  const immutableRefs: string[] = [];
+  const mutableRefs: string[] = [];
+  for (const u of urls) {
+    (classifyRef(u) === "immutable" ? immutableRefs : mutableRefs).push(u);
+  }
+  return {
+    static: {
+      displayName: spec.displayName ?? "",
+      purpose: spec.purpose ?? "",
+      capabilities: Array.isArray(spec.capabilities) ? [...spec.capabilities] : [],
+      theme: spec.theme ? JSON.stringify(spec.theme) : null,
+      templateId: spec.templateId ?? null,
+    },
+    immutableRefs: [...new Set(immutableRefs)].sort(),
+    mutableRefs: [...new Set(mutableRefs)].sort(),
+  };
+}
+
+/**
+ * Deterministic canonicalization: object keys sorted recursively, arrays
+ * keep order. Same logical proposal → same string, always.
+ */
+function canonicalize(value: unknown): string {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    const keys = Object.keys(rec).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(rec[k])}`).join(",")}}`;
+  }
+  return "null";
+}
+
+/**
+ * Content digest for a page-update proposal.
+ *
+ * Construction (named, per the receipts thread): keccak256 of the raw
+ * UTF-8 canonical message — the same construction empirically confirmed
+ * for release_reservation's digest. Covers the static content + immutable
+ * refs; the mutable ref set is bound as a declaration (see ProposalManifest),
+ * not inside the digest.
+ *
+ * The approval record links this digest, so the human's signed tap becomes
+ * checkable evidence a stranger can re-verify: recompute from the proposal,
+ * compare, done. The proposal declares; the human signs; anyone verifies.
+ */
+export function proposalDigest(spec: ClaimPageSpec, manifest?: ProposalManifest): string {
+  const m = manifest ?? buildProposalManifest(spec);
+  const message = canonicalize({
+    v: "voicescape:proposal-digest:v1",
+    static: m.static,
+    immutableRefs: m.immutableRefs,
+  });
+  return ethers.keccak256(ethers.toUtf8Bytes(message));
+}
 
 export interface PageUpdateProposalDetails {
   /**
@@ -36,6 +144,14 @@ export interface PageUpdateProposalDetails {
   changeSummary: string;
   /** Capability token id that submitted it (audit trail). */
   tokenId: string;
+  /**
+   * keccak256 of the raw UTF-8 canonical proposal message (static content
+   * + immutable refs). Computed at stash time; the approval record links
+   * it so the signed tap is checkable evidence, not a policy assertion.
+   */
+  digest: string;
+  /** Manifest class: what the digest covers vs what's bound as declaration. */
+  manifest: ProposalManifest;
 }
 
 export interface PendingAction {
@@ -233,6 +349,8 @@ export async function stashPageUpdateProposal(
       `owner ${owner} already has ${list.length} pending proposals — ask the human to check their Buddy chat before preparing another`,
     );
   }
+  const manifest = buildProposalManifest({ ...spec, username });
+  const digest = proposalDigest({ ...spec, username }, manifest);
   const action: PendingAction = {
     id: randomBytes(8).toString("hex"),
     kind: "agent-page-update",
@@ -246,6 +364,8 @@ export async function stashPageUpdateProposal(
       spec: { ...spec, username },
       changeSummary,
       tokenId,
+      manifest,
+      digest,
     },
   };
   list.push(action);

@@ -251,9 +251,39 @@ describe("getDwellStatsAdmin", () => {
       verifySession: async () => ({ ok: true as const, address: "0.0.10424063" }),
       env: { FOUNDER_WALLETS: "0.0.10424063" },
     };
-    const res = await getDwellStatsAdmin(d, { session: "x" });
+    const res = await getDwellStatsAdmin(d, { session: "x" }, T0 + 3_600_000);
     expect(res.status).toBe(200);
     const json = res.json as { days: { date: string; completed: number }[] };
     expect(json.days[0].completed).toBe(1);
+  });
+});
+
+describe("tail mass (upper bound on decided-before-landing)", () => {
+  test("publishes the short-dwell tail mass and fraction", async () => {
+    const store = mem();
+    const mk = async (dwellMs: number) => {
+      const opened = await openDwellFlow(store, { nowMs: T0 });
+      await recordDwellSign(store, opened!.flowId, opened!.nonce, { nowMs: T0 + dwellMs });
+      await recordDwellSettled(store, opened!.flowId, opened!.nonce, T0 + dwellMs + 2_000, {
+        nowMs: T0 + dwellMs + 5_000,
+      });
+    };
+    await mk(2_000); // lt_5s — tail
+    await mk(3_000); // lt_5s — tail
+    await mk(45_000);
+    await mk(300_000);
+
+    const stats = await getDwellStats(store, 7, T0 + 3_600_000);
+    const today = stats[0];
+    expect(today.completed).toBe(4);
+    expect(today.tailMass).toBe(2);
+    expect(today.tailMassFraction).toBeCloseTo(0.5);
+  });
+
+  test("tail mass is zero with no completions, fraction null", async () => {
+    const store = mem();
+    const stats = await getDwellStats(store, 7, T0 + 3_600_000);
+    expect(stats[0].tailMass).toBe(0);
+    expect(stats[0].tailMassFraction).toBeNull();
   });
 });
