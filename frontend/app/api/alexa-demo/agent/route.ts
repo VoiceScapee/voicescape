@@ -52,10 +52,13 @@ interface ToolCall {
 interface PageDraft {
   displayName?: string;
   purpose?: string;
-  theme?: { background?: string; foreground?: string; accent?: string };
+  theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
   socials?: Array<{ platform: string; url: string }>;
   links?: Array<{ label: string; url: string }>;
-  blocks?: Array<{ type: string; content: string }>;
+  // Blocks may be the planner's simple {type,content} shape or the real
+  // blockpage block shapes (hero, bio, music, livestream, tipJar, links,
+  // gallery) fetched live from IPFS.
+  blocks?: Array<Record<string, unknown>>;
 }
 
 interface AgentPlan {
@@ -92,7 +95,12 @@ const SYSTEM_PROMPT =
   '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}]}} ' +
   "Only use these tool names: lookup_blockpage, list_templates, " +
   "blockpage_earnings, list_tip_assets, check_profile_pin. " +
-  "Only include lookup_blockpage when the user named a username. " +
+  "If the user asks for a music blockpage (e.g. 'my music', 'music page'), " +
+  "call lookup_blockpage with username \"ash-rook\" — it is our live music " +
+  "blockpage — and set pageDraft.displayName from it. The server fetches the " +
+  "full live page for the preview, so keep your own draft blocks short; the " +
+  "real blocks win. Otherwise only include lookup_blockpage when the user " +
+  "named a username. " +
   "Never invent usernames, wallet data, or earnings numbers — if you " +
   "don't know, say so in speak and keep the draft generic.";
 
@@ -182,6 +190,64 @@ async function planWithRetry(prompt: string, attempts = 2): Promise<AgentPlan> {
   throw lastErr instanceof Error ? lastErr : new Error("planner failed");
 }
 
+/** Pull the username out of a successful lookup_blockpage tool result. */
+function lookedUpUsername(results: Array<{ tool: string; result: unknown }>): string | null {
+  for (const t of results) {
+    if (t.tool !== "lookup_blockpage") continue;
+    const text = (t.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+    if (!text) continue;
+    try {
+      const j = JSON.parse(text) as { found?: boolean; username?: string };
+      if (j.found && j.username) return j.username;
+    } catch {
+      /* not JSON — ignore */
+    }
+  }
+  return null;
+}
+
+interface LivePage {
+  blocks: Array<Record<string, unknown>>;
+  theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
+  displayName?: string;
+  purpose?: string;
+}
+
+/**
+ * Fetch a blockpage's full live JSON (resolve -> IPFS) so the demo preview
+ * renders the ACTUAL page — real blocks, real theme, real playing
+ * livestream — instead of a mock.
+ */
+async function fetchLivePage(username: string): Promise<LivePage | null> {
+  try {
+    const r = await fetch(
+      `https://voicescape.vercel.app/api/resolve?username=${encodeURIComponent(username)}`
+    );
+    if (!r.ok) return null;
+    const { ipfsHash } = (await r.json()) as { ipfsHash?: string };
+    if (!ipfsHash) return null;
+    const p = await fetch(`https://gateway.pinata.cloud/ipfs/${ipfsHash}`);
+    if (!p.ok) return null;
+    const page = (await p.json()) as {
+      blocks?: Array<Record<string, unknown>>;
+      theme?: LivePage["theme"];
+      purpose?: string;
+      username?: string;
+    };
+    const hero = (page.blocks ?? []).find((b) => b.type === "hero") as
+      | { title?: string }
+      | undefined;
+    return {
+      blocks: page.blocks ?? [],
+      theme: page.theme,
+      displayName: hero?.title ?? page.username,
+      purpose: page.purpose,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function mcpRpc(method: string, params: Record<string, unknown>, id: number) {
   const res = await fetch(MCP_ENDPOINT, {
     method: "POST",
@@ -250,11 +316,33 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 3. If the planner looked up a real blockpage, fetch its full live
+    //    JSON so the preview is the ACTUAL page — real blocks, real theme,
+    //    real playing livestream — not a mock.
+    const steps: string[] = plan.steps ?? [];
+    const liveUsername = lookedUpUsername(toolResults);
+    let livePage: LivePage | null = null;
+    if (liveUsername) {
+      livePage = await fetchLivePage(liveUsername);
+      if (livePage) {
+        steps.push(`Pulled the live ${liveUsername} blockpage for the preview`);
+      }
+    }
+
+    const pageDraft: PageDraft = livePage
+      ? {
+          displayName: livePage.displayName ?? plan.pageDraft?.displayName,
+          purpose: livePage.purpose ?? plan.pageDraft?.purpose,
+          theme: livePage.theme ?? plan.pageDraft?.theme,
+          blocks: livePage.blocks,
+        }
+      : plan.pageDraft ?? {};
+
     return NextResponse.json({
       speak: plan.speak ?? "Draft ready.",
-      steps: plan.steps ?? [],
+      steps,
       toolResults,
-      pageDraft: plan.pageDraft ?? {},
+      pageDraft,
       mcp: {
         endpoint: MCP_ENDPOINT,
         protocolVersion: init?.protocolVersion ?? MCP_PROTOCOL_VERSION,

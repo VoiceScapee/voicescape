@@ -44,14 +44,124 @@ interface AgentResponse {
   pageDraft: {
     displayName?: string;
     purpose?: string;
-    theme?: { background?: string; foreground?: string; accent?: string };
+    theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
     socials?: Array<{ platform: string; url: string }>;
     links?: Array<{ label: string; url: string }>;
-    blocks?: Array<{ type: string; content: string }>;
+    // Real blockpage blocks (hero, bio, music, livestream, tipJar, links,
+    // gallery) or the planner's simple {type, content} shape.
+    blocks?: Array<Record<string, unknown>>;
   };
   mcp?: { endpoint: string; protocolVersion: string; serverName: string };
   disclaimer?: string;
   error?: string;
+}
+
+/**
+ * Render one real blockpage block. The livestream block embeds the actual
+ * YouTube live player — real video playing inside the preview.
+ */
+function BlockView({ block, accent }: { block: Record<string, unknown>; accent: string }) {
+  const type = block.type as string;
+  const str = (v: unknown) => (typeof v === "string" ? v : "");
+  if (type === "hero") {
+    return (
+      <div className="p-6 text-center">
+        <div
+          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl"
+          style={{ background: `${accent}26`, color: accent }}
+        >
+          {str(block.avatarEmoji) || "🎸"}
+        </div>
+        <h3 className="mt-3 text-xl font-bold">{str(block.title) || "Your page"}</h3>
+        {str(block.subtitle) && <p className="mt-1 text-sm opacity-70">{str(block.subtitle)}</p>}
+      </div>
+    );
+  }
+  if (type === "bio") {
+    return <p className="px-6 py-2 text-center text-sm opacity-80">{str(block.text)}</p>;
+  }
+  if (type === "music") {
+    const tracks = Array.isArray(block.tracks) ? block.tracks : [];
+    return (
+      <div className="mx-4 mt-3 rounded-lg px-4 py-3 text-sm" style={{ background: `${accent}14` }}>
+        <p className="font-semibold">🎶 {str(block.title) || "Music"}</p>
+        {str(block.note) && <p className="mt-1 opacity-70">{str(block.note)}</p>}
+        {tracks.map((t, i) => (
+          <p key={i} className="mt-1 truncate opacity-80">
+            ▶ {str((t as Record<string, unknown>).title) || str(t)}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  if (type === "livestream" && block.platform === "youtube" && str(block.channel)) {
+    return (
+      <div className="mx-4 mt-3 overflow-hidden rounded-lg" style={{ border: `1px solid ${accent}44` }}>
+        <div className="aspect-video w-full">
+          <iframe
+            className="h-full w-full"
+            src={`https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(str(block.channel))}&autoplay=1&mute=1&rel=0`}
+            title={str(block.title) || "Live stream"}
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowFullScreen
+          />
+        </div>
+        {str(block.title) && (
+          <p className="px-3 py-2 text-center text-xs font-semibold" style={{ color: accent }}>
+            🔴 {str(block.title)}
+          </p>
+        )}
+      </div>
+    );
+  }
+  if (type === "tipJar") {
+    return (
+      <div
+        className="mx-4 mt-3 rounded-lg px-4 py-3 text-center text-sm"
+        style={{ border: `1px dashed ${accent}88`, color: accent }}
+      >
+        💰 {str(block.message)}
+      </div>
+    );
+  }
+  if (type === "links") {
+    const items = Array.isArray(block.items) ? block.items : [];
+    return (
+      <div className="mx-4 mt-3 flex flex-wrap justify-center gap-2">
+        {items.map((it, i) => {
+          const item = it as Record<string, unknown>;
+          return (
+            <span
+              key={i}
+              className="rounded-full px-3 py-1 text-xs"
+              style={{ background: `${accent}1f`, color: accent }}
+            >
+              🔗 {str(item.label)}
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
+  if (type === "gallery") {
+    const images = Array.isArray(block.images) ? block.images : [];
+    return (
+      <div className="mt-3 flex justify-center gap-3 px-4 text-2xl">
+        {images.map((img, i) => (
+          <span key={i}>{str(img)}</span>
+        ))}
+      </div>
+    );
+  }
+  // Legacy planner shape: {type:"text", content}
+  if (str(block.content)) {
+    return (
+      <div className="mx-4 mt-3 rounded-lg px-4 py-3 text-sm" style={{ background: `${accent}14` }}>
+        {str(block.content)}
+      </div>
+    );
+  }
+  return null;
 }
 
 const DEMO_SUGGESTIONS = [
@@ -168,6 +278,10 @@ export default function AlexaDemoPage() {
   const bg = theme.background ?? "#0f172a";
   const fg = theme.foreground ?? "#f1f5f9";
   const accent = theme.accent ?? "#38bdf8";
+  const fontFamily = theme.fontFamily ?? "inherit";
+  const blocks = (agent?.pageDraft.blocks ?? []) as Array<Record<string, unknown>>;
+  const hasTipJar = blocks.some((b) => b.type === "tipJar");
+  const hasHero = blocks.some((b) => b.type === "hero");
 
   return (
     <main
@@ -295,60 +409,62 @@ export default function AlexaDemoPage() {
             </h2>
             <div
               className="overflow-hidden rounded-2xl border shadow-2xl"
-              style={{ background: bg, color: fg, borderColor: `${accent}44` }}
+              style={{ background: bg, color: fg, borderColor: `${accent}44`, fontFamily }}
             >
               <div className="h-2" style={{ background: accent }} />
-              <div className="p-6">
-                <div
-                  className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold"
-                  style={{ background: `${accent}26`, color: accent }}
-                >
-                  {(agent.pageDraft.displayName ?? "?").slice(0, 1).toUpperCase()}
-                </div>
-                <h3 className="mt-3 text-center text-xl font-bold">
-                  {agent.pageDraft.displayName ?? "Your page"}
-                </h3>
-                {agent.pageDraft.purpose && (
-                  <p className="mt-2 text-center text-sm opacity-80">{agent.pageDraft.purpose}</p>
-                )}
-                {(agent.pageDraft.blocks ?? []).map((b, i) => (
+              {!hasHero && (
+                <div className="p-6">
                   <div
-                    key={i}
-                    className="mt-4 rounded-lg px-4 py-3 text-sm"
-                    style={{ background: `${accent}14` }}
+                    className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold"
+                    style={{ background: `${accent}26`, color: accent }}
                   >
-                    {b.content}
+                    {(agent.pageDraft.displayName ?? "?").slice(0, 1).toUpperCase()}
                   </div>
-                ))}
+                  <h3 className="mt-3 text-center text-xl font-bold">
+                    {agent.pageDraft.displayName ?? "Your page"}
+                  </h3>
+                  {agent.pageDraft.purpose && (
+                    <p className="mt-2 text-center text-sm opacity-80">{agent.pageDraft.purpose}</p>
+                  )}
+                </div>
+              )}
+              {hasHero && agent.pageDraft.purpose && (
+                <p className="px-6 pt-4 text-center text-xs opacity-60">{agent.pageDraft.purpose}</p>
+              )}
+              {blocks.map((b, i) => (
+                <BlockView key={i} block={b} accent={accent} />
+              ))}
+              {!hasTipJar && (
                 <div
-                  className="mt-4 rounded-lg px-4 py-3 text-center text-sm font-semibold"
+                  className="mx-4 mt-4 rounded-lg px-4 py-3 text-center text-sm font-semibold"
                   style={{ border: `1px dashed ${accent}88`, color: accent }}
                 >
                   Tips open on the live dapp — creators keep 98% of every tip
                 </div>
-                {(agent.pageDraft.socials ?? []).length > 0 && (
-                  <div className="mt-4 flex flex-wrap justify-center gap-2">
-                    {agent.pageDraft.socials!.map((s, i) => (
-                      <span
-                        key={i}
-                        className="rounded-full px-3 py-1 text-xs"
-                        style={{ background: `${accent}1f`, color: accent }}
-                      >
-                        {s.platform}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {(agent.pageDraft.links ?? []).length > 0 && (
-                  <ul className="mt-4 space-y-1 text-sm">
-                    {agent.pageDraft.links!.map((l, i) => (
-                      <li key={i} className="truncate opacity-80">
-                        🔗 {l.label}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
+              )}
+              {(agent.pageDraft.socials ?? []).length > 0 && (
+                <div className="mt-4 flex flex-wrap justify-center gap-2">
+                  {agent.pageDraft.socials!.map((s, i) => (
+                    <span
+                      key={i}
+                      className="rounded-full px-3 py-1 text-xs"
+                      style={{ background: `${accent}1f`, color: accent }}
+                    >
+                      {s.platform}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {(agent.pageDraft.links ?? []).length > 0 && (
+                <ul className="mt-4 space-y-1 px-6 pb-2 text-sm">
+                  {agent.pageDraft.links!.map((l, i) => (
+                    <li key={i} className="truncate opacity-80">
+                      🔗 {l.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="h-4" />
             </div>
             {agent.disclaimer && (
               <p className="mt-3 text-center text-xs text-slate-500">{agent.disclaimer}</p>
