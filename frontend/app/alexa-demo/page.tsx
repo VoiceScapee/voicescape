@@ -9,7 +9,7 @@
  * No wallet, no claiming, no money movement: the result is a preview draft.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 // Minimal Web Speech API typings (browser-provided, no dependency).
 interface SpeechRecognitionEventLike {
@@ -65,29 +65,39 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   if (type === "hero") {
     return (
-      <div className="p-6 text-center">
+      <div style={{ padding: 24, textAlign: "center" }}>
         <div
-          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-3xl"
-          style={{ background: `${accent}26`, color: accent }}
+          style={{
+            margin: "0 auto",
+            display: "flex",
+            width: 64,
+            height: 64,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 9999,
+            fontSize: 30,
+            background: `${accent}26`,
+            color: accent,
+          }}
         >
           {str(block.avatarEmoji) || "🎸"}
         </div>
-        <h3 className="mt-3 text-xl font-bold">{str(block.title) || "Your page"}</h3>
-        {str(block.subtitle) && <p className="mt-1 text-sm opacity-70">{str(block.subtitle)}</p>}
+        <h3 style={{ marginTop: 12, fontSize: 20, fontWeight: 700 }}>{str(block.title) || "Your page"}</h3>
+        {str(block.subtitle) && <p style={{ marginTop: 4, fontSize: 14, opacity: 0.7 }}>{str(block.subtitle)}</p>}
       </div>
     );
   }
   if (type === "bio") {
-    return <p className="px-6 py-2 text-center text-sm opacity-80">{str(block.text)}</p>;
+    return <p style={{ padding: "8px 24px", textAlign: "center", fontSize: 14, opacity: 0.8 }}>{str(block.text)}</p>;
   }
   if (type === "music") {
     const tracks = Array.isArray(block.tracks) ? block.tracks : [];
     return (
-      <div className="mx-4 mt-3 rounded-lg px-4 py-3 text-sm" style={{ background: `${accent}14` }}>
-        <p className="font-semibold">🎶 {str(block.title) || "Music"}</p>
-        {str(block.note) && <p className="mt-1 opacity-70">{str(block.note)}</p>}
+      <div style={{ margin: "12px 16px 0", borderRadius: 8, padding: "12px 16px", fontSize: 14, background: `${accent}14` }}>
+        <p style={{ fontWeight: 600 }}>🎶 {str(block.title) || "Music"}</p>
+        {str(block.note) && <p style={{ marginTop: 4, opacity: 0.7 }}>{str(block.note)}</p>}
         {tracks.map((t, i) => (
-          <p key={i} className="mt-1 truncate opacity-80">
+          <p key={i} style={{ marginTop: 4, opacity: 0.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             ▶ {str((t as Record<string, unknown>).title) || str(t)}
           </p>
         ))}
@@ -102,10 +112,10 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
       ? `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0`
       : `https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(str(block.channel))}&autoplay=1&mute=1&rel=0`;
     return (
-      <div className="mx-4 mt-3 overflow-hidden rounded-lg" style={{ border: `1px solid ${accent}44` }}>
-        <div className="aspect-video w-full">
+      <div style={{ margin: "12px 16px 0", overflow: "hidden", borderRadius: 8, border: `1px solid ${accent}44` }}>
+        <div style={{ aspectRatio: "16/9", width: "100%" }}>
           <iframe
-            className="h-full w-full"
+            style={{ height: "100%", width: "100%", border: "none" }}
             src={src}
             title={str(block.title) || "Live stream"}
             allow="autoplay; encrypted-media; picture-in-picture"
@@ -113,7 +123,7 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
           />
         </div>
         {str(block.title) && (
-          <p className="px-3 py-2 text-center text-xs font-semibold" style={{ color: accent }}>
+          <p style={{ padding: "8px 12px", textAlign: "center", fontSize: 12, fontWeight: 600, color: accent }}>
             🔴 {str(block.title)}
           </p>
         )}
@@ -123,8 +133,15 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
   if (type === "tipJar") {
     return (
       <div
-        className="mx-4 mt-3 rounded-lg px-4 py-3 text-center text-sm"
-        style={{ border: `1px dashed ${accent}88`, color: accent }}
+        style={{
+          margin: "12px 16px 0",
+          borderRadius: 8,
+          padding: "12px 16px",
+          textAlign: "center",
+          fontSize: 14,
+          border: `1px dashed ${accent}88`,
+          color: accent,
+        }}
       >
         💰 {str(block.message)}
       </div>
@@ -133,14 +150,13 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
   if (type === "links") {
     const items = Array.isArray(block.items) ? block.items : [];
     return (
-      <div className="mx-4 mt-3 flex flex-wrap justify-center gap-2">
+      <div style={{ margin: "12px 16px 0", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
         {items.map((it, i) => {
           const item = it as Record<string, unknown>;
           return (
             <span
               key={i}
-              className="rounded-full px-3 py-1 text-xs"
-              style={{ background: `${accent}1f`, color: accent }}
+              style={{ borderRadius: 9999, padding: "4px 12px", fontSize: 12, background: `${accent}1f`, color: accent }}
             >
               🔗 {str(item.label)}
             </span>
@@ -152,7 +168,7 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
   if (type === "gallery") {
     const images = Array.isArray(block.images) ? block.images : [];
     return (
-      <div className="mt-3 flex justify-center gap-3 px-4 text-2xl">
+      <div style={{ marginTop: 12, display: "flex", justifyContent: "center", gap: 12, padding: "0 16px", fontSize: 24 }}>
         {images.map((img, i) => (
           <span key={i}>{str(img)}</span>
         ))}
@@ -162,7 +178,7 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
   // Legacy planner shape: {type:"text", content}
   if (str(block.content)) {
     return (
-      <div className="mx-4 mt-3 rounded-lg px-4 py-3 text-sm" style={{ background: `${accent}14` }}>
+      <div style={{ margin: "12px 16px 0", borderRadius: 8, padding: "12px 16px", fontSize: 14, background: `${accent}14` }}>
         {str(block.content)}
       </div>
     );
@@ -367,8 +383,7 @@ export default function AlexaDemoPage() {
 
   return (
     <main
-      className="relative min-h-screen overflow-hidden px-4 py-10 text-slate-200"
-      style={{ background: "#020617" }}
+      style={{ position: "relative", minHeight: "100vh", overflow: "hidden", padding: "40px 16px", color: "#e2e8f0", background: "#020617" }}
     >
       {/* Ambient animated background */}
       <div aria-hidden className="alexa-ambient" />
@@ -432,10 +447,31 @@ export default function AlexaDemoPage() {
           0%, 55% { opacity: 1; }
           56%, 100% { opacity: 0; }
         }
+        /* Puzzle-piece snap: each block flies in from alternating sides,
+           overshoots slightly, and flashes as it clicks into place —
+           a blockchain being pieced together, for real. */
+        .block-lands { animation: block-snap .55s cubic-bezier(.2,.9,.3,1.12) both; }
+        @keyframes block-snap {
+          0% {
+            opacity: 0;
+            transform: translate(var(--enter-x, -30px), 14px) rotate(-1.2deg) scale(.97);
+            filter: brightness(1.7);
+          }
+          55% {
+            opacity: 1;
+            transform: translate(0, 0) rotate(0deg) scale(1.012);
+            filter: brightness(1.12);
+          }
+          100% {
+            opacity: 1;
+            transform: translate(0, 0) rotate(0deg) scale(1);
+            filter: brightness(1);
+          }
+        }
       `}</style>
-      <div className="relative mx-auto max-w-3xl">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] uppercase tracking-[0.2em] text-sky-400">
+      <div style={{ position: "relative", margin: "0 auto", maxWidth: 768 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.2em", color: "#38bdf8", margin: 0 }}>
             Amazon hackathon · Alexa+ track
           </p>
           <p
@@ -472,7 +508,7 @@ export default function AlexaDemoPage() {
         >
           Speak your blockpage into existence.
         </h1>
-        <p className="mt-3 max-w-xl text-slate-400">
+        <p style={{ marginTop: 12, maxWidth: 576, color: "#94a3b8", fontSize: 16, lineHeight: 1.6 }}>
           Voicescape Voice Builder — tap the mic. The agent plans over
           Voicescape&apos;s live MCP server, then your blockpage preview builds
           itself.
@@ -505,20 +541,27 @@ export default function AlexaDemoPage() {
             </span>
           ))}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
+        <p style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
           Works today on any device with a browser and a mic — phone, PC,
           tablet. Voice builds it, you claim it on the dapp.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+        <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, fontSize: 14, color: "#94a3b8" }}>
           <span aria-hidden>🌐</span>
-          <label htmlFor="voice-lang" className="text-xs uppercase tracking-widest text-slate-500">
+          <label htmlFor="voice-lang" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.15em", color: "#64748b" }}>
             Voice language
           </label>
           <select
             id="voice-lang"
             value={lang}
             onChange={(e) => setLang(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-sm text-slate-100"
+            style={{
+              borderRadius: 8,
+              border: "1px solid #334155",
+              background: "#0f172a",
+              padding: "6px 12px",
+              fontSize: 14,
+              color: "#f1f5f9",
+            }}
           >
             {VOICE_LANGS.map((l) => (
               <option key={l.code} value={l.code}>
@@ -529,8 +572,8 @@ export default function AlexaDemoPage() {
         </div>
 
         {/* Voice button */}
-        <div className="mt-10 flex flex-col items-center gap-4">
-          <div className="relative">
+        <div style={{ marginTop: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <div style={{ position: "relative" }}>
             {listening && (
               <>
                 <span className="mic-ring r1" />
@@ -577,22 +620,22 @@ export default function AlexaDemoPage() {
               <span /><span /><span /><span /><span /><span /><span />
             </div>
           ) : (
-            <p className="text-sm text-slate-400">
+            <p style={{ fontSize: 14, color: "#94a3b8", margin: 0 }}>
               {busy ? "Agent is building…" : "Tap and speak"}
             </p>
           )}
           {!supported && (
-            <p className="text-sm text-amber-300">
+            <p style={{ fontSize: 14, color: "#fcd34d", margin: 0 }}>
               Voice input isn&apos;t supported in this browser — type below.
             </p>
           )}
           {transcript && (
-            <p className="preview-in text-center text-xl text-slate-100">“{transcript}”</p>
+            <p className="preview-in" style={{ textAlign: "center", fontSize: 20, color: "#f1f5f9", margin: 0 }}>“{transcript}”</p>
           )}
 
           {/* Type fallback */}
           <form
-            className="flex w-full max-w-xl gap-2"
+            style={{ display: "flex", width: "100%", maxWidth: 576, gap: 8 }}
             onSubmit={(e) => {
               e.preventDefault();
               runAgent(typed);
@@ -602,78 +645,138 @@ export default function AlexaDemoPage() {
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder="Or type your prompt…"
-              className="flex-1 rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2.5 text-slate-100 backdrop-blur placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
+              style={{
+                flex: 1,
+                borderRadius: 12,
+                border: "1px solid rgba(51,65,85,.8)",
+                background: "rgba(15,23,42,.8)",
+                padding: "10px 16px",
+                fontSize: 15,
+                color: "#f1f5f9",
+              }}
             />
             <button
               type="submit"
               disabled={busy}
-              className="glow-btn rounded-xl bg-sky-400 px-5 py-2.5 font-semibold text-slate-950 disabled:opacity-50"
+              className="glow-btn"
+              style={{
+                borderRadius: 12,
+                background: "#38bdf8",
+                padding: "10px 20px",
+                fontWeight: 600,
+                fontSize: 15,
+                color: "#020617",
+                border: "none",
+                cursor: busy ? "default" : "pointer",
+                opacity: busy ? 0.5 : 1,
+              }}
             >
               Build
             </button>
           </form>
 
-          <div className="flex flex-wrap justify-center gap-2">
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
             {DEMO_SUGGESTIONS.map((s) => (
               <button
                 key={s}
                 onClick={() => runAgent(s)}
                 disabled={busy}
-                className="glow-btn rounded-full border border-slate-700/80 bg-slate-900/60 px-4 py-1.5 text-xs text-slate-300 backdrop-blur hover:border-sky-500/60 hover:text-sky-200 disabled:opacity-50"
+                className="glow-btn"
+                style={{
+                  borderRadius: 9999,
+                  border: "1px solid rgba(51,65,85,.8)",
+                  background: "rgba(15,23,42,.6)",
+                  padding: "6px 16px",
+                  fontSize: 12,
+                  color: "#cbd5e1",
+                  cursor: busy ? "default" : "pointer",
+                  opacity: busy ? 0.5 : 1,
+                }}
               >
                 ✨ {s}
               </button>
             ))}
           </div>
 
-          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-500">
+          <label style={{ display: "flex", cursor: "pointer", alignItems: "center", gap: 8, fontSize: 14, color: "#64748b" }}>
             <input
               type="checkbox"
               checked={autoSpeak}
               onChange={(e) => setAutoSpeak(e.target.checked)}
-              className="accent-sky-400"
+              style={{ accentColor: "#38bdf8" }}
             />
             Speak the agent&apos;s reply out loud
           </label>
         </div>
 
         {error && (
-          <p className="mx-auto mt-6 max-w-xl rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300 backdrop-blur">
+          <p style={{
+            margin: "24px auto 0",
+            maxWidth: 576,
+            borderRadius: 12,
+            border: "1px solid rgba(127,29,29,.6)",
+            background: "rgba(69,10,10,.4)",
+            padding: "12px 16px",
+            fontSize: 14,
+            color: "#fca5a5",
+          }}>
             {error}
           </p>
         )}
 
         {/* Agent terminal — the orchestration, made visible */}
         {agent && (
-          <section className="mx-auto mt-12 max-w-xl">
+          <section style={{ margin: "48px auto 0", maxWidth: 576 }}>
             <div
-              className="overflow-hidden rounded-2xl border border-slate-800"
-              style={{ background: "#05070d", boxShadow: "0 0 50px rgba(56,189,248,.07), 0 25px 50px -12px rgba(0,0,0,.7)" }}
+              style={{
+                overflow: "hidden",
+                borderRadius: 16,
+                border: "1px solid #1e293b",
+                background: "#05070d",
+                boxShadow: "0 0 50px rgba(56,189,248,.07), 0 25px 50px -12px rgba(0,0,0,.7)",
+              }}
             >
               {/* Title bar */}
               <div
-                className="flex items-center gap-2 border-b border-slate-800/80 px-4 py-2.5"
-                style={{ background: "#0a0d16" }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderBottom: "1px solid rgba(30,41,59,.8)",
+                  padding: "10px 16px",
+                  background: "#0a0d16",
+                }}
               >
                 <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#f87171" }} />
                 <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#fbbf24" }} />
                 <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#34d399" }} />
-                <span className="ml-2 font-mono text-xs text-slate-500">
+                <span style={{ marginLeft: 8, fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#64748b" }}>
                   agent — live MCP session
                 </span>
                 <span
-                  className="ml-auto flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-emerald-400"
+                  style={{
+                    marginLeft: "auto",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 10,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.15em",
+                    color: "#34d399",
+                  }}
                 >
                   <span className="live-dot" style={{ display: "inline-block", width: 7, height: 7, borderRadius: 9999, background: "#34d399" }} />
                   live
                 </span>
               </div>
               {/* Body */}
-              <div className="space-y-1.5 p-4 font-mono text-[13px] leading-relaxed">
+              <div style={{ padding: 16, fontFamily: "ui-monospace, monospace", fontSize: 13, lineHeight: 1.7 }}>
                 {agent.steps.slice(0, visibleSteps).map((s, i) => (
-                  <div key={i} className="step-in">
-                    <span className="mr-2 select-none text-slate-600">$</span>
-                    <span className="text-slate-300">
+                  <div key={i} className="step-in" style={{ marginBottom: 6 }}>
+                    <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
+                    <span style={{ color: "#cbd5e1" }}>
                       {stepParts(s).map((p, j) =>
                         p.tool ? (
                           <code
@@ -694,18 +797,18 @@ export default function AlexaDemoPage() {
                         )
                       )}
                     </span>
-                    <span className="ml-2 text-emerald-400">✓</span>
+                    <span style={{ marginLeft: 8, color: "#34d399" }}>✓</span>
                   </div>
                 ))}
                 {(busy || visibleSteps < agent.steps.length) && (
                   <div>
-                    <span className="mr-2 select-none text-slate-600">$</span>
-                    <span className="cursor-blink text-emerald-400">▊</span>
+                    <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
+                    <span className="cursor-blink" style={{ color: "#34d399" }}>▊</span>
                   </div>
                 )}
                 {previewReady && blocksDone && (
                   <div className="step-in">
-                    <span className="mr-2 select-none text-slate-600">$</span>
+                    <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
                     <span style={{ color: "#6ee7b7", fontWeight: 600 }}>
                       blockpage materialized ✨
                     </span>
@@ -715,8 +818,14 @@ export default function AlexaDemoPage() {
               {/* Status bar */}
               {agent.mcp && visibleSteps >= agent.steps.length && (
                 <div
-                  className="border-t border-slate-800/80 px-4 py-2 font-mono text-[10px] text-slate-600"
-                  style={{ background: "#0a0d16" }}
+                  style={{
+                    borderTop: "1px solid rgba(30,41,59,.8)",
+                    padding: "8px 16px",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: 10,
+                    color: "#475569",
+                    background: "#0a0d16",
+                  }}
                 >
                   {agent.mcp.serverName} · MCP {agent.mcp.protocolVersion} · Streamable HTTP · zero mocking
                   {agent.toolResults.length > 0 &&
@@ -729,60 +838,85 @@ export default function AlexaDemoPage() {
 
         {/* Blockpage preview — builds itself */}
         {agent && visibleSteps >= agent.steps.length && (
-          <section className="mx-auto mt-10 max-w-md">
-            <h2 className="mb-3 text-center text-xs uppercase tracking-[0.2em] text-slate-500">
+          <section style={{ margin: "40px auto 0", maxWidth: 448 }}>
+            <h2 style={{ marginBottom: 12, textAlign: "center", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.2em", color: "#64748b" }}>
               Your blockpage preview
             </h2>
             <div
-              className="preview-in overflow-hidden rounded-3xl border shadow-2xl backdrop-blur"
+              className="preview-in"
               style={{
+                overflow: "hidden",
+                borderRadius: 24,
+                border: `1px solid ${accent}55`,
                 background: bg,
                 color: fg,
-                borderColor: `${accent}55`,
                 fontFamily,
                 boxShadow: `0 0 80px ${accent}22, 0 25px 50px -12px rgba(0,0,0,.6)`,
               }}
             >
-              <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${accent}, #a78bfa)` }} />
+              <div style={{ height: 6, background: `linear-gradient(90deg, ${accent}, #a78bfa)` }} />
               {!hasHero && (
-                <div className="p-6">
+                <div style={{ padding: 24 }}>
                   <div
-                    className="mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold"
-                    style={{ background: `${accent}26`, color: accent }}
+                    style={{
+                      margin: "0 auto",
+                      display: "flex",
+                      width: 64,
+                      height: 64,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 9999,
+                      fontSize: 24,
+                      fontWeight: 700,
+                      background: `${accent}26`,
+                      color: accent,
+                    }}
                   >
                     {(agent.pageDraft.displayName ?? "?").slice(0, 1).toUpperCase()}
                   </div>
-                  <h3 className="mt-3 text-center text-xl font-bold">
+                  <h3 style={{ marginTop: 12, textAlign: "center", fontSize: 20, fontWeight: 700 }}>
                     {agent.pageDraft.displayName ?? "Your page"}
                   </h3>
                   {agent.pageDraft.purpose && (
-                    <p className="mt-2 text-center text-sm opacity-80">{agent.pageDraft.purpose}</p>
+                    <p style={{ marginTop: 8, textAlign: "center", fontSize: 14, opacity: 0.8 }}>{agent.pageDraft.purpose}</p>
                   )}
                 </div>
               )}
               {hasHero && agent.pageDraft.purpose && (
-                <p className="px-6 pt-4 text-center text-xs opacity-60">{agent.pageDraft.purpose}</p>
+                <p style={{ padding: "16px 24px 0", textAlign: "center", fontSize: 12, opacity: 0.6 }}>{agent.pageDraft.purpose}</p>
               )}
               {blocks.slice(0, visibleBlocks).map((b, i) => (
-                <div key={i} className="step-in">
+                <div
+                  key={i}
+                  className="block-lands"
+                  style={{ "--enter-x": i % 2 === 0 ? "-34px" : "34px" } as CSSProperties}
+                >
                   <BlockView block={b} accent={accent} />
                 </div>
               ))}
               {blocksDone && !hasTipJar && (
                 <div
-                  className="step-in mx-4 mt-4 rounded-lg px-4 py-3 text-center text-sm font-semibold"
-                  style={{ border: `1px dashed ${accent}88`, color: accent }}
+                  className="step-in"
+                  style={{
+                    margin: "16px 16px 0",
+                    borderRadius: 8,
+                    padding: "12px 16px",
+                    textAlign: "center",
+                    fontSize: 14,
+                    fontWeight: 600,
+                    border: `1px dashed ${accent}88`,
+                    color: accent,
+                  }}
                 >
                   Tips open on the live dapp — creators keep 98% of every tip
                 </div>
               )}
               {blocksDone && (agent.pageDraft.socials ?? []).length > 0 && (
-                <div className="step-in mt-4 flex flex-wrap justify-center gap-2">
+                <div className="step-in" style={{ marginTop: 16, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 8 }}>
                   {agent.pageDraft.socials!.map((s, i) => (
                     <span
                       key={i}
-                      className="rounded-full px-3 py-1 text-xs"
-                      style={{ background: `${accent}1f`, color: accent }}
+                      style={{ borderRadius: 9999, padding: "4px 12px", fontSize: 12, background: `${accent}1f`, color: accent }}
                     >
                       {s.platform}
                     </span>
@@ -790,20 +924,24 @@ export default function AlexaDemoPage() {
                 </div>
               )}
               {blocksDone && (agent.pageDraft.links ?? []).length > 0 && (
-                <ul className="step-in mt-4 space-y-1 px-6 pb-2 text-sm">
+                <ul className="step-in" style={{ marginTop: 16, padding: "0 24px 8px", fontSize: 14, listStyle: "none" }}>
                   {agent.pageDraft.links!.map((l, i) => (
-                    <li key={i} className="truncate opacity-80">
+                    <li key={i} style={{ opacity: 0.8, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       🔗 {l.label}
                     </li>
                   ))}
                 </ul>
               )}
-              <div className="h-4" />
+              <div style={{ height: 16 }} />
             </div>
             {blocksDone && (
               <p
-                className="step-in mt-4 text-center text-sm font-semibold"
+                className="step-in"
                 style={{
+                  marginTop: 16,
+                  textAlign: "center",
+                  fontSize: 14,
+                  fontWeight: 600,
                   background: "linear-gradient(90deg, #7dd3fc, #c4b5fd)",
                   WebkitBackgroundClip: "text",
                   backgroundClip: "text",
@@ -814,18 +952,28 @@ export default function AlexaDemoPage() {
               </p>
             )}
             {agent.disclaimer && (
-              <p className="mt-3 text-center text-xs text-slate-500">{agent.disclaimer}</p>
+              <p style={{ marginTop: 12, textAlign: "center", fontSize: 12, color: "#64748b" }}>{agent.disclaimer}</p>
             )}
-            <div className="mt-4 text-center">
+            <div style={{ marginTop: 16, textAlign: "center" }}>
               <a
                 href="https://voicescape.vercel.app"
                 target="_blank"
                 rel="noreferrer"
-                className="glow-btn inline-block rounded-xl bg-sky-400 px-5 py-2.5 font-semibold text-slate-950"
+                className="glow-btn"
+                style={{
+                  display: "inline-block",
+                  borderRadius: 12,
+                  background: "#38bdf8",
+                  padding: "10px 20px",
+                  fontWeight: 600,
+                  fontSize: 15,
+                  color: "#020617",
+                  textDecoration: "none",
+                }}
               >
                 Make it yours on the live dapp →
               </a>
-              <p className="mt-2 text-xs text-slate-500">
+              <p style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
                 Claiming happens in your own wallet — the agent previews, you own it.
               </p>
             </div>
@@ -833,7 +981,7 @@ export default function AlexaDemoPage() {
         )}
 
         {/* Footer */}
-        <footer className="mx-auto mt-16 max-w-xl text-center text-[11px] leading-relaxed text-slate-600">
+        <footer style={{ margin: "64px auto 0", maxWidth: 576, textAlign: "center", fontSize: 11, lineHeight: 1.7, color: "#475569" }}>
           <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>
             One hub for humans and AI agents — voice is the newest door in.
           </p>
