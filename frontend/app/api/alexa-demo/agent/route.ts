@@ -49,6 +49,14 @@ const VOICE_LANG_NAMES: Record<string, string> = {
   ms: "Malay",
 };
 
+/** Fallback "meet the dino" line when the AI planner is down. English only —
+    the dino demo is an English-first moment; other languages fall back to it. */
+const FALLBACK_BACON_SPEAK =
+  "Meet Bacon the Dino — a family-friendly AI agent with his own blockpage: " +
+  "snack quests, jokes, home adventures, and a tiny on-chain store. " +
+  "He sells the official Bacon Badge for one cent on Hedera mainnet — " +
+  "a real on-chain purchase, straight to his wallet, no middleman.";
+
 /** Fallback "here's the live music page" line when the AI planner is down. */
 const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
   en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
@@ -146,7 +154,11 @@ const SYSTEM_PROMPT =
   "If the user asks to see a live music blockpage (e.g. 'show me a live " +
   "music blockpage', 'my music', 'music page'), call lookup_blockpage with " +
   "username \"ash-rook\" — it is our live music blockpage — and set " +
-  "pageDraft.displayName from it. Frame your spoken summary as showing the " +
+  "pageDraft.displayName from it. If the user asks about the dino, Bacon, " +
+  "or an agent's blockpage (e.g. 'meet Bacon the dino', 'show me an agent " +
+  "page'), call lookup_blockpage with username \"bacon-the-dino\" — a real " +
+  "AI AGENT's blockpage that sold a custom badge on Hedera mainnet — then " +
+  "blockpage_earnings for it. Frame your spoken summary as showing the " +
   "live example, not building something new. The server fetches the " +
   "full live page for the preview, so keep your own draft blocks short; the " +
   "real blocks win. Otherwise only include lookup_blockpage when the user " +
@@ -266,6 +278,26 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
         { name: "blockpage_earnings", arguments: { username: "ash-rook" } },
       ],
       pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
+    };
+  }
+  // The dino — a real AI AGENT's blockpage with a real badge sale on
+  // mainnet. This is the "humans + agents" proof in one voice command.
+  const baconRe = /bacon|dino|dinosaur|🦕/;
+  if (baconRe.test(lower)) {
+    steps.push('Looking up the live "bacon-the-dino" agent blockpage');
+    return {
+      speak: FALLBACK_BACON_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "bacon-the-dino" } },
+        { name: "blockpage_earnings", arguments: { username: "bacon-the-dino" } },
+      ],
+      pageDraft: {
+        displayName: "Bacon the Dino",
+        purpose:
+          "Bacon the Dino is a family-friendly AI dino sharing snack quests, jokes, and home adventures — plus a tiny on-chain store.",
+        blocks: [],
+      },
     };
   }
   const userMatch = lower.match(/(?:look\s*up|show me)(?: the)? blockpage ([a-z0-9][a-z0-9\-_]*)/);
@@ -771,8 +803,15 @@ export async function POST(req: NextRequest) {
         if (typeof ej.tip_count === "number" && ej.tip_count > 0 && typeof ej.total_gross_hbar === "string") {
           const who = livePage?.displayName ?? liveUsername;
           const tipWord = ej.tip_count === 1 ? "tip" : "tips";
+          // Round for speech — "zero point four five HBAR" beats nine
+          // decimals read aloud. Same real number, spoken cleanly.
+          const grossSpoken = (() => {
+            const n = Number(ej.total_gross_hbar);
+            if (!Number.isFinite(n)) return ej.total_gross_hbar;
+            return String(Math.round(n * 100) / 100);
+          })();
           tipBrag =
-            ` And here's the fun part — ${who} has already been tipped ${ej.total_gross_hbar} HBAR ` +
+            ` And here's the fun part — ${who} has already been tipped ${grossSpoken} HBAR ` +
             `across ${ej.tip_count} ${tipWord}, and kept 98 percent of every single one. ` +
             `Not 98 percent as a promise — 98 percent enforced by the smart contract itself. ` +
             `On a normal card rail, a one-dollar tip can lose thirty-three cents to fees. ` +
