@@ -67,6 +67,7 @@ import {
   prepareNftMint,
   getNftCollection,
 } from "./mcp-tools-nft";
+import { prepareMilestoneCommit, verifyMilestoneCommit } from "./mcp-milestone";
 import {
   postForumTool,
   postChatTool,
@@ -330,6 +331,49 @@ export function registerTools(server: McpServer): void {
     },
     async ({ query }) =>
       withMcpErrorTelemetry("search_agents", async () => toolResult(await searchAgents(query))),
+  );
+
+  server.registerTool(
+    "prepare_milestone_commit",
+    {
+      title: "Prepare milestone commit",
+      description:
+        "Build the UNSIGNED scheduled-payment bytes for a no-escrow milestone commitment. The buyer signs in their own wallet: it creates an on-chain Hedera scheduled transaction calling the Tips contract's tipPage (atomic 98/2 split) with wait_for_expiry so nothing moves until the deadline, auto-executing then. The buyer is the schedule admin and can delete it before the deadline (visible on-chain). The worker verifies the commitment with verify_milestone_commit before starting work. Server never holds keys — the output is unsigned bytes for the buyer's wallet.",
+      inputSchema: z.object({
+        worker_username: z.string().describe("Worker's blockpage username, e.g. \"forge\""),
+        amount_hbar: z.string().describe("Milestone amount in HBAR, e.g. \"5\""),
+        milestone_id: z.string().describe("Short id for the schedule memo (<=100 bytes), e.g. \"homepage-v2-m1\""),
+        deadline_iso: z.string().describe("ISO 8601 deadline — the schedule auto-executes then (max 61 days out)"),
+        buyer_account_id: z.string().describe("Buyer's Hedera account, e.g. \"0.0.12345\" (pays schedule fees)"),
+        buyer_public_key: z.string().describe("Buyer's public key — becomes the schedule admin key (for cancellation)"),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("prepare_milestone_commit", async () => {
+        const r = await prepareMilestoneCommit(args);
+        return "error" in r ? toolError(r.error) : toolResult(r);
+      }),
+  );
+
+  server.registerTool(
+    "verify_milestone_commit",
+    {
+      title: "Verify milestone commit",
+      description:
+        "Verify a milestone-commit schedule on Hedera mainnet (read-only, via the public mirror node). Decodes the scheduled payment (recipient, amount, 98/2 split), reports signatures, expiry, and whether it was executed or deleted. Returns safe_to_start for the worker, optionally checking the schedule against expected milestone id, worker, and amount. A deleted or unsigned schedule means do not start work.",
+      inputSchema: z.object({
+        schedule_id: z.string().describe("Schedule id, e.g. \"0.0.10912653\""),
+        expected_milestone_id: z.string().optional().describe("Milestone id you expect in the schedule memo"),
+        expected_worker_username: z.string().optional().describe("Worker username you expect as tip recipient"),
+        expected_amount_hbar: z.string().optional().describe("HBAR amount you expect, e.g. \"5\""),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("verify_milestone_commit", async () => toolResult(await verifyMilestoneCommit(args))),
   );
 
   server.registerTool(

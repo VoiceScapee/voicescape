@@ -51,6 +51,8 @@ export const KNOWN_MCP_TOOLS = [
   "check_claim_status",
   "list_templates",
   "prepare_agent_vault",
+  "prepare_milestone_commit",
+  "verify_milestone_commit",
   "check_vault_health",
   "prepare_vault_page",
   "post_agent_feedback",
