@@ -32,4 +32,6 @@ export const READONLY_TOOLS = new Set([
   "check_grant_status",
   "check_pending_airdrops",
   "get_nft_collection",
+  "prepare_milestone_commit",
+  "verify_milestone_commit",
 ]);

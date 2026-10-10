@@ -123,6 +123,14 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Verify a Hedera transaction against the Tips contract and decode the on-chain TipSent event into the exact 98/2 split.",
   ],
   [
+    "prepare_milestone_commit",
+    "Build the unsigned scheduled-payment bytes for a no-escrow milestone commitment — the buyer signs in their own wallet, it auto-executes at the deadline, and the server never holds keys.",
+  ],
+  [
+    "verify_milestone_commit",
+    "Verify a milestone-commit schedule on Hedera mainnet — recipient, amount, signatures, expiry, executed/deleted status — and whether it's safe for the worker to start.",
+  ],
+  [
     "verify_purchase",
     "Verify a wallet's marketplace purchase on-chain — returns the listing title and transaction id, never a fabricated receipt.",
   ],
