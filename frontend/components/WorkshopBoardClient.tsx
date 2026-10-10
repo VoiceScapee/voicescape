@@ -57,6 +57,10 @@ export default function WorkshopBoardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lane, setLane] = useState<"all" | "bug" | "idea">("all");
+  const [canTriage, setCanTriage] = useState(false);
+  const [newCount, setNewCount] = useState(0);
+  const [shipping, setShipping] = useState(false);
+  const [shipMsg, setShipMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,6 +84,41 @@ export default function WorkshopBoardClient() {
     void load();
   }, [load]);
 
+  // Founder bulk-triage access: one GET tells us if the founder-only
+  // "ship all" button should render, and how many are waiting.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/workshop/reports/bulk-status");
+        if (!res.ok) return;
+        const data = (await res.json()) as { canTriage?: boolean; newCount?: number };
+        setCanTriage(data.canTriage === true);
+        setNewCount(typeof data.newCount === "number" ? data.newCount : 0);
+      } catch {
+        /* board still works; the button just stays hidden */
+      }
+    })();
+  }, []);
+
+  const shipAll = useCallback(async () => {
+    if (shipping || newCount === 0) return;
+    setShipping(true);
+    setShipMsg(null);
+    try {
+      const res = await fetch("/api/workshop/reports/bulk-status", { method: "POST" });
+      const data = (await res.json()) as { shipped?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "couldn't ship reports");
+      setShipMsg(`✅ Shipped ${data.shipped ?? 0} — all marked, reporters credited.`);
+      setNewCount(0);
+      await load();
+    } catch (e) {
+      reportError(e, "workshop-board", { action: "bulk-ship" });
+      setShipMsg(e instanceof Error ? e.message : "couldn't ship reports");
+    } finally {
+      setShipping(false);
+    }
+  }, [shipping, newCount, load]);
+
   return (
     <>
       <div className="th-page-head">
@@ -93,6 +132,39 @@ export default function WorkshopBoardClient() {
           finds. Fixes ship on our schedule, not automatically.
         </p>
       </div>
+
+      {canTriage && newCount > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            marginBottom: 16,
+            padding: "10px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(52,211,153,.35)",
+            background: "rgba(52,211,153,.07)",
+          }}
+        >
+          <span style={{ fontSize: 13, fontWeight: 700 }}>
+            👑 {newCount} report{newCount === 1 ? "" : "s"} waiting
+          </span>
+          <button
+            type="button"
+            onClick={shipAll}
+            disabled={shipping}
+            className="th-action is-active"
+            style={{ fontWeight: 800 }}
+          >
+            {shipping ? "Shipping…" : `Ship all ${newCount} ✅`}
+          </button>
+          {shipMsg && <span style={{ fontSize: 13 }}>{shipMsg}</span>}
+        </div>
+      )}
+      {canTriage && newCount === 0 && shipMsg && (
+        <p style={{ fontSize: 13, marginBottom: 16 }}>{shipMsg}</p>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         {(["all", "bug", "idea"] as const).map((l) => (
