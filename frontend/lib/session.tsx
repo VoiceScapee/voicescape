@@ -108,8 +108,8 @@ export interface SessionContextValue {
    * not signing. UIs render elapsed-time copy from this ("42s elapsed").
    */
   signInStartedAt: number | null;
-  /** Clear the session and disconnect the wallet. */
-  signOut: () => void;
+  /** Clear the session and disconnect the wallet (also revokes the token server-side). */
+  signOut: () => Promise<void>;
   /** Headers to attach to authenticated API calls. {} when signed out. */
   authHeader: () => Record<string, string>;
   /** The session token for the header, or null. */
@@ -473,12 +473,13 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
         const canonical = canonicalAddress(activeAccount);
         if (!canonical) throw new Error("Unsupported wallet address format.");
-        // Exchange the fresh wallet signature for a stateless session
-        // token: the server verifies the signature (Hedera keys are
-        // checked against the mirror node), binds the nonce, and returns
-        // a 7-day HMAC token. This is what surfaces connect-only wallets
-        // with a clear error instead of a session that 401s on every
-        // write. The client never sends the raw signature again.
+        // Exchange the fresh wallet signature for a session token: the
+        // server verifies the signature (Hedera keys are checked against
+        // the mirror node), binds the nonce, and returns a long-lived HMAC
+        // token (valid until sign-out — no time expiry in practice). This
+        // is what surfaces connect-only wallets with a clear error instead
+        // of a session that 401s on every write. The client never sends
+        // the raw signature again.
         let token: string;
         let expiresAtMs: number;
         try {
@@ -559,13 +560,31 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     [adapterId, account, chain.chainId, signEvmMessage, signHederaLoginTx, wallet],
   );
 
-  const signOut = useCallback(() => {
+  /**
+   * Clear the session and disconnect the wallet. Also tells the server to
+   * bump the wallet's session generation (POST /api/auth/logout) so the
+   * token dies everywhere, not just on this device — best-effort: local
+   * state clears regardless, so a failed call just means signing in and
+   * out once more to retry the server-side kill.
+   */
+  const signOut = useCallback(async () => {
+    const t = session?.token;
     setSessionBoth(null);
     writeStored(null);
     setError(null);
     void wallet.disconnect();
     setStatus("anonymous");
-  }, [wallet]);
+    if (t) {
+      try {
+        await fetch("/api/auth/logout", {
+          method: "POST",
+          headers: { [SESSION_HEADER]: t },
+        });
+      } catch {
+        /* local state already cleared — see docstring */
+      }
+    }
+  }, [wallet, session]);
 
   const authHeader = useCallback((): Record<string, string> => {
     if (!session) return {};

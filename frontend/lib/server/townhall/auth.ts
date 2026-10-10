@@ -4,18 +4,26 @@
  * Sign-in flow:
  *  1. The client signs an EIP-4361-style "Sign in with Voicescape" message
  *     (see ../../../session-message.ts) and POSTs { message, signature }
- *     ONCE to /api/auth/login.
+ *     ONCE to /api/auth/login. (Hedera wallets sign a 1-tinybar
+ *     self-transfer carrying the login challenge in its memo instead —
+ *     same effect, verified against the mirror node.)
  *  2. The server verifies the wallet signature (EVM: ecrecover; Hedera:
  *     Ed25519 against the mirror-node account key), binds the nonce, and
- *     issues a STATELESS session token: an HMAC-signed (SESSION_SECRET)
- *     payload carrying address/chainId/nonce/expiry. No server storage.
+ *     issues a session token: an HMAC-signed (SESSION_SECRET) payload
+ *     carrying address/chainId/nonce/expiry plus a revocation generation
+ *     (`ver`). The token stays valid until the user signs out — there is
+ *     no time-based expiry in practice (the `exp` claim is a 10-year
+ *     structural backstop).
  *  3. The client sends the token in the `x-vs-session` header on every
- *     write. Verification is pure HMAC + expiry — no mirror-node lookup,
- *     no per-request crypto beyond HMAC, works across N instances.
+ *     write. Verification is HMAC + expiry + a KV revocation-generation
+ *     check — no mirror-node lookup, no per-request asymmetric crypto,
+ *     works across N instances.
  *
  * Verification:
  *  - token path (string credential): HMAC verified with SESSION_SECRET,
- *    expiry enforced from the token itself, 7-day lifetime.
+ *    backstop expiry enforced from the token itself, and the token's
+ *    generation must match the wallet's current generation in the shared
+ *    store (missing key = generation 0 = the wallet never signed out).
  *  - legacy path ({ message, signature } object, used by /api/auth/login):
  *    message parses and passes semantic validation (app, chain id, nonce,
  *    issued-at/expiry, ORIGIN binding) — see session-message.ts
@@ -29,13 +37,20 @@
  *    is rejected, never faked.
  *
  * BEARER-TOKEN CAVEAT (do not soften this): the session token IS the
- * credential for the 7-day session lifetime. Anyone holding it can write
- * as that wallet until expiry; there is no server-side revocation list
- * (that is the price of statelessness). The nonce claim below only
- * rejects a *different* signature presented on a reused nonce — it does
- * NOT prevent replay of the token itself. This is accepted for v1; the
- * real backstop is that high-value actions (e.g. a marketplace purchase)
- * are signed by the wallet on-chain, not by the session.
+ * credential until the wallet's owner signs out. Anyone holding it can
+ * write as that wallet; there is no per-request wallet signature.
+ * Sign-out is genuine server-side revocation, not just client cleanup:
+ * POST /api/auth/logout bumps the wallet's generation in the shared
+ * store (`sessver:<address>`), and every outstanding token with an older
+ * generation stops verifying on all instances immediately.
+ * The login challenge itself is short-lived (15 minutes): a leaked
+ * sign-in message or login transaction cannot be replayed into a fresh
+ * session after the victim signed out — only a NEW wallet signature
+ * mints a new session. The nonce claim below only rejects a *different*
+ * signature presented on a reused nonce — it does NOT prevent replay of
+ * the token itself; the generation check is what does that.
+ * The real backstop remains: high-value actions (e.g. a marketplace
+ * purchase) are signed by the wallet on-chain, not by the session.
  *  - nonces are claimed in the shared store with the session's expiry as
  *    TTL: the same nonce presented with a different signature is rejected
  *    on every instance.
@@ -62,6 +77,7 @@ import {
   isHederaAccountId,
   validateSignInMessage,
   CLOCK_SKEW_MS,
+  LOGIN_CHALLENGE_WINDOW_MS,
   SESSION_TTL_MS,
   type SessionCredential,
 } from "../../session-message";
@@ -204,8 +220,56 @@ export interface SessionTokenClaims {
   nonce: string;
   /** Issued-at, ms epoch. */
   iat: number;
-  /** Expiry, ms epoch (7 days after issuance). */
+  /** Expiry, ms epoch (10-year structural backstop — sessions end at sign-out, not by time). */
   exp: number;
+  /**
+   * Revocation generation. Must match the wallet's current generation in
+   * the shared store (`sessver:<address>`); POST /api/auth/logout bumps
+   * it and instantly kills every outstanding token. Absent on tokens
+   * minted before generations existed — verification treats missing as 0,
+   * and a missing store key also means 0, so old tokens keep working
+   * until their exp runs out.
+   */
+  ver: number;
+}
+
+/** Session version keys outlive the longest token they can invalidate. */
+export const SESSION_VERSION_TTL_MS = 11 * 365 * 24 * 3600 * 1000;
+
+/** KV key holding the current session revocation generation for a wallet. */
+export function sessionVersionKey(address: string): string {
+  return `sessver:${address.toLowerCase()}`;
+}
+
+/**
+ * Read the wallet's current session generation. Missing key = generation 0:
+ * the wallet never signed out since generations existed. Returns -1 when
+ * the store is unreachable or the stored value is corrupt — callers must
+ * treat -1 as "cannot prove validity" and fail closed.
+ */
+export async function getSessionVersion(address: string, store?: KvStore): Promise<number> {
+  const kv = store ?? getKvStore();
+  let raw: string | null;
+  try {
+    raw = await kv.get(sessionVersionKey(address));
+  } catch {
+    // Fail closed: without the generation we cannot prove the token is
+    // still valid. Surface as -1 so callers reject.
+    return -1;
+  }
+  if (raw == null) return 0;
+  const n = Number.parseInt(raw, 10);
+  return Number.isSafeInteger(n) && n >= 0 ? n : -1;
+}
+
+/**
+ * Sign-out: atomically bump the wallet's session generation, instantly
+ * invalidating every outstanding session token on all instances.
+ * Returns the new generation.
+ */
+export async function bumpSessionVersion(address: string, store?: KvStore): Promise<number> {
+  const kv = store ?? getKvStore();
+  return kv.incr(sessionVersionKey(address), SESSION_VERSION_TTL_MS);
 }
 
 function b64urlEncode(s: string): string {
@@ -217,14 +281,22 @@ function b64urlDecode(s: string): string {
 }
 
 /**
- * Issue a stateless session token for a verified wallet session.
- * Everything verification needs is inside the token, signed with
- * SESSION_SECRET — no server-side session storage.
+ * Issue a session token for a verified wallet session.
+ * Everything verification needs is inside the token (HMAC-signed with
+ * SESSION_SECRET) plus the wallet's revocation generation in the shared
+ * store — no other server-side session storage.
+ *
+ * `version` is the wallet's current generation (see getSessionVersion);
+ * it defaults to 0, which matches a wallet that never signed out.
  */
 export function issueSessionToken(
   session: { address: string; chainId: number; nonce: string; expiresAtMs: number },
   nowMs: number = Date.now(),
+  version: number = 0,
 ): string {
+  if (!Number.isSafeInteger(version) || version < 0) {
+    throw new Error("issueSessionToken: bad version");
+  }
   const claims: SessionTokenClaims = {
     v: 1,
     addr: session.address.toLowerCase(),
@@ -232,6 +304,7 @@ export function issueSessionToken(
     nonce: session.nonce,
     iat: nowMs,
     exp: session.expiresAtMs,
+    ver: version,
   };
   const body = b64urlEncode(JSON.stringify(claims));
   const sig = createHmac("sha256", getSessionSecret()).update(body).digest("base64url");
@@ -239,10 +312,21 @@ export function issueSessionToken(
 }
 
 /**
- * Verify a stateless session token. Pure HMAC + structural/expiry checks —
- * no I/O, safe to call on every request on every instance.
+ * Verify a session token: HMAC + structural/backstop-expiry checks, then
+ * the revocation-generation check against the shared store.
+ *
+ * The generation check is what makes sign-out real: POST /api/auth/logout
+ * bumps the wallet's generation and every older token fails here on all
+ * instances. Missing token `ver` (pre-generation tokens) counts as 0, and
+ * a missing store key counts as 0, so old tokens keep working until their
+ * exp runs out. Fail closed when the store is unreachable — a session
+ * must never verify on HMAC alone once revocation exists.
  */
-export function verifySessionToken(token: string, nowMs: number = Date.now()): VerifyResult {
+export async function verifySessionToken(
+  token: string,
+  nowMs: number = Date.now(),
+  store?: KvStore,
+): Promise<VerifyResult> {
   if (typeof token !== "string" || !token) return { ok: false, error: "missing session: sign in with your wallet" };
   const dot = token.lastIndexOf(".");
   if (dot <= 0) return { ok: false, error: "malformed session token" };
@@ -282,9 +366,17 @@ export function verifySessionToken(token: string, nowMs: number = Date.now()): V
   }
   // Defense in depth: the wallet-message validation already caps lifetime
   // at issuance, but the token must be independently bounded — a token
-  // whose lifetime exceeds 7 days is rejected no matter who signed it.
+  // whose lifetime exceeds the backstop is rejected no matter who signed it.
   if (claims.exp - claims.iat > SESSION_TTL_MS + CLOCK_SKEW_MS) {
     return { ok: false, error: "malformed session token" };
+  }
+  // Revocation check: the token's generation must match the wallet's
+  // current generation. Pre-generation tokens (no `ver`) count as 0.
+  const tokenVer =
+    typeof claims.ver === "number" && Number.isSafeInteger(claims.ver) && claims.ver >= 0 ? claims.ver : 0;
+  const currentVer = await getSessionVersion(claims.addr, store);
+  if (currentVer < 0 || currentVer !== tokenVer) {
+    return { ok: false, error: "session revoked — sign in again" };
   }
   return {
     ok: true,
@@ -719,8 +811,9 @@ export class RealAuthPort implements AuthPort {
 
   /**
    * Verify a session credential. Three shapes:
-   *  - string, v1: a stateless session token (the per-request path) — pure
-   *    HMAC + expiry, no I/O.
+   *  - string, v1: a session token (the per-request path) — HMAC +
+   *    backstop expiry + the KV revocation-generation check (sign-out
+   *    kills tokens via the generation bump).
    *  - string, v2: a scoped agent token — accepted ONLY when
    *    opts.allowAgent is true (fail-closed default: every existing route
    *    rejects agent tokens without changes). Verified via HMAC + expiry
@@ -737,7 +830,7 @@ export class RealAuthPort implements AuthPort {
         }
         return verifyAgentToken(cred, { nowMs, chainId: this.chainIdFn() });
       }
-      const r = verifySessionToken(cred, nowMs);
+      const r = await verifySessionToken(cred, nowMs);
       if (!r.ok) return r;
       // Bind the token to the active chain: a token minted for one chain
       // must not authenticate writes on another.
@@ -856,7 +949,9 @@ export class RealAuthPort implements AuthPort {
    *  2. sha256(secret) matches the memo commitment.
    *  3. The memo names the transaction's payer account.
    *  4. The challenge hasn't expired and names this app's origin.
-   *  5. The secret (as nonce) is claimed — replay protection.
+   *  5. The transaction is recent (short challenge window) — a stale
+   *     login can't mint fresh sessions after the owner signed out.
+   *  6. The secret (as nonce) is claimed — replay protection.
    */
   private async verifyLoginTransaction(cred: unknown, nowMs: number): Promise<VerifyResult> {
     const { loginTxId, secret } = cred as { loginTxId?: unknown; secret?: unknown };
@@ -874,7 +969,7 @@ export class RealAuthPort implements AuthPort {
     const expectedOrigin = this.originFn();
 
     // Poll the mirror briefly — it lags consensus by a few seconds.
-    let tx: { result?: string; memo_base64?: string } | null = null;
+    let tx: { result?: string; memo_base64?: string; consensus_timestamp?: string } | null = null;
     for (let i = 0; i < 5; i++) {
       try {
         const res = await fetch(
@@ -882,7 +977,7 @@ export class RealAuthPort implements AuthPort {
         );
         if (res.ok) {
           const json = (await res.json()) as {
-            transactions?: Array<{ result?: string; memo_base64?: string }>;
+            transactions?: Array<{ result?: string; memo_base64?: string; consensus_timestamp?: string }>;
           };
           tx = json.transactions?.[0] ?? null;
           if (tx) break;
@@ -897,6 +992,18 @@ export class RealAuthPort implements AuthPort {
     }
     if (tx.result !== "SUCCESS") {
       return { ok: false, error: "login transaction did not succeed" };
+    }
+    // The login challenge is short-lived: the transaction must be recent.
+    // Otherwise a leaked { loginTxId, secret } could mint fresh sessions
+    // long after the wallet's owner signed out (sign-out only kills
+    // issued tokens via the generation bump).
+    const consensusSec = Number((tx.consensus_timestamp ?? "").split(".")[0]);
+    const txMs = Number.isFinite(consensusSec) ? consensusSec * 1000 : NaN;
+    if (!Number.isFinite(txMs)) {
+      return { ok: false, error: "login transaction has no timestamp — try signing in again" };
+    }
+    if (nowMs - txMs > LOGIN_CHALLENGE_WINDOW_MS + CLOCK_SKEW_MS) {
+      return { ok: false, error: "login transaction too old — sign in again" };
     }
 
     let memo = "";

@@ -27,8 +27,24 @@
 import { ethers } from "ethers";
 
 export const APP_NAME = "Voicescape";
-/** Sessions live 7 days, then the user signs again. */
-export const SESSION_TTL_MS = 7 * 24 * 3600 * 1000;
+/**
+ * Wallet sessions never expire by time: once signed in, the user stays
+ * signed in until they explicitly sign out (which bumps the wallet's
+ * session generation and kills every outstanding token). The `exp` claim
+ * is kept as a structural backstop at 10 years so no token is literally
+ * immortal — long enough that no legitimate user ever re-signs for
+ * expiry, short enough to bound the blast radius of a leaked token.
+ */
+export const SESSION_TTL_MS = 10 * 365 * 24 * 3600 * 1000;
+/**
+ * How long a fresh login signature/challenge stays valid for minting a
+ * session. Kept short on purpose: sign-out kills issued TOKENS via the
+ * generation bump, so a leaked login message/transaction must not be
+ * replayable into a fresh session months later. 15 minutes is generous
+ * for the real flow (sign → POST), useless for an attacker replaying a
+ * stale credential after the victim signed out.
+ */
+export const LOGIN_CHALLENGE_WINDOW_MS = 15 * 60 * 1000;
 /** Clock skew tolerated between client and server. */
 export const CLOCK_SKEW_MS = 5 * 60 * 1000;
 /** Header carrying the session credential on API requests. */
@@ -183,6 +199,13 @@ export function validateSignInMessage(
   const expires = Date.parse(fields.expiresAt);
   if (Number.isNaN(issued) || Number.isNaN(expires)) return { ok: false, reason: "bad timestamps" };
   if (issued > now + CLOCK_SKEW_MS) return { ok: false, reason: "message issued in the future" };
+  // The signature is a single-use-ish login challenge, not a standing
+  // credential: it must be fresh. Otherwise a leaked message could mint
+  // fresh sessions long after the wallet's owner signed out (sign-out only
+  // kills issued tokens via the generation bump).
+  if (now - issued > LOGIN_CHALLENGE_WINDOW_MS + CLOCK_SKEW_MS) {
+    return { ok: false, reason: "sign-in request too old — sign in again" };
+  }
   if (expires <= now) return { ok: false, reason: "sign-in expired" };
   if (expires <= issued) return { ok: false, reason: "expiry is not after issuance" };
   if (expires - issued > SESSION_TTL_MS + CLOCK_SKEW_MS) {
