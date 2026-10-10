@@ -1953,7 +1953,9 @@ describe("execution scopes", () => {
       expect("error" in second).toBe(true);
       expect((second as { error: string }).error).toMatch(/already broadcast/i);
       expect(calls).toBe(1);
-    });
+      // The 404 mirror mock exercises the full 3-attempt landing poll
+      // (2 x 2.5s sleeps), so this test needs longer than the 5s default.
+    }, 20000);
 
     it("blocks unsafe content before anything else", async () => {
       const res = await callTool({ body: "contact me at evil@example.com" });
