@@ -374,12 +374,13 @@ export default function AlexaDemoPage() {
 
   // The signature moment: once the plan is done, the page materializes
   // block by block — hero, music, livestream, tip jar — like it's being
-  // spoken into existence.
+  // spoken into existence. (Deps must include visibleBlocks itself, or the
+  // cascade stalls after the first block — fixed 2026-10-10.)
   useEffect(() => {
-    if (!previewReady || blocksDone) return;
+    if (!previewReady || visibleBlocks >= blocks.length) return;
     const t = setTimeout(() => setVisibleBlocks((v) => v + 1), 550);
     return () => clearTimeout(t);
-  }, [previewReady, blocksDone, blocks.length]);
+  }, [previewReady, visibleBlocks, blocks.length]);
 
   return (
     <main
@@ -447,6 +448,18 @@ export default function AlexaDemoPage() {
           0%, 55% { opacity: 1; }
           56%, 100% { opacity: 0; }
         }
+        /* Voicescape agent equalizer — the agent's living pulse */
+        .agent-eq { display: flex; align-items: flex-end; gap: 2px; height: 14px; }
+        .agent-eq span {
+          width: 3px; border-radius: 2px; background: #38bdf8;
+          animation: eq-bounce 0.8s ease-in-out infinite;
+        }
+        .agent-eq span:nth-child(2) { animation-delay: .15s; background: #a78bfa; }
+        .agent-eq span:nth-child(3) { animation-delay: .3s; background: #34d399; }
+        @keyframes eq-bounce {
+          0%, 100% { height: 4px; opacity: .6; }
+          50% { height: 14px; opacity: 1; }
+        }
         /* Puzzle-piece snap: each block flies in from alternating sides,
            overshoots slightly, and flashes as it clicks into place —
            a blockchain being pieced together, for real. */
@@ -495,9 +508,10 @@ export default function AlexaDemoPage() {
         </div>
         <h1
           style={{
-            marginTop: 12,
-            fontSize: "2.6rem",
-            lineHeight: 1.1,
+            marginTop: 8,
+            marginBottom: 0,
+            fontSize: "2rem",
+            lineHeight: 1.15,
             fontWeight: 800,
             letterSpacing: "-0.02em",
             background: "linear-gradient(90deg, #7dd3fc, #a5f3fc, #c4b5fd)",
@@ -508,22 +522,24 @@ export default function AlexaDemoPage() {
         >
           Speak your blockpage into existence.
         </h1>
-        <p style={{ marginTop: 12, maxWidth: 576, color: "#94a3b8", fontSize: 16, lineHeight: 1.6 }}>
-          Voicescape Voice Builder — tap the mic. The agent plans over
-          Voicescape&apos;s live MCP server, then your blockpage preview builds
-          itself.
+        <p style={{ marginTop: 8, maxWidth: 576, color: "#94a3b8", fontSize: 14, lineHeight: 1.5 }}>
+          Tap the mic — the agent plans over Voicescape&apos;s live MCP server
+          and your blockpage comes alive below.
         </p>
 
-        {/* Identity strip — who this is for */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+        {/* Identity strip — real open-source rails, each badge links out */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           {[
-            ["Alexa+ track", "simulated experience"],
-            ["Hedera mainnet", "live"],
-            ["Hedera Agent Kit", "v4"],
-            ["MCP", "spec 2025-11-25"],
-          ].map(([name, sub]) => (
-            <span
+            ["Alexa+ track", "simulated experience", "https://amazonappdev2026.devpost.com/"],
+            ["Hedera mainnet", "live", "https://hedera.com"],
+            ["Hedera Agent Kit", "v4", "https://github.com/hedera-dev/hedera-agent-kit"],
+            ["MCP", "spec 2025-11-25", "https://modelcontextprotocol.io/specification/2025-11-25"],
+          ].map(([name, sub, href]) => (
+            <a
               key={name}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
               style={{
                 display: "inline-flex",
                 alignItems: "baseline",
@@ -531,14 +547,15 @@ export default function AlexaDemoPage() {
                 borderRadius: 9999,
                 border: "1px solid rgba(148,163,184,.25)",
                 background: "rgba(148,163,184,.07)",
-                padding: "5px 12px",
+                padding: "4px 11px",
                 fontSize: 11,
                 color: "#cbd5e1",
+                textDecoration: "none",
               }}
             >
               <strong style={{ fontWeight: 700, color: "#f1f5f9" }}>{name}</strong>
               <span style={{ color: "#94a3b8" }}>{sub}</span>
-            </span>
+            </a>
           ))}
         </div>
         <p style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
@@ -572,7 +589,7 @@ export default function AlexaDemoPage() {
         </div>
 
         {/* Voice button */}
-        <div style={{ marginTop: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+        <div style={{ marginTop: 24, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
           <div style={{ position: "relative" }}>
             {listening && (
               <>
@@ -588,12 +605,12 @@ export default function AlexaDemoPage() {
               className="glow-btn"
               style={{
                 // Inline sizing: bulletproof even if the Tailwind bundle is stale.
-                width: 128,
-                height: 128,
-                minWidth: 128,
-                minHeight: 128,
+                width: 104,
+                height: 104,
+                minWidth: 104,
+                minHeight: 104,
                 borderRadius: 9999,
-                fontSize: 52,
+                fontSize: 42,
                 lineHeight: 1,
                 display: "flex",
                 alignItems: "center",
@@ -608,8 +625,8 @@ export default function AlexaDemoPage() {
                   ? "radial-gradient(circle at 35% 30%, #fca5a5, #ef4444)"
                   : "radial-gradient(circle at 35% 30%, #a5f3fc, #38bdf8 70%)",
                 boxShadow: listening
-                  ? "0 0 60px rgba(239,68,68,.45)"
-                  : "0 0 60px rgba(56,189,248,.35)",
+                  ? "0 0 50px rgba(239,68,68,.45)"
+                  : "0 0 50px rgba(56,189,248,.35)",
               }}
             >
               {listening ? "⏹" : "🎙"}
@@ -724,34 +741,34 @@ export default function AlexaDemoPage() {
           </p>
         )}
 
-        {/* Agent terminal — the orchestration, made visible */}
+        {/* Agent terminal — original Voicescape vibe */}
         {agent && (
-          <section style={{ margin: "48px auto 0", maxWidth: 576 }}>
+          <section style={{ margin: "28px auto 0", maxWidth: 576 }}>
             <div
               style={{
                 overflow: "hidden",
-                borderRadius: 16,
-                border: "1px solid #1e293b",
+                borderRadius: 14,
+                border: "1px solid rgba(56,189,248,.18)",
                 background: "#05070d",
-                boxShadow: "0 0 50px rgba(56,189,248,.07), 0 25px 50px -12px rgba(0,0,0,.7)",
+                boxShadow: "0 0 40px rgba(56,189,248,.06), 0 20px 40px -12px rgba(0,0,0,.7)",
               }}
             >
-              {/* Title bar */}
+              {/* Custom header — the agent's living pulse */}
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: 10,
+                  padding: "8px 14px",
+                  background: "linear-gradient(90deg, rgba(56,189,248,.08), rgba(167,139,250,.08))",
                   borderBottom: "1px solid rgba(30,41,59,.8)",
-                  padding: "10px 16px",
-                  background: "#0a0d16",
                 }}
               >
-                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#f87171" }} />
-                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#fbbf24" }} />
-                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#34d399" }} />
-                <span style={{ marginLeft: 8, fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#64748b" }}>
-                  agent — live MCP session
+                <span className="agent-eq" aria-hidden>
+                  <span /><span /><span />
+                </span>
+                <span style={{ fontSize: 10, letterSpacing: "0.22em", fontWeight: 800, color: "#7dd3fc" }}>
+                  VOICESCAPE AGENT
                 </span>
                 <span
                   style={{
@@ -759,16 +776,14 @@ export default function AlexaDemoPage() {
                     display: "flex",
                     alignItems: "center",
                     gap: 6,
-                    fontFamily: "ui-monospace, monospace",
                     fontSize: 10,
                     fontWeight: 700,
-                    textTransform: "uppercase",
                     letterSpacing: "0.15em",
                     color: "#34d399",
                   }}
                 >
                   <span className="live-dot" style={{ display: "inline-block", width: 7, height: 7, borderRadius: 9999, background: "#34d399" }} />
-                  live
+                  LIVE
                 </span>
               </div>
               {/* Body */}
@@ -836,17 +851,37 @@ export default function AlexaDemoPage() {
           </section>
         )}
 
-        {/* Blockpage preview — builds itself */}
-        {agent && visibleSteps >= agent.steps.length && (
-          <section style={{ margin: "40px auto 0", maxWidth: 448 }}>
-            <h2 style={{ marginBottom: 12, textAlign: "center", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.2em", color: "#64748b" }}>
-              Your blockpage preview
-            </h2>
+        {/* Blockpage preview — the star of the screen */}
+        <section style={{ margin: "28px auto 0", maxWidth: 768 }}>
+          <h2 style={{ marginBottom: 12, textAlign: "center", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.22em", color: "#64748b" }}>
+            Your blockpage
+          </h2>
+          {!previewReady || !agent ? (
+            /* Empty stage — waiting for voice to wake the dapp */
+            <div
+              style={{
+                borderRadius: 20,
+                border: "1.5px dashed rgba(56,189,248,.3)",
+                background: "rgba(56,189,248,.03)",
+                padding: "48px 24px",
+                textAlign: "center",
+              }}
+            >
+              <div style={{ fontSize: 36, opacity: 0.7 }}>🎙</div>
+              <p style={{ marginTop: 12, fontSize: 15, color: "#94a3b8" }}>
+                {agent ? "The agent is building…" : "Speak — your blockpage materializes here"}
+              </p>
+              <p style={{ marginTop: 6, fontSize: 12, color: "#475569" }}>
+                Voice in, AI tools, living page out. Nothing typed, nothing mocked.
+              </p>
+            </div>
+          ) : (
+            <>
             <div
               className="preview-in"
               style={{
                 overflow: "hidden",
-                borderRadius: 24,
+                borderRadius: 20,
                 border: `1px solid ${accent}55`,
                 background: bg,
                 color: fg,
@@ -977,11 +1012,12 @@ export default function AlexaDemoPage() {
                 Claiming happens in your own wallet — the agent previews, you own it.
               </p>
             </div>
+            </>
+          )}
           </section>
-        )}
 
         {/* Footer */}
-        <footer style={{ margin: "64px auto 0", maxWidth: 576, textAlign: "center", fontSize: 11, lineHeight: 1.7, color: "#475569" }}>
+        <footer style={{ margin: "36px auto 0", maxWidth: 576, textAlign: "center", fontSize: 11, lineHeight: 1.7, color: "#475569" }}>
           <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>
             One hub for humans and AI agents — voice is the newest door in.
           </p>
