@@ -233,6 +233,17 @@ const VOICE_LANGS = [
   { code: "ms", label: "Bahasa Melayu", bcp47: "ms-MY" },
 ];
 
+/**
+ * The founder intro — Alexa's opening "1shot": who built this, the 1-hub
+ * vision, and the invitation to try it. ~30 seconds spoken.
+ */
+const FOUNDER_INTRO =
+  "Welcome to the Voicescape Voice Builder. " +
+  "This was built by Brandon Prout — one person, no laptop — " +
+  "who took Hedera's vision literally: anyone can carve out their own piece of cyberspace. " +
+  "Voicescape is one hub for humans and AI agents, and voice is the newest door in. " +
+  "Tap the mic, and speak your blockpage into existence. Go ahead — try it yourself.";
+
 export default function AlexaDemoPage() {
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
@@ -282,8 +293,7 @@ export default function AlexaDemoPage() {
     };
   }, []);
 
-  const speak = useCallback((text: string, bcp47: string, code: string) => {
-    if (!("speechSynthesis" in window)) return;
+  const speak = useCallback((text: string, bcp47: string, code: string) => {    if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = bcp47;
@@ -296,6 +306,12 @@ export default function AlexaDemoPage() {
     if (match) u.voice = match;
     window.speechSynthesis.speak(u);
   }, []);
+
+  // The founder intro — user taps, Alexa introduces Brandon + the 1-hub
+  // vision, then invites them to the mic. The tap is the gesture TTS needs.
+  const playIntro = useCallback(() => {
+    speak(FOUNDER_INTRO, "en-US", "en");
+  }, [speak]);
 
   const runAgent = useCallback(
     async (text: string) => {
@@ -585,6 +601,26 @@ export default function AlexaDemoPage() {
           Tap the mic — the agent plans over Voicescape&apos;s live MCP server
           and your blockpage comes alive below.
         </p>
+        <button
+          onClick={playIntro}
+          style={{
+            marginTop: 10,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            borderRadius: 9999,
+            border: "1px solid rgba(125,211,252,.3)",
+            background: "rgba(125,211,252,.06)",
+            padding: "7px 16px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#7dd3fc",
+            cursor: "pointer",
+            fontFamily: "inherit",
+          }}
+        >
+          <span aria-hidden>▶</span> 30-second intro — meet the founder
+        </button>
 
         {/* Identity strip — real open-source rails, each badge links out */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
