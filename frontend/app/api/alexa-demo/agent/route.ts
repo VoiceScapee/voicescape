@@ -651,7 +651,30 @@ export async function POST(req: NextRequest) {
     // so the voice loop stays alive.
     const speakWithCount =
       toolCount > 0 ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"} to build this.` : speakBase;
-    const speak = `${speakWithCount} Want to look up another page, or build your own next? Just say the word.`;
+    // The fun tip brag — plain human language, real on-chain numbers, for
+    // the music/lookup flow. This is what makes us different: 98% to the
+    // artist, enforced by the contract, at a fraction of a cent in fees.
+    let tipBrag = "";
+    if (liveUsername) {
+      const earnResult = toolResults.find((t) => t.tool === "blockpage_earnings");
+      const earnText = (earnResult?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+      try {
+        const ej = JSON.parse(earnText ?? "") as { tip_count?: number; total_gross_hbar?: string };
+        if (typeof ej.tip_count === "number" && ej.tip_count > 0 && typeof ej.total_gross_hbar === "string") {
+          const who = livePage?.displayName ?? liveUsername;
+          const tipWord = ej.tip_count === 1 ? "tip" : "tips";
+          tipBrag =
+            ` And here's the fun part — ${who} has already been tipped ${ej.total_gross_hbar} HBAR ` +
+            `across ${ej.tip_count} ${tipWord}, and kept 98 percent of every single one. ` +
+            `Not 98 percent as a promise — 98 percent enforced by the smart contract itself. ` +
+            `On a normal card rail, a one-dollar tip can lose thirty-three cents to fees. ` +
+            `On Hedera, it costs a fraction of a cent.`;
+        }
+      } catch {
+        /* no brag without real numbers */
+      }
+    }
+    const speak = `${speakWithCount}${tipBrag} Want to look up another page, or build your own next? Just say the word.`;
     if (toolCount > 0) steps.push(`$ ${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
 
     return NextResponse.json({

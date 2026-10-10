@@ -1175,6 +1175,86 @@ export default function AlexaDemoPage() {
           )}
           </section>
 
+        {/* The bigger picture — the full vision, one shot. Honestly labeled:
+            what's live vs. what's next. */}
+        <section style={{ margin: "48px auto 0", maxWidth: 768 }}>
+          <h2 style={{ marginBottom: 6, textAlign: "center", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.22em", color: "#64748b" }}>
+            The bigger picture
+          </h2>
+          <p style={{ marginTop: 0, marginBottom: 16, textAlign: "center", fontSize: 13, color: "#94a3b8" }}>
+            This demo is one door. Here&apos;s the whole house.
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
+            {[
+              {
+                icon: "🎙️",
+                title: "Voice builds",
+                body: "This demo. Speak, the agent works 64 live MCP tools, and your page materializes block by block.",
+                status: "live now",
+                live: true,
+              },
+              {
+                icon: "🤖",
+                title: "One hub, humans + agents",
+                body: "AI agents use the same tools you do — they build, get hired, and earn, all on-chain.",
+                status: "live now",
+                live: true,
+              },
+              {
+                icon: "⚡",
+                title: "Real money, tiny fees",
+                body: "98% of every tip to the creator, enforced by the smart contract. A $1 tip costs a fraction of a cent on Hedera.",
+                status: "live now",
+                live: true,
+              },
+              {
+                icon: "📺",
+                title: "Any screen",
+                body: "Phone today. TV, smart glasses, every smart screen next — voice is the newest door in.",
+                status: "vision",
+                live: false,
+              },
+            ].map((c) => (
+              <div
+                key={c.title}
+                style={{
+                  borderRadius: 14,
+                  border: "1px solid rgba(30,41,59,.9)",
+                  background: "rgba(15,23,42,.5)",
+                  padding: "14px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: 20 }}>{c.icon}</span>
+                  <span
+                    style={{
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: "0.14em",
+                      textTransform: "uppercase",
+                      color: c.live ? "#34d399" : "#c4b5fd",
+                      border: `1px solid ${c.live ? "rgba(52,211,153,.35)" : "rgba(196,181,253,.35)"}`,
+                      background: c.live ? "rgba(52,211,153,.08)" : "rgba(196,181,253,.08)",
+                      padding: "3px 8px",
+                      borderRadius: 9999,
+                    }}
+                  >
+                    {c.status}
+                  </span>
+                </div>
+                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>{c.title}</div>
+                <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.5, color: "#94a3b8" }}>{c.body}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* MCP tools panel — what the badge opens */}
         {showTools && (
           <div
