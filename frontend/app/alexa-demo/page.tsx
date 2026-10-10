@@ -188,8 +188,7 @@ function BlockView({ block, accent }: { block: Record<string, unknown>; accent: 
 
 const DEMO_SUGGESTIONS = [
   "Show me a live music blockpage",
-  "Make a page for my photography portfolio",
-  "Look up the blockpage user-10424063",
+  "Build me a blockpage for my cafe",
 ];
 
 // Split a build-log step so MCP tool names render as highlighted chips.

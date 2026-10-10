@@ -307,12 +307,30 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
       purpose: `A ${topic} blockpage draft`,
       // _topic is a route-local hint (stripped before render).
       _topic: topic,
-      blocks: [
-        { type: "hero", title: titleTopic, tagline: `Welcome to ${topic} — built by voice` },
-        { type: "text", content: `This is a live draft for "${topic}". Claim it on the dapp to make it yours — you keep 98% of every tip.` },
-      ],
+      blocks: draftBlocksFor(topic, titleTopic),
     } as PageDraft,
   };
+}
+
+/**
+ * Topic-aware draft blocks — the cafe (our working demo example) gets a
+ * full rich page; everything else gets a solid generic draft. All clearly
+ * labeled as drafts; the theme comes from the live template.
+ */
+function draftBlocksFor(topic: string, title: string): Array<Record<string, unknown>> {
+  if (/caf[eé]|coffee|espresso|latte|barista/.test(topic.toLowerCase())) {
+    return [
+      { type: "hero", title, tagline: "Fresh brews & warm vibes — spoken into existence" },
+      { type: "text", content: `☕ Welcome to ${title} — where every cup tells a story. This page was built by voice, live, in seconds.` },
+      { type: "text", content: "🍰 Today's favorites: signature lattes, fresh-baked pastries, and a cozy corner with your name on it." },
+      { type: "text", content: "💬 Love what we're brewing? Tips go straight to the crew — they keep 98% of every tip, enforced on-chain." },
+    ];
+  }
+  return [
+    { type: "hero", title, tagline: `Welcome to ${topic} — built by voice` },
+    { type: "text", content: `This is a live draft for "${topic}" — your story, your style, your community.` },
+    { type: "text", content: `Claim it on the dapp to make it yours — you keep 98% of every tip.` },
+  ];
 }
 
 /**
@@ -675,7 +693,7 @@ export async function POST(req: NextRequest) {
       }
     }
     const speak = `${speakWithCount}${tipBrag} Want to look up another page, or build your own next? Just say the word.`;
-    if (toolCount > 0) steps.push(`$ ${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
+    if (toolCount > 0) steps.push(`${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
 
     return NextResponse.json({
       speak,
