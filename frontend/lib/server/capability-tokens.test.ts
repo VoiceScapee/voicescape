@@ -18,7 +18,6 @@ import {
   remainingScopeBudget,
   stageDraft,
   readDraft,
-  TOKEN_TTL_MS,
 } from "./capability-tokens";
 
 function fakeStore(): KvStore {
@@ -48,8 +47,7 @@ describe("capability-tokens", () => {
     expect(record.ownerAccountId).toBe(OWNER);
     expect(record.revokedAt).toBeNull();
     expect(record.version).toBe(1);
-    expect(record.expiresAt).not.toBeNull();
-    expect(record.expiresAt! - record.createdAt).toBe(TOKEN_TTL_MS);
+    expect(record.expiresAt).toBeNull(); // tokens never expire by default — revocation is the off switch
 
     const v = await validateCapabilityToken(token, "page:update:propose", store);
     expect(v).not.toBeNull();
@@ -139,10 +137,10 @@ describe("capability-tokens v2 — execution scopes", () => {
     expect(record.version).toBe(2);
     expect(record.expiresAt).toBeNull();
     expect(record.scopes).toEqual(["message:send", "availability:write", "draft:stage"]);
-    // v1 default preserved
+    // v1 also never expires by default now (Brandon, 2026-10-09)
     const v1 = await issueCapabilityToken(OWNER, { label: "v1" }, store);
     expect(v1.record.version).toBe(1);
-    expect(v1.record.expiresAt).not.toBeNull();
+    expect(v1.record.expiresAt).toBeNull();
 
     const v = await validateCapabilityToken(token, "availability:write", store);
     expect(v).not.toBeNull();
@@ -226,5 +224,24 @@ describe("capability-tokens v2 — execution scopes", () => {
     expect(await validateCapabilityTokenLive(token, store)).not.toBeNull();
     expect(await validateCapabilityTokenLive("vs_cap_" + "0".repeat(48), store)).toBeNull();
     expect(await validateCapabilityTokenLive("garbage", store)).toBeNull();
+  });
+
+  it("an explicit expiresAt is still honored when deliberately passed", async () => {
+    const store = fakeStore();
+    const future = Date.now() + 3_600_000;
+    const ok = await issueCapabilityToken(
+      OWNER,
+      { label: "deliberate-expiry", expiresAt: future },
+      store,
+    );
+    expect(ok.record.expiresAt).toBe(future);
+    expect(await validateCapabilityToken(ok.token, "page:read", store)).not.toBeNull();
+
+    const past = await issueCapabilityToken(
+      OWNER,
+      { label: "already-dead", expiresAt: Date.now() - 1_000 },
+      store,
+    );
+    expect(await validateCapabilityToken(past.token, "page:read", store)).toBeNull();
   });
 });
