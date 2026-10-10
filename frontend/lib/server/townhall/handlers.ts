@@ -2186,6 +2186,7 @@ export async function searchListings(
   let views: SearchListingView[] = [];
   for (const m of latest.values()) {
     if (m.contents.status !== "active") continue;
+    if (isTestListing(m.contents.title, m.contents.description)) continue;
     if (category && m.contents.goodsType !== category) continue;
     if (minCents !== undefined && m.contents.priceUsdCents < minCents) continue;
     if (maxCents !== undefined && m.contents.priceUsdCents > maxCents) continue;
