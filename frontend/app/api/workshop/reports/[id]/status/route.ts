@@ -2,9 +2,35 @@ import { NextRequest, NextResponse } from "next/server";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { isFounderWallet } from "@/lib/server/client-errors";
-import { setWorkshopStatus, type WorkshopStatus } from "@/lib/server/agent-workshop";
+import {
+  getWorkshopReport,
+  setWorkshopStatus,
+  type WorkshopStatus,
+} from "@/lib/server/agent-workshop";
 
 export const runtime = "nodejs";
+
+/**
+ * GET /api/workshop/reports/[id]/status
+ * Public read of the current triage status, plus whether the caller may
+ * change it (founder wallet session). Lets the report page show the
+ * founder triage control only to the founder — everyone else just sees
+ * the status badge. Never 401s: anonymous callers get canTriage:false.
+ */
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const report = await getWorkshopReport(id);
+  if (!report) return NextResponse.json({ error: "Report not found." }, { status: 404 });
+  let canTriage = false;
+  const cred = sessionCredentialFrom(req);
+  if (cred) {
+    const verified = await defaultAuthPort().verifySession(cred);
+    if (verified.ok && isFounderWallet(verified.session.address, process.env)) {
+      canTriage = true;
+    }
+  }
+  return NextResponse.json({ status: report.status, canTriage });
+}
 
 /**
  * POST /api/workshop/reports/[id]/status {status}

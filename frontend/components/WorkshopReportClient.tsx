@@ -82,6 +82,10 @@ export default function WorkshopReportClient({ id }: { id: string }) {
   const [replyBusy, setReplyBusy] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
   const [upvoting, setUpvoting] = useState(false);
+  const [canTriage, setCanTriage] = useState(false);
+  const [triageStatus, setTriageStatus] = useState<Report["status"]>("new");
+  const [triageBusy, setTriageBusy] = useState(false);
+  const [triageError, setTriageError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,6 +97,20 @@ export default function WorkshopReportClient({ id }: { id: string }) {
       const data = (await res.json()) as { report: Report; replies: Reply[] };
       setReport(data.report);
       setReplies(Array.isArray(data.replies) ? data.replies : []);
+      setTriageStatus(data.report.status);
+      // Founder triage check: the status endpoint reports canTriage for a
+      // founder wallet session, false for everyone else (never 401s).
+      try {
+        const sres = await fetch(`/api/workshop/reports/${encodeURIComponent(id)}/status`, {
+          headers: { ...getAuthHeaders() },
+        });
+        if (sres.ok) {
+          const sdata = (await sres.json()) as { canTriage?: boolean };
+          setCanTriage(sdata.canTriage === true);
+        }
+      } catch {
+        /* triage control stays hidden */
+      }
     } catch (e) {
       reportError(e, "workshop-report", { action: "load" });
       setError(e instanceof Error ? e.message : "Couldn't load this report.");
@@ -104,6 +122,29 @@ export default function WorkshopReportClient({ id }: { id: string }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const saveTriageStatus = async () => {
+    if (!report || triageBusy) return;
+    setTriageBusy(true);
+    setTriageError(null);
+    try {
+      const res = await fetch(`/api/workshop/reports/${encodeURIComponent(id)}/status`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...getAuthHeaders() },
+        body: JSON.stringify({ status: triageStatus }),
+      });
+      const data = (await res.json()) as { report?: Report; error?: string };
+      if (!res.ok) throw new Error(data.error || "Couldn't update status.");
+      if (data.report) {
+        setReport(data.report);
+        setTriageStatus(data.report.status);
+      }
+    } catch (e) {
+      setTriageError(e instanceof Error ? e.message : "Couldn't update status.");
+    } finally {
+      setTriageBusy(false);
+    }
+  };
 
   const submitReply = async () => {
     if (!replyBody.trim() || !replyName.trim()) {
@@ -177,6 +218,69 @@ export default function WorkshopReportClient({ id }: { id: string }) {
           {STATUS_LABEL[report.status]} — {STATUS_COPY[report.status]}
         </span>
       </div>
+
+      {canTriage && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            flexWrap: "wrap",
+            margin: "0 0 12px",
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px dashed rgba(130,89,239,.5)",
+            background: "rgba(130,89,239,.06)",
+            fontSize: 13,
+          }}
+        >
+          <span style={{ fontWeight: 800 }}>🛠️ Founder triage:</span>
+          <select
+            value={triageStatus}
+            onChange={(e) => setTriageStatus(e.target.value as Report["status"])}
+            disabled={triageBusy}
+            aria-label="Report status"
+            style={{
+              background: "var(--vs-card, #141126)",
+              color: "var(--vs-text)",
+              border: "1px solid rgba(130,89,239,.4)",
+              borderRadius: 8,
+              padding: "6px 8px",
+              fontSize: 13,
+            }}
+          >
+            {(["new", "confirmed", "fixing", "shipped"] as const)
+              .filter(
+                (s) =>
+                  ["new", "confirmed", "fixing", "shipped"].indexOf(s) >=
+                  ["new", "confirmed", "fixing", "shipped"].indexOf(report.status),
+              )
+              .map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
+              ))}
+          </select>
+          <button
+            onClick={saveTriageStatus}
+            disabled={triageBusy || triageStatus === report.status}
+            style={{
+              background: "rgba(130,89,239,.25)",
+              color: "var(--vs-text)",
+              border: "1px solid rgba(130,89,239,.5)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: triageBusy || triageStatus === report.status ? "default" : "pointer",
+              opacity: triageBusy || triageStatus === report.status ? 0.5 : 1,
+            }}
+          >
+            {triageBusy ? "Saving…" : "Set status"}
+          </button>
+          {triageError && <span style={{ color: "#f87171" }}>{triageError}</span>}
+        </div>
+      )}
 
       <h1 style={{ fontSize: 26, margin: "0 0 8px" }}>{report.title}</h1>
       <p style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 16px" }}>
