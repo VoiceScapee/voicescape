@@ -534,11 +534,80 @@ async function mcpRpc(method: string, params: Record<string, unknown>, id: numbe
   throw new Error("mcp: no result in stream");
 }
 
+/**
+ * Simple voice edits on the page already on screen. Returns the updated
+ * draft + narration, or null when this isn't an edit (or there's nothing
+ * to edit). Deterministic — the "change the title to X" case just works.
+ */
+function applyEditIntent(
+  spoken: string,
+  draft: {
+    displayName?: string;
+    theme?: Record<string, string>;
+    blocks?: Array<Record<string, unknown>>;
+  } | null
+): { speak: string; steps: string[]; draft: Record<string, unknown> } | null {
+  try {
+    if (!draft || !Array.isArray(draft.blocks) || draft.blocks.length === 0) return null;
+    const clean = (s: string) =>
+      s.trim().replace(/[^\w\s&'’\-.,!?]/g, "").trim().slice(0, 80);
+    const blocks = JSON.parse(JSON.stringify(draft.blocks)) as Array<Record<string, unknown>>;
+    const base = { ...draft, blocks };
+    let m: RegExpMatchArray | null;
+
+    m = spoken.match(/change (?:the )?title to (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      const hero = blocks.find((b) => b.type === "hero");
+      if (hero) hero.title = v;
+      else blocks.unshift({ type: "hero", title: v, tagline: "" });
+      return {
+        speak: `Done — the title is now ${v}.`,
+        steps: ["Heard your edit", `Title → "${v}"`],
+        draft: { ...base, displayName: v },
+      };
+    }
+
+    m = spoken.match(/change (?:the )?tagline to (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      const hero = blocks.find((b) => b.type === "hero");
+      if (hero) hero.tagline = v;
+      else blocks.unshift({ type: "hero", title: draft.displayName ?? "Your page", tagline: v });
+      return {
+        speak: `Done — the tagline is now ${v}.`,
+        steps: ["Heard your edit", `Tagline → "${v}"`],
+        draft: base,
+      };
+    }
+
+    m = spoken.match(/add (?:a )?(?:text|note|paragraph)(?: saying)? (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      blocks.push({ type: "text", content: v });
+      return {
+        speak: "Added to your page.",
+        steps: ["Heard your edit", `Added: "${v.slice(0, 50)}${v.length > 50 ? "…" : ""}"`],
+        draft: base,
+      };
+    }
+
+    return null;
+  } catch {
+    return null; // never let an edit break the normal flow
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { transcript, lang } = (await req.json()) as {
+    const { transcript, lang, currentDraft } = (await req.json()) as {
       transcript?: string;
       lang?: string;
+      currentDraft?: {
+        displayName?: string;
+        theme?: Record<string, string>;
+        blocks?: Array<Record<string, unknown>>;
+      } | null;
     };
     const spoken = (transcript ?? "").trim();
     if (!spoken) {
@@ -546,6 +615,27 @@ export async function POST(req: NextRequest) {
     }
     const langCode = typeof lang === "string" && VOICE_LANG_NAMES[lang] ? lang : "en";
     const langName = VOICE_LANG_NAMES[langCode];
+
+    // 0. Edit intents: if the user is refining the page on screen ("change
+    //    the title to X"), apply it to their current draft directly — no
+    //    rebuild, no confusion. Deterministic, no AI needed.
+    const edit = applyEditIntent(spoken, currentDraft ?? null);
+    if (edit) {
+      return NextResponse.json({
+        speak: `${edit.speak} Anything else you'd like to change? Just say the word.`,
+        steps: edit.steps,
+        toolResults: [],
+        toolCount: 0,
+        pageDraft: edit.draft,
+        mcp: {
+          endpoint: MCP_ENDPOINT,
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          serverName: "voicescape",
+        },
+        disclaimer:
+          "Demo preview — nothing was claimed or published. Claiming a blockpage happens in the dapp with your own wallet.",
+      });
+    }
 
     // 1. Plan the build: AI planner first, deterministic fallback if the
     //    free planning endpoint is down (the MCP calls after this are

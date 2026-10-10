@@ -331,7 +331,19 @@ export default function AlexaDemoPage() {
         const res = await fetch("/api/alexa-demo/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ transcript: prompt, lang: code }),
+          body: JSON.stringify({
+            transcript: prompt,
+            lang: code,
+            // Send the page on screen so the agent can EDIT it
+            // ("change the title to X") instead of rebuilding.
+            currentDraft: agent
+              ? {
+                  displayName: agent.pageDraft.displayName,
+                  theme: agent.pageDraft.theme,
+                  blocks: agent.pageDraft.blocks,
+                }
+              : null,
+          }),
         });
         const data = (await res.json()) as AgentResponse;
         if (!res.ok) throw new Error(data.error ?? "agent failed");
@@ -343,7 +355,7 @@ export default function AlexaDemoPage() {
         setBusy(false);
       }
     },
-    [busy, autoSpeak, speak, langEntry]
+    [busy, autoSpeak, speak, langEntry, agent]
   );
 
   // Stagger the build-log steps so the page visibly "builds itself".
