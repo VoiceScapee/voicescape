@@ -246,6 +246,29 @@ export default function AlexaDemoPage() {
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [lang, setLang] = useState("en");
   const [showTools, setShowTools] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+
+  // Share the demo via the native sheet (mobile) or clipboard fallback.
+  // Shares the user's own current URL — never published anywhere by us.
+  const shareDemo = useCallback(async () => {
+    const url = window.location.href;
+    const text = "I spoke a blockpage into existence with Voicescape Voice Builder — voice in, living page out, on Hedera.";
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: "Voicescape Voice Builder", text, url });
+        return;
+      }
+      throw new Error("no native share");
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${text} ${url}`);
+        setShareNote("Demo link copied — paste it anywhere ✓");
+      } catch {
+        setShareNote("Copy the address bar URL to share");
+      }
+      window.setTimeout(() => setShareNote(null), 4000);
+    }
+  }, []);
 
   const langEntry = VOICE_LANGS.find((l) => l.code === lang) ?? VOICE_LANGS[0];
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
@@ -379,7 +402,7 @@ export default function AlexaDemoPage() {
   // cascade stalls after the first block — fixed 2026-10-10.)
   useEffect(() => {
     if (!previewReady || visibleBlocks >= blocks.length) return;
-    const t = setTimeout(() => setVisibleBlocks((v) => v + 1), 550);
+    const t = setTimeout(() => setVisibleBlocks((v) => v + 1), 850);
     return () => clearTimeout(t);
   }, [previewReady, visibleBlocks, blocks.length]);
 
@@ -462,25 +485,57 @@ export default function AlexaDemoPage() {
           50% { height: 14px; opacity: 1; }
         }
         /* Puzzle-piece snap: each block flies in from alternating sides,
-           overshoots slightly, and flashes as it clicks into place —
-           a blockchain being pieced together, for real. */
-        .block-lands { animation: block-snap .55s cubic-bezier(.2,.9,.3,1.12) both; }
+           overshoots, flashes, and clicks into place. Slow and legible —
+           you can SEE the chain being built. */
+        .block-lands { animation: block-snap .7s cubic-bezier(.2,.9,.25,1.15) both; will-change: transform, opacity, filter; }
         @keyframes block-snap {
           0% {
             opacity: 0;
-            transform: translate(var(--enter-x, -30px), 14px) rotate(-1.2deg) scale(.97);
-            filter: brightness(1.7);
+            transform: translate(var(--enter-x, -56px), 22px) rotate(-2deg) scale(.94);
+            filter: brightness(1.8);
           }
-          55% {
+          50% {
             opacity: 1;
-            transform: translate(0, 0) rotate(0deg) scale(1.012);
-            filter: brightness(1.12);
+            transform: translate(0, 0) rotate(.6deg) scale(1.02);
+            filter: brightness(1.15);
+          }
+          72% {
+            transform: translate(0, 0) rotate(-.2deg) scale(1);
+            filter: brightness(1);
           }
           100% {
             opacity: 1;
-            transform: translate(0, 0) rotate(0deg) scale(1);
+            transform: translate(0, 0) rotate(0) scale(1);
             filter: brightness(1);
           }
+        }
+        /* Incoming piece slot — pulses where the next piece will land */
+        .incoming-slot {
+          margin: 12px 16px 0;
+          height: 64px;
+          border-radius: 12px;
+          border: 1.5px dashed rgba(125,211,252,.4);
+          background: rgba(56,189,248,.04);
+          animation: slot-pulse 1.1s ease-in-out infinite;
+        }
+        @keyframes slot-pulse {
+          0%, 100% { opacity: .35; transform: scale(.995); }
+          50% { opacity: .9; transform: scale(1); }
+        }
+        /* Celebration finale */
+        .celebrate { animation: celebrate-pop .8s cubic-bezier(.2,.9,.3,1.4) both; }
+        @keyframes celebrate-pop {
+          0% { opacity: 0; transform: scale(.6); filter: brightness(2); }
+          60% { opacity: 1; transform: scale(1.12); filter: brightness(1.3); }
+          100% { opacity: 1; transform: scale(1); filter: brightness(1); }
+        }
+        /* Waking dots */
+        .waking-dots span { animation: waking-blink 1.2s ease-in-out infinite; display: inline-block; }
+        .waking-dots span:nth-child(2) { animation-delay: .2s; }
+        .waking-dots span:nth-child(3) { animation-delay: .4s; }
+        @keyframes waking-blink {
+          0%, 100% { opacity: .25; }
+          50% { opacity: 1; }
         }
       `}</style>
       <div style={{ position: "relative", margin: "0 auto", maxWidth: 768 }}>
@@ -746,6 +801,49 @@ export default function AlexaDemoPage() {
         )}
 
         {/* Agent terminal — original Voicescape vibe */}
+        {/* Waking state: the instant the mic hands off, before the first
+            byte is back — no dead gap. */}
+        {busy && !agent && (
+          <section style={{ margin: "28px auto 0", maxWidth: 576 }}>
+            <div
+              style={{
+                overflow: "hidden",
+                borderRadius: 14,
+                border: "1px solid rgba(56,189,248,.18)",
+                background: "#05070d",
+                boxShadow: "0 0 40px rgba(56,189,248,.06), 0 20px 40px -12px rgba(0,0,0,.7)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 14px",
+                  background: "linear-gradient(90deg, rgba(56,189,248,.08), rgba(167,139,250,.08))",
+                  borderBottom: "1px solid rgba(30,41,59,.8)",
+                }}
+              >
+                <span className="agent-eq" aria-hidden>
+                  <span /><span /><span />
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+                  <span style={{ fontSize: 10, letterSpacing: "0.22em", fontWeight: 800, color: "#7dd3fc" }}>
+                    VOICESCAPE AGENT
+                  </span>
+                  <span style={{ fontSize: 9, color: "#475569", letterSpacing: "0.04em" }}>
+                    generative UI · built with Hedera Agent Kit v4
+                  </span>
+                </span>
+              </div>
+              <div style={{ padding: "14px", fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 13, color: "#7dd3fc" }}>
+                <span style={{ color: "#38bdf8", fontWeight: 700 }}>$</span> waking the agent
+                <span className="waking-dots"><span>.</span><span>.</span><span>.</span></span>
+                <span style={{ display: "inline-block", width: 8, height: 15, marginLeft: 6, background: "#38bdf8", verticalAlign: "-2px", animation: "blink 1s steps(1) infinite" }} />
+              </div>
+            </div>
+          </section>
+        )}
         {agent && (
           <section style={{ margin: "28px auto 0", maxWidth: 576 }}>
             <div
@@ -831,12 +929,19 @@ export default function AlexaDemoPage() {
                   </div>
                 )}
                 {previewReady && blocksDone && (
-                  <div className="step-in">
-                    <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
-                    <span style={{ color: "#6ee7b7", fontWeight: 600 }}>
-                      blockpage materialized ✨
-                    </span>
-                  </div>
+                  <>
+                    <div className="step-in">
+                      <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
+                      <span style={{ color: "#6ee7b7", fontWeight: 600 }}>
+                        blockpage materialized ✨
+                      </span>
+                    </div>
+                    {/* Session recap — the terminal stays alive, not idle */}
+                    <div className="step-in" style={{ marginTop: 4, fontSize: 11, color: "#64748b" }}>
+                      <span style={{ marginRight: 8, color: "#475569", userSelect: "none" }}>$</span>
+                      ▣ {blocks.length} piece{blocks.length === 1 ? "" : "s"} · ⚡ {agent.toolResults.length} live tool{agent.toolResults.length === 1 ? "" : "s"} · 🎙 ready for your next command
+                    </div>
+                  </>
                 )}
               </div>
               {/* Status bar */}
@@ -865,6 +970,25 @@ export default function AlexaDemoPage() {
           <h2 style={{ marginBottom: 12, textAlign: "center", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.22em", color: "#64748b" }}>
             Your blockpage
           </h2>
+          {/* Assembly progress — you can SEE the puzzle coming together */}
+          {previewReady && !blocksDone && blocks.length > 0 && (
+            <div style={{ marginBottom: 10, textAlign: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#7dd3fc", letterSpacing: "0.08em" }}>
+                ▣ assembling piece {Math.min(visibleBlocks + 1, blocks.length)} of {blocks.length}
+              </div>
+              <div style={{ marginTop: 6, height: 4, borderRadius: 9999, background: "rgba(30,41,59,.9)", overflow: "hidden", maxWidth: 280, marginLeft: "auto", marginRight: "auto" }}>
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${(visibleBlocks / blocks.length) * 100}%`,
+                    background: "linear-gradient(90deg, #38bdf8, #a78bfa)",
+                    borderRadius: 9999,
+                    transition: "width .5s ease",
+                  }}
+                />
+              </div>
+            </div>
+          )}
           {!previewReady || !agent ? (
             /* Empty stage — waiting for voice to wake the dapp */
             <div
@@ -933,11 +1057,13 @@ export default function AlexaDemoPage() {
                 <div
                   key={i}
                   className="block-lands"
-                  style={{ "--enter-x": i % 2 === 0 ? "-34px" : "34px" } as CSSProperties}
+                  style={{ "--enter-x": i % 2 === 0 ? "-56px" : "56px" } as CSSProperties}
                 >
                   <BlockView block={b} accent={accent} />
                 </div>
               ))}
+              {/* The next piece's slot pulses before it lands */}
+              {!blocksDone && <div className="incoming-slot" aria-hidden />}
               {blocksDone && !hasTipJar && (
                 <div
                   className="step-in"
@@ -980,19 +1106,19 @@ export default function AlexaDemoPage() {
             </div>
             {blocksDone && (
               <p
-                className="step-in"
+                className="celebrate"
                 style={{
                   marginTop: 16,
                   textAlign: "center",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  background: "linear-gradient(90deg, #7dd3fc, #c4b5fd)",
+                  fontSize: 17,
+                  fontWeight: 800,
+                  background: "linear-gradient(90deg, #7dd3fc, #c4b5fd, #7dd3fc)",
                   WebkitBackgroundClip: "text",
                   backgroundClip: "text",
                   color: "transparent",
                 }}
               >
-                ✨ spoken into existence
+                ✨ spoken into existence ✨
               </p>
             )}
             {agent.disclaimer && (
@@ -1017,6 +1143,30 @@ export default function AlexaDemoPage() {
               >
                 Make it yours on the live dapp →
               </a>
+              <div style={{ marginTop: 10 }}>
+                <button
+                  onClick={shareDemo}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    borderRadius: 9999,
+                    border: "1px solid rgba(167,139,250,.4)",
+                    background: "rgba(167,139,250,.08)",
+                    padding: "8px 18px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: "#c4b5fd",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  ↗ Share this demo
+                </button>
+                {shareNote && (
+                  <p style={{ marginTop: 6, fontSize: 11, color: "#34d399" }}>{shareNote}</p>
+                )}
+              </div>
               <p style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
                 Claiming happens in your own wallet — the agent previews, you own it.
               </p>

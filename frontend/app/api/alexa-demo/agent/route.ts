@@ -293,17 +293,39 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
       },
     };
   }
-  steps.push("Drafting a preview");
+  // Custom page: pull the REAL template list and dress the draft in the
+  // best-matching live template — the theme is template data, not invented.
+  const topic = extractTopic(spoken);
+  steps.push(`Listing live templates for "${topic}"`);
+  const titleTopic = topic.charAt(0).toUpperCase() + topic.slice(1);
   return {
-    speak: "Here's a blockpage preview I put together for you.",
+    speak: `Here's a ${topic} blockpage draft, styled from a live Voicescape template.`,
     steps,
-    toolCalls: [],
+    toolCalls: [{ name: "list_templates", arguments: {} }],
     pageDraft: {
-      displayName: "Your page",
-      theme: { background: "#0f172a", foreground: "#f1f5f9", accent: "#38bdf8" },
-      blocks: [{ type: "text", content: spoken.slice(0, 140) }],
-    },
+      displayName: titleTopic,
+      purpose: `A ${topic} blockpage draft`,
+      // _topic is a route-local hint (stripped before render).
+      _topic: topic,
+      blocks: [
+        { type: "hero", title: titleTopic, tagline: `Welcome to ${topic} — built by voice` },
+        { type: "text", content: `This is a live draft for "${topic}". Claim it on the dapp to make it yours — you keep 98% of every tip.` },
+      ],
+    } as PageDraft,
   };
+}
+
+/**
+ * Pull the subject out of "make a blockpage for my bakery" etc.
+ * Keeps it short and safe for display.
+ */
+function extractTopic(spoken: string): string {
+  const m = spoken.match(
+    /(?:blockpage|page|site|website)\s+for\s+(?:my\s+|a\s+|an\s+|the\s+)?(.+?)(?:\s+please)?$/i
+  );
+  let topic = (m?.[1] ?? spoken).trim().replace(/[^\w\s&-]/g, "").trim();
+  if (topic.length > 40) topic = topic.slice(0, 40).trim();
+  return topic || "your page";
 }
 
 /**
@@ -392,6 +414,38 @@ function describeToolResult(tool: string, result: unknown): string | null {
     return n !== null ? `list_tip_assets → ${n} tip assets` : "list_tip_assets → ok";
   }
   return `${tool} → ok`;
+}
+
+/**
+ * Pick the best live template for a topic by keyword. Returns the template
+ * record (with its real theme) or null.
+ */
+function pickTemplate(
+  templates: Array<{ id?: string; name?: string; category?: string; theme?: Record<string, string> }>,
+  topic: string
+): { id?: string; name?: string; theme?: Record<string, string> } | null {
+  const t = topic.toLowerCase();
+  const groups: Array<[RegExp, string[]]> = [
+    [/bakery|bread|cake|pastry|donut/, ["coffee-shop", "restaurant"]],
+    [/coffee|cafe|tea|boba/, ["coffee-shop"]],
+    [/restaurant|food|pizza|burger|taco|sushi|diner/, ["restaurant"]],
+    [/gym|fitness|workout|yoga|crossfit/, ["gym"]],
+    [/salon|barber|hair|nails|spa/, ["salon"]],
+    [/shop|store|boutique|retail|clothing/, ["retail-shop"]],
+    [/real\s?estate|realtor|homes?|property/, ["real-estate"]],
+    [/car|auto|garage|mechanic/, ["auto-repair"]],
+    [/movie|cinema|theater|theatre|film/, ["movie-theater"]],
+    [/agent|ai|bot|assistant/, ["agent-personal", "agent-storefront"]],
+  ];
+  for (const [re, ids] of groups) {
+    if (re.test(t)) {
+      for (const id of ids) {
+        const found = templates.find((x) => x.id === id);
+        if (found) return found;
+      }
+    }
+  }
+  return templates.find((x) => x.id === "business-card") ?? templates[0] ?? null;
 }
 
 interface LivePage {
@@ -550,6 +604,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 3b. Custom draft (no live page): dress it in the best-matching REAL
+    // template — the theme comes from the live template list, not invented.
+    const draftTopic = (plan.pageDraft as Record<string, unknown> | undefined)?._topic;
+    if (!livePage && typeof draftTopic === "string" && draftTopic) {
+      const tplResult = toolResults.find((t) => t.tool === "list_templates");
+      const text = (tplResult?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+      if (text) {
+        try {
+          const j = JSON.parse(text) as { templates?: Array<{ id?: string; name?: string; theme?: Record<string, string> }> };
+          const tpl = pickTemplate(j.templates ?? [], draftTopic);
+          if (tpl?.theme) {
+            plan.pageDraft = {
+              ...plan.pageDraft,
+              theme: {
+                background: tpl.theme.background,
+                foreground: tpl.theme.foreground,
+                accent: tpl.theme.accent,
+                fontFamily: tpl.theme.fontFamily,
+              },
+            };
+            const n = (j.templates ?? []).length;
+            steps.push(`list_templates → ${n} live templates (dressed in "${tpl.name ?? tpl.id}")`);
+          }
+        } catch {
+          /* keep the planner's draft theme */
+        }
+      }
+      // The hint never reaches the client.
+      if (plan.pageDraft) delete (plan.pageDraft as Record<string, unknown>)._topic;
+    }
+
     const pageDraft: PageDraft = livePage
       ? {
           displayName: livePage.displayName ?? plan.pageDraft?.displayName,
@@ -562,9 +647,11 @@ export async function POST(req: NextRequest) {
     const toolCount = toolResults.length;
     const speakBase = plan.speak ?? "Draft ready.";
     // The agent calls out its real tool count — no vapor, it's the actual
-    // number of live MCP calls made above.
-    const speak =
+    // number of live MCP calls made above — then invites the next command
+    // so the voice loop stays alive.
+    const speakWithCount =
       toolCount > 0 ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"} to build this.` : speakBase;
+    const speak = `${speakWithCount} Want to look up another page, or build your own next? Just say the word.`;
     if (toolCount > 0) steps.push(`$ ${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
 
     return NextResponse.json({
