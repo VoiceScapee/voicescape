@@ -261,7 +261,10 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
     return {
       speak: FALLBACK_MUSIC_SPEAK[langCode] ?? FALLBACK_MUSIC_SPEAK.en,
       steps,
-      toolCalls: [{ name: "lookup_blockpage", arguments: { username: "ash-rook" } }],
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "ash-rook" } },
+        { name: "blockpage_earnings", arguments: { username: "ash-rook" } },
+      ],
       pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
     };
   }
@@ -353,6 +356,42 @@ function lookedUpUsername(results: Array<{ tool: string; result: unknown }>): st
     }
   }
   return null;
+}
+
+/**
+ * One honest line per real tool call, with its actual outcome — the demo's
+ * proof of work. Returns null when the result can't be summarized.
+ */
+function describeToolResult(tool: string, result: unknown): string | null {
+  const text = (result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+  if (!text) return `${tool} → called`;
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return `${tool} → ok`;
+  }
+  if (tool === "lookup_blockpage") {
+    const u = typeof j.username === "string" ? j.username : "page";
+    return j.found ? `lookup_blockpage("${u}") → found ✓` : `lookup_blockpage("${u}") → not found`;
+  }
+  if (tool === "blockpage_earnings") {
+    const gross = typeof j.total_gross_hbar === "string" ? j.total_gross_hbar : null;
+    const n = typeof j.tip_count === "number" ? j.tip_count : null;
+    if (gross !== null && n !== null) {
+      return `blockpage_earnings → ${gross} HBAR tipped${n === 1 ? "" : "s"} (creator keeps 98%)`;
+    }
+    return "blockpage_earnings → ok";
+  }
+  if (tool === "list_templates") {
+    const n = Array.isArray(j.templates) ? j.templates.length : Array.isArray(j) ? j.length : null;
+    return n !== null ? `list_templates → ${n} live templates` : "list_templates → ok";
+  }
+  if (tool === "list_tip_assets") {
+    const n = Array.isArray(j.assets) ? j.assets.length : null;
+    return n !== null ? `list_tip_assets → ${n} tip assets` : "list_tip_assets → ok";
+  }
+  return `${tool} → ok`;
 }
 
 interface LivePage {
@@ -479,6 +518,12 @@ export async function POST(req: NextRequest) {
     //    JSON so the preview is the ACTUAL page — real blocks, real theme,
     //    real playing livestream — not a mock.
     const steps: string[] = plan.steps ?? [];
+    // Narrate each real tool call with its actual outcome — this is the
+    // demo's proof of work, not decoration.
+    for (const tr of toolResults) {
+      const line = describeToolResult(tr.tool, tr.result);
+      if (line) steps.push(line);
+    }
     const liveUsername = lookedUpUsername(toolResults);
     let livePage: LivePage | null = null;
     if (liveUsername) {
@@ -514,10 +559,19 @@ export async function POST(req: NextRequest) {
         }
       : plan.pageDraft ?? {};
 
+    const toolCount = toolResults.length;
+    const speakBase = plan.speak ?? "Draft ready.";
+    // The agent calls out its real tool count — no vapor, it's the actual
+    // number of live MCP calls made above.
+    const speak =
+      toolCount > 0 ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"} to build this.` : speakBase;
+    if (toolCount > 0) steps.push(`$ ${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
+
     return NextResponse.json({
-      speak: plan.speak ?? "Draft ready.",
+      speak,
       steps,
       toolResults,
+      toolCount,
       pageDraft,
       mcp: {
         endpoint: MCP_ENDPOINT,

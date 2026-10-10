@@ -245,6 +245,7 @@ export default function AlexaDemoPage() {
   const [visibleBlocks, setVisibleBlocks] = useState(0);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [lang, setLang] = useState("en");
+  const [showTools, setShowTools] = useState(false);
 
   const langEntry = VOICE_LANGS.find((l) => l.code === lang) ?? VOICE_LANGS[0];
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
@@ -487,7 +488,8 @@ export default function AlexaDemoPage() {
           <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.2em", color: "#38bdf8", margin: 0 }}>
             Amazon hackathon · Alexa+ track
           </p>
-          <p
+          <button
+            onClick={() => setShowTools(true)}
             style={{
               display: "inline-flex",
               alignItems: "center",
@@ -500,11 +502,13 @@ export default function AlexaDemoPage() {
               fontWeight: 600,
               color: "#6ee7b7",
               whiteSpace: "nowrap",
+              cursor: "pointer",
+              fontFamily: "inherit",
             }}
           >
             <span className="live-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 9999, background: "#34d399" }} />
             LIVE MCP · 64 tools
-          </p>
+          </button>
         </div>
         <h1
           style={{
@@ -767,8 +771,13 @@ export default function AlexaDemoPage() {
                 <span className="agent-eq" aria-hidden>
                   <span /><span /><span />
                 </span>
-                <span style={{ fontSize: 10, letterSpacing: "0.22em", fontWeight: 800, color: "#7dd3fc" }}>
-                  VOICESCAPE AGENT
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+                  <span style={{ fontSize: 10, letterSpacing: "0.22em", fontWeight: 800, color: "#7dd3fc" }}>
+                    VOICESCAPE AGENT
+                  </span>
+                  <span style={{ fontSize: 9, color: "#475569", letterSpacing: "0.04em" }}>
+                    built with Hedera Agent Kit v4
+                  </span>
                 </span>
                 <span
                   style={{
@@ -1015,6 +1024,91 @@ export default function AlexaDemoPage() {
             </>
           )}
           </section>
+
+        {/* MCP tools panel — what the badge opens */}
+        {showTools && (
+          <div
+            onClick={() => setShowTools(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(2,6,23,.75)",
+              zIndex: 50,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="step-in"
+              style={{
+                width: "100%",
+                maxWidth: 420,
+                background: "#0a0f1e",
+                border: "1px solid rgba(56,189,248,.25)",
+                borderRadius: 16,
+                padding: 20,
+                boxShadow: "0 0 60px rgba(56,189,248,.15)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#f1f5f9" }}>
+                  MCP tools
+                </h3>
+                <button
+                  onClick={() => setShowTools(false)}
+                  aria-label="Close"
+                  style={{
+                    border: "1px solid rgba(148,163,184,.3)",
+                    background: "transparent",
+                    color: "#94a3b8",
+                    borderRadius: 8,
+                    padding: "4px 10px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+              <p style={{ marginTop: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
+                64 tools live on Voicescape&apos;s MCP server. This demo touches
+                only these read-only ones — the agent never writes, never holds keys.
+              </p>
+              <ul style={{ marginTop: 12, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  ["lookup_blockpage", "find any blockpage by username"],
+                  ["blockpage_earnings", "real tip totals — the 98/2 split, on-chain"],
+                  ["list_templates", "live page templates to start from"],
+                  ["list_tip_assets", "assets a creator accepts for tips"],
+                  ["check_profile_pin", "verify a profile pin"],
+                ].map(([name, desc]) => (
+                  <li
+                    key={name}
+                    style={{
+                      borderRadius: 10,
+                      border: "1px solid rgba(30,41,59,.9)",
+                      background: "rgba(15,23,42,.6)",
+                      padding: "10px 12px",
+                    }}
+                  >
+                    <div style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, fontWeight: 700, color: "#7dd3fc" }}>
+                      {name}
+                    </div>
+                    <div style={{ marginTop: 2, fontSize: 11, color: "#94a3b8" }}>{desc}</div>
+                  </li>
+                ))}
+              </ul>
+              {agent && agent.toolResults.length > 0 && (
+                <p style={{ marginTop: 12, fontSize: 12, color: "#34d399" }}>
+                  ⚡ This session called {agent.toolResults.length}: {agent.toolResults.map((t) => t.tool).join(", ")}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <footer style={{ margin: "36px auto 0", maxWidth: 576, textAlign: "center", fontSize: 11, lineHeight: 1.7, color: "#475569" }}>
