@@ -139,11 +139,11 @@ describe("nonce registry (single-use-ish)", () => {
     });
     const cred = { message, signature: await wallet.signMessage(message) };
     expect((await mkPort(t0).verifySession(cred)).ok).toBe(true);
-    // After expiry the stale entry is purged and the message is rejected as
-    // expired (not as a nonce collision).
+    // After the challenge window the stale entry is purged and the message
+    // is rejected for its age (not as a nonce collision).
     const r = await mkPort(t0 + 3600_001).verifySession(cred);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/expired/);
+    if (!r.ok) expect(r.error).toMatch(/too old|expired/);
   });
 });
 
@@ -421,7 +421,7 @@ describe("stateless session tokens", () => {
     if (!r.ok) expect(r.error).toMatch(/expired/);
   });
 
-  it("rejects a token whose lifetime exceeds 7 days", async () => {
+  it("rejects a token whose lifetime exceeds the backstop", async () => {
     const p = portWithSecret(SECRET);
     const token = issueSessionToken(
       { address: ADDR, chainId: CHAIN_ID, nonce: generateNonce(), expiresAtMs: NOW + SESSION_TTL_MS * 2 },
@@ -474,14 +474,22 @@ describe("Hedera transaction login (VSLOGIN memo)", () => {
     return `VSLOGIN ${p.account} ${p.commit} ${p.expiresAt} ${p.origin}`;
   }
   /** Stub the mirror-node transaction lookup. memo=null → 404 (not indexed yet). */
-  function mockMirror(memo: string | null, result = "SUCCESS"): () => void {
+  function mockMirror(memo: string | null, result = "SUCCESS", consensusTimestamp?: string): () => void {
     const realFetch = global.fetch;
     global.fetch = (async () => {
       if (memo === null) return { ok: false, status: 404 } as unknown as Response;
       return {
         ok: true,
         json: async () => ({
-          transactions: [{ result, memo_base64: Buffer.from(memo, "utf8").toString("base64") }],
+          transactions: [
+            {
+              result,
+              memo_base64: Buffer.from(memo, "utf8").toString("base64"),
+              // Mirror timestamps look like "1789348646.319665177".
+              consensus_timestamp:
+                consensusTimestamp ?? `${Math.floor(NOW / 1000)}.000000000`,
+            },
+          ],
         }),
       } as unknown as Response;
     }) as typeof fetch;
@@ -546,6 +554,20 @@ describe("Hedera transaction login (VSLOGIN memo)", () => {
       const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
       expect(r.ok).toBe(false);
       if (!r.ok) expect(r.error).toMatch(/expired/);
+    } finally {
+      restore();
+    }
+  });
+
+  it("rejects a login transaction older than the challenge window", async () => {
+    // A stale { loginTxId, secret } must not mint fresh sessions — otherwise
+    // sign-out (which only kills issued tokens) could be bypassed by replay.
+    const staleTs = `${Math.floor(NOW / 1000) - 3600}.000000000`; // 1h old
+    const restore = mockMirror(memoFor(), "SUCCESS", staleTs);
+    try {
+      const r = await port().verifySession({ loginTxId: TXID, secret: SECRET });
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.error).toMatch(/too old/);
     } finally {
       restore();
     }

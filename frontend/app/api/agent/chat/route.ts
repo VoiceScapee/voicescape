@@ -448,7 +448,7 @@ export async function POST(req: NextRequest) {
   if (!meteringBypass()) {
     const cred = sessionCredentialFrom(req);
     const verified =
-      typeof cred === "string" ? verifySessionToken(cred) : null;
+      typeof cred === "string" ? await verifySessionToken(cred) : null;
     if (verified && verified.ok) walletEvm = verified.session.address;
   }
   const buildWallet = buildComplete ? walletEvm : null;

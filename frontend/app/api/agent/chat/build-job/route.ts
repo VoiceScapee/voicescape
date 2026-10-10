@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   // Builds need a wallet — anonymous visitors are stopped at the paywall
   // in chat and can never reach this route with a valid token.
   const cred = sessionCredentialFrom(req);
-  const verified = typeof cred === "string" ? verifySessionToken(cred) : null;
+  const verified = typeof cred === "string" ? await verifySessionToken(cred) : null;
   if (!verified || !verified.ok) {
     return NextResponse.json({ error: "signed_in_required" }, { status: 401 });
   }

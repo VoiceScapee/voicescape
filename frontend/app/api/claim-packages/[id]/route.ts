@@ -2,7 +2,7 @@
  * GET /api/claim-packages/[id] — public summary of a claim package behind
  * a short approval link. The id is 128 bits of randomness; the link is
  * the capability, so this carries only what the human needs to review
- * before approving. Pairing (not the 7-day session) is the auth for the
+ * before approving. Pairing (not the session token) is the auth for the
  * actual approval — this read needs none.
  */
 export const runtime = "nodejs";

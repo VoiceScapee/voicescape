@@ -7,7 +7,7 @@
  * agent prepared and taps Approve (intent — no wallet needed). Then they
  * connect a wallet, and the signature fires immediately on connect: one
  * signature, and the page is live and registered. Pairing is the ONLY auth
- * here (no 7-day session). Connecting at the last moment (instead of
+ * here (no session). Connecting at the last moment (instead of
  * before approving) keeps the wallet session fresh for the signature.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

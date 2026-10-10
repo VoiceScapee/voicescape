@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { defaultAuthPort, issueSessionToken } from "@/lib/server/townhall/auth";
+import { defaultAuthPort, getSessionVersion, issueSessionToken } from "@/lib/server/townhall/auth";
 import { ipGate } from "@/lib/server/rate-limit";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/auth/login — exchange a fresh wallet signature for a
- * stateless session token.
+ * session token.
  *
  * Body: { credential: { message, signature } } (message-signature login)
  * or { credential: { loginTxId, secret } } (Hedera transaction login —
@@ -16,10 +16,12 @@ export const runtime = "nodejs";
  * Runs the full cryptographic verification once: EVM sessions via
  * ecrecover, Hedera sessions via the mirror-node account key, plus
  * EIP-4361 origin binding and nonce claim. On success returns a
- * 7-day HMAC-signed session token — subsequent requests carry the token
- * in the `x-vs-session` header and are verified without I/O or server
- * state. This is what surfaces connect-only wallets with a clear error
- * instead of a session that 401s on every write.
+ * long-lived HMAC-signed session token — valid until the user signs out
+ * (the wallet's revocation generation is stamped into the token), not by
+ * time. Subsequent requests carry the token in the `x-vs-session` header
+ * and are verified via HMAC + the generation check. This is what surfaces
+ * connect-only wallets with a clear error instead of a session that 401s
+ * on every write.
  */
 export async function POST(req: NextRequest) {
   // Signature verification does ecrecover / mirror-node work per request —
@@ -65,7 +67,13 @@ export async function POST(req: NextRequest) {
   }
   let token: string;
   try {
-    token = issueSessionToken(result.session);
+    // Stamp the token with the wallet's current revocation generation:
+    // a token minted after a sign-out must verify, and an older one must
+    // not. If the store is unreachable we cannot mint a verifiable token
+    // — fail loudly instead of issuing a dead one.
+    const version = await getSessionVersion(result.session.address);
+    if (version < 0) throw new Error("session store unavailable");
+    token = issueSessionToken(result.session, Date.now(), version);
   } catch (e) {
     const message = e instanceof Error ? e.message : "could not issue session";
     console.error(`[auth] token issuance failed: ${message}`);

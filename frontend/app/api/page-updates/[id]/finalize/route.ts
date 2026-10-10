@@ -4,7 +4,7 @@
  *
  * Body: { account_id: "0.0.x" } — the wallet the human just paired on the
  * approval page. The agent dropped the /p/<id> link in its OWN chat, so the
- * human never needs the dapp's Buddy chat or a 7-day session.
+ * human never needs the dapp's Buddy chat or a session.
  *
  * Auth: none beyond the unguessable proposal id — the output is unsigned
  * bytes; only the proposal owner's wallet can sign them, and the wallet's

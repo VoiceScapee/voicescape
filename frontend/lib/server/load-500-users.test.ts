@@ -72,12 +72,12 @@ describe("500-user load simulation", () => {
     // Tamper with the body.
     const dot = token.lastIndexOf(".");
     const tampered = `${token.slice(0, dot)}X.${token.slice(dot + 1)}`;
-    expect(verifySessionToken(tampered, now).ok).toBe(false);
+    expect((await verifySessionToken(tampered, now)).ok).toBe(false);
     // Tamper with the signature.
     const badSig = `${token.slice(0, dot)}.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`;
-    expect(verifySessionToken(badSig, now).ok).toBe(false);
+    expect((await verifySessionToken(badSig, now)).ok).toBe(false);
     // Expired token rejected.
-    expect(verifySessionToken(token, now + SESSION_TTL_MS + 60_000).ok).toBe(false);
+    expect((await verifySessionToken(token, now + SESSION_TTL_MS + 60_000)).ok).toBe(false);
   });
 
   it("500 users share daily quotas fairly — no user starves another", async () => {

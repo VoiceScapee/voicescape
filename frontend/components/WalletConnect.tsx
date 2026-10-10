@@ -186,7 +186,7 @@ export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boo
   }
 
   // Two visible steps, not one surprise: connecting the wallet (step 1) is
-  // followed by a wallet signature for the 7-day session (step 2). The old
+  // followed by a wallet signature for the session (step 2). The old
   // code fired step 2 instantly, so the login prompt ambushed the user right
   // after the pairing prompt — two app-switches disguised as one gesture.
   // Now the step-2 copy below is on screen for a beat BEFORE the wallet

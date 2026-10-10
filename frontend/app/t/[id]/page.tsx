@@ -7,7 +7,7 @@
  *
  * Flow: Review (grant builder) → Issue → Connect → Done. The pass is
  * issued bound to the paired account and shown ONCE. Pairing is the ONLY
- * auth (no 7-day session) — the tap is the consent.
+ * auth (no session) — the tap is the consent.
  *
  * v2 passes: execution scopes act immediately inside daily rate limits,
  * audit-logged; they do NOT expire by default; the human revokes
