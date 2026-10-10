@@ -209,10 +209,12 @@ export async function fetchTipProof(
   let data: {
     status?: string;
     contract_id?: string;
+    timestamp?: unknown;
     logs?: Array<{ topics?: unknown[]; data?: unknown; timestamp?: unknown }>;
     results?: Array<{
       status?: string;
       contract_id?: string;
+      timestamp?: unknown;
       logs?: Array<{ topics?: unknown[]; data?: unknown; timestamp?: unknown }>;
     }>;
   };
@@ -243,6 +245,14 @@ export async function fetchTipProof(
   const sender = topicToAddress(tipLog.topics?.[2]);
   const recipient = topicToAddress(tipLog.topics?.[3]);
   if (!decoded || !sender || !recipient) return fail("decode");
+  // EVM-hash inputs skip the /transactions lookup above, so the contract
+  // result's own timestamp is the fallback (2026-10-10: outside reviewer
+  // found verify_tip returning "" while recent_tips had the real value —
+  // the log-level timestamp the old fallback read is not provided by the
+  // mirror node).
+  if (!consensusTimestamp && typeof r.timestamp === "string") {
+    consensusTimestamp = r.timestamp;
+  }
   if (!consensusTimestamp && typeof tipLog.timestamp === "string") {
     consensusTimestamp = tipLog.timestamp;
   }

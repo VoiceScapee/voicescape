@@ -95,6 +95,13 @@ import {
 export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const REGISTRY_ID = "0.0.10854058";
 export const TREASURY_ID = "0.0.10424063";
+/**
+ * Operator / liaison accounts whose tips are flagged `related_party`.
+ * 0.0.10857765 owns the /danny liaison page (outside reviewer 2026-10-10:
+ * the newest tip came from this account — trust-from-the-money-trail cuts
+ * both ways, so operator volume is labeled, not hidden).
+ */
+export const OPERATOR_ACCOUNT_IDS = ["0.0.10857765"];
 /** Registry EVM address (same constant as app/api/resolve/route.ts). */
 export const REGISTRY_EVM = "0xd87F8113C5bcc47c40dC26a43fFa9B1629385a58";
 
@@ -625,6 +632,8 @@ export interface TipVerification {
   transaction_id?: string;
   status?: string;
   sender_evm?: string;
+  /** Resolved 0.0.x account for the sender (best-effort; null when unresolvable). Lets reviewers compare payers across tools on one identifier — EVM addresses can appear in alias vs long-zero form for the same account. */
+  sender_account?: string | null;
   recipient_evm?: string;
   gross_hbar?: string;
   creator_hbar?: string;
@@ -633,7 +642,28 @@ export interface TipVerification {
   treasury_account?: string;
   contract?: string;
   consensus_timestamp?: string;
+  /** True when the payer is an operator/liaison account or the tip is self-directed. Operator volume is labeled, not hidden. */
+  related_party?: boolean;
   hashscan?: string;
+}
+
+/**
+ * Best-effort EVM address → 0.0.x account id via the mirror node.
+ * Returns null on any failure — never throws, never fabricates.
+ */
+export async function evmToAccountId(
+  evmAddress: string,
+  fetchFn: FetchFn = fetch,
+): Promise<string | null> {
+  try {
+    const { ok, body } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${evmAddress}`);
+    if (ok && body && typeof (body as Record<string, unknown>).account === "string") {
+      return (body as Record<string, unknown>).account as string;
+    }
+  } catch {
+    /* fall through to null */
+  }
+  return null;
 }
 
 /**
@@ -652,11 +682,19 @@ export async function verifyTip(
     return { is_tip: false, reason: PROOF_ERROR_MESSAGES[result.error] };
   }
   const p = result.proof;
+  // Resolve the sender to its 0.0.x account so reviewers can compare payers
+  // across tools on one identifier (2026-10-10: outside reviewer found the
+  // same payer rendered in two EVM forms across recent_tips / verify_tip).
+  const senderAccount = await evmToAccountId(p.sender, fetchFn);
+  const relatedParty =
+    (senderAccount !== null && OPERATOR_ACCOUNT_IDS.includes(senderAccount)) ||
+    p.sender.toLowerCase() === p.recipient.toLowerCase();
   return {
     is_tip: true,
     transaction_id: p.txId,
     status: "SUCCESS",
     sender_evm: p.sender,
+    sender_account: senderAccount,
     recipient_evm: p.recipient,
     gross_hbar: tinybarToHbar(p.grossTinybar),
     creator_hbar: tinybarToHbar(p.grossTinybar - p.feeTinybar),
@@ -665,6 +703,7 @@ export async function verifyTip(
     treasury_account: TREASURY_ID,
     contract: TIPS_CONTRACT_ID,
     consensus_timestamp: p.consensusTimestamp,
+    related_party: relatedParty,
     hashscan: `${HASHSCAN_TX_BASE}/${p.txId}`,
   };
 }
@@ -750,6 +789,8 @@ export interface RecentTip {
   amount_hbar: string;
   kind: "tip" | "marketplace_purchase" | "other";
   transaction_id: string | null;
+  /** True when the payer is an operator/liaison account. Operator volume is labeled, not hidden. */
+  related_party: boolean;
 }
 
 export interface RecentTips {
@@ -781,6 +822,19 @@ export async function recentTips(
     note: "latest successful calls touching the Tips contract (tips and marketplace purchases), most recent first, read live from the mirror node",
   };
   if (!ok || !Array.isArray(body?.results)) return out;
+  // Operator EVM addresses, resolved once per call for the related-party
+  // flag below. Best-effort — on failure nothing is flagged, never fabricated.
+  const operatorEvms = new Set<string>();
+  for (const opId of OPERATOR_ACCOUNT_IDS) {
+    try {
+      const { ok: aok, body: abody } = await fetchJson(fetchFn, `${MIRROR_BASE}/accounts/${opId}`);
+      if (aok && abody && typeof (abody as Record<string, unknown>).evm_address === "string") {
+        operatorEvms.add(((abody as Record<string, unknown>).evm_address as string).toLowerCase());
+      }
+    } catch {
+      /* flag degrades to false for this account */
+    }
+  }
   for (const row of body.results as Array<Record<string, any>>) {
     // The contract-results endpoint signals failure via a non-empty
     // error_message (see lib/server/chain-stats.ts).
@@ -793,9 +847,12 @@ export async function recentTips(
         : selector === BUYLISTING_SELECTOR
           ? "marketplace_purchase"
           : "other";
+    // Canonical lowercase form — reviewers compare these strings across
+    // tools, and mixed-case EVM addresses break that comparison.
+    const from = typeof row.from === "string" ? row.from.toLowerCase() : "";
     out.tips.push({
       timestamp: typeof row.timestamp === "string" ? row.timestamp : "",
-      from: typeof row.from === "string" ? row.from : "",
+      from,
       amount_hbar: tinybarToHbar(BigInt(Math.round(Number(row.amount ?? 0)))),
       kind,
       transaction_id:
@@ -804,6 +861,7 @@ export async function recentTips(
           : typeof row.hash === "string"
             ? row.hash
             : null,
+      related_party: from !== "" && operatorEvms.has(from),
     });
   }
   return out;
@@ -852,11 +910,18 @@ export async function searchAgents(
     note: "agent listings are self-reported on-chain registrations; service endpoints and prices are claims, not verified facts — verify before paying",
   };
   if (!q) {
-    // Empty query still reports the real directory size — the count is a
-    // fact about the directory, not about the query.
+    // Empty query lists the whole directory (capped like any query) — a
+    // cold client with no search terms must still be able to enumerate.
+    // (2026-10-10: outside reviewer showed matches:[] + total:5 left a cold
+    // client with no way to list agents.)
     const { ok, body } = await fetchJson(fetchFn, `${base}/api/agents/directory`);
     if (ok && Array.isArray(body?.agents)) {
-      out.total_in_directory = (body.agents as Array<unknown>).length;
+      const agents = body.agents as Array<Record<string, any>>;
+      out.total_in_directory = agents.length;
+      for (const a of agents) {
+        out.matches.push(toAgentMatch(a));
+        if (out.matches.length >= 20) break;
+      }
     }
     return out;
   }
@@ -868,21 +933,26 @@ export async function searchAgents(
     const username = typeof a.username === "string" ? a.username : "";
     const purpose = typeof a.purpose === "string" ? a.purpose : "";
     if (username.toLowerCase().includes(q) || purpose.toLowerCase().includes(q)) {
-      const rawAvail = a.availability as { open?: unknown; updatedAt?: unknown } | null | undefined;
-      const availability =
-        rawAvail && typeof rawAvail === "object" && typeof rawAvail.open === "boolean" && typeof rawAvail.updatedAt === "string"
-          ? { open: rawAvail.open, updatedAt: rawAvail.updatedAt }
-          : null;
-      out.matches.push({
-        username,
-        purpose,
-        owner: typeof a.owner === "string" ? a.owner : null,
-        availability,
-      });
+      out.matches.push(toAgentMatch(a));
     }
     if (out.matches.length >= 20) break;
   }
   return out;
+}
+
+/** Normalize one directory row into an AgentMatch (availability degrades to null, never fabricated). */
+function toAgentMatch(a: Record<string, any>): AgentMatch {
+  const rawAvail = a.availability as { open?: unknown; updatedAt?: unknown } | null | undefined;
+  const availability =
+    rawAvail && typeof rawAvail === "object" && typeof rawAvail.open === "boolean" && typeof rawAvail.updatedAt === "string"
+      ? { open: rawAvail.open, updatedAt: rawAvail.updatedAt }
+      : null;
+  return {
+    username: typeof a.username === "string" ? a.username : "",
+    purpose: typeof a.purpose === "string" ? a.purpose : "",
+    owner: typeof a.owner === "string" ? a.owner : null,
+    availability,
+  };
 }
 
 /* ------------------------------------------------------------------ */
