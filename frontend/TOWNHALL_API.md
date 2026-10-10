@@ -201,7 +201,7 @@ mirror node before anything is submitted to HCS:
   the signature (EVM `personal_sign` recovery, or Hedera Ed25519 via the
   mirror node) and binds the session to the on-chain page owner. The
   `x-vs-session` header is a **bearer token**: replaying the identical
-  header works for the whole 7-day session, and the nonce registry is
+  header works for the whole session (no time expiry), and the nonce registry is
   per-instance in-memory state (wiped on restart, not shared across
   instances). High-value actions such as a marketplace purchase are
   wallet-signed on-chain, which is the real backstop.

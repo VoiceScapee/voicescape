@@ -28,6 +28,7 @@ vi.mock("@/lib/server/townhall/auth", () => ({
     },
   }),
   issueSessionToken: () => "tok.body.sig",
+  getSessionVersion: async () => 0,
 }));
 
 import { POST } from "./route";

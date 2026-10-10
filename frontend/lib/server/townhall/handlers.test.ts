@@ -2074,6 +2074,21 @@ describe("market search (public agent API)", () => {
     const r = await searchListings(deps, { limit: 500 }, "https://x.test");
     expect(r.status).toBe(200);
   });
+
+  it("filters test debris from search results (same as browse)", async () => {
+    await writeListing(deps, "alice", "test-debris-1", {
+      seller: OWNERS.alice,
+      title: "Test",
+      description: "Voicescape block test",
+      priceUsdCents: 10,
+      goodsType: "digital",
+    });
+    const r = await searchListings(deps, {}, "https://x.test");
+    expect(r.status).toBe(200);
+    const { listings, count } = r.json as { listings: { title: string }[]; count: number };
+    expect(count).toBe(2);
+    expect(listings.map((l) => l.title)).not.toContain("Test");
+  });
 });
 
 describe("profile links (cross-platform identity)", () => {

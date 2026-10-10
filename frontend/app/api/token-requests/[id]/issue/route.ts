@@ -13,7 +13,7 @@
  * The human's tap IS the consent: the token is bound to the paired
  * account, shown ONCE in the response, and the request is consumed
  * (one-time link). New grants are v2: execution scopes, no expiry by
- * default, instant revocation, full audit trail. No 7-day session needed.
+ * default, instant revocation, full audit trail. No session needed.
  *
  * Auth: none beyond the unguessable request id — the output is a token
  * bound to the paired account. It only authorizes actions on pages that

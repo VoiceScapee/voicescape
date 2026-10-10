@@ -13,7 +13,7 @@ import { verifySessionToken } from "./townhall/auth";
 export async function agentOwnerFromRequest(req: NextRequest): Promise<string | null> {
   const cred = sessionCredentialFrom(req);
   if (typeof cred !== "string") return null;
-  const verified = verifySessionToken(cred);
+  const verified = await verifySessionToken(cred);
   if (!verified || !verified.ok) return null;
   const addr = (verified.session.address ?? "").trim();
   const m = /^0x([0-9a-fA-F]{40})$/.exec(addr);

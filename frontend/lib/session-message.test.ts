@@ -111,12 +111,20 @@ describe("validateSignInMessage", () => {
     ).toMatch(/address/);
   });
 
-  it("rejects over-long lifetimes", () => {
+  it("rejects over-long lifetimes (beyond the backstop)", () => {
     const r = validateSignInMessage(
-      buildSignInMessage(fields({ expiresAt: new Date(NOW + 30 * 24 * 3600_1000).toISOString() })),
+      buildSignInMessage(fields({ expiresAt: new Date(NOW + SESSION_TTL_MS * 2).toISOString() })),
       { expectedChainId: 296, nowMs: NOW },
     );
     expect(r.ok).toBe(false);
+  });
+
+  it("accepts lifetimes up to the backstop (sessions end at sign-out, not by time)", () => {
+    const r = validateSignInMessage(
+      buildSignInMessage(fields({ expiresAt: new Date(NOW + SESSION_TTL_MS).toISOString() })),
+      { expectedChainId: 296, nowMs: NOW },
+    );
+    expect(r.ok).toBe(true);
   });
 });
 

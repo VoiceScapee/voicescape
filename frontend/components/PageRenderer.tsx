@@ -1039,8 +1039,11 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
 
       <main className="pv-blocks">
         {safeBlocks.map((block, i) => (
+          // data-pv-block anchors let the page voice mic smooth-scroll to a
+          // block ("play their music" -> the music block). A section wrapper
+          // is layout-neutral here: .pv-blocks is a flex column with gap.
+          <section key={i} data-pv-block={block.type} style={{ scrollMarginTop: 16 }}>
           <BlockView
-            key={i}
             block={block}
             onPayService={onPayService}
             isFounder={isFounder}
@@ -1058,6 +1061,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
                 : undefined
             }
           />
+          </section>
         ))}
 
         {tipInteractive && (

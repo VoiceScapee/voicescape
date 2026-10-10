@@ -33,9 +33,10 @@
  * - Revocation is instant: deleting the KV record makes the next attempt
  *   fail closed. There is no on-chain delegate to unwind because the
  *   server never holds any key — the agent always signs with its own.
- * - v1 tokens expire after 30 days. v2 tokens do NOT expire by default
- *   (Brandon, 2026-10-08) — the human's ongoing controls are instant
- *   revocation, the daily rate limits, and the audit trail.
+ * - Tokens do NOT expire by default (Brandon, 2026-10-09) — expiry locked
+ *   testers out, so the human's ongoing controls are instant revocation,
+ *   the daily rate limits, and the audit trail. An explicit expiresAt can
+ *   still be passed at issuance; tokens issued with one keep it.
  * - Execution scopes are rate-limited per token per day, and every
  *   execution is audit-logged (append-only, human-readable).
  */
@@ -66,7 +67,7 @@ export const DEFAULT_CAPABILITY_SCOPES: CapabilityScope[] = [
   "media:pin",
 ];
 
-/** v1 token lifetime: 30 days. v2 tokens default to no expiry. */
+/** Legacy v1 token lifetime (30 days). No longer the default — kept for explicit use. */
 export const TOKEN_TTL_MS = 30 * 24 * 3_600_000;
 /** KV TTL for non-expiring records (finite — KV requires it). */
 export const NO_EXPIRY_TTL_MS = 366 * 24 * 3_600_000;
@@ -160,9 +161,9 @@ async function writeOwnerIndex(owner: string, ids: string[], store: KvStore, ttl
  * verified the human (e.g. via agentOwnerFromRequest) before calling.
  * Returns the raw token ONCE — it is never retrievable afterwards.
  *
- * v2 (execution scopes): pass version: 2, expiresAt: null for no expiry,
- * and optional agentAccountId. v1 behavior (30-day expiry,
- * propose-only) is preserved when version is omitted.
+ * v2 (execution scopes): pass version: 2 and optional agentAccountId.
+ * Tokens never expire unless an explicit expiresAt is passed —
+ * revocation is the off switch (Brandon, 2026-10-09).
  */
 export async function issueCapabilityToken(
   ownerAccountId: string,
@@ -170,7 +171,7 @@ export async function issueCapabilityToken(
     label: string;
     scopes?: CapabilityScope[];
     version?: 1 | 2;
-    /** null = no expiry (v2 default). Omit = 30 days (v1 default). */
+    /** null = no expiry (the default for every version). Pass a timestamp only for a deliberate expiry. */
     expiresAt?: number | null;
     agentAccountId?: string;
   },
@@ -202,12 +203,7 @@ export async function issueCapabilityToken(
   const id = randomBytes(8).toString("hex");
   const raw = TOKEN_PREFIX + randomBytes(24).toString("hex");
   const now = Date.now();
-  const expiresAt =
-    opts.expiresAt === undefined
-      ? version === 2
-        ? null
-        : now + TOKEN_TTL_MS
-      : opts.expiresAt;
+  const expiresAt = opts.expiresAt === undefined ? null : opts.expiresAt;
   const record: CapabilityTokenRecord = {
     id,
     ownerAccountId: owner,

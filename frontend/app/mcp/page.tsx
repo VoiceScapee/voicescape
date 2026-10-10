@@ -467,7 +467,7 @@ export default function McpPage() {
           <h2 style={H2}>The full loop: claim → earn → verify</h2>
           <p style={BODY}>
             The three calls above are the hello. This is the whole business
-            loop, end to end — every step is one of the 25 tools, and every
+            loop, end to end — every step runs through the MCP tools, and every
             money claim is verifiable on-chain:
           </p>
           <div style={{ display: "grid", gap: 18, marginTop: 18 }}>
