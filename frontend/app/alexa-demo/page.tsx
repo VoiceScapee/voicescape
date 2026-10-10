@@ -337,17 +337,84 @@ export default function AlexaDemoPage() {
 
   return (
     <main
-      style={{ background: "#020617", color: "#e2e8f0", minHeight: "100vh" }}
-      className="px-4 py-10"
+      className="relative min-h-screen overflow-hidden px-4 py-10 text-slate-200"
+      style={{ background: "#020617" }}
     >
-      <div className="mx-auto max-w-3xl">
-        <p className="text-xs uppercase tracking-widest" style={{ color: accent }}>
-          Amazon hackathon demo · Alexa+ track · simulated experience
-        </p>
-        <h1 className="mt-2 text-3xl font-bold">Voicescape Voice Builder</h1>
-        <p className="mt-2 text-slate-400">
-          Speak a prompt. The agent plans over Voicescape&apos;s live MCP server
-          and your blockpage preview builds itself.
+      {/* Ambient animated background */}
+      <div aria-hidden className="alexa-ambient" />
+      <style>{`
+        .alexa-ambient {
+          position: absolute; inset: 0; pointer-events: none;
+          background:
+            radial-gradient(600px 400px at 20% 10%, rgba(56,189,248,.10), transparent 60%),
+            radial-gradient(700px 500px at 85% 80%, rgba(168,85,247,.10), transparent 60%),
+            radial-gradient(500px 400px at 60% 30%, rgba(52,211,153,.06), transparent 60%);
+          animation: ambient-drift 14s ease-in-out infinite alternate;
+        }
+        @keyframes ambient-drift {
+          from { transform: translate3d(-2%, -1%, 0) scale(1); }
+          to   { transform: translate3d(2%, 2%, 0) scale(1.06); }
+        }
+        .mic-ring { position: absolute; inset: 0; border-radius: 9999px; pointer-events: none; }
+        .mic-ring.r1 { animation: ring-expand 2s ease-out infinite; border: 2px solid rgba(56,189,248,.55); }
+        .mic-ring.r2 { animation: ring-expand 2s ease-out .65s infinite; border: 2px solid rgba(56,189,248,.35); }
+        .mic-ring.r3 { animation: ring-expand 2s ease-out 1.3s infinite; border: 2px solid rgba(56,189,248,.2); }
+        @keyframes ring-expand {
+          from { transform: scale(1); opacity: 1; }
+          to   { transform: scale(1.9); opacity: 0; }
+        }
+        .waveform { display: flex; align-items: flex-end; gap: 3px; height: 28px; }
+        .waveform span {
+          width: 4px; border-radius: 2px; background: #38bdf8;
+          animation: wave-bounce 0.9s ease-in-out infinite;
+        }
+        .waveform span:nth-child(1) { animation-delay: 0s; }
+        .waveform span:nth-child(2) { animation-delay: .12s; }
+        .waveform span:nth-child(3) { animation-delay: .24s; }
+        .waveform span:nth-child(4) { animation-delay: .36s; }
+        .waveform span:nth-child(5) { animation-delay: .48s; }
+        .waveform span:nth-child(6) { animation-delay: .36s; }
+        .waveform span:nth-child(7) { animation-delay: .24s; }
+        @keyframes wave-bounce {
+          0%, 100% { height: 6px; opacity: .5; }
+          50% { height: 26px; opacity: 1; }
+        }
+        .step-in { animation: step-in .45s cubic-bezier(.2,.9,.3,1.2) both; }
+        @keyframes step-in {
+          from { opacity: 0; transform: translateX(-14px); }
+          to   { opacity: 1; transform: translateX(0); }
+        }
+        .preview-in { animation: preview-in .8s cubic-bezier(.16,1,.3,1) both; }
+        @keyframes preview-in {
+          from { opacity: 0; transform: translateY(28px) scale(.97); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .live-dot { animation: live-pulse 1.6s ease-in-out infinite; }
+        @keyframes live-pulse {
+          0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(52,211,153,.5); }
+          50% { opacity: .65; box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+        }
+        .glow-btn { transition: transform .15s ease, box-shadow .25s ease; }
+        .glow-btn:not(:disabled):hover { transform: scale(1.05); }
+        .glow-btn:not(:disabled):active { transform: scale(.94); }
+      `}</style>
+      <div className="relative mx-auto max-w-3xl">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-sky-400">
+            Amazon hackathon · Alexa+ track
+          </p>
+          <p className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
+            <span className="live-dot inline-block h-2 w-2 rounded-full bg-emerald-400" />
+            LIVE MCP · 64 tools
+          </p>
+        </div>
+        <h1 className="mt-3 bg-gradient-to-r from-sky-300 via-cyan-200 to-violet-300 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent sm:text-5xl">
+          Speak your blockpage into existence.
+        </h1>
+        <p className="mt-3 max-w-xl text-slate-400">
+          Voicescape Voice Builder — tap the mic. The agent plans over
+          Voicescape&apos;s live MCP server, then your blockpage preview builds
+          itself.
         </p>
         <p className="mt-2 text-xs text-slate-500">
           Works today on any device with a browser and a mic — phone, PC,
@@ -373,28 +440,49 @@ export default function AlexaDemoPage() {
         </div>
 
         {/* Voice button */}
-        <div className="mt-8 flex flex-col items-center gap-4">
-          <button
-            onClick={listening ? () => recogRef.current?.stop() : startListening}
-            disabled={busy}
-            aria-label={listening ? "Stop listening" : "Start voice prompt"}
-            style={{
-              background: listening ? "#ef4444" : accent,
-              boxShadow: listening ? "0 0 0 12px rgba(239,68,68,.18)" : `0 0 0 12px ${accent}22`,
-            }}
-            className="h-28 w-28 rounded-full text-4xl text-slate-950 transition-transform active:scale-95 disabled:opacity-50"
-          >
-            {listening ? "⏹" : "🎙"}
-          </button>
-          <p className="text-sm text-slate-400">
-            {listening ? "Listening… tap to stop" : busy ? "Building…" : "Tap and speak"}
-          </p>
+        <div className="mt-10 flex flex-col items-center gap-4">
+          <div className="relative">
+            {listening && (
+              <>
+                <span className="mic-ring r1" />
+                <span className="mic-ring r2" />
+                <span className="mic-ring r3" />
+              </>
+            )}
+            <button
+              onClick={listening ? () => recogRef.current?.stop() : startListening}
+              disabled={busy}
+              aria-label={listening ? "Stop listening" : "Start voice prompt"}
+              className="glow-btn relative flex h-32 w-32 items-center justify-center rounded-full text-5xl text-slate-950 disabled:opacity-50"
+              style={{
+                background: listening
+                  ? "radial-gradient(circle at 35% 30%, #fca5a5, #ef4444)"
+                  : "radial-gradient(circle at 35% 30%, #a5f3fc, #38bdf8 70%)",
+                boxShadow: listening
+                  ? "0 0 60px rgba(239,68,68,.45)"
+                  : "0 0 60px rgba(56,189,248,.35)",
+              }}
+            >
+              {listening ? "⏹" : "🎙"}
+            </button>
+          </div>
+          {listening ? (
+            <div className="waveform" aria-hidden>
+              <span /><span /><span /><span /><span /><span /><span />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">
+              {busy ? "Agent is building…" : "Tap and speak"}
+            </p>
+          )}
           {!supported && (
             <p className="text-sm text-amber-300">
               Voice input isn&apos;t supported in this browser — type below.
             </p>
           )}
-          {transcript && <p className="text-center text-lg">“{transcript}”</p>}
+          {transcript && (
+            <p className="preview-in text-center text-xl text-slate-100">“{transcript}”</p>
+          )}
 
           {/* Type fallback */}
           <form
@@ -408,13 +496,12 @@ export default function AlexaDemoPage() {
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               placeholder="Or type your prompt…"
-              className="flex-1 rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-slate-100"
+              className="flex-1 rounded-xl border border-slate-700/80 bg-slate-900/80 px-4 py-2.5 text-slate-100 backdrop-blur placeholder:text-slate-500 focus:border-sky-500 focus:outline-none"
             />
             <button
               type="submit"
               disabled={busy}
-              className="rounded-lg px-4 py-2 font-semibold text-slate-950 disabled:opacity-50"
-              style={{ background: accent }}
+              className="glow-btn rounded-xl bg-sky-400 px-5 py-2.5 font-semibold text-slate-950 disabled:opacity-50"
             >
               Build
             </button>
@@ -426,44 +513,58 @@ export default function AlexaDemoPage() {
                 key={s}
                 onClick={() => runAgent(s)}
                 disabled={busy}
-                className="rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-50"
+                className="glow-btn rounded-full border border-slate-700/80 bg-slate-900/60 px-4 py-1.5 text-xs text-slate-300 backdrop-blur hover:border-sky-500/60 hover:text-sky-200 disabled:opacity-50"
               >
-                {s}
+                ✨ {s}
               </button>
             ))}
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-slate-400">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-500">
             <input
               type="checkbox"
               checked={autoSpeak}
               onChange={(e) => setAutoSpeak(e.target.checked)}
+              className="accent-sky-400"
             />
             Speak the agent&apos;s reply out loud
           </label>
         </div>
 
         {error && (
-          <p className="mx-auto mt-6 max-w-xl rounded-lg border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-300">
+          <p className="mx-auto mt-6 max-w-xl rounded-xl border border-red-900/60 bg-red-950/40 px-4 py-3 text-sm text-red-300 backdrop-blur">
             {error}
           </p>
         )}
 
-        {/* Agent build log */}
+        {/* Agent build log — the orchestration, made visible */}
         {agent && (
-          <section className="mx-auto mt-10 max-w-xl">
-            <h2 className="text-sm uppercase tracking-widest text-slate-500">Agent build log</h2>
-            <ul className="mt-3 space-y-2">
+          <section className="mx-auto mt-12 max-w-xl">
+            <h2 className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
+              Agent plan — live tool calls
+            </h2>
+            <ul className="mt-4 space-y-2 font-mono">
               {agent.steps.slice(0, visibleSteps).map((s, i) => (
-                <li key={i} className="rounded-lg bg-slate-900 px-4 py-2 text-sm">
-                  <span style={{ color: accent }}>✓</span> {s}
+                <li
+                  key={i}
+                  className="step-in rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-2.5 text-[13px] text-slate-300 backdrop-blur"
+                >
+                  <span className="mr-2 text-emerald-400">✓</span>
+                  {s}
                 </li>
               ))}
+              {busy && (
+                <li className="flex items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-2.5 text-[13px] text-slate-500">
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400" />
+                  planning…
+                </li>
+              )}
             </ul>
             {agent.mcp && visibleSteps >= agent.steps.length && (
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-[11px] text-slate-600">
                 Live MCP: {agent.mcp.serverName} · spec {agent.mcp.protocolVersion} ·
-                Streamable HTTP
+                Streamable HTTP · zero mocking
                 {agent.toolResults.length > 0 &&
                   ` · tools called: ${agent.toolResults.map((t) => t.tool).join(", ")}`}
               </p>
@@ -471,17 +572,23 @@ export default function AlexaDemoPage() {
           </section>
         )}
 
-        {/* Blockpage preview */}
+        {/* Blockpage preview — builds itself */}
         {agent && visibleSteps >= agent.steps.length && (
-          <section className="mx-auto mt-8 max-w-md">
-            <h2 className="mb-3 text-sm uppercase tracking-widest text-slate-500">
+          <section className="mx-auto mt-10 max-w-md">
+            <h2 className="mb-3 text-center text-xs uppercase tracking-[0.2em] text-slate-500">
               Your blockpage preview
             </h2>
             <div
-              className="overflow-hidden rounded-2xl border shadow-2xl"
-              style={{ background: bg, color: fg, borderColor: `${accent}44`, fontFamily }}
+              className="preview-in overflow-hidden rounded-3xl border shadow-2xl backdrop-blur"
+              style={{
+                background: bg,
+                color: fg,
+                borderColor: `${accent}55`,
+                fontFamily,
+                boxShadow: `0 0 80px ${accent}22, 0 25px 50px -12px rgba(0,0,0,.6)`,
+              }}
             >
-              <div className="h-2" style={{ background: accent }} />
+              <div className="h-1.5" style={{ background: `linear-gradient(90deg, ${accent}, #a78bfa)` }} />
               {!hasHero && (
                 <div className="p-6">
                   <div
@@ -544,8 +651,7 @@ export default function AlexaDemoPage() {
                 href="https://voicescape.vercel.app"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-block rounded-lg px-5 py-2.5 font-semibold text-slate-950"
-                style={{ background: accent }}
+                className="glow-btn inline-block rounded-xl bg-sky-400 px-5 py-2.5 font-semibold text-slate-950"
               >
                 Make it yours on the live dapp →
               </a>
@@ -555,6 +661,15 @@ export default function AlexaDemoPage() {
             </div>
           </section>
         )}
+
+        {/* Footer */}
+        <footer className="mx-auto mt-16 max-w-xl text-center text-[11px] leading-relaxed text-slate-600">
+          <p>
+            Simulated Alexa+ experience · demo preview only — no wallet, no
+            claiming, no payments. The agent calls Voicescape&apos;s live MCP
+            server; the server never holds keys.
+          </p>
+        </footer>
       </div>
     </main>
   );
