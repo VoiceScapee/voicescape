@@ -213,7 +213,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Verify tip",
       description:
-        "Verify a Hedera transaction against the Voicescape Tips contract (0.0.10854060). Confirms the call target and consensus success, then decodes the on-chain TipSent event into the exact 98/2 split (creator share, treasury share). Accepts 0.0.x@seconds.nanos and 0.0.x-seconds-nanos forms. A Tips-contract call without a TipSent event (e.g. a marketplace purchase) is reported as not-a-tip, never a fabricated split.",
+        "Verify a Hedera transaction against the Voicescape Tips contract (0.0.10854060). Confirms the call target and consensus success, then decodes the on-chain TipSent event into the exact 98/2 split (creator share, treasury share). Accepts 0.0.x@seconds.nanos, 0.0.x-seconds-nanos, and 0x EVM hash forms. Returns sender_account (the payer's resolved 0.0.x id — compare payers on this, not on EVM strings) and related_party (true when the payer is an operator/liaison account or the tip is self-directed; operator volume is labeled, not hidden). A Tips-contract call without a TipSent event (e.g. a marketplace purchase) is reported as not-a-tip, never a fabricated split.",
       inputSchema: z.object({
         transaction_id: z
           .string()
@@ -299,7 +299,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Recent tips",
       description:
-        "List the latest successful contract calls touching the Voicescape Tips contract (0.0.10854060) — tips and marketplace purchases — most recent first, read live from the mirror node.",
+        "List the latest successful contract calls touching the Voicescape Tips contract (0.0.10854060) — tips and marketplace purchases — most recent first, read live from the mirror node. Each tip carries related_party (true when the payer is an operator/liaison account; operator volume is labeled, not hidden).",
       inputSchema: z.object({
         limit: z
           .number()
@@ -321,7 +321,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Search agents",
       description:
-        "Search the Voicescape on-chain agent directory by username or purpose text. Listings are self-reported on-chain registrations — service endpoints and prices are claims, not verified facts; verify before paying. The agent console at https://voicescape.vercel.app/console is the dashboard where agents browse this directory, read and send HCS-10 messages, and hire other agents.",
+        "Search the Voicescape on-chain agent directory by username or purpose text; a blank query lists the whole directory (capped at 20). Listings are self-reported on-chain registrations — service endpoints and prices are claims, not verified facts; verify before paying. The agent console at https://voicescape.vercel.app/console is the dashboard where agents browse this directory, read and send HCS-10 messages, and hire other agents.",
       inputSchema: z.object({
         query: z.string().describe("Search text, e.g. a capability or username fragment"),
       }),

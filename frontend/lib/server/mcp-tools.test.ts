@@ -275,6 +275,7 @@ describe("verify_tip", () => {
           ],
         })],
       [/contracts\/results\//, () => ok(tipContractsResult())],
+      [/accounts\/0x1111/, () => ok({ account: "0.0.77777" })],
     ]);
   }
 
@@ -288,6 +289,8 @@ describe("verify_tip", () => {
     expect(r.split_exact_98_2).toBe(true);
     expect(r.sender_evm).toBe("0x1111111111111111111111111111111111111111");
     expect(r.recipient_evm).toBe("0x2222222222222222222222222222222222222222");
+    expect(r.sender_account).toBe("0.0.77777");
+    expect(r.related_party).toBe(false);
     expect(r.hashscan).toContain("hashscan.io");
   });
 
@@ -295,6 +298,62 @@ describe("verify_tip", () => {
     const r = await verifyTip(TIP_TX, tipFetch());
     expect(r.is_tip).toBe(true);
     expect(r.transaction_id).toBe(TIP_TX);
+  });
+
+  it("falls back to the contract result timestamp for EVM-hash inputs", async () => {
+    // EVM hashes skip the /transactions lookup, so the old code returned "".
+    const fetchFn = mockFetch([
+      [/contracts\/results\//, () =>
+        ok({ ...tipContractsResult(), timestamp: "1790769255.000001045" })],
+      [/accounts\/0x1111/, () => ok({ account: "0.0.77777" })],
+    ]);
+    const r = await verifyTip(
+      "0x8cffaaf100000000000000000000000000000000000000000000000000a851d8",
+      fetchFn,
+    );
+    expect(r.is_tip).toBe(true);
+    expect(r.consensus_timestamp).toBe("1790769255.000001045");
+  });
+
+  it("flags related_party when the sender is the operator account", async () => {
+    const fetchFn = mockFetch([
+      [/\/transactions\//, () =>
+        ok({
+          transactions: [
+            {
+              entity_id: "0.0.10854060",
+              result: "SUCCESS",
+              consensus_timestamp: "1790769255.000001045",
+            },
+          ],
+        })],
+      [/contracts\/results\//, () => ok(tipContractsResult())],
+      [/accounts\/0x1111/, () => ok({ account: "0.0.10857765" })],
+    ]);
+    const r = await verifyTip(TIP_TX, fetchFn);
+    expect(r.is_tip).toBe(true);
+    expect(r.sender_account).toBe("0.0.10857765");
+    expect(r.related_party).toBe(true);
+  });
+
+  it("degrades sender_account to null when the account lookup fails", async () => {
+    const fetchFn = mockFetch([
+      [/\/transactions\//, () =>
+        ok({
+          transactions: [
+            {
+              entity_id: "0.0.10854060",
+              result: "SUCCESS",
+              consensus_timestamp: "1790769255.000001045",
+            },
+          ],
+        })],
+      [/contracts\/results\//, () => ok(tipContractsResult())],
+    ]);
+    const r = await verifyTip(TIP_TX, fetchFn);
+    expect(r.is_tip).toBe(true);
+    expect(r.sender_account).toBeNull();
+    expect(r.related_party).toBe(false);
   });
 
   it("rejects malformed ids without network", async () => {
@@ -420,6 +479,40 @@ describe("recent_tips", () => {
       error: "limit must be an integer between 1 and 25",
     });
   });
+
+  it("lowercases payer addresses and flags operator tips as related_party", async () => {
+    const TIPPAGE_SEL = "0x12345678";
+    const fetchFn = mockFetch([
+      [/contracts\/0\.0\.10854060\/results/, () =>
+        ok({
+          results: [
+            {
+              timestamp: "1790000002.000000001",
+              from: "0xABCDEF0000000000000000000000000000001234",
+              amount: 100_000_000,
+              function_parameters: TIPPAGE_SEL + "00".repeat(32),
+              transaction_id: "0.0.1-2-5",
+            },
+            {
+              timestamp: "1790000001.000000001",
+              from: "0xaaaa",
+              amount: 100_000_000,
+              function_parameters: TIPPAGE_SEL + "00".repeat(32),
+              transaction_id: "0.0.1-2-6",
+            },
+          ],
+        })],
+      [/accounts\/0\.0\.10857765$/, () =>
+        ok({ account: "0.0.10857765", evm_address: "0xabcdef0000000000000000000000000000001234" })],
+    ]);
+    const r = await recentTips(10, fetchFn);
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.tips).toHaveLength(2);
+    expect(r.tips[0].from).toBe("0xabcdef0000000000000000000000000000001234");
+    expect(r.tips[0].related_party).toBe(true);
+    expect(r.tips[1].related_party).toBe(false);
+  });
 });
 
 /* ------------------------- search_agents ------------------------- */
@@ -443,9 +536,24 @@ describe("search_agents", () => {
     expect(r.note).toContain("self-reported");
   });
 
-  it("returns empty matches for a blank query without fetching", async () => {
-    const r = await searchAgents("   ", mockFetch([]), "https://test.local");
-    expect(r.matches).toEqual([]);
+  it("lists the directory for a blank query so cold clients can enumerate", async () => {
+    // 2026-10-10: outside reviewer showed matches:[] + total:5 left a cold
+    // client with no way to list agents. Blank query now returns the
+    // directory (capped like any query).
+    const fetchFn = mockFetch([
+      [/api\/agents\/directory$/, () =>
+        ok({
+          agents: [
+            { username: "forge", purpose: "builds blockpages", owner: "0xabc" },
+            { username: "helper", purpose: "answers questions", owner: "0xdef" },
+          ],
+          count: 2,
+        })],
+    ]);
+    const r = await searchAgents("   ", fetchFn, "https://test.local");
+    expect(r.matches).toHaveLength(2);
+    expect(r.matches[0].username).toBe("forge");
+    expect(r.total_in_directory).toBe(2);
   });
 
   it("passes the availability flag through when present, null when absent", async () => {
