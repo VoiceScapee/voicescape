@@ -149,7 +149,7 @@ describe("forever sessions: verify + logout revocation", () => {
 
   it("a token with a stale generation is rejected", async () => {
     const store = mockStore();
-    await store.set(sessionVersionKey(ADDR), "5");
+    await store.set(sessionVersionKey(ADDR), "5", 3600_000);
     const token = issue({}, NOW, 2);
     const r = await verifySessionToken(token, NOW, store);
     expect(r.ok).toBe(false);
