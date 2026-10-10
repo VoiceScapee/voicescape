@@ -10,6 +10,7 @@ import {
   getWorkshopReport,
   listWorkshopReports,
   listOpenBugs,
+  bulkShipNewReports,
   setWorkshopStatus,
   addWorkshopReply,
   listWorkshopReplies,
@@ -346,6 +347,48 @@ describe("setWorkshopStatus", () => {
     expect(back.ok).toBe(false);
     const missing = await setWorkshopStatus("wr_000000000000000000", "confirmed", deps);
     expect(missing.ok).toBe(false);
+  });
+});
+
+describe("bulkShipNewReports", () => {
+  let store: FakeStore;
+  beforeEach(() => {
+    store = new FakeStore();
+  });
+
+  async function postBug(title: string, deps: WorkshopDeps) {
+    const posted = await postWorkshopReport(
+      { category: "bug", title, body: "body", agent_username: "forge" },
+      deps,
+    );
+    return posted.report!.id;
+  }
+
+  it("ships every new report and leaves the rest alone", async () => {
+    const deps = agentDeps(store);
+    const id1 = await postBug("one", deps);
+    const id2 = await postBug("two", deps);
+    const id3 = await postBug("three", deps);
+    // one report already partway through the lifecycle
+    await setWorkshopStatus(id3, "confirmed", deps);
+
+    const res = await bulkShipNewReports(deps);
+    expect(res.failed).toEqual([]);
+    expect(res.shipped.sort()).toEqual([id1, id2].sort());
+
+    expect((await getWorkshopReport(id1, deps))?.status).toBe("shipped");
+    expect((await getWorkshopReport(id2, deps))?.status).toBe("shipped");
+    // not-new reports are untouched
+    expect((await getWorkshopReport(id3, deps))?.status).toBe("confirmed");
+    // shipped reports get the reporter credit + compaction
+    expect((await getWorkshopReport(id1, deps))?.credit).toMatch(/Fixed thanks to @forge/);
+  });
+
+  it("is a no-op when nothing is new", async () => {
+    const deps = agentDeps(store);
+    const res = await bulkShipNewReports(deps);
+    expect(res.shipped).toEqual([]);
+    expect(res.failed).toEqual([]);
   });
 });
 

@@ -440,6 +440,26 @@ export async function listOpenBugs(
   return bugs.filter((b) => b.status !== "shipped").slice(0, limit);
 }
 
+/**
+ * Founder one-tap triage: move EVERY report currently in "new" to
+ * "shipped". Each report goes through setWorkshopStatus (timeline event,
+ * reporter credit, shipped compaction, signature-slot release) — this is
+ * just the loop. Shipped is terminal, so this is irreversible by design.
+ */
+export async function bulkShipNewReports(
+  deps: WorkshopDeps = {},
+): Promise<{ shipped: string[]; failed: { id: string; error: string }[] }> {
+  const fresh = await listWorkshopReports({ status: "new", limit: 100 }, deps);
+  const shipped: string[] = [];
+  const failed: { id: string; error: string }[] = [];
+  for (const r of fresh) {
+    const res = await setWorkshopStatus(r.id, "shipped", deps);
+    if (res.ok) shipped.push(r.id);
+    else failed.push({ id: r.id, error: res.error ?? "unknown" });
+  }
+  return { shipped, failed };
+}
+
 /* ------------------------------------------------------------------ */
 /* Status (human triage only — no auto-transitions anywhere)            */
 /* ------------------------------------------------------------------ */
