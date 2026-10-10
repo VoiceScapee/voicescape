@@ -36,10 +36,10 @@ function mockStore() {
     async get(k: string) {
       return m.has(k) ? m.get(k)! : null;
     },
-    async set(k: string, v: string) {
+    async set(k: string, v: string, _ttlMs?: number) {
       m.set(k, v);
     },
-    async incr(k: string) {
+    async incr(k: string, _ttlMs?: number) {
       const n = (m.has(k) ? Number.parseInt(m.get(k)!, 10) : 0) + 1;
       m.set(k, String(n));
       return n;
