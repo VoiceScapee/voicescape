@@ -176,6 +176,23 @@ const DEMO_SUGGESTIONS = [
   "Look up the blockpage user-10424063",
 ];
 
+// Split a build-log step so MCP tool names render as highlighted chips.
+const TOOL_RE =
+  /\b(lookup_blockpage|list_templates|blockpage_earnings|list_tip_assets|check_profile_pin|propose_page_update)\b/g;
+function stepParts(s: string): Array<{ text: string; tool: boolean }> {
+  const out: Array<{ text: string; tool: boolean }> = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  TOOL_RE.lastIndex = 0;
+  while ((m = TOOL_RE.exec(s))) {
+    if (m.index > last) out.push({ text: s.slice(last, m.index), tool: false });
+    out.push({ text: m[1], tool: true });
+    last = m.index + m[0].length;
+  }
+  if (last < s.length) out.push({ text: s.slice(last), tool: false });
+  return out;
+}
+
 // Every language the Voicescape dapp ships (lib/i18n/dictionaries.ts).
 const VOICE_LANGS = [
   { code: "en", label: "English", bcp47: "en-US" },
@@ -209,6 +226,7 @@ export default function AlexaDemoPage() {
   const [error, setError] = useState<string | null>(null);
   const [agent, setAgent] = useState<AgentResponse | null>(null);
   const [visibleSteps, setVisibleSteps] = useState(0);
+  const [visibleBlocks, setVisibleBlocks] = useState(0);
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [lang, setLang] = useState("en");
 
@@ -247,6 +265,7 @@ export default function AlexaDemoPage() {
       setError(null);
       setAgent(null);
       setVisibleSteps(0);
+      setVisibleBlocks(0);
       const bcp47 = langEntry.bcp47;
       const code = langEntry.code;
       try {
@@ -334,6 +353,17 @@ export default function AlexaDemoPage() {
   const blocks = (agent?.pageDraft.blocks ?? []) as Array<Record<string, unknown>>;
   const hasTipJar = blocks.some((b) => b.type === "tipJar");
   const hasHero = blocks.some((b) => b.type === "hero");
+  const previewReady = !!agent && visibleSteps >= agent.steps.length;
+  const blocksDone = visibleBlocks >= blocks.length;
+
+  // The signature moment: once the plan is done, the page materializes
+  // block by block — hero, music, livestream, tip jar — like it's being
+  // spoken into existence.
+  useEffect(() => {
+    if (!previewReady || blocksDone) return;
+    const t = setTimeout(() => setVisibleBlocks((v) => v + 1), 550);
+    return () => clearTimeout(t);
+  }, [previewReady, blocksDone, blocks.length]);
 
   return (
     <main
@@ -397,18 +427,49 @@ export default function AlexaDemoPage() {
         .glow-btn { transition: transform .15s ease, box-shadow .25s ease; }
         .glow-btn:not(:disabled):hover { transform: scale(1.05); }
         .glow-btn:not(:disabled):active { transform: scale(.94); }
+        .cursor-blink { animation: cursor-blink 1s steps(1) infinite; }
+        @keyframes cursor-blink {
+          0%, 55% { opacity: 1; }
+          56%, 100% { opacity: 0; }
+        }
       `}</style>
       <div className="relative mx-auto max-w-3xl">
         <div className="flex items-center justify-between gap-3">
           <p className="text-[11px] uppercase tracking-[0.2em] text-sky-400">
             Amazon hackathon · Alexa+ track
           </p>
-          <p className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-medium text-emerald-300">
-            <span className="live-dot inline-block h-2 w-2 rounded-full bg-emerald-400" />
+          <p
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 9999,
+              border: "1px solid rgba(52,211,153,.3)",
+              background: "rgba(52,211,153,.1)",
+              padding: "4px 12px",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "#6ee7b7",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span className="live-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 9999, background: "#34d399" }} />
             LIVE MCP · 64 tools
           </p>
         </div>
-        <h1 className="mt-3 bg-gradient-to-r from-sky-300 via-cyan-200 to-violet-300 bg-clip-text text-4xl font-extrabold tracking-tight text-transparent sm:text-5xl">
+        <h1
+          style={{
+            marginTop: 12,
+            fontSize: "2.6rem",
+            lineHeight: 1.1,
+            fontWeight: 800,
+            letterSpacing: "-0.02em",
+            background: "linear-gradient(90deg, #7dd3fc, #a5f3fc, #c4b5fd)",
+            WebkitBackgroundClip: "text",
+            backgroundClip: "text",
+            color: "transparent",
+          }}
+        >
           Speak your blockpage into existence.
         </h1>
         <p className="mt-3 max-w-xl text-slate-400">
@@ -416,6 +477,34 @@ export default function AlexaDemoPage() {
           Voicescape&apos;s live MCP server, then your blockpage preview builds
           itself.
         </p>
+
+        {/* Identity strip — who this is for */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+          {[
+            ["Alexa+ track", "simulated experience"],
+            ["Hedera mainnet", "live"],
+            ["Hedera Agent Kit", "v4"],
+            ["MCP", "spec 2025-11-25"],
+          ].map(([name, sub]) => (
+            <span
+              key={name}
+              style={{
+                display: "inline-flex",
+                alignItems: "baseline",
+                gap: 6,
+                borderRadius: 9999,
+                border: "1px solid rgba(148,163,184,.25)",
+                background: "rgba(148,163,184,.07)",
+                padding: "5px 12px",
+                fontSize: 11,
+                color: "#cbd5e1",
+              }}
+            >
+              <strong style={{ fontWeight: 700, color: "#f1f5f9" }}>{name}</strong>
+              <span style={{ color: "#94a3b8" }}>{sub}</span>
+            </span>
+          ))}
+        </div>
         <p className="mt-2 text-xs text-slate-500">
           Works today on any device with a browser and a mic — phone, PC,
           tablet. Voice builds it, you claim it on the dapp.
@@ -453,9 +542,26 @@ export default function AlexaDemoPage() {
               onClick={listening ? () => recogRef.current?.stop() : startListening}
               disabled={busy}
               aria-label={listening ? "Stop listening" : "Start voice prompt"}
-              className="glow-btn relative flex h-32 w-32 items-center justify-center rounded-full text-5xl text-slate-950 disabled:opacity-50"
+              className="glow-btn"
               style={{
-                background: listening
+                // Inline sizing: bulletproof even if the Tailwind bundle is stale.
+                width: 128,
+                height: 128,
+                minWidth: 128,
+                minHeight: 128,
+                borderRadius: 9999,
+                fontSize: 52,
+                lineHeight: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+                border: "none",
+                cursor: busy ? "default" : "pointer",
+                color: "#020617",
+                opacity: busy ? 0.5 : 1,
+                backgroundColor: listening ? "#ef4444" : "#38bdf8",
+                backgroundImage: listening
                   ? "radial-gradient(circle at 35% 30%, #fca5a5, #ef4444)"
                   : "radial-gradient(circle at 35% 30%, #a5f3fc, #38bdf8 70%)",
                 boxShadow: listening
@@ -537,38 +643,87 @@ export default function AlexaDemoPage() {
           </p>
         )}
 
-        {/* Agent build log — the orchestration, made visible */}
+        {/* Agent terminal — the orchestration, made visible */}
         {agent && (
           <section className="mx-auto mt-12 max-w-xl">
-            <h2 className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-500">
-              <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-sky-400" />
-              Agent plan — live tool calls
-            </h2>
-            <ul className="mt-4 space-y-2 font-mono">
-              {agent.steps.slice(0, visibleSteps).map((s, i) => (
-                <li
-                  key={i}
-                  className="step-in rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-2.5 text-[13px] text-slate-300 backdrop-blur"
+            <div
+              className="overflow-hidden rounded-2xl border border-slate-800"
+              style={{ background: "#05070d", boxShadow: "0 0 50px rgba(56,189,248,.07), 0 25px 50px -12px rgba(0,0,0,.7)" }}
+            >
+              {/* Title bar */}
+              <div
+                className="flex items-center gap-2 border-b border-slate-800/80 px-4 py-2.5"
+                style={{ background: "#0a0d16" }}
+              >
+                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#f87171" }} />
+                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#fbbf24" }} />
+                <span style={{ width: 11, height: 11, borderRadius: 9999, background: "#34d399" }} />
+                <span className="ml-2 font-mono text-xs text-slate-500">
+                  agent — live MCP session
+                </span>
+                <span
+                  className="ml-auto flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-emerald-400"
                 >
-                  <span className="mr-2 text-emerald-400">✓</span>
-                  {s}
-                </li>
-              ))}
-              {busy && (
-                <li className="flex items-center gap-2 rounded-xl border border-slate-800/80 bg-slate-900/70 px-4 py-2.5 text-[13px] text-slate-500">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-600 border-t-sky-400" />
-                  planning…
-                </li>
+                  <span className="live-dot" style={{ display: "inline-block", width: 7, height: 7, borderRadius: 9999, background: "#34d399" }} />
+                  live
+                </span>
+              </div>
+              {/* Body */}
+              <div className="space-y-1.5 p-4 font-mono text-[13px] leading-relaxed">
+                {agent.steps.slice(0, visibleSteps).map((s, i) => (
+                  <div key={i} className="step-in">
+                    <span className="mr-2 select-none text-slate-600">$</span>
+                    <span className="text-slate-300">
+                      {stepParts(s).map((p, j) =>
+                        p.tool ? (
+                          <code
+                            key={j}
+                            style={{
+                              background: "rgba(52,211,153,.12)",
+                              border: "1px solid rgba(52,211,153,.25)",
+                              borderRadius: 6,
+                              padding: "1px 6px",
+                              fontSize: 11,
+                              color: "#6ee7b7",
+                            }}
+                          >
+                            {p.text}
+                          </code>
+                        ) : (
+                          <span key={j}>{p.text}</span>
+                        )
+                      )}
+                    </span>
+                    <span className="ml-2 text-emerald-400">✓</span>
+                  </div>
+                ))}
+                {(busy || visibleSteps < agent.steps.length) && (
+                  <div>
+                    <span className="mr-2 select-none text-slate-600">$</span>
+                    <span className="cursor-blink text-emerald-400">▊</span>
+                  </div>
+                )}
+                {previewReady && blocksDone && (
+                  <div className="step-in">
+                    <span className="mr-2 select-none text-slate-600">$</span>
+                    <span style={{ color: "#6ee7b7", fontWeight: 600 }}>
+                      blockpage materialized ✨
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* Status bar */}
+              {agent.mcp && visibleSteps >= agent.steps.length && (
+                <div
+                  className="border-t border-slate-800/80 px-4 py-2 font-mono text-[10px] text-slate-600"
+                  style={{ background: "#0a0d16" }}
+                >
+                  {agent.mcp.serverName} · MCP {agent.mcp.protocolVersion} · Streamable HTTP · zero mocking
+                  {agent.toolResults.length > 0 &&
+                    ` · tools: ${agent.toolResults.map((t) => t.tool).join(", ")}`}
+                </div>
               )}
-            </ul>
-            {agent.mcp && visibleSteps >= agent.steps.length && (
-              <p className="mt-3 text-[11px] text-slate-600">
-                Live MCP: {agent.mcp.serverName} · spec {agent.mcp.protocolVersion} ·
-                Streamable HTTP · zero mocking
-                {agent.toolResults.length > 0 &&
-                  ` · tools called: ${agent.toolResults.map((t) => t.tool).join(", ")}`}
-              </p>
-            )}
+            </div>
           </section>
         )}
 
@@ -608,19 +763,21 @@ export default function AlexaDemoPage() {
               {hasHero && agent.pageDraft.purpose && (
                 <p className="px-6 pt-4 text-center text-xs opacity-60">{agent.pageDraft.purpose}</p>
               )}
-              {blocks.map((b, i) => (
-                <BlockView key={i} block={b} accent={accent} />
+              {blocks.slice(0, visibleBlocks).map((b, i) => (
+                <div key={i} className="step-in">
+                  <BlockView block={b} accent={accent} />
+                </div>
               ))}
-              {!hasTipJar && (
+              {blocksDone && !hasTipJar && (
                 <div
-                  className="mx-4 mt-4 rounded-lg px-4 py-3 text-center text-sm font-semibold"
+                  className="step-in mx-4 mt-4 rounded-lg px-4 py-3 text-center text-sm font-semibold"
                   style={{ border: `1px dashed ${accent}88`, color: accent }}
                 >
                   Tips open on the live dapp — creators keep 98% of every tip
                 </div>
               )}
-              {(agent.pageDraft.socials ?? []).length > 0 && (
-                <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {blocksDone && (agent.pageDraft.socials ?? []).length > 0 && (
+                <div className="step-in mt-4 flex flex-wrap justify-center gap-2">
                   {agent.pageDraft.socials!.map((s, i) => (
                     <span
                       key={i}
@@ -632,8 +789,8 @@ export default function AlexaDemoPage() {
                   ))}
                 </div>
               )}
-              {(agent.pageDraft.links ?? []).length > 0 && (
-                <ul className="mt-4 space-y-1 px-6 pb-2 text-sm">
+              {blocksDone && (agent.pageDraft.links ?? []).length > 0 && (
+                <ul className="step-in mt-4 space-y-1 px-6 pb-2 text-sm">
                   {agent.pageDraft.links!.map((l, i) => (
                     <li key={i} className="truncate opacity-80">
                       🔗 {l.label}
@@ -643,6 +800,19 @@ export default function AlexaDemoPage() {
               )}
               <div className="h-4" />
             </div>
+            {blocksDone && (
+              <p
+                className="step-in mt-4 text-center text-sm font-semibold"
+                style={{
+                  background: "linear-gradient(90deg, #7dd3fc, #c4b5fd)",
+                  WebkitBackgroundClip: "text",
+                  backgroundClip: "text",
+                  color: "transparent",
+                }}
+              >
+                ✨ spoken into existence
+              </p>
+            )}
             {agent.disclaimer && (
               <p className="mt-3 text-center text-xs text-slate-500">{agent.disclaimer}</p>
             )}
@@ -664,7 +834,48 @@ export default function AlexaDemoPage() {
 
         {/* Footer */}
         <footer className="mx-auto mt-16 max-w-xl text-center text-[11px] leading-relaxed text-slate-600">
-          <p>
+          <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>
+            One hub for humans and AI agents — voice is the newest door in.
+          </p>
+          <p style={{ marginBottom: 16 }}>
+            <a
+              href="https://github.com/VoiceScapee/voicescape/tree/danny/alexa-hackathon-voice-builder"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: "#7dd3fc", textDecoration: "underline", textUnderlineOffset: 3 }}
+            >
+              Open source — read every line of this demo
+            </a>
+          </p>
+          <a
+            href="https://hedera.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Built on Hedera"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              textDecoration: "none",
+              color: "#94a3b8",
+              marginBottom: 8,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Built on</span>
+            <img
+              src="/hedera-logo.svg"
+              alt="Hedera"
+              width={86}
+              height={24}
+              draggable={false}
+              style={{ display: "block", height: 18, width: "auto", userSelect: "none" }}
+            />
+          </a>
+          <p style={{ marginTop: 8, opacity: 0.8 }}>
+            Voicescape is an independent project — not affiliated with,
+            sponsored, or endorsed by Hedera Hashgraph, LLC.
+          </p>
+          <p style={{ marginTop: 12 }}>
             Simulated Alexa+ experience · demo preview only — no wallet, no
             claiming, no payments. The agent calls Voicescape&apos;s live MCP
             server; the server never holds keys.
