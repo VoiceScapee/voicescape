@@ -340,6 +340,11 @@ async function mirrorContractCall(
 export interface BlockpageLookup {
   found: boolean;
   username: string;
+  /**
+   * Live page URL (https://voicescape.vercel.app/<username>) — an agent
+   * calling this tool can share it so the user opens the real blockpage.
+   */
+  page_url?: string;
   owner_evm?: string;
   owner_account?: string | null;
   ipfs_hash?: string;
@@ -426,6 +431,7 @@ export async function lookupBlockpage(
   return {
     found: true,
     username: name,
+    page_url: `https://voicescape.vercel.app/${name}`,
     owner_evm: ownerEvm,
     owner_account: ownerAccount,
     ipfs_hash: ipfsHash,

@@ -4,6 +4,7 @@ import { Suspense, use, useEffect, useMemo, useRef, useState, type ReactNode } f
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { useSearchParams } from "next/navigation";
 import PageRenderer, { type ServiceItem } from "@/components/PageRenderer";
+import PageVoiceMic from "@/components/PageVoiceMic";
 import { useSession } from "@/lib/session";
 import "@/components/renderer.css";
 import { isValidPage, type RegistryMeta, type VoicescapePage } from "@/lib/schema";
@@ -1469,6 +1470,9 @@ function PublicPageInner({ username }: { username: string }) {
         <p className="pv-loading-text">
           Resolving <span className="vs-mono">{username}</span>… on-chain
         </p>
+        {/* Mic renders even while resolving — answers come from the API,
+            which re-resolves the page server-side. */}
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
@@ -1483,6 +1487,7 @@ function PublicPageInner({ username }: { username: string }) {
         <a className="pv-state-link" href="/builder">
           Create it in the builder
         </a>
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
@@ -1500,6 +1505,7 @@ function PublicPageInner({ username }: { username: string }) {
             Go to the builder
           </a>
         </div>
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
@@ -1524,6 +1530,10 @@ function PublicPageInner({ username }: { username: string }) {
         // is gated on this — never on the IPFS page JSON.
         canonicalUsername={username}
       />
+      {/* Per-blockpage voice mic: talk to this page, answers come from its
+          live blocks. Fixed bottom-left so it never collides with AgentChat
+          (bottom-right). */}
+      <PageVoiceMic username={username} page={state.page} />
       {tipOpen && (
         <TipBox
           username={username}
