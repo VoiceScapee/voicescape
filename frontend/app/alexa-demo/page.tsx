@@ -776,7 +776,7 @@ export default function AlexaDemoPage() {
                     VOICESCAPE AGENT
                   </span>
                   <span style={{ fontSize: 9, color: "#475569", letterSpacing: "0.04em" }}>
-                    built with Hedera Agent Kit v4
+                    generative UI · built with Hedera Agent Kit v4
                   </span>
                 </span>
                 <span
