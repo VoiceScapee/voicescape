@@ -234,13 +234,17 @@ const VOICE_LANGS = [
 
 /**
  * The founder intro — Alexa's opening "1shot": who built this, the 1-hub
- * vision, and the invitation to try it. ~30 seconds spoken.
+ * vision, and the invitation to try it. Brandon's words, ~45 seconds spoken.
  */
 const FOUNDER_INTRO =
   "Welcome to the Voicescape Voice Builder. " +
   "This was built by Brandon Prout — one person, no laptop — " +
   "who took Hedera's vision literally: anyone can carve out their own piece of cyberspace. " +
-  "Voicescape is one hub for humans and AI agents, and voice is the newest door in. " +
+  "With just their voice, Voicescape is one hub for humans and AI agents, " +
+  "for your social media profiles, your business or projects, " +
+  "for content creators or just community members, " +
+  "this is your one community hub, a blockpage that you actually own, " +
+  "and tips you receive instantly, no delays or middleman. " +
   "Tap the mic, and speak your blockpage into existence. Go ahead — try it yourself.";
 
 export default function AlexaDemoPage() {
@@ -618,7 +622,7 @@ export default function AlexaDemoPage() {
             fontFamily: "inherit",
           }}
         >
-          <span aria-hidden>▶</span> 30-second intro — meet the founder
+          <span aria-hidden>▶</span> Founder intro — the 1-hub vision
         </button>
 
         {/* Identity strip — real open-source rails, each badge links out */}
@@ -1237,7 +1241,7 @@ export default function AlexaDemoPage() {
               {
                 icon: "🤖",
                 title: "One hub, humans + agents",
-                body: "AI agents use the same tools you do — they build, get hired, and earn, all on-chain.",
+                body: "For your social profiles, business, or projects — creators and community members alike. One community hub: a blockpage you actually own, tips instantly with no middleman, humans and AI agents side by side. Voice is the newest door in.",
                 status: "live now",
                 live: true,
               },
@@ -1287,6 +1291,49 @@ export default function AlexaDemoPage() {
                 <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.5, color: "#94a3b8" }}>{c.body}</div>
               </div>
             ))}
+            {/* The story, as a card — thumbnail + link, no autoplay */}
+            <a
+              href="https://www.youtube.com/watch?v=HjAVZ8fXiIE"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: "block",
+                borderRadius: 14,
+                border: "1px solid rgba(30,41,59,.9)",
+                background: "rgba(15,23,42,.5)",
+                padding: "14px",
+                textDecoration: "none",
+              }}
+            >
+              <div style={{ position: "relative", borderRadius: 10, overflow: "hidden" }}>
+                <img
+                  src="https://i.ytimg.com/vi/HjAVZ8fXiIE/hqdefault.jpg"
+                  alt="What is Voicescape? video thumbnail"
+                  style={{ display: "block", width: "100%", aspectRatio: "16 / 9", objectFit: "cover" }}
+                />
+                <span
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 32,
+                    color: "#fff",
+                    textShadow: "0 2px 12px rgba(0,0,0,.8)",
+                  }}
+                  aria-hidden
+                >
+                  ▶
+                </span>
+              </div>
+              <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, color: "#f1f5f9" }}>
+                What is Voicescape? <span style={{ color: "#7dd3fc" }}>↗</span>
+              </div>
+              <div style={{ marginTop: 4, fontSize: 12, lineHeight: 1.5, color: "#94a3b8" }}>
+                A former cable tech built a verified Hedera mainnet app — the story behind this demo.
+              </div>
+            </a>
           </div>
         </section>
 
