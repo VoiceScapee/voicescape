@@ -129,7 +129,10 @@ export default function PageVoiceMic({
   page,
 }: {
   username: string;
-  page: VoicescapePage;
+  /** Null while the page is still resolving (or failed to) — the button
+      still renders; chips wait for the page, and the API re-resolves
+      server-side from the username. */
+  page: VoicescapePage | null;
 }) {
   const router = useRouter();
   const { lang: dappLang } = useLanguage();
@@ -272,7 +275,7 @@ export default function PageVoiceMic({
     }
   }, [ask, lang]);
 
-  const chips = suggestionChips(page, lang);
+  const chips = page ? suggestionChips(page, lang) : [];
 
   return (
     <div

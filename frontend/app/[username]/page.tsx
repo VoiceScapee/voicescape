@@ -1470,6 +1470,9 @@ function PublicPageInner({ username }: { username: string }) {
         <p className="pv-loading-text">
           Resolving <span className="vs-mono">{username}</span>… on-chain
         </p>
+        {/* Mic renders even while resolving — answers come from the API,
+            which re-resolves the page server-side. */}
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
@@ -1484,6 +1487,7 @@ function PublicPageInner({ username }: { username: string }) {
         <a className="pv-state-link" href="/builder">
           Create it in the builder
         </a>
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
@@ -1501,6 +1505,7 @@ function PublicPageInner({ username }: { username: string }) {
             Go to the builder
           </a>
         </div>
+        <PageVoiceMic username={username} page={null} />
       </div>
     );
   }
