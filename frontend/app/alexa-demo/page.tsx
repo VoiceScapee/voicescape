@@ -248,6 +248,17 @@ const FOUNDER_INTRO =
   "and tips you receive instantly, no delays or middleman. " +
   "Tap the mic, and speak your blockpage into existence. Go ahead — try it yourself.";
 
+// The intro, line by line — streams into the terminal while Alexa speaks it.
+const INTRO_LINES = [
+  "Welcome to the Voicescape Voice Builder.",
+  "Built by Brandon Prout — one person, no laptop.",
+  "He took Hedera's vision literally: anyone can carve out their own piece of cyberspace.",
+  "With just your voice — one hub for humans and AI agents.",
+  "Your social profiles, your business, your projects.",
+  "Creators and community members — one community hub, a blockpage you actually own.",
+  "Tips arrive instantly. No delays, no middleman.",
+];
+
 export default function AlexaDemoPage() {
   const [supported, setSupported] = useState(true);
   const [listening, setListening] = useState(false);
@@ -288,14 +299,28 @@ export default function AlexaDemoPage() {
   const langEntry = VOICE_LANGS.find((l) => l.code === lang) ?? VOICE_LANGS[0];
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
+  // The founder intro — the user taps, the terminal comes alive with the
+  // narration line by line while Alexa speaks it, then hands them the mic.
+  // The tap is the gesture TTS needs.
+  const introTimers = useRef<number[]>([]);
+  const [introActive, setIntroActive] = useState(false);
+  const [introLines, setIntroLines] = useState<string[]>([]);
+  const cancelIntro = useCallback(() => {
+    introTimers.current.forEach((t) => window.clearTimeout(t));
+    introTimers.current = [];
+    setIntroActive(false);
+    setIntroLines([]);
+  }, []);
+
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SR) setSupported(false);
     return () => {
       recogRef.current?.abort();
       window.speechSynthesis?.cancel();
+      cancelIntro();
     };
-  }, []);
+  }, [cancelIntro]);
 
   const speak = useCallback((text: string, bcp47: string, code: string) => {    if (!("speechSynthesis" in window)) return;
     window.speechSynthesis.cancel();
@@ -311,16 +336,33 @@ export default function AlexaDemoPage() {
     window.speechSynthesis.speak(u);
   }, []);
 
-  // The founder intro — user taps, Alexa introduces Brandon + the 1-hub
-  // vision, then invites them to the mic. The tap is the gesture TTS needs.
+  // (playIntro lives below, next to speak — it needs the TTS voice first)
   const playIntro = useCallback(() => {
+    cancelIntro();
+    window.speechSynthesis?.cancel();
+    setIntroActive(true);
+    setIntroLines([]);
     speak(FOUNDER_INTRO, "en-US", "en");
-  }, [speak]);
+    INTRO_LINES.forEach((line, i) => {
+      introTimers.current.push(
+        window.setTimeout(() => setIntroLines((prev) => [...prev, line]), 1200 + i * 3500)
+      );
+    });
+    // The handoff — lands as she finishes speaking.
+    introTimers.current.push(
+      window.setTimeout(
+        () => setIntroLines((prev) => [...prev, "$ tap the mic — speak your blockpage into existence 🎤"]),
+        1200 + INTRO_LINES.length * 3500
+      )
+    );
+  }, [cancelIntro, speak]);
 
   const runAgent = useCallback(
     async (text: string) => {
       const prompt = text.trim();
       if (!prompt || busy) return;
+      cancelIntro();
+      window.speechSynthesis?.cancel();
       setBusy(true);
       setError(null);
       setAgent(null);
@@ -356,7 +398,7 @@ export default function AlexaDemoPage() {
         setBusy(false);
       }
     },
-    [busy, autoSpeak, speak, langEntry, agent]
+    [busy, autoSpeak, speak, langEntry, agent, cancelIntro]
   );
 
   // Stagger the build-log steps so the page visibly "builds itself".
@@ -373,6 +415,7 @@ export default function AlexaDemoPage() {
       return;
     }
     window.speechSynthesis?.cancel();
+    cancelIntro();
     const recog = new SR();
     recog.lang = langEntry.bcp47;
     recog.interimResults = true;
@@ -415,7 +458,7 @@ export default function AlexaDemoPage() {
       recogRef.current = null;
       setError("Mic couldn't start — type your prompt below instead.");
     }
-  }, [runAgent, langEntry]);
+  }, [runAgent, langEntry, cancelIntro]);
 
   const theme = agent?.pageDraft.theme ?? {};
   const bg = theme.background ?? "#0f172a";
@@ -617,27 +660,6 @@ export default function AlexaDemoPage() {
           Tap the mic — the agent plans over Voicescape&apos;s live MCP server
           and your blockpage comes alive below.
         </p>
-        <button
-          onClick={playIntro}
-          style={{
-            marginTop: 10,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            borderRadius: 9999,
-            border: "1px solid rgba(125,211,252,.3)",
-            background: "rgba(125,211,252,.06)",
-            padding: "7px 16px",
-            fontSize: 12,
-            fontWeight: 600,
-            color: "#7dd3fc",
-            cursor: "pointer",
-            fontFamily: "inherit",
-          }}
-        >
-          <span aria-hidden>▶</span> Founder intro — the 1-hub vision
-        </button>
-
         {/* Identity strip — real open-source rails, each badge links out */}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
           {[
@@ -757,6 +779,28 @@ export default function AlexaDemoPage() {
               Voice input isn&apos;t supported in this browser — type below.
             </p>
           )}
+          {/* Founder intro — right by the mic, where the gesture makes sense */}
+          {!busy && (
+            <button
+              onClick={playIntro}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 9999,
+                border: "1px solid rgba(125,211,252,.3)",
+                background: "rgba(125,211,252,.06)",
+                padding: "7px 16px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#7dd3fc",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span aria-hidden>▶</span> {introActive ? "Replay founder intro" : "Founder intro — the 1-hub vision"}
+            </button>
+          )}
           {transcript && (
             <p className="preview-in" style={{ textAlign: "center", fontSize: 20, color: "#f1f5f9", margin: 0 }}>“{transcript}”</p>
           )}
@@ -855,6 +899,58 @@ export default function AlexaDemoPage() {
         {/* Agent terminal — original Voicescape vibe */}
         {/* Waking state: the instant the mic hands off, before the first
             byte is back — no dead gap. */}
+        {introActive && !busy && (
+          <section style={{ margin: "28px auto 0", maxWidth: 576 }}>
+            <div
+              style={{
+                overflow: "hidden",
+                borderRadius: 14,
+                border: "1px solid rgba(56,189,248,.18)",
+                background: "#05070d",
+                boxShadow: "0 0 40px rgba(56,189,248,.06), 0 20px 40px -12px rgba(0,0,0,.7)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "8px 14px",
+                  background: "linear-gradient(90deg, rgba(56,189,248,.08), rgba(167,139,250,.08))",
+                  borderBottom: "1px solid rgba(30,41,59,.8)",
+                }}
+              >
+                <span className="agent-eq" aria-hidden>
+                  <span /><span /><span />
+                </span>
+                <span style={{ display: "flex", flexDirection: "column", lineHeight: 1.35 }}>
+                  <span style={{ fontSize: 10, letterSpacing: "0.22em", fontWeight: 800, color: "#7dd3fc" }}>
+                    VOICESCAPE AGENT
+                  </span>
+                  <span style={{ fontSize: 9, color: "#475569", letterSpacing: "0.04em" }}>
+                    founder intro · the 1-hub vision
+                  </span>
+                </span>
+              </div>
+              <div style={{ padding: "14px", fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 13, lineHeight: 1.7 }}>
+                <div style={{ color: "#7dd3fc" }}>
+                  <span style={{ color: "#38bdf8", fontWeight: 700 }}>$</span> founder intro
+                  <span className="waking-dots"><span>.</span><span>.</span><span>.</span></span>
+                </div>
+                {introLines.map((line, i) => (
+                  <div
+                    key={i}
+                    className="preview-in"
+                    style={{ color: line.startsWith("$") ? "#34d399" : "#94a3b8" }}
+                  >
+                    {line.startsWith("$") ? line : <><span style={{ color: "#475569" }}>❯ </span>{line}</>}
+                  </div>
+                ))}
+                <span style={{ display: "inline-block", width: 8, height: 15, marginTop: 8, background: "#38bdf8", verticalAlign: "-2px", animation: "blink 1s steps(1) infinite" }} />
+              </div>
+            </div>
+          </section>
+        )}
         {busy && !agent && (
           <section style={{ margin: "28px auto 0", maxWidth: 576 }}>
             <div
