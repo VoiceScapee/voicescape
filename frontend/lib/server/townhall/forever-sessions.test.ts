@@ -156,7 +156,7 @@ describe("forever sessions: verify + logout revocation", () => {
     if (!r.ok) expect(r.error).toMatch(/revoked/);
   });
 
-  it("fails closed when the store is unreachable", async () => {
+  it("fails closed when the store is unreachable (machine-readable)", async () => {
     const store = mockStore();
     const token = issue({}, NOW, 0);
     const dead = {
@@ -166,6 +166,11 @@ describe("forever sessions: verify + logout revocation", () => {
     } as unknown as KvStore;
     const r = await verifySessionToken(token, NOW, dead);
     expect(r.ok).toBe(false);
+    if (!r.ok) {
+      // Callers that must not confuse "can't tell" with "invalid"
+      // (e.g. build-credit) key off `code`, not the message.
+      expect(r.code).toBe("unavailable");
+    }
     // And the generation read itself reports -1 (unusable).
     expect(await getSessionVersion(ADDR, dead)).toBe(-1);
   });

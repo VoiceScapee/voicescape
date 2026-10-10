@@ -113,7 +113,17 @@ export interface VerifyOptions {
 
 export type VerifyResult =
   | { ok: true; session: VerifiedSession }
-  | { ok: false; error: string };
+  | {
+      ok: false;
+      error: string;
+      /**
+       * Present only when verification itself could not complete (e.g.
+       * the store was unreachable for the revocation check) — as opposed
+       * to the credential being invalid. Callers that must not confuse
+       * "can't tell" with "no" (like the build-credit endpoint) check this.
+       */
+      code?: "unavailable";
+    };
 
 export interface AccountKey {
   keyHex: string; // raw hex, no 0x
@@ -375,7 +385,14 @@ export async function verifySessionToken(
   const tokenVer =
     typeof claims.ver === "number" && Number.isSafeInteger(claims.ver) && claims.ver >= 0 ? claims.ver : 0;
   const currentVer = await getSessionVersion(claims.addr, store);
-  if (currentVer < 0 || currentVer !== tokenVer) {
+  if (currentVer < 0) {
+    // The store is unreachable (or corrupt) — we cannot prove the token
+    // is still valid. Fail closed, but mark it machine-readable so
+    // callers that must not confuse "can't tell" with "invalid" (e.g.
+    // build-credit) can answer 503 instead of "anonymous".
+    return { ok: false, error: "session verification unavailable", code: "unavailable" };
+  }
+  if (currentVer !== tokenVer) {
     return { ok: false, error: "session revoked — sign in again" };
   }
   return {

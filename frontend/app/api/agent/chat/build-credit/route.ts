@@ -26,6 +26,11 @@ export async function GET(req: NextRequest) {
   }
   const cred = sessionCredentialFrom(req);
   const verified = typeof cred === "string" ? await verifySessionToken(cred) : null;
+  if (verified && !verified.ok && verified.code === "unavailable") {
+    // A store failure must never be reported as "unpaid" — the widget
+    // would hide the pay button for a wallet that actually paid.
+    return NextResponse.json({ error: "credit_unavailable" }, { status: 503 });
+  }
   if (!verified || !verified.ok) {
     return NextResponse.json({ signedIn: false, hasCredit: false });
   }
