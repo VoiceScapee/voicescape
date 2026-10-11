@@ -33,6 +33,9 @@ import DannyLiaisonPanel from "@/components/DannyLiaisonPanel";
 import PageBadges from "@/components/townhall/PageBadges";
 import OnChainLiveBadge from "@/components/OnChainLiveBadge";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
+import { pushToast } from "@/lib/toasts";
+import { TIP_NETWORK_FEE_HBAR, TIP_FINALITY_LABEL } from "@/lib/fees";
+import { tap, confirmPulse } from "@/lib/haptics";
 import ProfileLinks from "@/components/townhall/ProfileLinks";
 import ReferralCard from "@/components/townhall/ReferralCard";
 import ReportButton from "@/components/townhall/ReportButton";
@@ -196,13 +199,36 @@ function TipBox({
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent(TIP_CONFIRMED_EVENT));
       }
+      confirmPulse();
+      pushToast({
+        kind: "success",
+        title: "Tip confirmed",
+        sub:
+          shareHbar != null
+            ? `@${username} received ≈ ${split98_2(Number(shareHbar)).creator.toFixed(4)} HBAR`
+            : `Your tip to @${username} is on-chain.`,
+        txId: confirmTxId,
+        explorerBase: chain.blockExplorer,
+      });
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent — check the explorer for details.");
       recordConversionEvent("tip_failed", "blockpage");
+      pushToast({
+        kind: "error",
+        title: "Tip failed on-chain",
+        sub: "No tip was sent.",
+      });
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
       setSubmittedHash(confirmTxId);
+      pushToast({
+        kind: "info",
+        title: "Tip submitted",
+        sub: "Still confirming — check HashScan in a minute to see it land.",
+        txId: confirmTxId,
+        explorerBase: chain.blockExplorer,
+      });
     }
   }, [confirmStatus, confirmTxId]);
 
@@ -344,11 +370,12 @@ function TipBox({
   const treasuryAmt = tinybars != null ? Number((tinybars * 2n) / 100n) / 1e8 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
   const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
-  // Hedera-side network fee display. Grounded 2026-10-03: recent mainnet
-  // tipPage calls were charged 0.053–0.090 HBAR (mirror node charged_tx_fee),
-  // so 0.08 sits inside the observed range and the UI renders it with "≈".
+  // Hedera-side network fee display — shared constant (lib/fees), grounded
+  // 2026-10-03 and re-verified 2026-10-11: recent mainnet tipPage calls were
+  // charged 0.053–0.090 HBAR (mirror node charged_tx_fee), so 0.08 sits
+  // inside the observed range and the UI renders it with "≈".
   // Passed through the i18n placeholder rather than hard-coded into JSX copy.
-  const NETWORK_FEE_HBAR = "0.08";
+  const NETWORK_FEE_HBAR = TIP_NETWORK_FEE_HBAR;
 
   // One-tap fix for a stale WalletConnect session: clears the dead session
   // (signOut also disconnects the wallet) and starts a fresh pairing with
