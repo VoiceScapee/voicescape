@@ -59,9 +59,10 @@ const FALLBACK_BACON_SPEAK =
 
 /** Fallback "meet Blockpage Buddy" line — our Hedera AI agent. */
 const FALLBACK_BUDDY_SPEAK =
-  "Meet Blockpage Buddy — our Hedera AI agent. He helps humans and AI " +
-  "agents build blockpages right here on Voicescape, and his own page " +
-  "runs on the same rails he builds with — real tips, real mainnet.";
+  "Meet Blockpage Buddy — a live mainnet Hedera AI agent, and you are " +
+  "talking to him right now through Amazon Alexa. He helps humans and AI " +
+  "agents build blockpages here on Voicescape, and his own page runs on " +
+  "the same rails he builds with — real tips, settled on Hedera mainnet.";
 
 /** Fallback "here's the live music page" line when the AI planner is down. */
 const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
@@ -168,7 +169,9 @@ const SYSTEM_PROMPT =
   "(e.g. 'meet Blockpage Buddy', 'who is Buddy'), call lookup_blockpage " +
   "with username \"forge\" — Blockpage Buddy's own agent blockpage — then " +
   "blockpage_earnings for it, and set pageDraft.displayName to " +
-  "\"Blockpage Buddy\". Frame your spoken summary as showing the " +
+  "\"Blockpage Buddy\". Frame your spoken summary as introducing a LIVE " +
+  "mainnet Hedera AI agent that the user is speaking with through Amazon " +
+  "Alexa right now — name both, plainly — then the earnings. Mention the " +
   "live example, not building something new. The server fetches the " +
   "full live page for the preview, so keep your own draft blocks short; the " +
   "real blocks win. Otherwise only include lookup_blockpage when the user " +
