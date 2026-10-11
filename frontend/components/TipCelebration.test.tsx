@@ -73,9 +73,15 @@ describe("TipBox wires the celebration into the confirmed state", () => {
 
   it("does not celebrate the merely-submitted (unconfirmed) state", () => {
     // The submitted branch must stay honest — no celebration before consensus.
-    const submitted = pageSrc.indexOf("Tip submitted");
+    // Anchor to the submitted-branch render block, not the first "Tip
+    // submitted" string: lifecycle toasts elsewhere in the file share that
+    // copy, and they are not the submitted UI branch.
+    const submittedBranch = pageSrc.indexOf("submittedHash ? (");
     const celebration = pageSrc.indexOf("<TipCelebration");
-    expect(submitted).toBeGreaterThan(-1);
-    expect(celebration).toBeLessThan(submitted);
+    expect(submittedBranch).toBeGreaterThan(-1);
+    expect(celebration).toBeGreaterThan(-1);
+    expect(celebration).toBeLessThan(submittedBranch);
+    // No celebration is rendered inside or after the submitted branch.
+    expect(pageSrc.indexOf("<TipCelebration", submittedBranch)).toBe(-1);
   });
 });

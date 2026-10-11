@@ -400,6 +400,7 @@ function TipBox({
 
   const tip = async () => {
     setError(null);
+    tap();
     // KISS: If the wallet state was lost (page reload) but the user has a
     // valid session, auto-reconnect with the session's wallet instead of
     // making them manually reconnect.
@@ -474,11 +475,25 @@ function TipBox({
       // instead of freezing.
       setApprovedAt(Date.now());
       setConfirmTxId(hash);
+      pushToast({
+        kind: "pending",
+        title: "Tip submitted",
+        sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+        txId: hash,
+        explorerBase: chain.blockExplorer,
+      });
     } catch (e) {
       if (e instanceof WalletTimeoutError) {
         // Wallet went silent after approval — don't guess. Confirm on-chain.
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
+        pushToast({
+          kind: "pending",
+          title: "Tip submitted",
+          sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+          txId: e.txId,
+          explorerBase: chain.blockExplorer,
+        });
       } else {
         // Wallet-side failure (rejection, wallet-library error, validation
         // guardrail): record the outcome so the funnel never shows a bare
@@ -588,11 +603,25 @@ function TipBox({
       const hash = await tipPage(username, tipWei, sender);
       setApprovedAt(Date.now());
       setConfirmTxId(hash);
+      pushToast({
+        kind: "pending",
+        title: "Tip submitted",
+        sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+        txId: hash,
+        explorerBase: chain.blockExplorer,
+      });
     } catch (e) {
       if (e instanceof WalletTimeoutError) {
         // Wallet went silent after approval — don't guess. Confirm on-chain.
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
+        pushToast({
+          kind: "pending",
+          title: "Tip submitted",
+          sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+          txId: e.txId,
+          explorerBase: chain.blockExplorer,
+        });
       } else {
         reportError(e, "tip-modal", { action: "tip-submit-token", walletState: "connected" });
         setError(`Tip failed: ${friendlyWalletError(e)}`);
