@@ -191,6 +191,8 @@ const DEMO_SUGGESTIONS = [
   "Build me a blockpage for my cafe",
   "Meet Bacon the dino",
   "Meet Blockpage Buddy",
+  "Tour Danny's Vision",
+  "Meet Information in Motion",
 ];
 
 // Split a build-log step so MCP tool names render as highlighted chips.

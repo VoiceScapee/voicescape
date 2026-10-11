@@ -54,8 +54,24 @@ const VOICE_LANG_NAMES: Record<string, string> = {
 const FALLBACK_BACON_SPEAK =
   "Meet Bacon the Dino — a family-friendly AI agent with his own blockpage: " +
   "snack quests, jokes, home adventures, and a tiny on-chain store. " +
-  "He sells the official Bacon Badge for one cent on Hedera mainnet — " +
-  "a real on-chain purchase, straight to his wallet, no middleman.";
+  "He sells the official Bacon Badge for one cent — a real purchase on " +
+  "Hedera mainnet, straight to his wallet, no middleman. And you are " +
+  "meeting him right now through Amazon Alexa.";
+
+/** Fallback "tour Danny's Vision" line — the live build constellation. */
+const FALLBACK_DANNY_SPEAK =
+  "Touring Danny's Vision — the live constellation of everything Danny " +
+  "is building across Voicescape: the agent network, the revenue rails, " +
+  "the whole mission. Every node on that map is backed by real Hedera " +
+  "mainnet data — and you are flying through it with your voice, through " +
+  "Amazon Alexa.";
+
+/** Fallback "meet Information in Motion" line — a human creator. */
+const FALLBACK_IIM_SPEAK =
+  "Meet Information in Motion — a human creator on Voicescape. This is " +
+  "the one-hub vision in real life: humans and AI agents, side by side, " +
+  "on the same pages, with the same rails. His tips settle on Hedera " +
+  "mainnet — and you are meeting him right now through Amazon Alexa.";
 
 /** Fallback "meet Blockpage Buddy" line — our Hedera AI agent. */
 const FALLBACK_BUDDY_SPEAK =
@@ -66,7 +82,7 @@ const FALLBACK_BUDDY_SPEAK =
 
 /** Fallback "here's the live music page" line when the AI planner is down. */
 const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
-  en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
+  en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview. You're experiencing it through Amazon Alexa — and every tip on this page settles on Hedera mainnet: 98% to the artist, enforced by the smart contract itself.",
   es: "Esta es la blockpage de música en vivo de Ash Rook — una página real de Voicescape, con música sonando dentro de la vista previa.",
   zh: "这是 Ash Rook 的现场音乐 blockpage——Voicescape 上的真实页面，预览中正在播放音乐。",
   ja: "Ash Rookのライブ音楽ブロックページです — Voicescapeの実際のページで、プレビュー内で音楽が流れています。",
@@ -171,7 +187,18 @@ const SYSTEM_PROMPT =
   "blockpage_earnings for it, and set pageDraft.displayName to " +
   "\"Blockpage Buddy\". Frame your spoken summary as introducing a LIVE " +
   "mainnet Hedera AI agent that the user is speaking with through Amazon " +
-  "Alexa right now — name both, plainly — then the earnings. Mention the " +
+  "Alexa right now — name both, plainly — then the earnings. If the user " +
+  "asks to tour Danny's Vision (e.g. 'tour Danny\\u0027s Vision', 'who is " +
+  "Danny'), call lookup_blockpage with username \"danny\" — the live " +
+  "constellation of everything being built across Voicescape — then " +
+  "blockpage_earnings for it, displayName \"Danny's Vision\". If the user " +
+  "asks to meet Information in Motion, call lookup_blockpage with " +
+  "username \"informinmotion\" — a HUMAN creator on Voicescape — then " +
+  "blockpage_earnings for it, displayName \"Information in Motion\", and " +
+  "frame it as the one-hub vision: humans and AI agents side by side. " +
+  "In EVERY spoken summary, name Amazon Alexa as the voice the user is " +
+  "speaking through and Hedera mainnet as where the money settles — " +
+  "plain language, no jargon, keep it cool. Mention the " +
   "live example, not building something new. The server fetches the " +
   "full live page for the preview, so keep your own draft blocks short; the " +
   "real blocks win. Otherwise only include lookup_blockpage when the user " +
@@ -309,6 +336,46 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
         displayName: "Blockpage Buddy",
         purpose:
           "Voicescape builder agent — helps humans and AI agents build blockpages. Operated by the Voicescape team.",
+        blocks: [],
+      },
+    };
+  }
+  // Danny's Vision — the live build constellation (blockpage: "danny").
+  // The "tour the mission" moment: lookup + real earnings.
+  const dannyRe = /danny'?s vision|tour danny|meet danny|who is danny|\bdanny\b/;
+  if (dannyRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
+    steps.push('Looking up the live "danny" builder blockpage');
+    return {
+      speak: FALLBACK_DANNY_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "danny" } },
+        { name: "blockpage_earnings", arguments: { username: "danny" } },
+      ],
+      pageDraft: {
+        displayName: "Danny's Vision",
+        purpose:
+          "Voicescape agent liaison: AI agent earning HBAR for the ecosystem and forwarding revenue to the founder.",
+        blocks: [],
+      },
+    };
+  }
+  // Information in Motion — a HUMAN creator on Voicescape
+  // (blockpage: "informinmotion"). The humans + agents proof.
+  const iimRe = /information in motion|informinmotion/;
+  if (iimRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
+    steps.push('Looking up the live "informinmotion" creator blockpage');
+    return {
+      speak: FALLBACK_IIM_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "informinmotion" } },
+        { name: "blockpage_earnings", arguments: { username: "informinmotion" } },
+      ],
+      pageDraft: {
+        displayName: "Information in Motion",
+        purpose:
+          "Human creator on Voicescape — humans and AI agents, side by side, on the same rails.",
         blocks: [],
       },
     };
