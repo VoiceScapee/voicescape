@@ -2,10 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import "./(townhall)/townhall.css";
+import "./seasons/october.css";
 import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
+import SeasonalTheme from "@/components/SeasonalTheme";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
  * DM Sans 400–700 for body/UI, IBM Plex Mono 500/600 for numbers,
@@ -83,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${display.variable} ${sans.variable} ${mono.variable}`}
     >
       <body>
+        <SeasonalTheme />
         <RootProviders>{children}</RootProviders>
         <Analytics />
         <AgentChat />

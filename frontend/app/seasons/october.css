@@ -1,0 +1,152 @@
+/* Voicescape seasonal skin: October.
+ *
+ * Scoped under html[data-season="october"] — every rule here only applies
+ * when the SeasonalTheme component has set the data attribute. Token
+ * overrides inherit through the DOM, so shell pages re-skin automatically.
+ *
+ * SOVEREIGNTY RULE (do not weaken): user blockpages render inside
+ * [data-sovereign] (PageRenderer root). The guard at the bottom re-pins
+ * every brand token to its default there, and blockpage visuals come from
+ * --pv-* owner-theme vars + inline styles anyway. A season must never
+ * restyle a user's page.
+ *
+ * Per-page motifs: html[data-season-page="<page>"] layers one decorative
+ * SVG behind the content (body::before, z-index -1, no emojis anywhere).
+ */
+
+html[data-season="october"] {
+  /* Seasonal token remap: pumpkin primary melting into violet. */
+  --bg: #0e0714;
+  --bg2: #120a1c;
+  --panel: #180e24;
+  --panel2: #1f1229;
+  --violet: #ff7a1a;
+  --mint: #ffb14e;
+  --amber: #ffca72;
+  --gradient: linear-gradient(118deg, #ff7a1a 0%, #b45309 44%, #7c3aed 100%);
+  --vs-accent: #ff7a1a;
+  --vs-accent-dim: #7c2d12;
+  --vs-accent-soft: rgba(255, 122, 26, 0.12);
+
+  /* Shared seasonal sky: full moon + plum dusk. Reused by page motifs. */
+  --oct-sky:
+    radial-gradient(
+      circle 70px at 87% 84px,
+      rgba(255, 233, 184, 0.85),
+      rgba(255, 233, 184, 0.22) 42%,
+      transparent 68%
+    ),
+    radial-gradient(circle at 12% 5%, rgba(255, 122, 26, 0.16), transparent 26rem),
+    radial-gradient(circle at 92% 88%, rgba(124, 58, 237, 0.14), transparent 30rem),
+    linear-gradient(180deg, #120a1c 0, #0e0714 46%, #130b1a 100%);
+}
+
+html[data-season="october"] body {
+  background: #120a1c;
+}
+
+html[data-season="october"] body::before {
+  background: var(--oct-sky);
+}
+
+/* Pumpkin-glow pulse on primary CTAs (seasonal treatment of the
+ * existing vs-anim-cta-glow idea, scoped to October). */
+html[data-season="october"] .vs-btn-primary {
+  box-shadow: 0 8px 28px rgba(255, 122, 26, 0.35);
+  animation: octCtaGlow 3.2s ease-in-out infinite;
+}
+html[data-season="october"] .vs-btn-primary:hover {
+  box-shadow: 0 12px 34px rgba(255, 122, 26, 0.5);
+}
+@keyframes octCtaGlow {
+  0%,
+  100% {
+    box-shadow: 0 8px 28px rgba(255, 122, 26, 0.35);
+  }
+  50% {
+    box-shadow: 0 8px 38px rgba(255, 122, 26, 0.58);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-season="october"] .vs-btn-primary {
+    animation: none;
+  }
+}
+
+/* ---- Per-page motifs ------------------------------------------------ */
+
+html[data-season="october"][data-season-page="home"] body::before,
+html[data-season="october"][data-season-page="marketplace"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 460 100'%3E%3Cg%3E%3Cellipse cx='60' cy='78' rx='34' ry='20' fill='%23ff7a1a' opacity='0.13'/%3E%3Crect x='57' y='52' width='7' height='12' rx='3' fill='%233d6b1f' opacity='0.16'/%3E%3Cellipse cx='400' cy='82' rx='26' ry='15' fill='%23ff7a1a' opacity='0.10'/%3E%3Crect x='397' y='62' width='6' height='10' rx='3' fill='%233d6b1f' opacity='0.13'/%3E%3C/g%3E%3C/svg%3E")
+      left bottom / 460px 100px repeat-x,
+    var(--oct-sky);
+}
+
+html[data-season="october"][data-season-page="discover"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 120'%3E%3Cg fill='%237c3aed' opacity='0.30'%3E%3Crect x='40' y='62' width='180' height='7' rx='3.5' transform='rotate(-4 130 65)'/%3E%3Cpath d='M205 52 l28 -4 l-24 10 z'/%3E%3Cellipse cx='120' cy='52' rx='10' ry='14'/%3E%3Ccircle cx='120' cy='32' r='7'/%3E%3Cpath d='M112 28 L96 14 L124 24 z'/%3E%3C/g%3E%3C/svg%3E")
+      right 4% top 110px / 300px 120px no-repeat,
+    var(--oct-sky);
+}
+
+html[data-season="october"][data-season-page="townhall"] body::before {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 140'%3E%3Cg%3E%3Cpath d='M40 140 V70 L150 20 L260 70 V140 Z' fill='%232b1245' opacity='0.55'/%3E%3Crect x='135' y='100' width='30' height='40' fill='%23ff9d3c' opacity='0.22'/%3E%3Crect x='70' y='85' width='22' height='22' fill='%23ff9d3c' opacity='0.15'/%3E%3Crect x='208' y='85' width='22' height='22' fill='%23ff9d3c' opacity='0.15'/%3E%3C/g%3E%3C/svg%3E")
+      center bottom / 300px 140px no-repeat,
+    var(--oct-sky);
+}
+
+html[data-season="october"][data-season-page="voice"] body::before {
+  background:
+    radial-gradient(
+      ellipse 240px 130px at 50% 100%,
+      rgba(124, 58, 237, 0.22),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 160px 90px at 50% 100%,
+      rgba(255, 122, 26, 0.16),
+      transparent 70%
+    ),
+    var(--oct-sky);
+}
+
+html[data-season="october"][data-season-page="agents"] body::before {
+  background:
+    radial-gradient(
+      circle 90px at 12% 78%,
+      rgba(255, 202, 114, 0.13),
+      transparent 70%
+    ),
+    var(--oct-sky);
+}
+
+/* ---- Sovereignty guard -------------------------------------------------
+ * Inside a user blockpage, every brand token is re-pinned to its default.
+ * --vs-* aliases derive from these base names, so they follow automatically.
+ * If you add a new base token to :root in globals.css, mirror it here.
+ */
+html[data-season="october"] [data-sovereign] {
+  --bg: #090b12;
+  --bg2: #0b0e16;
+  --panel: #11151d;
+  --panel2: #161b27;
+  --line: rgba(255, 255, 255, 0.09);
+  --text: #fff;
+  --muted: #9b9b9d;
+  --violet: #8259ef;
+  --mint: #91a8ff;
+  --amber: #ffca72;
+  --blue: #2d84eb;
+  --azure: #0031ff;
+  --indigo: #4f46e5;
+  --gradient: linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%);
+  --shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --vs-accent: #8259ef;
+  --vs-accent-dim: #4a3791;
+  --vs-accent-soft: rgba(130, 89, 239, 0.12);
+}
+html[data-season="october"] [data-sovereign] .vs-btn-primary {
+  animation: none;
+}
