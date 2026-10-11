@@ -265,6 +265,7 @@ const INTRO_LINES = [
   "Your social profiles, your business, your projects.",
   "Creators and community members — one community hub, a blockpage you actually own.",
   "Tips arrive instantly. No delays, no middleman.",
+  "Meet our Voicescape dapp community below — or use the microphone and build your blockpage today.",
 ];
 
 // Inlined as data URIs so the brand marks always render — Vercel's preview
