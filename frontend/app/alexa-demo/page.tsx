@@ -293,6 +293,19 @@ export default function AlexaDemoPage() {
     })();
   }, [showTools, blockNum]);
   const [shareNote, setShareNote] = useState<string | null>(null);
+  // Live MCP tool count from the real server — the badge / panel / card
+  // numbers below can never go stale when tools are added. Falls back to
+  // 64 (the verified production count as of 2026-10-10) if unreachable.
+  const [mcpToolCount, setMcpToolCount] = useState<number | null>(null);
+  useEffect(() => {
+    fetch("/api/alexa-demo/agent")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && typeof j.toolCount === "number" && j.toolCount > 0)
+          setMcpToolCount(j.toolCount);
+      })
+      .catch(() => {});
+  }, []);
 
   // Share the demo via the native sheet (mobile) or clipboard fallback.
   // Shares the user's own current URL — never published anywhere by us.
@@ -682,7 +695,7 @@ export default function AlexaDemoPage() {
             }}
           >
             <span className="live-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 9999, background: "#34d399" }} />
-            LIVE MCP · 64 tools
+            LIVE MCP · {mcpToolCount ?? 64} tools
           </button>
         </div>
         <h1
@@ -1420,7 +1433,7 @@ export default function AlexaDemoPage() {
               {
                 icon: "🎙️",
                 title: "Voice builds",
-                body: "This demo. Speak, the agent works 64 live MCP tools, and your page materializes block by block.",
+                body: `This demo. Speak, the agent works ${mcpToolCount ?? 64} live MCP tools, and your page materializes block by block.`,
                 status: "live now",
                 live: true,
               },
@@ -1572,7 +1585,7 @@ export default function AlexaDemoPage() {
                 </button>
               </div>
               <p style={{ marginTop: 8, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
-                64 tools live on Voicescape&apos;s MCP server. This demo touches
+                {mcpToolCount ?? 64} tools live on Voicescape&apos;s MCP server. This demo touches
                 only these read-only ones — the agent never writes, never holds keys.
               </p>
               <ul style={{ marginTop: 12, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1620,7 +1633,7 @@ export default function AlexaDemoPage() {
                 )}
                 <p style={{ marginTop: 6, marginBottom: 0, fontSize: 11, lineHeight: 1.6, color: "#94a3b8" }}>
                   This demo&apos;s voice agent talks to the same MCP server our
-                  production dapp runs on — 64 tools, spec 2025-11-25, over
+                  production dapp runs on — {mcpToolCount ?? 64} tools, spec 2025-11-25, over
                   Streamable HTTP. Every call above hits the real server: real
                   blockpages, real tip totals, real templates. Nothing is mocked.
                   Tips settle on Hedera mainnet — the chain seals a new block

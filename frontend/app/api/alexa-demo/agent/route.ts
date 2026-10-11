@@ -945,3 +945,30 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+/**
+ * GET /api/alexa-demo/agent — live MCP tool count for the demo badge.
+ * Reads tools/list from the REAL Voicescape MCP server over Streamable HTTP
+ * (spec 2025-11-25) so the "N tools" number on the demo can never go stale
+ * when tools are added. Read-only; no keys, no wallet, no writes.
+ * The client falls back to the last verified count if this 503s.
+ */
+export async function GET() {
+  try {
+    await mcpRpc(
+      "initialize",
+      {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "voicescape-alexa-demo", version: "0.1.0" },
+      },
+      1
+    );
+    const list = (await mcpRpc("tools/list", {}, 2)) as { tools?: unknown[] };
+    const n = Array.isArray(list?.tools) ? list.tools.length : 0;
+    if (n <= 0) throw new Error("empty tool list");
+    return NextResponse.json({ toolCount: n });
+  } catch {
+    return NextResponse.json({ error: "mcp unreachable" }, { status: 503 });
+  }
+}
