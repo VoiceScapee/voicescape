@@ -1023,7 +1023,14 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
     .filter((b): b is Block => b !== null);
 
   return (
-    <div className={`pv-root${isAgent ? " is-agent" : ""}`} style={themeStyle}>
+    // data-sovereign: the seasonal shell theme must never restyle a user's
+    // blockpage. The October stylesheet re-pins every brand token inside
+    // this subtree; page visuals come from --pv-* owner-theme vars anyway.
+    <div
+      className={`pv-root${isAgent ? " is-agent" : ""}`}
+      style={themeStyle}
+      data-sovereign
+    >
       <header className="pv-header">
         <a className="pv-brand" href="/" aria-label="Voicescape home">
           <Logo size={24} />
