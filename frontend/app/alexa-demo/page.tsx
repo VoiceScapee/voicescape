@@ -190,6 +190,7 @@ const DEMO_SUGGESTIONS = [
   "Show me a live music blockpage",
   "Build me a blockpage for my cafe",
   "Meet Bacon the dino",
+  "Meet Blockpage Buddy",
 ];
 
 // Split a build-log step so MCP tool names render as highlighted chips.
@@ -278,6 +279,21 @@ export default function AlexaDemoPage() {
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [lang, setLang] = useState("en");
   const [showTools, setShowTools] = useState(false);
+  // Live Hedera block number for the tools modal — fetched when it opens.
+  const [blockNum, setBlockNum] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showTools || blockNum) return;
+    (async () => {
+      try {
+        const r = await fetch("https://mainnet.mirrornode.hedera.com/api/v1/blocks?limit=1&order=desc");
+        const j = await r.json();
+        const n = j?.blocks?.[0]?.number;
+        if (n != null) setBlockNum(Number(n).toLocaleString("en-US"));
+      } catch {
+        /* the guide reads fine without the number */
+      }
+    })();
+  }, [showTools, blockNum]);
   const [shareNote, setShareNote] = useState<string | null>(null);
 
   // Share the demo via the native sheet (mobile) or clipboard fallback.
@@ -818,28 +834,46 @@ export default function AlexaDemoPage() {
               or just type. The agent talks back out loud either way. 🎙
             </p>
           )}
-          {/* Founder intro — right by the mic, where the gesture makes sense */}
+          {/* Founder intro — right by the mic, where the gesture makes sense.
+              The START HERE cue tells newcomers the order: intro first,
+              then the mic. Either order works. */}
           {!busy && (
-            <button
-              onClick={playIntro}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                minHeight: 44,
-                gap: 8,
-                borderRadius: 9999,
-                border: "1px solid rgba(125,211,252,.3)",
-                background: "rgba(125,211,252,.06)",
-                padding: "10px 18px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#7dd3fc",
-                cursor: "pointer",
-                fontFamily: "inherit",
-              }}
-            >
-              <span aria-hidden>▶</span> {introActive ? "Replay founder intro" : "Founder intro — the 1-hub vision"}
-            </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 800,
+                  letterSpacing: "0.14em",
+                  color: "#020617",
+                  background: "linear-gradient(90deg, #38bdf8, #a78bfa)",
+                  padding: "6px 12px",
+                  borderRadius: 9999,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ① START HERE
+              </span>
+              <button
+                onClick={playIntro}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  minHeight: 44,
+                  gap: 8,
+                  borderRadius: 9999,
+                  border: "1px solid rgba(125,211,252,.3)",
+                  background: "rgba(125,211,252,.06)",
+                  padding: "10px 18px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#7dd3fc",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                <span aria-hidden>▶</span> {introActive ? "Replay founder intro" : "Founder intro — the 1-hub vision"}
+              </button>
+            </div>
           )}
           {transcript && (
             <p className="preview-in" style={{ textAlign: "center", fontSize: 20, color: "#f1f5f9", margin: 0 }}>“{transcript}”</p>
@@ -1580,6 +1614,12 @@ export default function AlexaDemoPage() {
                 <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6ee7b7" }}>
                   ⛓ What &ldquo;live&rdquo; means here
                 </div>
+                {blockNum && (
+                  <div style={{ marginTop: 8, fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#7dd3fc" }}>
+                    <span className="live-dot" style={{ display: "inline-block", width: 8, height: 8, borderRadius: 9999, background: "#34d399", marginRight: 8 }} />
+                    Hedera mainnet · block #{blockNum}
+                  </div>
+                )}
                 <p style={{ marginTop: 6, marginBottom: 0, fontSize: 11, lineHeight: 1.6, color: "#94a3b8" }}>
                   This demo&apos;s voice agent talks to the same MCP server our
                   production dapp runs on — 64 tools, spec 2025-11-25, over

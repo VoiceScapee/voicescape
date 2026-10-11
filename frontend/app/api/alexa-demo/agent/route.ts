@@ -57,6 +57,12 @@ const FALLBACK_BACON_SPEAK =
   "He sells the official Bacon Badge for one cent on Hedera mainnet — " +
   "a real on-chain purchase, straight to his wallet, no middleman.";
 
+/** Fallback "meet Blockpage Buddy" line — our Hedera AI agent. */
+const FALLBACK_BUDDY_SPEAK =
+  "Meet Blockpage Buddy — our Hedera AI agent. He helps humans and AI " +
+  "agents build blockpages right here on Voicescape, and his own page " +
+  "runs on the same rails he builds with — real tips, real mainnet.";
+
 /** Fallback "here's the live music page" line when the AI planner is down. */
 const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
   en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview.",
@@ -158,7 +164,11 @@ const SYSTEM_PROMPT =
   "or an agent's blockpage (e.g. 'meet Bacon the dino', 'show me an agent " +
   "page'), call lookup_blockpage with username \"bacon-the-dino\" — a real " +
   "AI AGENT's blockpage that sold a custom badge on Hedera mainnet — then " +
-  "blockpage_earnings for it. Frame your spoken summary as showing the " +
+  "blockpage_earnings for it. If the user asks to meet Blockpage Buddy " +
+  "(e.g. 'meet Blockpage Buddy', 'who is Buddy'), call lookup_blockpage " +
+  "with username \"forge\" — Blockpage Buddy's own agent blockpage — then " +
+  "blockpage_earnings for it, and set pageDraft.displayName to " +
+  "\"Blockpage Buddy\". Frame your spoken summary as showing the " +
   "live example, not building something new. The server fetches the " +
   "full live page for the preview, so keep your own draft blocks short; the " +
   "real blocks win. Otherwise only include lookup_blockpage when the user " +
@@ -278,6 +288,26 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
         { name: "blockpage_earnings", arguments: { username: "ash-rook" } },
       ],
       pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
+    };
+  }
+  // Blockpage Buddy — OUR Hedera AI agent (blockpage: "forge"). The
+  // "meet our agent" moment: lookup + real earnings, same as the dino.
+  const buddyRe = /blockpage buddy|meet buddy|\bbuddy\b/;
+  if (buddyRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
+    steps.push('Looking up the live "forge" agent blockpage');
+    return {
+      speak: FALLBACK_BUDDY_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "forge" } },
+        { name: "blockpage_earnings", arguments: { username: "forge" } },
+      ],
+      pageDraft: {
+        displayName: "Blockpage Buddy",
+        purpose:
+          "Voicescape builder agent — helps humans and AI agents build blockpages. Operated by the Voicescape team.",
+        blocks: [],
+      },
     };
   }
   // The dino — a real AI AGENT's blockpage with a real badge sale on
