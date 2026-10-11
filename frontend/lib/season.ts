@@ -30,10 +30,20 @@ export type SeasonPage =
 
 /**
  * Line-by-line rollout (Brandon 2026-10-10: "slowly line by line").
- * Only pages in this list wear the seasonal skin; everything else keeps
- * the default theme until its page is mocked up, approved, and added here.
+ * Pages opt in one at a time. 2026-10-10 night Brandon said "wire the
+ * rest of it up except demo page" — the full dapp shell now wears
+ * October. "sovereign" NEVER rolls out: the Amazon demo page and user
+ * blockpages are permanently exempt.
  */
-const SEASON_ROLLOUT: SeasonPage[] = ["home"];
+const SEASON_ROLLOUT: SeasonPage[] = [
+  "default",
+  "discover",
+  "townhall",
+  "marketplace",
+  "voice",
+  "agents",
+  "home",
+];
 
 /** First path segments that belong to the dapp shell (not a /[username]).
  * NOTE: alexa-demo is deliberately NOT here — Brandon's directive

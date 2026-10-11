@@ -40,10 +40,16 @@ describe("season", () => {
   });
 
   it("gates the seasonal skin by the line-by-line rollout list", () => {
-    // Home is first in the rollout; everything else keeps the default theme.
+    // 2026-10-10 night: Brandon said "wire the rest of it up except demo
+    // page" — the full shell wears October. Sovereign (demo page +
+    // user blockpages) still keeps the default theme, forever.
     expect(seasonForPath("/")).toBe(ACTIVE_SEASON);
-    expect(seasonForPath("/explore")).toBe("none");
-    expect(seasonForPath("/townhall")).toBe("none");
+    expect(seasonForPath("/explore")).toBe(ACTIVE_SEASON);
+    expect(seasonForPath("/townhall")).toBe(ACTIVE_SEASON);
+    expect(seasonForPath("/marketplace")).toBe(ACTIVE_SEASON);
+    expect(seasonForPath("/builder")).toBe(ACTIVE_SEASON);
+    expect(seasonForPath("/agents")).toBe(ACTIVE_SEASON);
+    expect(seasonForPath("/console")).toBe(ACTIVE_SEASON);
     expect(seasonForPath("/thechomps")).toBe("none");
     expect(seasonForPath("/alexa-demo")).toBe("none");
   });
