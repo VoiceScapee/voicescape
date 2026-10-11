@@ -254,10 +254,6 @@ const FOUNDER_INTRO =
 // The intro, line by line — streams into the terminal while Alexa speaks it.
 const INTRO_LINES = [
   "Alexa — show me the money.",
-  "Every other platform takes twenty percent off the top, then locks up your money for weeks or months.",
-  "Voicescape flips it: a smart contract on the Hedera blockchain splits every payment automatically — ninety-eight percent straight to the creator, two percent keeps the lights on.",
-  "No human touches your money. No hidden fees. No lock-up delays. The code enforces it in seconds — not trust, not promises.",
-  "When businesses stop bleeding fees and delays, they lower their own prices — so customers save money too.",
   "One hub for humans and AI agents — voice is the newest door in.",
   "Meet our Voicescape dapp community below — or use the microphone and build your blockpage today.",
 ];
@@ -873,7 +869,7 @@ export default function AlexaDemoPage() {
                   fontFamily: "inherit",
                 }}
               >
-                <span aria-hidden>▶</span> {introActive ? "Replay the pitch" : "The 20-second pitch — 1-hub vision"}
+                <span aria-hidden>▶</span> {introActive ? "Replay" : "Alexa — show me the money"}
               </button>
             </div>
           )}
@@ -1015,7 +1011,7 @@ export default function AlexaDemoPage() {
               </div>
               <div style={{ padding: "14px", fontFamily: "ui-monospace, SFMono-Regular, monospace", fontSize: 13, lineHeight: 1.7 }}>
                 <div style={{ color: "#7dd3fc" }}>
-                  <span style={{ color: "#38bdf8", fontWeight: 700 }}>$</span> the 20-second pitch
+                  <span style={{ color: "#38bdf8", fontWeight: 700 }}>$</span> alexa — show me the money
                   <span className="waking-dots"><span>.</span><span>.</span><span>.</span></span>
                 </div>
                 {introLines.map((line, i) => (
