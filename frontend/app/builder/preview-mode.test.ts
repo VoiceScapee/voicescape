@@ -45,8 +45,11 @@ describe("builder preview mode", () => {
 
   it("the publish flow still requests the wallet signature before publishing", () => {
     // Defense in depth: even if someone reaches Publish unsigned, the
-    // signature prompt fires before any chain write.
-    expect(builderSrc).toMatch(/requireSession\(\);[\s\S]{0,200}await signIn\(\)/);
+    // signature prompt fires before any chain write. Window widened
+    // 2026-10-10: the sign-in status text now names the signature's
+    // ledger-side effect (Signature 1 of 2 — session login), which added
+    // characters between the session check and the sign-in call.
+    expect(builderSrc).toMatch(/requireSession\(\);[\s\S]{0,600}await signIn\(\)/);
   });
 });
 

@@ -13,6 +13,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { WalletConnect } from "@/components/WalletConnect";
+import {
+  SignatureEffectNotice,
+  approvalLoginEffect,
+  claimRegistrationEffect,
+} from "@/components/SignatureEffectNotice";
 import { getHederaPairing, requestWalletConnectUI, useWallet } from "@/lib/wallet";
 import { reportError } from "@/lib/report-error";
 import {
@@ -267,8 +272,10 @@ export default function ClaimLinkPage() {
       {/* The wallet connects AFTER approve (Review → Approve → Connect →
           Done) — showing the connect widget before the human has decided
           invites connect-first and contradicts the order. Self-mode
-          packages never pair a wallet here. */}
-      {intentApproved && !isSelf && <WalletConnect />}
+          packages never pair a wallet here. The login prompt is named
+          "Signature 1 of 2" (thechomps' rule): the session login moves
+          nothing on-chain and must never be mistaken for the claim. */}
+      {intentApproved && !isSelf && <WalletConnect loginEffect={approvalLoginEffect("claim")} />}
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
         Voicescape · {summary?.owner_type === "human" ? "Blockpage" : "Agent"} claim approval
       </div>
@@ -293,7 +300,7 @@ export default function ClaimLinkPage() {
               : summary.owner_type === "human"
                 ? "Your AI agent prepared this blockpage for you."
                 : "An AI agent prepared this blockpage claim."}{" "}
-            {!isSelf && "Review it, tap Approve, then connect a wallet to sign — one signature and the page is live and registered."}
+            {!isSelf && "Review it, tap Approve, then connect a wallet to sign — the claim registration signature makes the page live and registered. (Your wallet may ask for a session login first — that one changes nothing on-chain.)"}
           </p>
 
           {/* What-happens-next stepper — hidden for self-mode packages:
@@ -337,15 +344,20 @@ export default function ClaimLinkPage() {
           </div>
           )}
 
-          {/* Self-mode: read-only notice instead of the approval buttons. */}
+          {/* Self-mode: read-only notice instead of the approval buttons.
+              Names the ledger-side effect (thechomps' rule) even though no
+              human wallet is involved: the registration calls the Hedera
+              registry contract for this username, signed by the agent's
+              own key. */}
           {isSelf && phase.kind === "review" && (
             <div style={{ border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, padding: "14px 16px", background: "rgba(255,255,255,.05)", marginBottom: 12 }}>
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Claimed by the agent's own key</div>
               <div style={{ fontSize: 14, lineHeight: 1.65, opacity: 0.85 }}>
-                The agent shows this preview to its human in its own chat and
-                signs the registration with its own wallet key — no human
-                wallet is involved. Nothing here needs your tap; this page
-                only records what was prepared.
+                The registration calls the Hedera registry contract for
+                @{summary.username} — the agent shows this preview to its
+                human in its own chat and signs it with its own wallet key,
+                so your wallet never sees a prompt. Nothing here needs your
+                tap; this page only records what was prepared.
               </div>
             </div>
           )}
@@ -420,11 +432,20 @@ export default function ClaimLinkPage() {
             </button>
           )}
 
+          {/* Signature 2 of 2 — the claim registration. Rendered from the
+              moment the human approves so the two wallet prompts are
+              distinguishable: the login (1 of 2) moves nothing on-chain,
+              this is the one that registers the name. */}
+          {phase.kind === "review" && !isSelf && intentApproved && (
+            <SignatureEffectNotice spec={claimRegistrationEffect(summary.username)} />
+          )}
+
           {phase.kind === "review" && !isSelf && intentApproved && !accountId && !signing && (
             <>
               <p style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.8, margin: "0 0 10px" }}>
-                Approved ✓ — now connect your wallet. The signature fires
-                right after you connect; one confirmation and @{summary.username} is live.
+                Approved ✓ — two signatures coming. First the session login
+                (1 of 2, changes nothing on-chain), then the claim registration
+                (2 of 2) above. Connect your wallet to start.
               </p>
               <button
                 onClick={requestWalletConnectUI}
@@ -461,7 +482,7 @@ export default function ClaimLinkPage() {
             >
               {txPhase === "confirming"
                 ? `Signature sent — waiting for the network to confirm @${summary.username}…`
-                : `Check your wallet — confirm the signature to publish @${summary.username}…`}
+                : `Check your wallet — confirm Signature 2 of 2 to register @${summary.username}…`}
             </div>
           )}
 
@@ -563,8 +584,9 @@ export default function ClaimLinkPage() {
           <p style={{ fontSize: 12.5, opacity: 0.55, marginTop: 18, lineHeight: 1.6 }}>
             No signup, no sign-in. Tapping Approve is your go-ahead — nothing
             is recorded or signed until you connect your wallet and confirm
-            in the wallet's own screen. One signature publishes the blockpage
-            and registers it — done.
+            in the wallet's own screen. The claim registration signature
+            (2 of 2) publishes the blockpage and registers it; the session
+            login (1 of 2) only signs you in and changes nothing on-chain.
           </p>
           )}
         </>

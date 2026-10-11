@@ -2462,7 +2462,10 @@ function PublishPanel({
     try {
       requireSession();
     } catch {
-      setStatus({ kind: "info", text: "Requesting wallet approval…" });
+      // Signature 1 of 2 — session login (thechomps' rule: name the
+      // ledger-side effect). This only signs the human in; it changes
+      // nothing on-chain and is never the claim.
+      setStatus({ kind: "info", text: "Signature 1 of 2 — session login: approve in your wallet to sign in. This changes nothing on-chain." });
       try {
         await signIn();
       } catch {
@@ -2569,11 +2572,13 @@ function PublishPanel({
           exists = false;
         }
         if (exists) {
-          setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
+          // Signature 2 of 2 — page update: names the ledger-side effect.
+          setStatus({ kind: "info", text: `Signature 2 of 2 — page update: approve in your wallet to point /${name} at the new content on-chain.` });
           walletStepStarted = true;
           return updatePage(name, ipfsHash, sender);
         }
-        setStatus({ kind: "info", text: `Registering /${name} on-chain…` });
+        // Signature 2 of 2 — claim registration: names the ledger-side effect.
+        setStatus({ kind: "info", text: `Signature 2 of 2 — claim registration: approve in your wallet to register /${name} on the Hedera registry contract.` });
         walletStepStarted = true;
         return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
       };
@@ -2890,7 +2895,8 @@ function PublishPanel({
       <div className="vb-pub-actions">
         <p className="vb-info-hint" style={{ marginBottom: 8 }}>
           Publishing costs you nothing but the Hedera network fee — it registers <span className="vs-mono">/{usernameTrimmed || "your-name"}</span> on
-          Hedera. Your wallet will ask you to approve one transaction; only the tiny Hedera network fee
+          Hedera. Your wallet may ask for two signatures: a session login first (Signature 1 of 2 — changes nothing on-chain),
+          then the claim registration (Signature 2 of 2) — each prompt names what it does — only the tiny Hedera network fee
           (a few cents of HBAR) applies, nothing else moves. (Arrived via a referral link? One more
           signature may follow for the referral record.)
         </p>

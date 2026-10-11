@@ -14,6 +14,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { WalletConnect } from "@/components/WalletConnect";
+import {
+  SignatureEffectNotice,
+  SESSION_LOGIN_EFFECT,
+  approvalLoginEffect,
+  pageUpdateEffect,
+  purchaseEffect,
+} from "@/components/SignatureEffectNotice";
 import { getHederaPairing, requestWalletConnectUI, useWallet } from "@/lib/wallet";
 import { reportError } from "@/lib/report-error";
 import {
@@ -176,8 +183,10 @@ function UpdateApprovalFlow() {
     >
       {/* The wallet connects AFTER approve (Review → Approve → Connect →
           Done) — showing the connect widget before the human has decided
-          invites connect-first and contradicts the order. */}
-      {intentApproved && <WalletConnect />}
+          invites connect-first and contradicts the order. The login prompt
+          is named "Signature 1 of 2" (thechomps' rule): it moves nothing
+          on-chain and must never be mistaken for the update. */}
+      {intentApproved && <WalletConnect loginEffect={approvalLoginEffect("update")} />}
       <div style={{ fontSize: 12, letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.6, marginBottom: 8 }}>
         Voicescape · Page update approval
       </div>
@@ -294,12 +303,18 @@ function UpdateApprovalFlow() {
             </button>
           )}
 
+          {/* Signature 2 of 2 — the page update. Rendered from approval so
+              the login prompt (1 of 2) is never mistaken for the update. */}
+          {phase.kind === "review" && intentApproved && summary && (
+            <SignatureEffectNotice spec={pageUpdateEffect(summary.username)} />
+          )}
+
           {phase.kind === "review" && intentApproved && !accountId && !signing && (
             <>
               <p style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.8, margin: "0 0 10px" }}>
                 Approved ✓ — now connect the wallet that owns @{summary.username}.
-                The signature fires right after you connect; one confirmation
-                and the update is published.
+                Two signatures coming: the session login (1 of 2, changes
+                nothing), then the update (2 of 2) above.
               </p>
               <button
                 onClick={requestWalletConnectUI}
@@ -336,7 +351,7 @@ function UpdateApprovalFlow() {
             >
               {txPhase === "confirming"
                 ? `Signature sent — waiting for the network to confirm the update…`
-                : `Check your wallet — confirm the signature to publish the update…`}
+                : `Check your wallet — confirm Signature 2 of 2 to publish the update…`}
             </div>
           )}
 
@@ -413,8 +428,9 @@ function UpdateApprovalFlow() {
           <p style={{ fontSize: 12.5, opacity: 0.55, marginTop: 18, lineHeight: 1.6 }}>
             No signup, no sign-in. Tapping Approve is your go-ahead — nothing
             is recorded or signed until you connect the owning wallet and
-            confirm in the wallet's own screen. One signature publishes the
-            update — done.
+            confirm in the wallet's own screen. The update signature (2 of 2)
+            publishes the update; the session login (1 of 2) only signs you in
+            and changes nothing on-chain.
           </p>
         </>
       )}
@@ -603,9 +619,9 @@ function PurchaseApprovalFlow({ id }: { id: string }) {
     <ApprovalShell
       kicker="Voicescape · Purchase approval"
       heading={p ? `Buy "${p.title}"` : "Purchase approval"}
-      intro="Your AI agent found this listing for you. Review it, tap Approve, then connect your wallet to buy — one signature and the Tips contract splits your payment 98% to the seller and 2% to the platform, atomically."
+      intro="Your AI agent found this listing for you. Review it, tap Approve, then connect your wallet to buy — the purchase signature pays and the Tips contract splits it 98% to the seller and 2% to the platform, atomically. (Your wallet may ask for a session login first — that one changes nothing on-chain.)"
     >
-      {intentApproved && <WalletConnect />}
+      {intentApproved && <WalletConnect loginEffect={approvalLoginEffect("purchase")} />}
       {phase.kind === "loading" && <p>Loading the approval…</p>}
       {phase.kind === "error" && (
         <div style={{ ...cardStyle, borderColor: "rgba(255,120,120,.4)", background: "rgba(255,80,80,.06)" }}>
@@ -641,7 +657,9 @@ function PurchaseApprovalFlow({ id }: { id: string }) {
           {phase.kind === "review" && intentApproved && !accountId && (
             <>
               <p style={{ fontSize: 13.5, lineHeight: 1.6, opacity: 0.8, margin: "0 0 10px" }}>
-                Approved ✓ — now connect the wallet shown above. The purchase signature fires when you tap Buy.
+                Approved ✓ — now connect the wallet shown above. Two signatures
+                coming: the session login (1 of 2, changes nothing), then the
+                purchase (2 of 2) when you tap Buy.
               </p>
               <button onClick={requestWalletConnectUI} style={primaryBtn}>
                 Connect wallet
@@ -649,9 +667,12 @@ function PurchaseApprovalFlow({ id }: { id: string }) {
             </>
           )}
           {phase.kind === "review" && intentApproved && accountId && (
-            <button onClick={buy} style={primaryBtn}>
-              Buy now — {p.value_hbar} HBAR
-            </button>
+            <>
+              <SignatureEffectNotice spec={purchaseEffect(p.title, p.value_hbar)} />
+              <button onClick={buy} style={primaryBtn}>
+                Buy now — {p.value_hbar} HBAR
+              </button>
+            </>
           )}
           {phase.kind === "working" && (
             <div style={{ ...primaryBtn, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.14)", textAlign: "center" }}>
@@ -761,7 +782,10 @@ function ReviewApprovalFlow({ id }: { id: string }) {
       heading={r ? `Review @${r.target_username}` : "Review approval"}
       intro="Your AI agent drafted this hire review, backed by a settled on-chain payment. Review it and tap Approve to post — nothing posts until you do."
     >
-      {intentApproved && <WalletConnect />}
+      {/* Review posting needs no wallet signature (session-authenticated
+          server call), so the login prompt stays unsequenced — it is the
+          only signature here. */}
+      {intentApproved && <WalletConnect loginEffect={SESSION_LOGIN_EFFECT} />}
       {phase.kind === "loading" && <p>Loading the approval…</p>}
       {phase.kind === "error" && (
         <div style={{ ...cardStyle, borderColor: "rgba(255,120,120,.4)", background: "rgba(255,80,80,.06)" }}>

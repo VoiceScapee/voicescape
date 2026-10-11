@@ -28,6 +28,11 @@ import { useSession } from "@/lib/session";
 import { getActiveChain } from "@/lib/chains";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { recordConversionEvent } from "@/lib/metrics";
+import {
+  SignatureEffectNotice,
+  SESSION_LOGIN_EFFECT,
+  type SignatureEffectSpec,
+} from "./SignatureEffectNotice";
 
 /* Wallet sign-in button (reskinned in the design pass)                     */
 /* ------------------------------------------------------------------ */
@@ -75,7 +80,20 @@ function SignInProgress({ startedAt, onCancel }: { startedAt: number; onCancel: 
   );
 }
 
-export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boolean } = {}) {
+export function WalletConnect({
+  skipAutoSignIn = false,
+  loginEffect,
+}: {
+  skipAutoSignIn?: boolean;
+  /**
+   * Effect-naming for the login signature (thechomps' rule: each signature
+   * names the ledger-side effect it moves). Claim/approval flows pass a
+   * sequenced "Signature 1 of 2" spec so the login prompt is
+   * distinguishable from the action signature that follows; standalone
+   * uses default to the unsequenced session-login naming.
+   */
+  loginEffect?: SignatureEffectSpec;
+} = {}) {
   const { account, isConnecting, error, bootSettled, userDisconnected, inAppBrowser, connect, disconnect } = useWallet();
   const { t } = useLanguage();
   // SessionProvider is mounted at the root layout; when present the button
@@ -320,7 +338,9 @@ export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boo
     );
   }
 
-  // Connected but not signed in: prompt for the signature.
+  // Connected but not signed in: prompt for the signature. The login prompt
+  // names its ledger-side effect (thechomps' rule) — it must never be
+  // mistaken for the action signature that follows in claim/approval flows.
   if (account) {
     // Same vanity-name preference as the authenticated branch above.
     const myUsername = getVanityName(account) ?? deriveUsername(account);
@@ -328,15 +348,12 @@ export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boo
     const showProgress = signing && signInStartedAt !== null;
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {/* Two-step sequence, always visible: step 1 done, step 2 pending.
-            The wallet's signature prompt never arrives as a surprise. */}
+        <div style={{ width: "100%" }}>
+          <SignatureEffectNotice spec={loginEffect ?? SESSION_LOGIN_EFFECT} />
+        </div>
         <div style={{ fontSize: 12, color: "var(--vs-muted)", width: "100%" }}>
-          <div>✓ Step 1 — wallet connected ({shortAccount(account)})</div>
-          <div>
-            {showProgress || autoSignArmed
-              ? "Step 2 — check your wallet to sign the login…"
-              : "Step 2 — sign the login request in your wallet"}
-          </div>
+          ✓ Wallet connected ({shortAccount(account)})
+          {(showProgress || autoSignArmed) && " — check your wallet to approve it…"}
         </div>
         {myUsername && (
           <Link
@@ -371,22 +388,11 @@ export function WalletConnect({ skipAutoSignIn = false }: { skipAutoSignIn?: boo
             >
               {signing ? t("wallet.checkWallet") : t("wallet.signIn")}
             </button>
-            {showProgress ? (
+            {showProgress && (
               <SignInProgress
                 startedAt={signInStartedAt as number}
                 onCancel={() => session?.cancelSignIn()}
               />
-            ) : (
-              <div
-                style={{
-                  fontSize: 11.5,
-                  color: "var(--vs-muted)",
-                  width: "100%",
-                }}
-              >
-                This proves you own the wallet — 1 tinybar to yourself, not a payment.
-                Sign once — you&apos;re signed in for 7 days.
-              </div>
             )}
           </>
         ) : null}
