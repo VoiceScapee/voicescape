@@ -253,6 +253,11 @@ const FOUNDER_INTRO =
 
 // The intro, line by line — streams into the terminal while Alexa speaks it.
 const INTRO_LINES = [
+  "Alexa — show me the money.",
+  "Every other platform takes twenty percent off the top, then locks up your money for weeks or months.",
+  "Voicescape flips it: ninety-eight percent goes straight to the creator.",
+  "No hidden fees. No lock-up periods. Your funds settle instantly on Hedera mainnet.",
+  "When businesses stop bleeding fees and delays, they can lower their own prices — so customers save money too.",
   "Welcome to the Voicescape Voice Builder.",
   "Built by Brandon Prout — one person, no laptop.",
   "He took Hedera's vision literally: anyone can carve out their own piece of cyberspace.",
