@@ -612,10 +612,24 @@ export default function AlexaDemoPage() {
           0%, 100% { opacity: .25; }
           50% { opacity: 1; }
         }
+        /* Amazon kicker — same size, same place, impossible to miss */
+        .amazon-pulse { animation: amazon-glow 2.4s ease-in-out infinite; }
+        @keyframes amazon-glow {
+          0%, 100% { opacity: 1; text-shadow: 0 0 10px rgba(56,189,248,.55); }
+          50% { opacity: .8; text-shadow: 0 0 26px rgba(56,189,248,.95); }
+        }
       `}</style>
       <div style={{ position: "relative", margin: "0 auto", maxWidth: 768 }}>
+        {/* Voicescape brand mark */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          <img
+            src="/voicescape-logo-splash.webp"
+            alt="Voicescape"
+            style={{ height: 34, width: "auto", display: "block" }}
+          />
+        </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <p style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.2em", color: "#38bdf8", margin: 0 }}>
+          <p className="amazon-pulse" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.2em", color: "#38bdf8", margin: 0 }}>
             Amazon hackathon · Alexa+ track
           </p>
           <button
