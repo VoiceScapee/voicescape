@@ -299,6 +299,17 @@ export default function AlexaDemoPage() {
   const langEntry = VOICE_LANGS.find((l) => l.code === lang) ?? VOICE_LANGS[0];
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
+  // iOS: SpeechRecognition exists but is unreliable (buggy on iOS 17+), and
+  // iOS Chrome/Firefox don't have it at all (WebKit limitation). Detect once
+  // so we can set honest expectations — the type box + keyboard dictation
+  // mic is the first-class path there, and speech-out still works fine.
+  const [isIOS] = useState(
+    () =>
+      typeof navigator !== "undefined" &&
+      (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1))
+  );
+
   // The founder intro — the user taps, the terminal comes alive with the
   // narration line by line while Alexa speaks it, then hands them the mic.
   // The tap is the gesture TTS needs.
@@ -621,11 +632,11 @@ export default function AlexaDemoPage() {
       `}</style>
       <div style={{ position: "relative", margin: "0 auto", maxWidth: 768 }}>
         {/* Voicescape brand mark */}
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14, marginTop: 4 }}>
           <img
             src="/voicescape-logo-splash.webp"
             alt="Voicescape"
-            style={{ height: 34, width: "auto", display: "block" }}
+            style={{ height: 52, width: "auto", display: "block" }}
           />
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -791,6 +802,13 @@ export default function AlexaDemoPage() {
           {!supported && (
             <p style={{ fontSize: 14, color: "#fcd34d", margin: 0 }}>
               Voice input isn&apos;t supported in this browser — type below.
+            </p>
+          )}
+          {supported && isIOS && (
+            <p style={{ fontSize: 12, color: "#64748b", margin: 0, maxWidth: 440, textAlign: "center", lineHeight: 1.5 }}>
+              iPhone tip: the browser mic can be flaky on iOS — you can also
+              dictate with the <strong style={{ color: "#94a3b8" }}>mic key on your keyboard</strong>,
+              or just type. The agent talks back out loud either way. 🎙
             </p>
           )}
           {/* Founder intro — right by the mic, where the gesture makes sense */}
@@ -1536,6 +1554,29 @@ export default function AlexaDemoPage() {
                   </li>
                 ))}
               </ul>
+              {/* The guide — what "live" actually means, in plain language */}
+              <div
+                style={{
+                  marginTop: 12,
+                  borderRadius: 10,
+                  border: "1px solid rgba(52,211,153,.25)",
+                  background: "rgba(52,211,153,.05)",
+                  padding: "10px 12px",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#6ee7b7" }}>
+                  ⛓ What &ldquo;live&rdquo; means here
+                </div>
+                <p style={{ marginTop: 6, marginBottom: 0, fontSize: 11, lineHeight: 1.6, color: "#94a3b8" }}>
+                  This demo&apos;s voice agent talks to the same MCP server our
+                  production dapp runs on — 64 tools, spec 2025-11-25, over
+                  Streamable HTTP. Every call above hits the real server: real
+                  blockpages, real tip totals, real templates. Nothing is mocked.
+                  Tips settle on Hedera mainnet — the chain seals a new block
+                  every few seconds, and the 98/2 split is enforced by the smart
+                  contract itself, not by trust.
+                </p>
+              </div>
               {agent && agent.toolResults.length > 0 && (
                 <p style={{ marginTop: 12, fontSize: 12, color: "#34d399" }}>
                   ⚡ This session called {agent.toolResults.length}: {agent.toolResults.map((t) => t.tool).join(", ")}
