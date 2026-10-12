@@ -69,9 +69,13 @@ const FALLBACK_DANNY_SPEAK =
 /**
  * Danny's Vision is NOT a blockpage — it's the live engine constellation
  * (full-screen canvas viz at /danny/godseye). It can't be rebuilt from
- * blocks, so the demo embeds the real production page in the preview.
+ * blocks, so the demo embeds the real page in the preview.
+ *
+ * Relative URL on purpose: the demo's own Content-Security-Policy only
+ * allows framing 'self' (+ YouTube/SoundCloud/Spotify), so an absolute
+ * production URL gets blocked by the browser. Same-origin always passes.
  */
-const GODSEYE_EMBED_URL = "https://voicescape.vercel.app/danny/godseye";
+const GODSEYE_EMBED_URL = "/danny/godseye";
 
 /** "Tour Danny's Vision" intent — the live engine constellation tour. */
 function isVisionTour(text: string): boolean {
@@ -212,8 +216,8 @@ const SYSTEM_PROMPT =
   "asks to tour Danny's Vision (e.g. 'tour Danny\\u0027s Vision', 'who is " +
   "Danny'), call blockpage_earnings with username \"danny\" for the live " +
   "numbers, set pageDraft.displayName to \"Danny's Vision\", and set " +
-  "pageDraft.embedUrl to \"https://voicescape.vercel.app/danny/godseye\" — " +
-  "the live engine constellation page, shown full-frame in the preview. " +
+  "pageDraft.embedUrl to \"/danny/godseye\" — the live engine constellation " +
+  "page, shown full-frame in the preview. " +
   "Do NOT call lookup_blockpage for this one: the constellation is a live " +
   "visualization, not a blockpage, and it cannot be rebuilt from blocks. " +
   "If the user " +
