@@ -66,6 +66,22 @@ const FALLBACK_DANNY_SPEAK =
   "mainnet data — and you are flying through it with your voice, through " +
   "Amazon Alexa.";
 
+/**
+ * Danny's Vision is NOT a blockpage — it's the live engine constellation
+ * (full-screen canvas viz at /danny/godseye). It can't be rebuilt from
+ * blocks, so the demo embeds the real production page in the preview.
+ */
+const GODSEYE_EMBED_URL = "https://voicescape.vercel.app/danny/godseye";
+
+/** "Tour Danny's Vision" intent — the live engine constellation tour. */
+function isVisionTour(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /danny'?s vision|tour danny|meet danny|who is danny|\bdanny\b/.test(lower) &&
+    !/change (the )?(title|tagline)/.test(lower)
+  );
+}
+
 /** Fallback "meet Information in Motion" line — a human creator. */
 const FALLBACK_IIM_SPEAK =
   "Meet Information in Motion — a human creator on Voicescape. This is " +
@@ -131,6 +147,10 @@ interface ToolCall {
 interface PageDraft {
   displayName?: string;
   purpose?: string;
+  // Live-page embed: when set, the preview shows this URL full-frame in an
+  // iframe instead of assembled blocks (used for Danny's Vision — the
+  // constellation is a live visualization, not a blockpage).
+  embedUrl?: string;
   theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
   socials?: Array<{ platform: string; url: string }>;
   links?: Array<{ label: string; url: string }>;
@@ -171,7 +191,8 @@ const SYSTEM_PROMPT =
   '"toolCalls":[{"name":"lookup_blockpage","arguments":{"username":"name"}}],' +
   '"pageDraft":{"displayName":"...","purpose":"...","theme":{"background":"#hex","foreground":"#hex","accent":"#hex"},' +
   '"socials":[{"platform":"x|instagram|youtube|tiktok|website","url":"https://..."}],' +
-  '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}]}} ' +
+  '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}],' +
+  '"embedUrl":"https://... (only for the Danny\'s Vision tour — see below)"}} ' +
   "Only use these tool names: lookup_blockpage, list_templates, " +
   "blockpage_earnings, list_tip_assets, check_profile_pin. " +
   "If the user asks to see a live music blockpage (e.g. 'show me a live " +
@@ -189,9 +210,13 @@ const SYSTEM_PROMPT =
   "mainnet Hedera AI agent that the user is speaking with through Amazon " +
   "Alexa right now — name both, plainly — then the earnings. If the user " +
   "asks to tour Danny's Vision (e.g. 'tour Danny\\u0027s Vision', 'who is " +
-  "Danny'), call lookup_blockpage with username \"danny\" — the live " +
-  "constellation of everything being built across Voicescape — then " +
-  "blockpage_earnings for it, displayName \"Danny's Vision\". If the user " +
+  "Danny'), call blockpage_earnings with username \"danny\" for the live " +
+  "numbers, set pageDraft.displayName to \"Danny's Vision\", and set " +
+  "pageDraft.embedUrl to \"https://voicescape.vercel.app/danny/godseye\" — " +
+  "the live engine constellation page, shown full-frame in the preview. " +
+  "Do NOT call lookup_blockpage for this one: the constellation is a live " +
+  "visualization, not a blockpage, and it cannot be rebuilt from blocks. " +
+  "If the user " +
   "asks to meet Information in Motion, call lookup_blockpage with " +
   "username \"informinmotion\" — a HUMAN creator on Voicescape — then " +
   "blockpage_earnings for it, displayName \"Information in Motion\", and " +
@@ -340,22 +365,20 @@ function fallbackPlan(spoken: string, langCode: string): AgentPlan {
       },
     };
   }
-  // Danny's Vision — the live build constellation (blockpage: "danny").
-  // The "tour the mission" moment: lookup + real earnings.
-  const dannyRe = /danny'?s vision|tour danny|meet danny|who is danny|\bdanny\b/;
-  if (dannyRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
-    steps.push('Looking up the live "danny" builder blockpage');
+  // Danny's Vision — the live engine constellation (NOT a blockpage).
+  // The "tour the mission" moment: real earnings + the live constellation
+  // embedded full-frame in the preview.
+  if (isVisionTour(spoken)) {
+    steps.push("Opening the live engine constellation");
     return {
       speak: FALLBACK_DANNY_SPEAK,
       steps,
-      toolCalls: [
-        { name: "lookup_blockpage", arguments: { username: "danny" } },
-        { name: "blockpage_earnings", arguments: { username: "danny" } },
-      ],
+      toolCalls: [{ name: "blockpage_earnings", arguments: { username: "danny" } }],
       pageDraft: {
         displayName: "Danny's Vision",
         purpose:
-          "Voicescape agent liaison: AI agent earning HBAR for the ecosystem and forwarding revenue to the founder.",
+          "The live engine constellation — ENGINE at the center, every satellite backed by real Hedera mainnet data.",
+        embedUrl: GODSEYE_EMBED_URL,
         blocks: [],
       },
     };
@@ -782,6 +805,25 @@ export async function POST(req: NextRequest) {
       plannedBy = "fallback";
     }
 
+    // 1b. Danny's Vision tour is deterministic no matter which planner ran:
+    // the constellation is a live visualization, not a blockpage — never
+    // let a plan rebuild it from blocks. Real earnings + the live embed.
+    if (isVisionTour(spoken)) {
+      plan = {
+        speak: FALLBACK_DANNY_SPEAK,
+        steps: ["Heard your request", "Opening the live engine constellation"],
+        toolCalls: [{ name: "blockpage_earnings", arguments: { username: "danny" } }],
+        pageDraft: {
+          displayName: "Danny's Vision",
+          purpose:
+            "The live engine constellation — ENGINE at the center, every satellite backed by real Hedera mainnet data.",
+          embedUrl: GODSEYE_EMBED_URL,
+          blocks: [],
+        },
+      };
+      plannedBy = "vision-tour";
+    }
+
     // 2. Call the LIVE MCP server over Streamable HTTP (spec 2025-11-25).
     const init = await mcpRpc(
       "initialize",
@@ -890,7 +932,11 @@ export async function POST(req: NextRequest) {
     // number of live MCP calls made above — then invites the next command
     // so the voice loop stays alive.
     const speakWithCount =
-      toolCount > 0 ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"} to build this.` : speakBase;
+      toolCount > 0
+        ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"}${
+            pageDraft.embedUrl ? " to pull this up live" : " to build this"
+          }.`
+        : speakBase;
     // The fun tip brag — plain human language, real on-chain numbers, for
     // the music/lookup flow. This is what makes us different: 98% to the
     // artist, enforced by the contract, at a fraction of a cent in fees.

@@ -44,6 +44,9 @@ interface AgentResponse {
   pageDraft: {
     displayName?: string;
     purpose?: string;
+    // Live-page embed: when set, the preview shows this URL full-frame in
+    // an iframe instead of assembled blocks (Danny's Vision tour).
+    embedUrl?: string;
     theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
     socials?: Array<{ platform: string; url: string }>;
     links?: Array<{ label: string; url: string }>;
@@ -1290,6 +1293,49 @@ export default function AlexaDemoPage() {
               )}
               {hasHero && agent.pageDraft.purpose && (
                 <p style={{ padding: "16px 24px 0", textAlign: "center", fontSize: 12, opacity: 0.6 }}>{agent.pageDraft.purpose}</p>
+              )}
+              {/* Live-page embed (Danny's Vision tour): the real production
+                  constellation, full-frame in the preview — not rebuilt
+                  from blocks, because it's a live visualization. */}
+              {agent.pageDraft.embedUrl && (
+                <div
+                  className="preview-in"
+                  style={{
+                    margin: "16px 16px 0",
+                    overflow: "hidden",
+                    borderRadius: 12,
+                    border: "1px solid rgba(125,211,252,.25)",
+                    background: "#020617",
+                  }}
+                >
+                  <div style={{ position: "relative", width: "100%", aspectRatio: "4/5" }}>
+                    <iframe
+                      src={agent.pageDraft.embedUrl}
+                      title={agent.pageDraft.displayName ?? "Live preview"}
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        width: "100%",
+                        height: "100%",
+                        border: "none",
+                        background: "#020617",
+                      }}
+                      allow="autoplay; encrypted-media"
+                    />
+                  </div>
+                  <p
+                    style={{
+                      margin: 0,
+                      padding: "8px 12px",
+                      textAlign: "center",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#7dd3fc",
+                    }}
+                  >
+                    🔴 LIVE — the real engine constellation, pulsing with Hedera mainnet blocks
+                  </p>
+                </div>
               )}
               {blocks.slice(0, visibleBlocks).map((b, i) => (
                 <div
