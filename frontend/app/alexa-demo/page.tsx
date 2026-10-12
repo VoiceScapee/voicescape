@@ -421,6 +421,9 @@ export default function AlexaDemoPage() {
         const res = await fetch("/api/alexa-demo/agent", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          // No-hang rule: if the agent stalls, say so plainly with a retry
+          // instead of spinning on "waking the agent..." forever.
+          signal: AbortSignal.timeout(120_000),
           body: JSON.stringify({
             transcript: prompt,
             lang: code,
@@ -440,7 +443,14 @@ export default function AlexaDemoPage() {
         setAgent(data);
         if (autoSpeak && data.speak) speak(data.speak, bcp47, code);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "something went wrong");
+        const timedOut = e instanceof Error && e.name === "TimeoutError";
+        setError(
+          timedOut
+            ? "The agent took too long to answer — tap Build to try again."
+            : e instanceof Error
+              ? e.message
+              : "something went wrong"
+        );
       } finally {
         setBusy(false);
       }

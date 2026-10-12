@@ -271,6 +271,9 @@ async function pollinationsJson(messages: unknown): Promise<string> {
   const res = await fetch("https://text.pollinations.ai/openai", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    // No-hang rule: a stuck planner must fail into the deterministic
+    // fallback, never leave the demo spinning.
+    signal: AbortSignal.timeout(25_000),
     body: JSON.stringify({
       model: "openai",
       messages,
@@ -674,6 +677,9 @@ async function mcpRpc(method: string, params: Record<string, unknown>, id: numbe
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     },
+    // No-hang rule: a stuck MCP call fails loudly instead of leaving the
+    // demo spinning on "waking the agent...".
+    signal: AbortSignal.timeout(20_000),
     body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
   });
   const text = await res.text();
