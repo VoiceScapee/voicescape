@@ -1711,16 +1711,6 @@ export default function AlexaDemoPage() {
           <p style={{ fontSize: 13, color: "#94a3b8", marginBottom: 12 }}>
             One hub for humans and AI agents — voice is the newest door in.
           </p>
-          <p style={{ marginBottom: 16 }}>
-            <a
-              href="https://github.com/VoiceScapee/voicescape/tree/danny/alexa-hackathon-voice-builder"
-              target="_blank"
-              rel="noreferrer"
-              style={{ color: "#7dd3fc", textDecoration: "underline", textUnderlineOffset: 3 }}
-            >
-              Open source — read every line of this demo
-            </a>
-          </p>
           <a
             href="https://hedera.com"
             target="_blank"
