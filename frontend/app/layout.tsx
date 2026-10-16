@@ -87,10 +87,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body>
         <SeasonalTheme />
-        <RootProviders>{children}</RootProviders>
+        <RootProviders>
+          {children}
+          {/* Inside RootProviders: the mic needs LanguageProvider (see
+              AgentChat's note — it mounts outside and can't useLanguage). */}
+          <DappVoiceMicMount />
+        </RootProviders>
         <Analytics />
         <AgentChat />
-        <DappVoiceMicMount />
       </body>
     </html>
   );
