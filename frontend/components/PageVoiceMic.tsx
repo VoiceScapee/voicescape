@@ -26,17 +26,12 @@ import {
   saveMicPos,
   type MicPos,
 } from "@/lib/voice-mic-position";
-
-/** Dapp-mode chips — general questions, mirroring dappChips() server-side. */
-function dappSuggestionChips(lang: Lang): string[] {
-  const es = lang === "es";
-  return [
-    es ? "¿Qué es Voicescape?" : "What is Voicescape?",
-    es ? "¿Cómo creo una página?" : "How do I build a page?",
-    es ? "¿Cómo funcionan las propinas?" : "How do tips work?",
-    es ? "Contratar un agente IA" : "Hire an AI agent",
-  ];
-}
+import {
+  dappSectionChips,
+  dappSectionFooter,
+  dappSectionTitle,
+  type DappSection,
+} from "@/lib/voice-dapp-chips";
 
 /* Minimal Web Speech API typings (browser-provided, no dependency). */
 interface SpeechRecognitionEventLike {
@@ -86,6 +81,8 @@ const BCP47: Record<Lang, string> = {
 interface VoiceAction {
   scrollTo?: string;
   openTip?: boolean;
+  /** Builder surface only: the builder page switches to its AI tab. */
+  builderAi?: boolean;
 }
 interface VoiceReply {
   ok: boolean;
@@ -144,6 +141,7 @@ function resolveVoice(code: string): Promise<SpeechSynthesisVoice | undefined> {
 export default function PageVoiceMic({
   username,
   page,
+  dappSection,
 }: {
   /** Null in dapp mode (the mic on dapp surfaces): answers general
       Voicescape questions via the API's dapp mode. */
@@ -152,8 +150,12 @@ export default function PageVoiceMic({
       still renders; chips wait for the page, and the API re-resolves
       server-side from the username. */
   page: VoicescapePage | null;
+  /** Dapp mode only: which surface the mic is on — picks the per-surface
+      chips/title ("builder" = the two-path choice). Defaults to "home". */
+  dappSection?: DappSection | null;
 }) {
   const dappMode = !username;
+  const section: DappSection = dappMode ? (dappSection ?? "home") : "home";
   const router = useRouter();
   const { lang: dappLang } = useLanguage();
   const [lang, setLang] = useState<Lang>(dappLang);
@@ -259,6 +261,12 @@ export default function PageVoiceMic({
         setOpen(false);
         router.push(hasTip ? `/${username}?tip=1&pvvoice=${Date.now()}` : `/${username}?tip=1`);
       }
+      if (action.builderAi) {
+        // Builder surface only: the builder page listens for this and
+        // switches to its AI tab. No listener anywhere else, so this is
+        // a harmless no-op off the builder.
+        window.dispatchEvent(new CustomEvent("vs:open-builder-ai"));
+      }
     },
     [router, username],
   );
@@ -278,7 +286,9 @@ export default function PageVoiceMic({
             transcript: prompt,
             lang,
             // Omitted in dapp mode — the API answers general questions.
-            ...(username ? { username } : {}),
+            // dappSection lets the API attach surface-only actions
+            // (builderAi) where they actually work.
+            ...(username ? { username } : { dappSection: section }),
             navigatorLang: typeof navigator !== "undefined" ? navigator.language : undefined,
           }),
         });
@@ -293,7 +303,7 @@ export default function PageVoiceMic({
         setBusy(false);
       }
     },
-    [busy, lang, username, runAction, speak],
+    [busy, lang, username, section, runAction, speak],
   );
 
   const startListening = useCallback(() => {
@@ -347,11 +357,11 @@ export default function PageVoiceMic({
     }
   }, [ask, lang]);
 
-  const chips = dappMode ? dappSuggestionChips(lang) : page ? suggestionChips(page, lang) : [];
+  const chips = dappMode ? dappSectionChips(section, lang) : page ? suggestionChips(page, lang) : [];
 
-  const panelTitle = dappMode ? "Talk to Voicescape" : "Talk to this page";
+  const panelTitle = dappMode ? dappSectionTitle(section) : "Talk to this page";
   const footerNote = dappMode
-    ? "Answers about Voicescape — the dapp, blockpages, and AI agents."
+    ? dappSectionFooter(section)
     : "Answers come from this page's live blocks. Tips open in your wallet — nothing moves on its own.";
 
   // When the mic sits in the top half of the screen, the panel opens

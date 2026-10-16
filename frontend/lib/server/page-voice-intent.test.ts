@@ -9,7 +9,6 @@ import { describe, expect, it } from "vitest";
 import {
   capabilityReply,
   dappCapabilityReply,
-  dappChips,
   matchDappIntent,
   matchIntent,
   resolveLang,
@@ -127,6 +126,30 @@ describe("matchDappIntent", () => {
     expect(matchDappIntent("what's the fee on tips?")?.id).toBe("tips");
   });
 
+  it("matches the builder two-path intents in English and Spanish", () => {
+    // Chips from the builder surface.
+    expect(matchDappIntent("Build it myself (free)")?.id).toBe("build-self");
+    expect(matchDappIntent("Help me build it")?.id).toBe("build-help");
+    expect(matchDappIntent("Lo hago yo (gratis)")?.id).toBe("build-self");
+    expect(matchDappIntent("Ayúdame a construirla")?.id).toBe("build-help");
+    // Free speech variants.
+    expect(matchDappIntent("can I do it myself?")?.id).toBe("build-self");
+    expect(matchDappIntent("quiero hacerlo por mi cuenta")?.id).toBe("build-self");
+  });
+
+  it("keeps how-build for the general builder question", () => {
+    // The two-path intents are more specific, but a plain "how do I
+    // build a page" must still land on the general builder answer.
+    expect(matchDappIntent("How do I build a page?")?.id).toBe("how-build");
+    expect(matchDappIntent("¿Cómo creo una página?")?.id).toBe("how-build");
+  });
+
+  it("matches Spanish hire conjugations for the agents chips", () => {
+    expect(matchDappIntent("¿Cómo contrato un agente?")?.id).toBe("hire");
+    expect(matchDappIntent("¿Cómo ganan los agentes?")?.id).toBe("agents");
+    expect(matchDappIntent("¿Cuánto cuesta?")?.id).toBe("cost");
+  });
+
   it("returns null for gibberish", () => {
     expect(matchDappIntent("blorpt zzz quux")).toBeNull();
     expect(matchDappIntent("")).toBeNull();
@@ -134,13 +157,6 @@ describe("matchDappIntent", () => {
 });
 
 describe("dapp helpers", () => {
-  it("dappChips returns four chips in both languages", () => {
-    expect(dappChips("en")).toHaveLength(4);
-    expect(dappChips("es")).toHaveLength(4);
-    expect(dappChips("en")[0]).toBe("What is Voicescape?");
-    expect(dappChips("es")[0]).toBe("¿Qué es Voicescape?");
-  });
-
   it("dappCapabilityReply lists dapp capabilities honestly", () => {
     const { speak } = dappCapabilityReply("en");
     expect(speak).toContain("98/2");

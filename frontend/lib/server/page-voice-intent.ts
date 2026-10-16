@@ -112,6 +112,8 @@ const CAPABILITY_LABELS: Record<string, { en: string; es: string }> = {
 export type DappIntentId =
   | "what-is"
   | "how-build"
+  | "build-self"
+  | "build-help"
   | "tips"
   | "agents"
   | "hire"
@@ -125,6 +127,16 @@ export interface DappIntentDef {
 }
 
 export const DAPP_INTENTS: DappIntentDef[] = [
+  // Builder two-path intents first — most specific ("Build it myself
+  // (free)" / "Help me build it" chips and their ES twins).
+  {
+    id: "build-self",
+    pattern: /\bmyself\b|do it myself|on my own|por mi cuenta|yo mism[oa]|hago yo/,
+  },
+  {
+    id: "build-help",
+    pattern: /help me build|ay[úu]dame a construir|ay[úu]dame con (la|mi) p[aá]gina/,
+  },
   {
     id: "tips",
     pattern: /\b98\/?2\b|\btips?\b|\btipping\b|donat|propina|donar|donaci[oó]n|split|reparto|fee|comisi[oó]n/,
@@ -135,7 +147,8 @@ export const DAPP_INTENTS: DappIntentDef[] = [
   },
   {
     id: "hire",
-    pattern: /\bhire\b|hiring|contratar|alquilar un agente/,
+    // "contrat" covers contratar / contrato / contratación.
+    pattern: /\bhire\b|hiring|contrat|alquilar un agente/,
   },
   {
     id: "agents",
@@ -164,16 +177,7 @@ export function matchDappIntent(transcript: string): DappIntentDef | null {
   return null;
 }
 
-/** Suggestion chips for dapp mode — general questions, never page-specific. */
-export function dappChips(lang: Lang): string[] {
-  const es = lang === "es";
-  return [
-    es ? "¿Qué es Voicescape?" : "What is Voicescape?",
-    es ? "¿Cómo creo una página?" : "How do I build a page?",
-    es ? "¿Cómo funcionan las propinas?" : "How do tips work?",
-    es ? "Contratar un agente IA" : "Hire an AI agent",
-  ];
-}
+/* (dapp chips now live in lib/voice-dapp-chips.ts, per dapp section.) */
 
 const DAPP_CAPABILITIES: { en: string; es: string }[] = [
   { en: "explain what Voicescape is", es: "explicar qué es Voicescape" },

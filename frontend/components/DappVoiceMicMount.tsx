@@ -15,6 +15,7 @@
 
 import { usePathname } from "next/navigation";
 import PageVoiceMic from "./PageVoiceMic";
+import { dappSectionFor } from "@/lib/voice-dapp-chips";
 
 const DAPP_VOICE_PATHS = [
   "/",
@@ -40,5 +41,5 @@ function isDappSurface(pathname: string): boolean {
 export default function DappVoiceMicMount() {
   const pathname = usePathname();
   if (!pathname || !isDappSurface(pathname)) return null;
-  return <PageVoiceMic username={null} page={null} />;
+  return <PageVoiceMic username={null} page={null} dappSection={dappSectionFor(pathname)} />;
 }

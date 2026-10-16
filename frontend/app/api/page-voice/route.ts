@@ -13,7 +13,7 @@
  * router's capability list is the fallback after that. The mic never dies
  * and never spends anything.
  *
- * Body: { transcript, lang (2-letter), username?, navigatorLang? }
+ * Body: { transcript, lang (2-letter), username?, navigatorLang?, dappSection? }
  * Omit username for dapp mode (the mic on dapp surfaces): answers general
  * Voicescape questions from static knowledge, never returns actions.
  * Returns: { ok, speak, steps, action?: { scrollTo?, openTip? } }
@@ -97,7 +97,12 @@ interface VoicePage {
   blocks: PageBlock[];
 }
 
-export type VoiceAction = { scrollTo?: string; openTip?: boolean };
+export type VoiceAction = {
+  scrollTo?: string;
+  openTip?: boolean;
+  /** Builder surface only: switch the builder to its AI tab. */
+  builderAi?: boolean;
+};
 
 export interface VoiceReply {
   ok: boolean;
@@ -294,14 +299,16 @@ async function answerIntent(
 
 /* ------------------------------------------------------------------ */
 /* Dapp mode — the mic on dapp surfaces (no blockpage context). Answers */
-/* general Voicescape questions from static knowledge. No actions:      */
-/* there is no page to scroll or tip box to open here.                  */
+/* general Voicescape questions from static knowledge. The only action   */
+/* dapp mode ever returns is builderAi (builder surface): switch the     */
+/* builder to its AI tab so the user can describe their page.            */
 /* ------------------------------------------------------------------ */
 
 async function answerDappIntent(
   intent: DappIntentDef,
   lang: Lang,
-): Promise<{ speak: string; steps: string[] }> {
+  section: string,
+): Promise<{ speak: string; steps: string[]; action?: VoiceAction }> {
   switch (intent.id) {
     case "what-is":
       return {
@@ -320,6 +327,27 @@ async function answerDappIntent(
           "Abre el constructor y describe la página que quieres — la IA crea una vista previa en vivo, gratis. Conectar tu billetera la reclama como tuya; publicar cuesta una pequeña tarifa de red de Hedera.",
         ),
         steps: [t(lang, "Explained the builder", "Expliqué el constructor")],
+      };
+    case "build-self":
+      return {
+        speak: t(
+          lang,
+          "You can build it yourself for free — add blocks, edit anything, preview as much as you like, all in the Builder. You only pay a tiny Hedera network fee when you claim and publish.",
+          "Puedes construirla tú gratis — agrega bloques, edita todo, previsualiza cuanto quieras, todo en el Constructor. Solo pagas una pequeña tarifa de red de Hedera cuando la reclamas y publicas.",
+        ),
+        steps: [t(lang, "Explained free self-serve building", "Expliqué la construcción gratuita")],
+      };
+    case "build-help":
+      return {
+        speak: t(
+          lang,
+          "Describe the page you want and the AI drafts it for you — each AI edit is 25 cents from your wallet, and you review everything before it goes live.",
+          "Describe la página que quieres y la IA la diseña por ti — cada edición con IA cuesta 25 centavos de tu billetera, y tú revisas todo antes de que se publique.",
+        ),
+        steps: [t(lang, "Opened the AI builder", "Abrí el constructor con IA")],
+        // Only on the builder surface, where the AI tab exists. Anywhere
+        // else the client dispatches to no listener — a harmless no-op.
+        ...(section === "builder" ? { action: { builderAi: true } } : {}),
       };
     case "tips":
       return {
@@ -475,11 +503,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
-  const { transcript, lang, username, navigatorLang } = (body ?? {}) as {
+  const { transcript, lang, username, navigatorLang, dappSection } = (body ?? {}) as {
     transcript?: unknown;
     lang?: unknown;
     username?: unknown;
     navigatorLang?: unknown;
+    dappSection?: unknown;
   };
 
   const spoken = typeof transcript === "string" ? transcript.trim().slice(0, MAX_TRANSCRIPT) : "";
@@ -491,12 +520,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   // Dapp mode: no username — answer general Voicescape questions. The
   // deterministic router runs first ($0, never down), then the free-tier
-  // AI fallback, then the honest capability list. No actions: there is
-  // no page to scroll or tip box to open here.
+  // AI fallback, then the honest capability list. The only action dapp
+  // mode returns is builderAi on the builder surface.
   if (!name) {
+    const section = typeof dappSection === "string" ? dappSection : "home";
     const dappIntent = matchDappIntent(spoken);
     if (dappIntent) {
-      const answered = await answerDappIntent(dappIntent, useLang);
+      const answered = await answerDappIntent(dappIntent, useLang, section);
       const reply: VoiceReply = { ok: true, ...answered };
       return NextResponse.json(reply);
     }
