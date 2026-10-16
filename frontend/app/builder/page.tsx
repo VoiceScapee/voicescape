@@ -3022,6 +3022,22 @@ function BuilderInner() {
   const [addType, setAddType] = useState<BlockType>("bio");
   const [tab, setTab] = useState<TabId>("customize");
 
+  // Voice mic handoff: the dapp mic's "Help me build it" chip dispatches
+  // vs:open-builder-ai — switch to the AI tab and bring the Vibecode AI
+  // chat into view. Decoupled by event so the mic never imports the
+  // builder's tab state.
+  useEffect(() => {
+    const openAi = () => {
+      setTab("ai");
+      // The chat mounts after the tab switch — scroll once it's there.
+      setTimeout(() => {
+        document.querySelector(".vb-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    };
+    window.addEventListener("vs:open-builder-ai", openAi);
+    return () => window.removeEventListener("vs:open-builder-ai", openAi);
+  }, []);
+
   // Internal usage telemetry (founder eyes only): when the user reaches
   // the Publish tab, snapshot the draft page so the founder dashboard can
   // render exactly what their preview looked like. Anonymous — no wallet,

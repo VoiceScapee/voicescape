@@ -20,6 +20,18 @@ import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LANGS, type Lang } from "@/lib/i18n/dictionaries";
 import type { VoicescapePage } from "@/lib/schema";
+import {
+  clampMicPos,
+  loadMicPos,
+  saveMicPos,
+  type MicPos,
+} from "@/lib/voice-mic-position";
+import {
+  dappSectionChips,
+  dappSectionFooter,
+  dappSectionTitle,
+  type DappSection,
+} from "@/lib/voice-dapp-chips";
 
 /* Minimal Web Speech API typings (browser-provided, no dependency). */
 interface SpeechRecognitionEventLike {
@@ -69,6 +81,8 @@ const BCP47: Record<Lang, string> = {
 interface VoiceAction {
   scrollTo?: string;
   openTip?: boolean;
+  /** Builder surface only: the builder page switches to its AI tab. */
+  builderAi?: boolean;
 }
 interface VoiceReply {
   ok: boolean;
@@ -127,13 +141,21 @@ function resolveVoice(code: string): Promise<SpeechSynthesisVoice | undefined> {
 export default function PageVoiceMic({
   username,
   page,
+  dappSection,
 }: {
-  username: string;
+  /** Null in dapp mode (the mic on dapp surfaces): answers general
+      Voicescape questions via the API's dapp mode. */
+  username: string | null;
   /** Null while the page is still resolving (or failed to) — the button
       still renders; chips wait for the page, and the API re-resolves
       server-side from the username. */
   page: VoicescapePage | null;
+  /** Dapp mode only: which surface the mic is on — picks the per-surface
+      chips/title ("builder" = the two-path choice). Defaults to "home". */
+  dappSection?: DappSection | null;
 }) {
+  const dappMode = !username;
+  const section: DappSection = dappMode ? (dappSection ?? "home") : "home";
   const router = useRouter();
   const { lang: dappLang } = useLanguage();
   const [lang, setLang] = useState<Lang>(dappLang);
@@ -148,13 +170,64 @@ export default function PageVoiceMic({
   const [lastSaid, setLastSaid] = useState("");
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
+  // Draggable position. Null = the default bottom-left spot. Loaded from
+  // localStorage after mount (never during SSR — avoids hydration mismatch).
+  const [pos, setPos] = useState<MicPos | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const movedRef = useRef(false);
+
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SR) setSupported(false);
+    setPos(loadMicPos());
     return () => {
       recogRef.current?.abort();
       window.speechSynthesis?.cancel();
     };
+  }, []);
+
+  const onDragStart = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const origin = pos ?? { x: 20, y: window.innerHeight - 72 };
+      dragRef.current = { startX: e.clientX, startY: e.clientY, origX: origin.x, origY: origin.y };
+      movedRef.current = false;
+      setDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // setPointerCapture can throw for mouse in odd states — drag still works.
+      }
+    },
+    [pos],
+  );
+
+  const onDragMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.hypot(dx, dy) > 6) movedRef.current = true;
+    if (movedRef.current) {
+      setPos(clampMicPos(d.origX + dx, d.origY + dy, window.innerWidth, window.innerHeight));
+    }
+  }, []);
+
+  const onDragEnd = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDragging(false);
+    if (d && movedRef.current) {
+      const finalPos = clampMicPos(
+        d.origX + (e.clientX - d.startX),
+        d.origY + (e.clientY - d.startY),
+        window.innerWidth,
+        window.innerHeight,
+      );
+      setPos(finalPos);
+      saveMicPos(finalPos);
+    }
   }, []);
 
   const speak = useCallback(
@@ -179,14 +252,20 @@ export default function PageVoiceMic({
           .querySelector(`[data-pv-block="${action.scrollTo}"]`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      if (action.openTip) {
+      if (action.openTip && username) {
         // ?tip=1 is the page's own deep link for the tip box. When it's
         // already in the URL (box was closed), add a nonce so the page's
         // effect refires and reopens it. Close the voice panel so it never
-        // sits over the tip flow.
+        // sits over the tip flow. Dapp mode never returns tip actions.
         const hasTip = new URLSearchParams(window.location.search).get("tip") === "1";
         setOpen(false);
         router.push(hasTip ? `/${username}?tip=1&pvvoice=${Date.now()}` : `/${username}?tip=1`);
+      }
+      if (action.builderAi) {
+        // Builder surface only: the builder page listens for this and
+        // switches to its AI tab. No listener anywhere else, so this is
+        // a harmless no-op off the builder.
+        window.dispatchEvent(new CustomEvent("vs:open-builder-ai"));
       }
     },
     [router, username],
@@ -206,7 +285,10 @@ export default function PageVoiceMic({
           body: JSON.stringify({
             transcript: prompt,
             lang,
-            username,
+            // Omitted in dapp mode — the API answers general questions.
+            // dappSection lets the API attach surface-only actions
+            // (builderAi) where they actually work.
+            ...(username ? { username } : { dappSection: section }),
             navigatorLang: typeof navigator !== "undefined" ? navigator.language : undefined,
           }),
         });
@@ -221,7 +303,7 @@ export default function PageVoiceMic({
         setBusy(false);
       }
     },
-    [busy, lang, username, runAction, speak],
+    [busy, lang, username, section, runAction, speak],
   );
 
   const startListening = useCallback(() => {
@@ -275,17 +357,27 @@ export default function PageVoiceMic({
     }
   }, [ask, lang]);
 
-  const chips = page ? suggestionChips(page, lang) : [];
+  const chips = dappMode ? dappSectionChips(section, lang) : page ? suggestionChips(page, lang) : [];
+
+  const panelTitle = dappMode ? dappSectionTitle(section) : "Talk to this page";
+  const footerNote = dappMode
+    ? dappSectionFooter(section)
+    : "Answers come from this page's live blocks. Tips open in your wallet — nothing moves on its own.";
+
+  // When the mic sits in the top half of the screen, the panel opens
+  // BELOW the button so it never clips off the top edge.
+  const panelBelow = pos !== null && typeof window !== "undefined" && pos.y < window.innerHeight * 0.5;
 
   return (
     <div
       style={{
         position: "fixed",
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
-        left: 20,
+        ...(pos
+          ? { left: pos.x, top: pos.y }
+          : { left: 20, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }),
         zIndex: 60,
         display: "flex",
-        flexDirection: "column",
+        flexDirection: panelBelow ? "column-reverse" : "column",
         alignItems: "flex-start",
         gap: 10,
         maxWidth: "min(340px, calc(100vw - 40px))",
@@ -294,7 +386,7 @@ export default function PageVoiceMic({
       {open && (
         <div
           role="dialog"
-          aria-label="Talk to this page"
+          aria-label={panelTitle}
           style={{
             width: "100%",
             borderRadius: 16,
@@ -308,7 +400,7 @@ export default function PageVoiceMic({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span aria-hidden>🎙</span>
-            <span style={{ fontWeight: 600, flex: 1 }}>Talk to this page</span>
+            <span style={{ fontWeight: 600, flex: 1 }}>{panelTitle}</span>
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value as Lang)}
@@ -444,18 +536,28 @@ export default function PageVoiceMic({
           </form>
 
           {error && <p style={{ fontSize: 12, color: "#fca5a5", margin: "8px 0 0" }}>{error}</p>}
-          <p style={{ fontSize: 11, opacity: 0.55, margin: "8px 0 0" }}>
-            Answers come from this page&apos;s live blocks. Tips open in your wallet — nothing moves
-            on its own.
-          </p>
+          <p style={{ fontSize: 11, opacity: 0.55, margin: "8px 0 0" }}>{footerNote}</p>
         </div>
       )}
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Close page voice" : "Talk to this page"}
-        title="Talk to this page"
+        onClick={() => {
+          // A real drag ends with the pointer capture released — plain taps
+          // (and keyboard Enter/Space, which fire click without pointers)
+          // toggle the panel; drags don't.
+          if (movedRef.current) {
+            movedRef.current = false;
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+        onPointerDown={onDragStart}
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
+        aria-label={open ? "Close page voice" : panelTitle}
+        title={`${panelTitle} — drag to move`}
         style={{
           width: 52,
           height: 52,
@@ -464,11 +566,14 @@ export default function PageVoiceMic({
           background: listening ? "#ef4444" : "rgba(12, 16, 24, 0.92)",
           color: "#e8e4da",
           fontSize: 22,
-          cursor: "pointer",
+          cursor: dragging ? "grabbing" : "grab",
+          touchAction: "none",
           boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          userSelect: "none",
+          WebkitUserSelect: "none",
         }}
       >
         {listening ? "⏹" : "🎙"}

@@ -7,6 +7,7 @@ import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
+import DappVoiceMicMount from "@/components/DappVoiceMicMount";
 import SeasonalTheme from "@/components/SeasonalTheme";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
@@ -86,7 +87,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     >
       <body>
         <SeasonalTheme />
-        <RootProviders>{children}</RootProviders>
+        <RootProviders>
+          {children}
+          {/* Inside RootProviders: the mic needs LanguageProvider (see
+              AgentChat's note — it mounts outside and can't useLanguage). */}
+          <DappVoiceMicMount />
+        </RootProviders>
         <Analytics />
         <AgentChat />
       </body>
