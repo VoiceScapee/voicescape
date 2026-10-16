@@ -20,6 +20,12 @@ import { useRouter } from "next/navigation";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LANGS, type Lang } from "@/lib/i18n/dictionaries";
 import type { VoicescapePage } from "@/lib/schema";
+import {
+  clampMicPos,
+  loadMicPos,
+  saveMicPos,
+  type MicPos,
+} from "@/lib/voice-mic-position";
 
 /** Dapp-mode chips — general questions, mirroring dappChips() server-side. */
 function dappSuggestionChips(lang: Lang): string[] {
@@ -162,13 +168,64 @@ export default function PageVoiceMic({
   const [lastSaid, setLastSaid] = useState("");
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
+  // Draggable position. Null = the default bottom-left spot. Loaded from
+  // localStorage after mount (never during SSR — avoids hydration mismatch).
+  const [pos, setPos] = useState<MicPos | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const movedRef = useRef(false);
+
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SR) setSupported(false);
+    setPos(loadMicPos());
     return () => {
       recogRef.current?.abort();
       window.speechSynthesis?.cancel();
     };
+  }, []);
+
+  const onDragStart = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const origin = pos ?? { x: 20, y: window.innerHeight - 72 };
+      dragRef.current = { startX: e.clientX, startY: e.clientY, origX: origin.x, origY: origin.y };
+      movedRef.current = false;
+      setDragging(true);
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        // setPointerCapture can throw for mouse in odd states — drag still works.
+      }
+    },
+    [pos],
+  );
+
+  const onDragMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX;
+    const dy = e.clientY - d.startY;
+    if (Math.hypot(dx, dy) > 6) movedRef.current = true;
+    if (movedRef.current) {
+      setPos(clampMicPos(d.origX + dx, d.origY + dy, window.innerWidth, window.innerHeight));
+    }
+  }, []);
+
+  const onDragEnd = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    setDragging(false);
+    if (d && movedRef.current) {
+      const finalPos = clampMicPos(
+        d.origX + (e.clientX - d.startX),
+        d.origY + (e.clientY - d.startY),
+        window.innerWidth,
+        window.innerHeight,
+      );
+      setPos(finalPos);
+      saveMicPos(finalPos);
+    }
   }, []);
 
   const speak = useCallback(
@@ -297,15 +354,20 @@ export default function PageVoiceMic({
     ? "Answers about Voicescape — the dapp, blockpages, and AI agents."
     : "Answers come from this page's live blocks. Tips open in your wallet — nothing moves on its own.";
 
+  // When the mic sits in the top half of the screen, the panel opens
+  // BELOW the button so it never clips off the top edge.
+  const panelBelow = pos !== null && typeof window !== "undefined" && pos.y < window.innerHeight * 0.5;
+
   return (
     <div
       style={{
         position: "fixed",
-        bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)",
-        left: 20,
+        ...(pos
+          ? { left: pos.x, top: pos.y }
+          : { left: 20, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }),
         zIndex: 60,
         display: "flex",
-        flexDirection: "column",
+        flexDirection: panelBelow ? "column-reverse" : "column",
         alignItems: "flex-start",
         gap: 10,
         maxWidth: "min(340px, calc(100vw - 40px))",
@@ -470,9 +532,22 @@ export default function PageVoiceMic({
 
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          // A real drag ends with the pointer capture released — plain taps
+          // (and keyboard Enter/Space, which fire click without pointers)
+          // toggle the panel; drags don't.
+          if (movedRef.current) {
+            movedRef.current = false;
+            return;
+          }
+          setOpen((v) => !v);
+        }}
+        onPointerDown={onDragStart}
+        onPointerMove={onDragMove}
+        onPointerUp={onDragEnd}
+        onPointerCancel={onDragEnd}
         aria-label={open ? "Close page voice" : panelTitle}
-        title={panelTitle}
+        title={`${panelTitle} — drag to move`}
         style={{
           width: 52,
           height: 52,
@@ -481,11 +556,14 @@ export default function PageVoiceMic({
           background: listening ? "#ef4444" : "rgba(12, 16, 24, 0.92)",
           color: "#e8e4da",
           fontSize: 22,
-          cursor: "pointer",
+          cursor: dragging ? "grabbing" : "grab",
+          touchAction: "none",
           boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
+          userSelect: "none",
+          WebkitUserSelect: "none",
         }}
       >
         {listening ? "⏹" : "🎙"}
