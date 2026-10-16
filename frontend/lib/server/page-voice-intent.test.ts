@@ -8,6 +8,9 @@
 import { describe, expect, it } from "vitest";
 import {
   capabilityReply,
+  dappCapabilityReply,
+  dappChips,
+  matchDappIntent,
   matchIntent,
   resolveLang,
   t,
@@ -95,6 +98,55 @@ describe("capabilityReply", () => {
     expect(speak).toContain("escuchar su música");
     expect(speak).toContain("abrir la caja de propinas");
     expect(speak).toContain(" o ");
+  });
+});
+
+describe("matchDappIntent", () => {
+  it("matches all seven dapp intents in English", () => {
+    expect(matchDappIntent("what is voicescape?")?.id).toBe("what-is");
+    expect(matchDappIntent("how do I build a page?")?.id).toBe("how-build");
+    expect(matchDappIntent("how do tips work?")?.id).toBe("tips");
+    expect(matchDappIntent("tell me about AI agents")?.id).toBe("agents");
+    expect(matchDappIntent("I want to hire an agent")?.id).toBe("hire");
+    expect(matchDappIntent("how much does it cost?")?.id).toBe("cost");
+    expect(matchDappIntent("how do I log in?")?.id).toBe("login");
+  });
+
+  it("matches dapp intents in Spanish", () => {
+    expect(matchDappIntent("¿qué es voicescape?")?.id).toBe("what-is");
+    expect(matchDappIntent("¿cómo creo una página?")?.id).toBe("how-build");
+    expect(matchDappIntent("quiero dar propina, ¿cómo es el reparto?")?.id).toBe("tips");
+    expect(matchDappIntent("quiero contratar un agente")?.id).toBe("hire");
+    expect(matchDappIntent("¿cuánto cuesta?")?.id).toBe("cost");
+    expect(matchDappIntent("cómo conecto mi billetera")?.id).toBe("login");
+  });
+
+  it("prefers the more specific intent (hire over agents, tips over cost)", () => {
+    expect(matchDappIntent("hire an AI agent")?.id).toBe("hire");
+    // "tips" is checked before "cost" so fee questions land on the 98/2 split
+    expect(matchDappIntent("what's the fee on tips?")?.id).toBe("tips");
+  });
+
+  it("returns null for gibberish", () => {
+    expect(matchDappIntent("blorpt zzz quux")).toBeNull();
+    expect(matchDappIntent("")).toBeNull();
+  });
+});
+
+describe("dapp helpers", () => {
+  it("dappChips returns four chips in both languages", () => {
+    expect(dappChips("en")).toHaveLength(4);
+    expect(dappChips("es")).toHaveLength(4);
+    expect(dappChips("en")[0]).toBe("What is Voicescape?");
+    expect(dappChips("es")[0]).toBe("¿Qué es Voicescape?");
+  });
+
+  it("dappCapabilityReply lists dapp capabilities honestly", () => {
+    const { speak } = dappCapabilityReply("en");
+    expect(speak).toContain("98/2");
+    expect(speak).toContain("hire");
+    const es = dappCapabilityReply("es").speak;
+    expect(es).toContain("98/2");
   });
 });
 

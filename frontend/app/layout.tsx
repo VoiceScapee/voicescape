@@ -7,6 +7,7 @@ import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
+import DappVoiceMicMount from "@/components/DappVoiceMicMount";
 import SeasonalTheme from "@/components/SeasonalTheme";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
@@ -89,6 +90,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <RootProviders>{children}</RootProviders>
         <Analytics />
         <AgentChat />
+        <DappVoiceMicMount />
       </body>
     </html>
   );

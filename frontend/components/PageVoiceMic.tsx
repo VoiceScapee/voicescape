@@ -21,6 +21,17 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LANGS, type Lang } from "@/lib/i18n/dictionaries";
 import type { VoicescapePage } from "@/lib/schema";
 
+/** Dapp-mode chips — general questions, mirroring dappChips() server-side. */
+function dappSuggestionChips(lang: Lang): string[] {
+  const es = lang === "es";
+  return [
+    es ? "¿Qué es Voicescape?" : "What is Voicescape?",
+    es ? "¿Cómo creo una página?" : "How do I build a page?",
+    es ? "¿Cómo funcionan las propinas?" : "How do tips work?",
+    es ? "Contratar un agente IA" : "Hire an AI agent",
+  ];
+}
+
 /* Minimal Web Speech API typings (browser-provided, no dependency). */
 interface SpeechRecognitionEventLike {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -128,12 +139,15 @@ export default function PageVoiceMic({
   username,
   page,
 }: {
-  username: string;
+  /** Null in dapp mode (the mic on dapp surfaces): answers general
+      Voicescape questions via the API's dapp mode. */
+  username: string | null;
   /** Null while the page is still resolving (or failed to) — the button
       still renders; chips wait for the page, and the API re-resolves
       server-side from the username. */
   page: VoicescapePage | null;
 }) {
+  const dappMode = !username;
   const router = useRouter();
   const { lang: dappLang } = useLanguage();
   const [lang, setLang] = useState<Lang>(dappLang);
@@ -179,11 +193,11 @@ export default function PageVoiceMic({
           .querySelector(`[data-pv-block="${action.scrollTo}"]`)
           ?.scrollIntoView({ behavior: "smooth", block: "center" });
       }
-      if (action.openTip) {
+      if (action.openTip && username) {
         // ?tip=1 is the page's own deep link for the tip box. When it's
         // already in the URL (box was closed), add a nonce so the page's
         // effect refires and reopens it. Close the voice panel so it never
-        // sits over the tip flow.
+        // sits over the tip flow. Dapp mode never returns tip actions.
         const hasTip = new URLSearchParams(window.location.search).get("tip") === "1";
         setOpen(false);
         router.push(hasTip ? `/${username}?tip=1&pvvoice=${Date.now()}` : `/${username}?tip=1`);
@@ -206,7 +220,8 @@ export default function PageVoiceMic({
           body: JSON.stringify({
             transcript: prompt,
             lang,
-            username,
+            // Omitted in dapp mode — the API answers general questions.
+            ...(username ? { username } : {}),
             navigatorLang: typeof navigator !== "undefined" ? navigator.language : undefined,
           }),
         });
@@ -275,7 +290,12 @@ export default function PageVoiceMic({
     }
   }, [ask, lang]);
 
-  const chips = page ? suggestionChips(page, lang) : [];
+  const chips = dappMode ? dappSuggestionChips(lang) : page ? suggestionChips(page, lang) : [];
+
+  const panelTitle = dappMode ? "Talk to Voicescape" : "Talk to this page";
+  const footerNote = dappMode
+    ? "Answers about Voicescape — the dapp, blockpages, and AI agents."
+    : "Answers come from this page's live blocks. Tips open in your wallet — nothing moves on its own.";
 
   return (
     <div
@@ -294,7 +314,7 @@ export default function PageVoiceMic({
       {open && (
         <div
           role="dialog"
-          aria-label="Talk to this page"
+          aria-label={panelTitle}
           style={{
             width: "100%",
             borderRadius: 16,
@@ -308,7 +328,7 @@ export default function PageVoiceMic({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
             <span aria-hidden>🎙</span>
-            <span style={{ fontWeight: 600, flex: 1 }}>Talk to this page</span>
+            <span style={{ fontWeight: 600, flex: 1 }}>{panelTitle}</span>
             <select
               value={lang}
               onChange={(e) => setLang(e.target.value as Lang)}
@@ -444,18 +464,15 @@ export default function PageVoiceMic({
           </form>
 
           {error && <p style={{ fontSize: 12, color: "#fca5a5", margin: "8px 0 0" }}>{error}</p>}
-          <p style={{ fontSize: 11, opacity: 0.55, margin: "8px 0 0" }}>
-            Answers come from this page&apos;s live blocks. Tips open in your wallet — nothing moves
-            on its own.
-          </p>
+          <p style={{ fontSize: 11, opacity: 0.55, margin: "8px 0 0" }}>{footerNote}</p>
         </div>
       )}
 
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={open ? "Close page voice" : "Talk to this page"}
-        title="Talk to this page"
+        aria-label={open ? "Close page voice" : panelTitle}
+        title={panelTitle}
         style={{
           width: 52,
           height: 52,
