@@ -1788,11 +1788,75 @@ function TemplatePicker({
 /* Vibecode chat panel                                               */
 /* ---------------------------------------------------------------- */
 
-interface ChatMessage {
-  role: "user" | "assistant" | "error";
+/* ---------------------------------------------------------------- */
+/* Voice-native Describe step (2026-10-18, Brandon: full-bleed, first   */
+/* principles + KISS): voice in → real-status terminal → live preview. */
+/* The terminal narrates REAL pipeline stages only — every line is     */
+/* appended at an actually-awaited point in send/startX402/payX402Edit/ */
+/* sendByok. Nothing is simulated, timed, or faked.                     */
+/* ---------------------------------------------------------------- */
+
+type TermTone = "dim" | "ok" | "err";
+interface TermLine {
   text: string;
-  /** Optional verification link rendered under the bubble (e.g. HashScan receipt). */
+  tone: TermTone;
+  /** Optional verification link (e.g. HashScan receipt for a paid edit). */
   link?: { href: string; label: string };
+}
+
+// Minimal Web Speech API typings (not in the TS DOM lib by default).
+// Same shape as components/VoiceInput.tsx — the dapp's proven voice path.
+interface SpeechRecognitionEventLike {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+  resultIndex: number;
+}
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((e: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+function getSpeechRecognition(): (new () => SpeechRecognitionLike) | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as Record<string, unknown>;
+  const SR = w.SpeechRecognition ?? w.webkitSpeechRecognition;
+  return (SR as (new () => SpeechRecognitionLike) | undefined) ?? null;
+}
+
+/** Custom SVG iconography — no emoji in chrome (repo rule). */
+function MicSvg({ size = 26 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  );
+}
+
+function StopSvg({ size = 20 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx={2.5} />
+    </svg>
+  );
 }
 
 const SUGGESTIONS = [
@@ -1807,28 +1871,129 @@ function VibecodeChat({
   page,
   draft,
   onDraftChange,
-  onApplyDraft,
-  onDiscardDraft,
   initialPrompt,
   onInitialPromptConsumed,
 }: {
   page: VoicescapePage;
   draft: AiDraft | null;
   onDraftChange: (d: AiDraft | null) => void;
-  onApplyDraft: () => void;
-  onDiscardDraft: () => void;
   /** One-tap "Remix with AI": a prefilled prompt the chat auto-sends once. */
   initialPrompt?: string | null;
   onInitialPromptConsumed?: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: "assistant",
-      text: "Hey! Describe how you want your blockpage to look and I'll draft a new version — you review it in the preview, then apply or discard.",
+  // Terminal: the build's real activity log. Every line is appended at an
+  // actually-awaited pipeline point — never simulated.
+  const [termLines, setTermLines] = useState<TermLine[]>([]);
+  const tlog = useCallback(
+    (text: string, tone: TermTone = "dim", link?: TermLine["link"]) => {
+      setTermLines((lines) => [...lines.slice(-59), { text, tone, link }]);
     },
-  ]);
+    [],
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Whether the user has kicked off a build yet (drives suggestion chips).
+  const [hasRun, setHasRun] = useState(false);
+
+  // Voice input — the primary way to describe the page. Web Speech API,
+  // same as VoiceInput.tsx. Transcript lands in the input for review;
+  // the user taps send (a misheard word should never cost 25¢).
+  const [voiceSupported] = useState(() => getSpeechRecognition() !== null);
+  const [listening, setListening] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const recogRef = useRef<SpeechRecognitionLike | null>(null);
+  const voiceBaseRef = useRef("");
+
+  // Stop recognition if the step unmounts mid-dictation.
+  useEffect(() => {
+    return () => {
+      try {
+        recogRef.current?.abort();
+      } catch {
+        /* noop */
+      }
+    };
+  }, []);
+
+  function toggleVoice() {
+    if (listening) {
+      try {
+        recogRef.current?.stop();
+      } catch {
+        /* noop */
+      }
+      return;
+    }
+    const SR = getSpeechRecognition();
+    if (!SR) {
+      setVoiceError("Voice input isn't supported in this browser — type instead.");
+      return;
+    }
+    setVoiceError(null);
+    const rec = new SR();
+    recogRef.current = rec;
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    voiceBaseRef.current = input;
+    rec.onresult = (e: SpeechRecognitionEventLike) => {
+      let interim = "";
+      let final = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0]?.transcript ?? "";
+        if ((e.results[i] as unknown as { isFinal?: boolean }).isFinal) {
+          final += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      const base = voiceBaseRef.current;
+      const sep = base && !base.endsWith(" ") ? " " : "";
+      setInput(base + sep + final + interim);
+    };
+    rec.onerror = (e: { error: string }) => {
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+        setVoiceError("Microphone blocked — allow it in browser settings and try again.");
+      } else if (e.error === "no-speech") {
+        setVoiceError("Didn't hear anything — try again.");
+      } else if (e.error !== "aborted") {
+        setVoiceError(`Voice error: ${e.error} — type instead.`);
+      }
+      setListening(false);
+    };
+    rec.onend = () => {
+      setListening(false);
+      recogRef.current = null;
+    };
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      setVoiceError("Couldn't start voice input — type instead.");
+      setListening(false);
+    }
+  }
+
+  // Live preview materialization (adapts the alexa-demo pattern to the
+  // builder's block model): when a REAL draft arrives, its blocks reveal
+  // one by one below. The draft itself is real; the staging is presentation.
+  const [revealed, setRevealed] = useState(0);
+  useEffect(() => {
+    if (!draft) return;
+    setRevealed(0);
+    const total = draft.page.blocks.length;
+    if (total <= 0) return;
+    const t = window.setInterval(() => {
+      setRevealed((r) => {
+        if (r >= total) {
+          window.clearInterval(t);
+          return r;
+        }
+        return r + 1;
+      });
+    }, 450);
+    return () => window.clearInterval(t);
+  }, [draft]);
   // Two ways to pay for AI edits — both paid by the user, never by the app:
   // "byok" calls Anthropic directly from this browser with the user's own
   // API key; "x402" pays the x402 vibecode endpoint per edit from the
@@ -1911,28 +2076,21 @@ function VibecodeChat({
     const key = getByokKey();
     if (!key) {
       setByokSettingsOpen(true);
-      setMessages((m) => [
-        ...m,
-        {
-          role: "error",
-          text: "Add your Anthropic API key in the AI key settings below first — generations use your key and are billed by Anthropic to you.",
-        },
-      ]);
+      tlog("Add your Anthropic API key in the key settings below first.", "err");
       return;
     }
     setLoading(true);
+    tlog("Sending to Anthropic with your key…");
     try {
       const pageJson = await generatePageWithByokKey({ pageJson: page, instruction, apiKey: key });
+      tlog("Draft received — validating…");
       const summary = summarizeChanges(page, pageJson);
       onDraftChange({ page: pageJson, summary, instruction });
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "Drafted a new version — review it in the preview pane, then Apply or Discard." },
-      ]);
+      tlog(`Draft ready — ${pageJson.blocks.length} blocks. Review it below.`, "ok");
     } catch (e) {
       const msg =
         e instanceof ByokError ? e.message : e instanceof Error ? e.message : String(e);
-      setMessages((m) => [...m, { role: "error", text: msg }]);
+      tlog(`Failed: ${msg}`, "err");
     } finally {
       setLoading(false);
     }
@@ -1967,6 +2125,7 @@ function VibecodeChat({
     setShowRails(false);
     setX402Pending(instruction);
     setLoading(true);
+    tlog("Checking payment options…");
     try {
       const probe = await probeX402(x402Url);
       setX402Rails(probe.rails);
@@ -1977,11 +2136,14 @@ function VibecodeChat({
           (a, b) => (a.usdCents ?? Number.POSITIVE_INFINITY) - (b.usdCents ?? Number.POSITIVE_INFINITY),
         )[0] ?? null;
       setX402Rail(cheapest);
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", text: "Each AI edit costs a small fee. Your wallet signs one transfer, the AI drafts your changes, and you review before anything goes live." },
-      ]);
+      tlog(
+        cheapest
+          ? `Pay-per-edit ready — ${cheapest.amountDisplay} via ${cheapest.label}. Your wallet signs once, then the AI drafts.`
+          : "Pay-per-edit ready.",
+        "ok",
+      );
     } catch (e) {
+      tlog(`Payment check failed: ${e instanceof Error ? e.message : String(e)}`, "err");
       setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
       setLoading(false);
@@ -2016,6 +2178,7 @@ function VibecodeChat({
         throw new Error("Wallet did not return a signed transaction.");
       });
       setX402Note({ kind: "info", text: `Paying ${x402Rail.amountDisplay} — approve the transfer in your wallet…` });
+      tlog(`Paying ${x402Rail.amountDisplay} — approve in your wallet, then the AI drafts…`);
       const { response, settleTxId } = await payX402(
         x402Url,
         {
@@ -2031,24 +2194,23 @@ function VibecodeChat({
         throw new Error(`Vibecode service returned ${response.status}: ${text.slice(0, 300)}`);
       }
       const data = JSON.parse(text) as { pageJson?: unknown; error?: string };
+      tlog("Draft received — validating…");
       if (data.error || !isValidPage(data.pageJson)) {
         throw new Error(data.error ?? "The service returned an invalid blockpage.");
       }
       const summary = summarizeChanges(page, data.pageJson);
       onDraftChange({ page: data.pageJson, summary, instruction: x402Pending });
-      setMessages((m) => [
-        ...m,
-        {
-          role: "assistant",
-          text: `Paid edit settled${settleTxId ? ` (tx ${settleTxId.slice(0, 20)}…)` : ""} Review the draft in the preview pane, then Apply or Discard.`,
-          link: settleTxId
-            ? { href: `${getActiveChain().blockExplorer}/transaction/${settleTxId}`, label: "View on HashScan →" }
-            : undefined,
-        },
-      ]);
+      tlog(
+        `Draft ready — ${data.pageJson.blocks.length} blocks. Review it below.`,
+        "ok",
+        settleTxId
+          ? { href: `${getActiveChain().blockExplorer}/transaction/${settleTxId}`, label: `settled ${settleTxId.slice(0, 20)}…` }
+          : undefined,
+      );
       setX402Pending(null);
       setX402Rails(null);
     } catch (e) {
+      tlog(`Failed: ${e instanceof Error ? e.message : String(e)}`, "err");
       setX402Note({ kind: "err", text: e instanceof Error ? e.message : String(e) });
     } finally {
       setLoading(false);
@@ -2061,6 +2223,7 @@ function VibecodeChat({
     // Human-first gate: pay-per-edit AI needs the wallet (to pay and to
     // claim the page). The typed text stays in the box — nothing is lost.
     if (payMode === "x402" && !isAuthenticated) {
+      tlog("Wallet not connected — connect it to use AI edits (that's also what makes this blockpage yours).", "err");
       setX402Note({
         kind: "info",
         text: "Connect your wallet to use AI edits — that's also what makes this blockpage yours.",
@@ -2068,7 +2231,9 @@ function VibecodeChat({
       return;
     }
     setInput("");
-    setMessages((m) => [...m, { role: "user", text: instruction }]);
+    setHasRun(true);
+    const short = instruction.length > 90 ? `${instruction.slice(0, 90)}…` : instruction;
+    tlog(`$ "${short}"`);
     if (payMode === "x402") {
       await startX402(instruction);
     } else {
@@ -2077,25 +2242,94 @@ function VibecodeChat({
   };
 
 
-  const showSuggestions = messages.length <= 1 && !loading && !draft;
+  const showSuggestions = !hasRun && !loading && !draft;
   // Quick-build one-tap: the AI designs from the pasted socials. Always
   // visible; disabled with a hint until there's at least one link.
   const designLinkCount = socialsUrls(page).length;
 
-  return (
-    <div className="vb-chat vs-card">
-      <div className="vb-chat-head">
-        <span className="vb-spark">
-          <IconSpark size={16} />
-        </span>
-        Vibecode AI
-      </div>
+  // Live preview: the user's actual blockpage, full-bleed. When a REAL
+  // draft lands, its blocks materialize one by one (alexa-demo pattern,
+  // adapted to the builder's block model). The draft is real data; the
+  // staged reveal is presentation.
+  const previewBase = draft?.page ?? page;
+  const totalBlocks = previewBase.blocks.length;
+  const shownBlocks = draft ? Math.min(revealed, totalBlocks) : totalBlocks;
+  const previewPage: VoicescapePage = {
+    ...previewBase,
+    blocks: previewBase.blocks.slice(0, shownBlocks),
+  };
+  const materializing = !!draft && shownBlocks < totalBlocks;
 
-      <div style={{ padding: "10px 12px 0" }}>
+  return (
+    <div className="vb-voiceflow">
+      {/* Section 1 — voice. Full-bleed, no card: the mic is the primary input.
+          One primary action (speak/type + send); payment UI appears inline
+          only when the flow reaches it. */}
+      <section className="vb-voice-sec vb-fullbleed" aria-label="Describe your page">
+        <p className="vb-voice-kicker">Describe your page</p>
+        <h2 className="vb-voice-title">Tell me what to build</h2>
+        <p className="vb-voice-sub">Speak or type — you review everything before it goes live.</p>
+
+        <div className="vb-voice-bar">
+          {voiceSupported && (
+            <button
+              type="button"
+              onClick={toggleVoice}
+              className={`vb-mic-btn${listening ? " is-listening" : ""}`}
+              aria-label={listening ? "Stop voice input" : "Speak your page description"}
+              title={listening ? "Stop listening" : "Tap and speak"}
+            >
+              {listening ? <StopSvg size={22} /> : <MicSvg size={26} />}
+            </button>
+          )}
+          <input
+            className="vb-voice-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && send()}
+            placeholder={listening ? "Listening — speak now…" : "Speak or type: neon cyberpunk page with my GitHub links"}
+            disabled={loading}
+            aria-label="Describe your page"
+          />
+          <button
+            type="button"
+            className="vb-send-btn"
+            onClick={() => send()}
+            disabled={loading || !input.trim()}
+            aria-label="Send to the AI"
+          >
+            <IconArrowRight size={18} />
+          </button>
+        </div>
+        {voiceError && (
+          <p className="vb-voice-error" role="alert">{voiceError}</p>
+        )}
+        {listening && (
+          <p className="vb-voice-listening" aria-live="polite">Listening — speak now, then tap send.</p>
+        )}
+        {!voiceSupported && (
+          <p className="vb-voice-hint">Voice input isn&apos;t supported in this browser — typing works fine.</p>
+        )}
+
+        {showSuggestions && (
+          <div className="vb-voice-chips">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                className="vb-chip-btn"
+                onClick={() => send(s)}
+                disabled={loading}
+              >
+                <IconSpark size={13} /> {s}
+              </button>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
-          className="vs-btn vs-btn-primary"
-          style={{ width: "100%", justifyContent: "center" }}
+          className="vs-btn vs-btn-primary vb-links-btn"
           onClick={() => send(buildDesignFromLinksInstruction(page))}
           disabled={loading || designLinkCount === 0}
           title={
@@ -2107,271 +2341,251 @@ function VibecodeChat({
           <IconSpark size={16} /> Design my page from my links
         </button>
         {designLinkCount === 0 && (
-          <p className="vs-hint" style={{ marginTop: 6 }}>
+          <p className="vs-hint">
             Paste your social links into the socials block first — the AI designs from those.
           </p>
         )}
-      </div>
 
-      <div className="vb-chat-log">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`vb-bubble ${
-              m.role === "user" ? "vb-bubble-user" : m.role === "error" ? "vb-bubble-error" : "vb-bubble-assistant"
-            }`}
-          >
-            {m.text}
-            {m.link && (
-              <div style={{ marginTop: 6 }}>
-                <a
-                  href={m.link.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: "#8fd6ff", textDecoration: "underline", fontSize: 13 }}
-                >
-                  {m.link.label}
-                </a>
+        {/* Human-first (Brandon 2026-09-27): describe first, pay second. The
+            payment box lives inline below the input. Pay-per-edit needs the
+            wallet (to pay, and to make the page theirs); BYOK stays
+            wallet-free behind the quiet Advanced link. No jargon. */}
+        {payMode === "byok" ? (
+          <div className="vb-x402-box" aria-live="polite">
+            <p className="vb-x402-status">
+              <strong>Advanced:</strong> AI generation uses your own Anthropic API key — billed
+              by Anthropic to you, key stays in this browser. No key? Use pay-per-edit instead.
+              Voicescape never sees your key and never pays for your generations.
+            </p>
+            <button
+              type="button"
+              className="vb-chip-btn"
+              onClick={() => setByokSettingsOpen((o) => !o)}
+              disabled={loading}
+              aria-expanded={byokSettingsOpen}
+            >
+              {byokHasKey ? (
+                <><IconCheck size={13} /> Key saved</>
+              ) : (
+                <><IconPlus size={13} /> Add API key</>
+              )}
+            </button>
+            {byokSettingsOpen && (
+              <div style={{ marginTop: 8 }}>
+                <input
+                  className="vs-input"
+                  type="password"
+                  value={byokInput}
+                  onChange={(e) => setByokInput(e.target.value)}
+                  placeholder="sk-ant-…"
+                  autoComplete="off"
+                  disabled={loading}
+                  style={{ width: "100%", marginBottom: 8 }}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className="vs-btn vs-btn-primary"
+                    onClick={saveByokKey}
+                    disabled={loading || !byokInput.trim()}
+                  >
+                    Save key
+                  </button>
+                  {byokHasKey && (
+                    <button
+                      type="button"
+                      className="vs-btn vs-btn-ghost"
+                      onClick={removeByokKey}
+                      disabled={loading}
+                    >
+                      Remove key
+                    </button>
+                  )}
+                </div>
+                <p className="vb-x402-status" style={{ marginTop: 8 }}>
+                  Stored only in this browser&apos;s local storage — it never leaves your device for our
+                  servers. Get a key at{" "}
+                  <a href={BYOK_CONSOLE_URL} target="_blank" rel="noreferrer">
+                    console.anthropic.com
+                  </a>{" "}
+                  (model: {DEFAULT_BYOK_MODEL}).
+                </p>
+                {byokNote && (
+                  <p className={`vb-x402-status is-${byokNote.kind}`}>
+                    {byokNote.kind === "err" ? "Error: " : byokNote.kind === "ok" ? "Saved: " : ""}
+                    {byokNote.text}
+                  </p>
+                )}
               </div>
             )}
           </div>
-        ))}
-        {loading && (
-          <div className="vb-dreaming">
-            <span className="vb-dreaming-orb" />
-            <span className="vb-shimmer-text">dreaming up your blockpage…</span>
-          </div>
-        )}
-        {draft && (
-          <div className="vb-draft-summary">
-            <div className="vb-draft-summary-title">
-              <IconSpark size={14} /> Proposed changes
-            </div>
-            <ul>
-              {draft.summary.map((s, i) => (
-                <li key={i}>
-                  <IconCheck size={14} />
-                  <span>{s}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="vb-draft-summary-actions">
-              <button type="button" className="vs-btn vs-btn-primary" onClick={onApplyDraft}>
-                <IconCheck size={14} /> Apply
-              </button>
-              <button type="button" className="vs-btn vs-btn-ghost" onClick={onDiscardDraft}>
-                <IconClose size={14} /> Discard
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-      {showSuggestions && (
-        <div className="vb-chips">
-          {SUGGESTIONS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              className="vb-chip-btn"
-              onClick={() => send(s)}
-              disabled={loading}
-            >
-              <IconSpark size={13} /> {s}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="vb-chat-input-row">
-        <input
-          className="vs-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && send()}
-          placeholder="Describe a change…"
-          disabled={loading}
-        />
-        <button type="button" className="vs-btn vs-btn-primary" onClick={() => send()} disabled={loading || !input.trim()}>
-          <IconArrowRight size={16} />
-        </button>
-      </div>
-
-      {/* Human-first (Brandon 2026-09-27): describe first, pay second. The
-          payment box lives below the input. Pay-per-edit needs the wallet
-          (to pay, and to make the page theirs); BYOK stays wallet-free
-          behind the quiet Advanced link. No jargon: no "x402", no "rail". */}
-      {payMode === "byok" ? (
-        <div className="vb-x402-box" aria-live="polite">
-          <p className="vb-x402-status">
-            🔒 <strong>Advanced:</strong> AI generation uses your own Anthropic API key — billed
-            by Anthropic to you, key stays in this browser. No key? Use pay-per-edit instead.
-            Voicescape never sees your key and never pays for your generations.
-          </p>
-          <button
-            type="button"
-            className="vb-chip-btn"
-            onClick={() => setByokSettingsOpen((o) => !o)}
-            disabled={loading}
-            aria-expanded={byokSettingsOpen}
-          >
-            {byokHasKey ? "✅ Key saved" : "➕ Add API key"}
-          </button>
-          {byokSettingsOpen && (
-            <div style={{ marginTop: 8 }}>
-              <input
-                className="vs-input"
-                type="password"
-                value={byokInput}
-                onChange={(e) => setByokInput(e.target.value)}
-                placeholder="sk-ant-…"
-                autoComplete="off"
-                disabled={loading}
-                style={{ width: "100%", marginBottom: 8 }}
-              />
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        ) : isAuthenticated ? (
+          <div className="vb-x402-box" aria-live="polite">
+            {unknownToX402.length > 0 && (
+              <p className="vb-x402-status is-err">
+                Note: this blockpage uses block types the AI service doesn&apos;t know yet (
+                {unknownToX402.join(", ")}) — it would reject the request <em>after</em> you pay.
+                Remove them or use your own AI key for this edit.
+              </p>
+            )}
+            <p className="vb-x402-status">
+              Each AI edit costs a small fee. You pay from your wallet, then review the draft before anything changes.
+            </p>
+            {x402Rails && x402Pending && (
+              <>
+                {/* Round-2 simplify: the selected (cheapest) rail is shown as a
+                    quiet line; the full picker hides behind "change payment
+                    method" instead of confronting every first-timer. */}
+                {x402Rail && (
+                  <p className="vb-x402-status">
+                    Paying with <strong>{x402Rail.label}</strong> · {x402Rail.amountDisplay}
+                    {x402Rails.length > 1 && (
+                      <>
+                        {" · "}
+                        <button
+                          type="button"
+                          className="vb-quiet-link"
+                          onClick={() => setShowRails((s) => !s)}
+                          disabled={loading}
+                          style={{ fontSize: "inherit" }}
+                        >
+                          {showRails ? "hide options" : "change payment method"}
+                        </button>
+                      </>
+                    )}
+                  </p>
+                )}
+                {showRails && x402Rails.length > 1 && (
+                  <div className="pv-rail-row" role="group" aria-label="Payment method">
+                    {x402Rails.map((r) => {
+                      const cheapestCents = Math.min(...x402Rails.map((x) => x.usdCents ?? Number.POSITIVE_INFINITY));
+                      const isCheapest = x402Rails.length > 1 && r.usdCents === cheapestCents;
+                      return (
+                        <button
+                          key={`${r.network}:${r.asset}`}
+                          type="button"
+                          className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
+                          onClick={() => setX402Rail(r)}
+                          disabled={loading}
+                        >
+                          <span className="pv-rail-name">{r.label}</span>
+                          <span className="pv-rail-amt">
+                            {r.amountDisplay} · {formatUsdCents(r.usdCents)}
+                          </span>
+                          {isCheapest && <span className="pv-rail-tag">cheapest</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 <button
                   type="button"
                   className="vs-btn vs-btn-primary"
-                  onClick={saveByokKey}
-                  disabled={loading || !byokInput.trim()}
+                  onClick={payX402Edit}
+                  disabled={loading || !x402Rail || unknownToX402.length > 0}
+                  style={{ width: "100%", justifyContent: "center" }}
                 >
-                  Save key
+                  <IconBolt size={16} />
+                  {loading ? "Paying…" : `Pay ${x402Rail ? x402Rail.amountDisplay : ""} & generate draft`}
                 </button>
-                {byokHasKey && (
-                  <button
-                    type="button"
-                    className="vs-btn vs-btn-ghost"
-                    onClick={removeByokKey}
-                    disabled={loading}
-                  >
-                    Remove key
-                  </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="vb-x402-box" aria-live="polite">
+            <p className="vb-x402-status">
+              AI edits cost a small fee each, paid from your wallet. Connect your wallet to
+              unlock them — that&apos;s also what makes this blockpage yours.
+            </p>
+            <SignInButton />
+          </div>
+        )}
+        {x402Note && (
+          <p className={`vb-x402-status is-${x402Note.kind}`}>
+            {x402Note.kind === "err" ? "Error: " : x402Note.kind === "ok" ? "Done: " : ""}
+            {x402Note.text}
+          </p>
+        )}
+        {payMode === "x402" ? (
+          <button
+            type="button"
+            className="vb-quiet-link"
+            onClick={() => setPayMode("byok")}
+            disabled={loading}
+          >
+            Advanced: use your own AI key instead
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="vb-quiet-link"
+            onClick={() => setPayMode("x402")}
+            disabled={loading || !x402Url}
+            title={x402Url ? "Pay per edit from your wallet" : "Pay-per-edit is not configured"}
+          >
+            ← Back to pay-per-edit
+          </button>
+        )}
+      </section>
+
+      {/* Section 2 — terminal. Real pipeline stages only: every line is
+          appended at an actually-awaited point. Nothing simulated. */}
+      <section className="vb-term-sec vb-fullbleed" aria-label="Build activity">
+        <div className="vb-term" role="log" aria-live="polite">
+          {termLines.length === 0 && !loading ? (
+            <div className="vb-term-line">
+              <span className="vb-term-prompt">$</span>{" "}
+              <span className="vb-term-dim">ready — describe your page above, watch it build here</span>
+            </div>
+          ) : (
+            termLines.map((l, i) => (
+              <div key={i} className="vb-term-line">
+                <span className="vb-term-prompt">$</span>{" "}
+                <span className={l.tone === "ok" ? "vb-term-ok" : l.tone === "err" ? "vb-term-err" : "vb-term-dim"}>
+                  {l.text}
+                </span>
+                {l.link && (
+                  <>
+                    {" "}
+                    <a
+                      href={l.link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="vb-term-link"
+                    >
+                      {l.link.label}
+                    </a>
+                  </>
                 )}
               </div>
-              <p className="vb-x402-status" style={{ marginTop: 8 }}>
-                Stored only in this browser&apos;s local storage — it never leaves your device for our
-                servers. Get a key at{" "}
-                <a href={BYOK_CONSOLE_URL} target="_blank" rel="noreferrer">
-                  console.anthropic.com
-                </a>{" "}
-                (model: {DEFAULT_BYOK_MODEL}).
-              </p>
-              {byokNote && (
-                <p className={`vb-x402-status is-${byokNote.kind}`}>
-                  {byokNote.kind === "err" ? "❌ " : byokNote.kind === "ok" ? "✅ " : "ℹ️ "}
-                  {byokNote.text}
-                </p>
-              )}
+            ))
+          )}
+          {loading && (
+            <div className="vb-term-line">
+              <span className="vb-term-prompt">$</span>{" "}
+              <span className="vb-term-cursor" aria-hidden="true">▊</span>
             </div>
           )}
         </div>
-      ) : isAuthenticated ? (
-        <div className="vb-x402-box" aria-live="polite">
-          {unknownToX402.length > 0 && (
-            <p className="vb-x402-status is-err">
-              ⚠️ This blockpage uses block types the AI service doesn&apos;t know yet (
-              {unknownToX402.join(", ")}) — it would reject the request <em>after</em> you pay.
-              Remove them or use your own AI key for this edit.
-            </p>
-          )}
-          <p className="vb-x402-status">
-            Each AI edit costs a small fee. You pay from your wallet, then review the draft before anything changes.
-          </p>
-          {x402Rails && x402Pending && (
-            <>
-              {/* Round-2 simplify: the selected (cheapest) rail is shown as a
-                  quiet line; the full picker hides behind "change payment
-                  method" instead of confronting every first-timer. */}
-              {x402Rail && (
-                <p className="vb-x402-status">
-                  Paying with <strong>{x402Rail.label}</strong> · {x402Rail.amountDisplay}
-                  {x402Rails.length > 1 && (
-                    <>
-                      {" · "}
-                      <button
-                        type="button"
-                        className="vb-quiet-link"
-                        onClick={() => setShowRails((s) => !s)}
-                        disabled={loading}
-                        style={{ fontSize: "inherit" }}
-                      >
-                        {showRails ? "hide options" : "change payment method"}
-                      </button>
-                    </>
-                  )}
-                </p>
-              )}
-              {showRails && x402Rails.length > 1 && (
-                <div className="pv-rail-row" role="group" aria-label="Payment method">
-                  {x402Rails.map((r) => {
-                    const cheapestCents = Math.min(...x402Rails.map((x) => x.usdCents ?? Number.POSITIVE_INFINITY));
-                    const isCheapest = x402Rails.length > 1 && r.usdCents === cheapestCents;
-                    return (
-                      <button
-                        key={`${r.network}:${r.asset}`}
-                        type="button"
-                        className={`pv-rail-btn${x402Rail?.asset === r.asset && x402Rail?.network === r.network ? " is-active" : ""}`}
-                        onClick={() => setX402Rail(r)}
-                        disabled={loading}
-                      >
-                        <span className="pv-rail-name">{r.label}</span>
-                        <span className="pv-rail-amt">
-                          {r.amountDisplay} · {formatUsdCents(r.usdCents)}
-                        </span>
-                        {isCheapest && <span className="pv-rail-tag">cheapest</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              <button
-                type="button"
-                className="vs-btn vs-btn-primary"
-                onClick={payX402Edit}
-                disabled={loading || !x402Rail || unknownToX402.length > 0}
-                style={{ width: "100%", justifyContent: "center" }}
-              >
-                <IconBolt size={16} />
-                {loading ? "Paying…" : `Pay ${x402Rail ? x402Rail.amountDisplay : ""} & generate draft`}
-              </button>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="vb-x402-box" aria-live="polite">
-          <p className="vb-x402-status">
-            🔒 AI edits cost a small fee each, paid from your wallet. Connect your wallet to
-            unlock them — that&apos;s also what makes this blockpage yours.
-          </p>
-          <SignInButton />
-        </div>
-      )}
-      {x402Note && (
-        <p className={`vb-x402-status is-${x402Note.kind}`}>
-          {x402Note.kind === "err" ? "❌ " : x402Note.kind === "ok" ? "✅ " : "ℹ️ "}
-          {x402Note.text}
+      </section>
+
+      {/* Section 3 — live preview. The user's actual blockpage, full-bleed.
+          Draft blocks materialize one by one as they land. */}
+      <section className="vb-livepreview-sec vb-fullbleed" id="vb-preview" aria-label="Live blockpage preview">
+        <p className="vb-livepreview-label">
+          {materializing
+            ? `Assembling piece ${shownBlocks + 1} of ${totalBlocks}`
+            : "Your blockpage — live as it builds"}
         </p>
-      )}
-      {payMode === "x402" ? (
-        <button
-          type="button"
-          className="vb-quiet-link"
-          onClick={() => setPayMode("byok")}
-          disabled={loading}
-        >
-          Advanced: use your own AI key instead
-        </button>
-      ) : (
-        <button
-          type="button"
-          className="vb-quiet-link"
-          onClick={() => setPayMode("x402")}
-          disabled={loading || !x402Url}
-          title={x402Url ? "Pay per edit from your wallet" : "Pay-per-edit is not configured"}
-        >
-          ← Back to pay-per-edit
-        </button>
-      )}
+        {materializing && (
+          <div className="vb-assemble-bar" aria-hidden="true">
+            <div style={{ width: `${totalBlocks > 0 ? (shownBlocks / totalBlocks) * 100 : 0}%` }} />
+          </div>
+        )}
+        <div className="vb-livepreview-frame">
+          <PageRenderer page={previewPage} preview />
+        </div>
+      </section>
     </div>
   );
 }
@@ -3230,15 +3444,15 @@ function BuilderInner() {
 
   // Voice mic handoff: the dapp mic's "Help me build it" chip dispatches
   // vs:open-builder-ai — jump to the AI path's chat step and bring the
-  // Vibecode AI chat into view. Decoupled by event so the mic never
+  // voice section into view. Decoupled by event so the mic never
   // imports the builder's step state.
   useEffect(() => {
     const openAi = () => {
       setPath("ai");
       setAiStep("chat");
-      // The chat mounts after the step switch — scroll once it's there.
+      // The voice section mounts after the step switch — scroll once it's there.
       setTimeout(() => {
-        document.querySelector(".vb-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        document.querySelector(".vb-voice-sec")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 150);
     };
     window.addEventListener("vs:open-builder-ai", openAi);
@@ -3839,8 +4053,10 @@ function BuilderInner() {
 
       {/* Preview mode: anyone can describe + design + preview; the wallet
           connect is the claim ("make it yours"). Tutorials replace the old
-          sign-in-first wall. */}
-      {!isAuthenticated && !tutorialDismissed && (
+          sign-in-first wall. Hidden on the AI path (2026-10-18): the
+          voice-native Describe step carries its own inline wallet CTA —
+          no stacked banners. */}
+      {!isAuthenticated && !tutorialDismissed && path !== "ai" && (
         <div className="vb-tutorial" role="note" aria-label="How this works">
           <div className="vb-tutorial-steps">
             <div className="vb-tutorial-step">
@@ -3881,7 +4097,7 @@ function BuilderInner() {
           </button>
         </div>
       )}
-      {!isAuthenticated && (
+      {!isAuthenticated && path !== "ai" && (
         <div className="vb-preview-banner" role="note">
           <div className="vb-preview-banner-text">
             <strong>Preview mode — this blockpage isn&apos;t yours yet.</strong>{" "}
@@ -4090,30 +4306,23 @@ function BuilderInner() {
         {path === "ai" && (
           <>
             {aiStep === "chat" && (
-              <div className="vb-step">
-                <div className="vb-step-head">
-                  <h2 className="vb-step-title">Describe your page</h2>
-                  <p className="vb-step-lede">Tell the AI what to build — you review everything before it goes live.</p>
-                </div>
-              <>
+              <div className="vb-step vb-step-voiceflow">
+                {/* Voice-native Describe (2026-10-18, Brandon: full-bleed):
+                    the step head lives inside section 1 — the page is
+                    exactly three full-width sections. */}
                 <VibecodeChat
                   page={page}
                   draft={aiDraft}
                   onDraftChange={setAiDraft}
-                  onApplyDraft={applyDraft}
-                  onDiscardDraft={discardDraft}
                   initialPrompt={remixPrompt}
                   onInitialPromptConsumed={() => setRemixPrompt(null)}
                 />
-                {/* Stepped flow (2026-10-18): step progress + Continue buttons
-                    are the one navigation mechanism — no extra nudges here. */}
-              </>
                 {aiDraft && (
                   <button type="button" className="vs-btn vs-btn-primary vb-review-cta" onClick={() => setAiStep("review")}>
                     Review changes →
                   </button>
                 )}
-                <StepNav onBack={() => setPath("undecided")} hideNext backLabel="← Start over" />
+                <StepNav onBack={() => setPath("undecided")} hideNext backLabel="← Back" />
               </div>
             )}
             {aiStep === "review" && (
