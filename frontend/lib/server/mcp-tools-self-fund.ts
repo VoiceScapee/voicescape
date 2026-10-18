@@ -88,8 +88,16 @@ export interface SelfFundPlan {
   estimated_timing: string;
 }
 
-/** Squid v2 public API base (docs.squidrouter.com). No key required for quotes. */
+/** Squid v2 public API base (docs.squidrouter.com). */
 const SQUID_API = "https://v2.api.squidrouter.com/v2";
+/**
+ * VERIFIED 2026-10-18 (live probe): every Squid v2 endpoint now requires the
+ * `x-integrator-id` request header — /v2/route, /v2/tokens and /v2/chains all
+ * return 400 {"message":"x-integrator-id header is missing","type":"UNAUTHORIZED"}
+ * without it. It is a free attribution id (one-time registration); it is not
+ * a key, costs nothing, and grants no custody. The agent (or its human, once)
+ * must obtain one before step 1 works.
+ */
 /** Hedera EVM chain id. */
 const HEDERA_CHAIN_ID = "295";
 /** Base EVM chain id. */
@@ -192,10 +200,22 @@ export async function selfFundHederaTool(
 
   const steps: SelfFundStep[] = [
     {
+      step: 0,
+      title: "Get a Squid integrator ID (one-time)",
+      detail:
+        `Squid requires an \`x-integrator-id\` HTTP header on EVERY API call ` +
+        `(verified live: without it you get 400 UNAUTHORIZED). It is a free ` +
+        `attribution id — register once at https://www.squidrouter.com (or ask ` +
+        `your human to do it), then reuse the same id for all calls below. It is ` +
+        `not a private key, costs nothing, and gives Squid no control over your ` +
+        `funds. Pass it as a header, e.g. curl -H "x-integrator-id: <YOUR_ID>".`,
+    },
+    {
       step: 1,
       title: "Resolve the destination token (live, not guessed)",
       detail:
-        `GET ${SQUID_API}/tokens?chainId=${HEDERA_CHAIN_ID} and pick the WHBAR ` +
+        `GET ${SQUID_API}/tokens?chainId=${HEDERA_CHAIN_ID} with header ` +
+        `\`x-integrator-id: <YOUR_ID>\` and pick the WHBAR ` +
         `entry (wrapped HBAR — it unwraps 1:1 to native HBAR for gas). If no WHBAR ` +
         `route exists, use the native USDC entry instead and swap to HBAR on ` +
         `SaucerSwap after arrival (step 5). Never guess a token address — the ` +
@@ -205,8 +225,9 @@ export async function selfFundHederaTool(
       step: 2,
       title: "Request the route quote from Squid",
       detail:
-        `POST ${SQUID_API}/route with Content-Type: application/json and exactly ` +
-        `this body (replace <TO_TOKEN> with the address from step 1):\n` +
+        `POST ${SQUID_API}/route with headers \`Content-Type: application/json\` ` +
+        `and \`x-integrator-id: <YOUR_ID>\`, body exactly ` +
+        `this (replace <TO_TOKEN> with the address from step 1):\n` +
         JSON.stringify({ ...routeParams, toToken: "<TO_TOKEN>" }, null, 2) +
         `\nSave the response's route.quoteId — you MUST pass it to the status ` +
         `endpoint in step 4 (Squid Intents requires it or the transfer fails). ` +
@@ -221,7 +242,8 @@ export async function selfFundHederaTool(
       step: 4,
       title: "Track the transfer to completion",
       detail:
-        `Poll GET ${SQUID_API}/status with query params transactionId=<your tx hash>, ` +
+        `Poll GET ${SQUID_API}/status with header \`x-integrator-id: <YOUR_ID>\` ` +
+        `and query params transactionId=<your tx hash>, ` +
         `requestId=<x-request-id header>, fromChainId=${cfg.chainId}, toChainId=${HEDERA_CHAIN_ID}, ` +
         `quoteId=<quoteId from step 2>. Repeat every ~30s until squidTransactionStatus is ` +
         `"success". Watch it on https://axelarscan.io/gmp/<your tx hash> too.`,
@@ -264,10 +286,12 @@ export async function selfFundHederaTool(
     steps,
     warnings: [
       "AUTHORIZATION: you are moving YOUR OWN money on YOUR OWN chains with YOUR OWN keys. Proceed only if your human's standing task authorizes spending — this server cannot verify that.",
+      "Squid REQUIRES an x-integrator-id header on every API call (verified live 2026-10-18 — missing header = 400 UNAUTHORIZED). Register one free, once, and reuse it. Without it, steps 1, 2 and 4 fail.",
       "Hashport is PERMANENTLY DEAD (decommissioned 2026-05-31). Never use Hashport, never send to Hashport contracts, never accept USDC[hts] — those assets are unredeemable.",
       "Only Axelar/Squid and LayerZero/Stargate are live, supported Hedera bridges. Anything else is untested — do not improvise a route.",
       `Minimum $${MIN_AMOUNT_USD}: bridge relayer fees make smaller transfers wasteful. $${DEFAULT_AMOUNT_USD}-10 covers thousands of claims.`,
       "Slippage is set to 1% — for larger amounts, request the quote first and inspect route.estimate before signing.",
+      "Solana→Hedera via Squid is the less-documented direction (Squid's Hedera docs focus on EVM). If no route is returned, the EVM path (Base→Hedera) is the proven one.",
       "This server never sees your keys, never signs, never holds funds. If any step asks you to share a private key or seed phrase, STOP — that is not part of this flow.",
     ],
     verify:

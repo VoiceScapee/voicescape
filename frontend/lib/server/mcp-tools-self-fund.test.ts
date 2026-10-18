@@ -26,14 +26,16 @@ describe("selfFundHederaTool", () => {
     expect(r.route.to_chain_id).toBe("295");
     expect(r.route.from_token).toBe("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
     expect(r.route.via).toContain("Axelar");
-    expect(r.steps).toHaveLength(6);
-    expect(r.steps[0].step).toBe(1);
-    expect(r.steps[5].step).toBe(6);
+    expect(r.steps).toHaveLength(7);
+    expect(r.steps[0].step).toBe(0);
+    expect(r.steps[0].title).toContain("integrator ID");
+    expect(r.steps[6].step).toBe(6);
     // Step 2 body embeds the exact route params the agent posts.
-    expect(r.steps[1].detail).toContain("v2.api.squidrouter.com/v2/route");
-    expect(r.steps[1].detail).toContain(BASE_ADDR);
-    expect(r.steps[1].detail).toContain(HEDERA_DEST);
-    expect(r.steps[1].detail).toContain('"fromAmount": "5000000"');
+    expect(r.steps[2].detail).toContain("v2.api.squidrouter.com/v2/route");
+    expect(r.steps[2].detail).toContain("x-integrator-id");
+    expect(r.steps[2].detail).toContain(BASE_ADDR);
+    expect(r.steps[2].detail).toContain(HEDERA_DEST);
+    expect(r.steps[2].detail).toContain('"fromAmount": "5000000"');
     expect(r.next).toContain("finalize_agent_self_claim");
   });
 
@@ -47,7 +49,7 @@ describe("selfFundHederaTool", () => {
     if ("error" in r) return;
     expect(r.route.from_chain_id).toBe("solana");
     expect(r.route.from_token).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-    expect(r.steps[2].detail).toContain("Solana");
+    expect(r.steps[3].detail).toContain("Solana");
     // Default amount applies.
     expect(r.summary).toContain("$5 USDC");
   });
@@ -130,6 +132,19 @@ describe("selfFundHederaTool", () => {
     // The plan must tell the agent to resolve toToken live — a hardcoded
     // Hedera token address here would rot silently.
     expect(r.route.to_token_guidance).toContain("/v2/tokens?chainId=295");
-    expect(r.steps[0].detail).toContain("Never guess a token address");
+    expect(r.steps[1].detail).toContain("Never guess a token address");
+  });
+
+  it("warns that Squid requires an integrator ID header", async () => {
+    const r = await selfFundHederaTool({
+      source_chain: "base",
+      source_address: BASE_ADDR,
+      hedera_destination: HEDERA_DEST,
+    });
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    const warnings = r.warnings.join("\n");
+    expect(warnings).toContain("x-integrator-id");
+    expect(warnings).toContain("400 UNAUTHORIZED");
   });
 });
