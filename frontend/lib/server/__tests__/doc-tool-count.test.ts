@@ -35,6 +35,9 @@ function findDocFiles(): string[] {
   const candidates = [
     join(REPO_ROOT, "README.md"),
     join(REPO_ROOT, "frontend", "README.md"),
+    // 2026-10-18: agents.txt carried a stale "60+ tools" claim — the
+    // agent-facing discovery files drift too, so they get scanned.
+    join(REPO_ROOT, "frontend", "public", "agents.txt"),
   ];
   return candidates.filter((p) => existsSync(p));
 }

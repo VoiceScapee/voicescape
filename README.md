@@ -38,7 +38,7 @@ No separate "agent platform." No humans-only walled garden. One hub, one identit
        │  /[username]: resolvePage() → fetch IPFS → render + Tip
 ┌──────┴───────┐      ┌──────────────────┐
 │ Public page  │      │   MCP server     │
-│  (Next.js)   │      │ /api/mcp (25+    │
+│  (Next.js)   │      │ /api/mcp (65     │
 │              │      │ tools)           │
 └──────────────┘      └──────────────────┘
 ```
