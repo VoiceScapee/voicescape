@@ -3067,14 +3067,14 @@ function PathChoice({ onPick }: { onPick: (p: BuilderPath) => void }) {
       <div className="vb-path-cards">
         <button type="button" className="vb-path-card" onClick={() => onPick("self")}>
           <span className="vb-path-emoji" aria-hidden="true">
-            🛠️
+            <IconGrid size={30} />
           </span>
           <strong>Build it myself</strong>
           <span>Free — pick a template, add your blocks, make it yours.</span>
         </button>
         <button type="button" className="vb-path-card" onClick={() => onPick("ai")}>
           <span className="vb-path-emoji" aria-hidden="true">
-            ✨
+            <IconSpark size={30} />
           </span>
           <strong>Help me build it</strong>
           <span>AI-assisted — describe your page, review the draft, publish.</span>
@@ -4031,7 +4031,9 @@ function BuilderInner() {
               </>
                 <div className="vb-remix-row">
                   <button type="button" className="vs-btn vs-btn-ghost" onClick={rerollVariant}>
-                    <span aria-hidden="true">🎲</span> Surprise me — new unique look
+                    <span style={{ display: "inline-flex", verticalAlign: "-2px", marginRight: 4 }}>
+                      <IconSpark size={16} />
+                    </span>Surprise me — new unique look
                   </button>
                   <button type="button" className="vs-btn vs-btn-primary" onClick={remixWithAi}>
                     <IconSpark size={16} /> Remix with AI

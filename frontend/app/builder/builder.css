@@ -1509,7 +1509,10 @@ select.vs-input option {
 }
 
 .vb-path-emoji {
-  font-size: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vs-accent);
 }
 
 .vb-path-agent {
