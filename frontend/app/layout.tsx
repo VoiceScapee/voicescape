@@ -9,6 +9,7 @@ import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
 import DappVoiceMicMount from "@/components/DappVoiceMicMount";
 import SeasonalTheme from "@/components/SeasonalTheme";
+import Toasts from "@/components/Toasts";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
  * DM Sans 400–700 for body/UI, IBM Plex Mono 500/600 for numbers,
@@ -95,6 +96,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </RootProviders>
         <Analytics />
         <AgentChat />
+        <Toasts />
       </body>
     </html>
   );

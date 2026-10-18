@@ -46,6 +46,13 @@ import { reportError } from "@/lib/report-error";
 import { TxConfirming, TxReceipt, type TxReceiptLine } from "@/components/TxConfirm";
 import TipCelebration from "@/components/TipCelebration";
 import { useDialogA11y } from "@/components/useDialogA11y";
+import { pushToast } from "@/lib/toasts";
+import {
+  TIP_NETWORK_FEE_HBAR,
+  TIP_NETWORK_FEE_USD_APPROX,
+  TIP_FINALITY_LABEL,
+} from "@/lib/fees";
+import { tap, confirmPulse } from "@/lib/haptics";
 
 const TIP_PRESETS = [1, 5, 10];
 const TIP_PRESETS_HBAR = [1, 5, 10, 25, 50];
@@ -159,7 +166,18 @@ export default function TipModal({
   );
   const confirmStatus = useConfirmedTransaction(confirmTxId, confirmOpts);
   const [receiptLines, setReceiptLines] = useState<TxReceiptLine[]>([]);
+  // Creator's 98% cut for the success toast — snapshotted with receiptLines.
+  const [receiptCreatorHbar, setReceiptCreatorHbar] = useState<string | null>(null);
   const chain = getActiveChain();
+
+  // Human-readable tip preview (display only): the money moment BEFORE the
+  // wallet prompt. Amounts use the same integer-tinybar 98/2 math as the
+  // receipt; the fee is the measured mainnet contract-call fee (lib/fees).
+  const previewHbar = isHbar ? hbarAmount : price ? usd / price : null;
+  const previewCreatorHbar =
+    previewHbar != null
+      ? Number((BigInt(Math.round(previewHbar * 1e8)) * 98n) / 100n) / 1e8
+      : null;
 
   const [priceFailed, setPriceFailed] = useState(false);
   useEffect(() => {
@@ -183,9 +201,25 @@ export default function TipModal({
       setFinalizedAt((prev) => prev ?? new Date());
       setTxId(confirmTxId);
       recordConversionEvent("tip_confirmed", "post");
+      confirmPulse();
+      pushToast({
+        kind: "success",
+        title: "Tip confirmed",
+        sub:
+          receiptCreatorHbar != null
+            ? `@${author} received ${receiptCreatorHbar} HBAR`
+            : `Your tip to @${author} is on-chain.`,
+        txId: confirmTxId,
+        explorerBase: chain.blockExplorer,
+      });
     } else if (confirmStatus === "failed") {
       setError("The transaction failed on-chain. No tip was sent.");
       recordConversionEvent("tip_failed", "post");
+      pushToast({
+        kind: "error",
+        title: "Tip failed on-chain",
+        sub: "No tip was sent.",
+      });
     } else if (confirmStatus === "expired") {
       // The mirror has indexed past this transaction's validity window
       // without seeing it: it can never land, no tip was sent, and retrying
@@ -194,15 +228,28 @@ export default function TipModal({
         "The transaction never reached the Hedera network — no tip was sent and it's safe to retry.",
       );
       recordConversionEvent("tip_failed", "post");
+      pushToast({
+        kind: "error",
+        title: "Tip never reached Hedera",
+        sub: "No tip was sent — it's safe to retry.",
+      });
     } else if (confirmStatus === "timeout") {
       // Submitted but not yet visible (mirror lag). Money may have moved —
       // never claim failure; show the honest "submitted" state.
       setSubmittedTxId(confirmTxId);
+      pushToast({
+        kind: "info",
+        title: "Tip submitted",
+        sub: "Still confirming — check HashScan in a minute to see it land.",
+        txId: confirmTxId,
+        explorerBase: chain.blockExplorer,
+      });
     }
   }, [confirmStatus, confirmTxId]);
 
   const tip = async () => {
     setError(null);
+    tap();
     if (!account) {
       setError("Connect a wallet to tip.");
       return;
@@ -237,6 +284,7 @@ export default function TipModal({
       const receiptTiny = BigInt(Math.round(hbarAmt * 1e8));
       const receiptCreator = Number((receiptTiny * 98n) / 100n) / 1e8;
       const receiptTreasury = Number((receiptTiny * 2n) / 100n) / 1e8;
+      setReceiptCreatorHbar(receiptCreator.toFixed(4));
       setReceiptLines(
         isHbar
           ? [
@@ -257,6 +305,13 @@ export default function TipModal({
       dwellSignSubmit();
       setApprovedAt(Date.now());
       setConfirmTxId(id);
+      pushToast({
+        kind: "pending",
+        title: "Tip submitted",
+        sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+        txId: id,
+        explorerBase: chain.blockExplorer,
+      });
     } catch (e) {
       if (e instanceof WalletTimeoutError) {
         // Wallet went silent after approval — don't guess; confirm on-chain.
@@ -264,6 +319,13 @@ export default function TipModal({
         dwellSignSubmit();
         setApprovedAt(Date.now());
         setConfirmTxId(e.txId);
+        pushToast({
+          kind: "pending",
+          title: "Tip submitted",
+          sub: `Confirming on Hedera (${TIP_FINALITY_LABEL})…`,
+          txId: e.txId,
+          explorerBase: chain.blockExplorer,
+        });
       } else {
         // Wallet-side failure (rejection, wallet-library error): record the
         // outcome so the funnel never shows a bare attempt, report the
@@ -284,6 +346,7 @@ export default function TipModal({
     setApprovedAt(null);
     setFinalizedAt(null);
     setReceiptLines([]);
+    setReceiptCreatorHbar(null);
     setError(null);
     // Fresh dwell flow for the next attempt (T1 re-stamped on open).
     dwellReset();
@@ -384,6 +447,39 @@ export default function TipModal({
                     ? "Price unavailable — HBAR mode works"
                     : "Loading HBAR price…"}
             </p>
+            {/* Human-readable money moment (display only): what happens when
+                they tap Tip — amount, honest network fee, speed, and the
+                98% the creator receives. Shown BEFORE the wallet prompt. */}
+            {previewHbar != null && previewCreatorHbar != null && (
+              <div className="th-tip-preview" aria-label="Tip preview">
+                <div className="th-tip-preview-row">
+                  <span>Tip</span>
+                  <span>
+                    {isHbar
+                      ? `${hbarAmount} HBAR → @${author}`
+                      : `$${usd} (≈ ${previewHbar.toFixed(4)} HBAR) → @${author}`}
+                  </span>
+                </div>
+                <div className="th-tip-preview-row">
+                  <span>Network fee</span>
+                  <span>
+                    ≈ {TIP_NETWORK_FEE_HBAR} HBAR ({TIP_NETWORK_FEE_USD_APPROX})
+                  </span>
+                </div>
+                <div className="th-tip-preview-row">
+                  <span>Confirms in</span>
+                  <span>{TIP_FINALITY_LABEL} on Hedera</span>
+                </div>
+                <div className="th-tip-preview-row is-highlight">
+                  <span>@{author} gets 98%</span>
+                  <span>{previewCreatorHbar.toFixed(4)} HBAR</span>
+                </div>
+                <p className="th-tip-preview-note">
+                  The 98/2 split is enforced by the Tips smart contract —
+                  nobody holds your money in between.
+                </p>
+              </div>
+            )}
             <button
               type="button"
               className="vs-btn vs-btn-primary th-btn-block"
