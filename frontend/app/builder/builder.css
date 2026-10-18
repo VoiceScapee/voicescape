@@ -1324,3 +1324,264 @@ select.vs-input option {
   justify-content: center;
   flex-wrap: wrap;
 }
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion (builder stepped flow, 2026-10-18): no keyframe       */
+/* animations and no smooth scrolling in the builder shell.             */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .vb-shell,
+  .vb-shell *,
+  .vb-shell *::before,
+  .vb-shell *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Stepped flow (2026-10-18): one step per screen.                     */
+/* ------------------------------------------------------------------ */
+
+.vb-steps {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.vb-step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.vb-step-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vb-step-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.vb-step-lede {
+  margin: 0;
+  color: var(--vs-muted);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Progress rail */
+.vb-progress {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.vb-progress ol {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+}
+
+.vb-progress li button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--vs-border);
+  background: transparent;
+  color: var(--vs-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.vb-progress li.is-current button {
+  border-color: var(--vs-accent);
+  color: var(--vs-text);
+  background: color-mix(in srgb, var(--vs-accent) 12%, transparent);
+}
+
+.vb-progress-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vs-border);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.vb-progress li.is-current .vb-progress-num {
+  background: var(--vs-accent);
+  color: #fff;
+}
+
+.vb-progress-restart {
+  background: none;
+  border: none;
+  color: var(--vs-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 7px 4px;
+}
+
+.vb-progress-restart:hover {
+  color: var(--vs-text);
+}
+
+/* Path choice */
+.vb-pathchoice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 14px;
+  padding: 40px 16px;
+}
+
+.vb-pathchoice-title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.vb-pathchoice-lede {
+  margin: 0;
+  color: var(--vs-muted);
+  font-size: 16px;
+}
+
+.vb-path-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 14px;
+  width: 100%;
+  max-width: 640px;
+  margin-top: 8px;
+}
+
+.vb-path-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  text-align: left;
+  padding: 22px;
+  border-radius: 18px;
+  border: 1px solid var(--vs-border);
+  background: var(--vs-card);
+  cursor: pointer;
+  color: var(--vs-text);
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.vb-path-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--vs-accent);
+}
+
+.vb-path-card strong {
+  font-size: 19px;
+}
+
+.vb-path-card span:last-child {
+  color: var(--vs-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.vb-path-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vs-accent);
+}
+
+.vb-path-agent {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--vs-muted);
+}
+
+.vb-path-agent:hover {
+  color: var(--vs-accent);
+}
+
+/* Step footer nav */
+.vb-stepnav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid var(--vs-border);
+  margin-top: 4px;
+}
+
+/* Remix row in customize */
+.vb-remix-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Wallet step */
+.vb-wallet-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.vb-wallet-ok {
+  margin: 0;
+  font-size: 15px;
+}
+
+.vb-wallet-ok code {
+  font-size: 13px;
+  word-break: break-all;
+}
+
+/* Full-width preview inside a step */
+.vb-preview-step {
+  border: 1px solid var(--vs-border);
+  border-radius: 18px;
+  overflow: hidden;
+  min-height: 420px;
+}
+
+.vb-review-cta {
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .vb-steps {
+    padding: 14px;
+  }
+  .vb-pathchoice-title {
+    font-size: 25px;
+  }
+  .vb-step-title {
+    font-size: 21px;
+  }
+}

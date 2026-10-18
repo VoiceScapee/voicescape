@@ -22,10 +22,12 @@ const hashpackRouteSrc = readFileSync(
 );
 
 describe("name-first claim", () => {
-  it("picks the name in step 1 (customize tab), not only at publish", () => {
-    // The shared UsernameField renders in the customize tab…
-    const customizeIdx = builderSrc.indexOf('tab === "customize"');
-    const publishIdx = builderSrc.indexOf('tab === "publish"');
+  it("picks the name in the customize step, not only at publish", () => {
+    // The shared UsernameField renders in the customize step…
+    // (Stepped flow 2026-10-18: steps replaced the old tabs; anchor on the
+    // render-block markers, not the telemetry computation.)
+    const customizeIdx = builderSrc.indexOf('{selfStep === "customize" && (');
+    const publishIdx = builderSrc.indexOf('{selfStep === "publish" && (');
     const fieldUses = [...builderSrc.matchAll(/<UsernameField/g)].map((m) => m.index ?? -1);
     expect(fieldUses.length).toBeGreaterThanOrEqual(2);
     expect(fieldUses.some((i) => i > customizeIdx && i < publishIdx)).toBe(true);

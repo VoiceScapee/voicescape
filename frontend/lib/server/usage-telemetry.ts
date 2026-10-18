@@ -27,6 +27,8 @@ export const USAGE_EVENTS = [
   "builder.publish_attempt",
   "builder.publish_success",
   "builder.publish_failed",
+  // Builder stepped flow (2026-10-18): generative variant re-rolls.
+  "builder.variant_reroll",
 ] as const;
 
 export type UsageEvent = (typeof USAGE_EVENTS)[number];

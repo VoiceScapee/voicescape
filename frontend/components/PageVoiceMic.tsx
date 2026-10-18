@@ -117,6 +117,24 @@ function StopSvg({ size = 18 }: { size?: number }) {
     </svg>
   );
 }
+
+function XSvg({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  );
+}
 interface VoiceReply {
   ok: boolean;
   speak: string;
@@ -420,6 +438,7 @@ export default function PageVoiceMic({
         <div
           role="dialog"
           aria-label={panelTitle}
+          className="pv-mic-panel"
           style={{
             width: "100%",
             borderRadius: 16,
@@ -463,9 +482,10 @@ export default function PageVoiceMic({
                 window.speechSynthesis?.cancel();
               }}
               aria-label="Close voice panel"
-              style={{ background: "none", border: "none", color: "#9aa", fontSize: 16, cursor: "pointer" }}
+              className="pv-icon-btn"
+              style={{ color: "#9aa" }}
             >
-              ✕
+              <XSvg size={15} />
             </button>
           </div>
 
@@ -482,6 +502,7 @@ export default function PageVoiceMic({
                 type="button"
                 disabled={busy}
                 onClick={() => void ask(c)}
+                className="pv-chip"
                 style={{
                   borderRadius: 999,
                   border: "1px solid rgba(255,255,255,0.18)",

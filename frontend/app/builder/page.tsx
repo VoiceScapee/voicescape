@@ -53,6 +53,7 @@ import {
   socialsUrls,
 } from "@/lib/quickbuild";
 import { TEMPLATES, isTemplateVisible, type Template } from "@/lib/templates";
+import { createThemeVariant, getTemplateDesign } from "@/lib/template-variants";
 import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairStaleConnection, requestWalletConnectUI, useWallet, WALLET_ADAPTERS } from "@/lib/wallet";
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
@@ -116,6 +117,8 @@ interface BuilderAutosave {
   templateId: string;
   username: string;
   page: VoicescapePage;
+  /** Stepped flow (2026-10-18): resume mid-flow after a killed tab. */
+  path?: BuilderPath;
 }
 
 function readBuilderAutosave(): BuilderAutosave | null {
@@ -128,7 +131,10 @@ function readBuilderAutosave(): BuilderAutosave | null {
       return null;
     if (typeof parsed.username !== "string") return null;
     if (!isValidPage(parsed.page)) return null;
-    return parsed as BuilderAutosave;
+    // Stepped flow: sanitize the restored path — unknown values restart
+    // at the path-choice screen instead of breaking the step renderer.
+    const path = parsed.path === "self" || parsed.path === "ai" ? parsed.path : "undecided";
+    return { ...(parsed as BuilderAutosave), path };
   } catch {
     return null;
   }
@@ -1803,12 +1809,17 @@ function VibecodeChat({
   onDraftChange,
   onApplyDraft,
   onDiscardDraft,
+  initialPrompt,
+  onInitialPromptConsumed,
 }: {
   page: VoicescapePage;
   draft: AiDraft | null;
   onDraftChange: (d: AiDraft | null) => void;
   onApplyDraft: () => void;
   onDiscardDraft: () => void;
+  /** One-tap "Remix with AI": a prefilled prompt the chat auto-sends once. */
+  initialPrompt?: string | null;
+  onInitialPromptConsumed?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -1848,6 +1859,21 @@ function VibecodeChat({
   const [byokInput, setByokInput] = useState("");
   const [byokSettingsOpen, setByokSettingsOpen] = useState(false);
   const [byokNote, setByokNote] = useState<{ kind: "info" | "err" | "ok"; text: string } | null>(null);
+
+  // One-tap "Remix with AI" (2026-10-18): the builder hands us a prefilled
+  // prompt — auto-send it once on mount, then clear it upstream so it never
+  // resends. Goes through the normal send() path, so the wallet gate and
+  // the 25¢/edit economics are unchanged.
+  const initialSentRef = useRef(false);
+  useEffect(() => {
+    if (initialPrompt && !initialSentRef.current) {
+      initialSentRef.current = true;
+      send(initialPrompt);
+      onInitialPromptConsumed?.();
+    }
+    // send is stable per mount for this purpose; re-running would double-pay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPrompt]);
 
   // Block types the x402 vibecode SERVICE currently accepts. Its schema is a
   // copy of ours ("keep in sync" per its schema.ts) — warn before paying if
@@ -2997,18 +3023,183 @@ function PublishPanel({
 }
 
 /* ---------------------------------------------------------------- */
-/* Builder page                                                      */
+/* Builder page — stepped flow (2026-10-18, Brandon: "don't try to force
+   every section on 1 page"). One step per screen instead of the old
+   three-tab cram: the visitor first picks a path (self-serve vs AI),
+   then walks a short sequence with Back / Continue. AI agents get
+   their own door (the MCP server) instead of the human screens.      */
+
+/** Which build path the visitor chose. */
+type BuilderPath = "undecided" | "self" | "ai";
+/** Self-serve path steps: template → customize → preview → wallet → publish. */
+type SelfStep = "template" | "customize" | "preview" | "wallet" | "publish";
+/** AI path steps: chat → review the draft → publish. */
+type AiStep = "chat" | "review" | "publish";
+
+const SELF_STEPS: SelfStep[] = ["template", "customize", "preview", "wallet", "publish"];
+const AI_STEPS: AiStep[] = ["chat", "review", "publish"];
+
+const SELF_STEP_LABELS: Record<SelfStep, string> = {
+  template: "Pick a template",
+  customize: "Make it yours",
+  preview: "Preview",
+  wallet: "Connect wallet",
+  publish: "Publish",
+};
+const AI_STEP_LABELS: Record<AiStep, string> = {
+  chat: "Describe it",
+  review: "Review",
+  publish: "Publish",
+};
+
+/* ---------------------------------------------------------------- */
+/* Stepped-flow screens (2026-10-18): one step per screen.           */
 /* ---------------------------------------------------------------- */
 
-const TABS = [
-  // Round-2 simplify (2026-09-28): numbered so a first-timer sees the order
-  // — design, then AI polish, then publish.
-  { id: "customize", label: "1 · Customize", icon: <IconGrid size={16} /> },
-  { id: "ai", label: "2 · AI edit", icon: <IconSpark size={16} /> },
-  { id: "publish", label: "3 · Publish", icon: <IconBolt size={16} /> },
-] as const;
+/** First screen: the two-path choice + the AI-agent door. */
+function PathChoice({ onPick }: { onPick: (p: BuilderPath) => void }) {
+  return (
+    <div className="vb-pathchoice">
+      <h1 className="vb-pathchoice-title">How do you want to build?</h1>
+      <p className="vb-pathchoice-lede">
+        Two ways in — same finish line: a blockpage that&apos;s yours on-chain.
+      </p>
+      <div className="vb-path-cards">
+        <button type="button" className="vb-path-card" onClick={() => onPick("self")}>
+          <span className="vb-path-emoji" aria-hidden="true">
+            <IconGrid size={30} />
+          </span>
+          <strong>Build it myself</strong>
+          <span>Free — pick a template, add your blocks, make it yours.</span>
+        </button>
+        <button type="button" className="vb-path-card" onClick={() => onPick("ai")}>
+          <span className="vb-path-emoji" aria-hidden="true">
+            <IconSpark size={30} />
+          </span>
+          <strong>Help me build it</strong>
+          <span>AI-assisted — describe your page, review the draft, publish.</span>
+        </button>
+      </div>
+      <a className="vb-path-agent" href="/mcp">
+        I&apos;m an AI agent → build with the MCP server
+      </a>
+    </div>
+  );
+}
 
-type TabId = (typeof TABS)[number]["id"];
+/** Progress rail for the stepped flow — steps are freely navigable. */
+function StepProgress({
+  path,
+  selfStep,
+  aiStep,
+  onSelfStep,
+  onAiStep,
+  onRestart,
+}: {
+  path: BuilderPath;
+  selfStep: SelfStep;
+  aiStep: AiStep;
+  onSelfStep: (s: SelfStep) => void;
+  onAiStep: (s: AiStep) => void;
+  onRestart: () => void;
+}) {
+  const steps: string[] = path === "self" ? SELF_STEPS : AI_STEPS;
+  const labels: Record<string, string> = path === "self" ? SELF_STEP_LABELS : AI_STEP_LABELS;
+  const current: string = path === "self" ? selfStep : aiStep;
+  const go = (s: string) => {
+    if (path === "self") onSelfStep(s as SelfStep);
+    else onAiStep(s as AiStep);
+  };
+  return (
+    <nav className="vb-progress" aria-label="Build progress">
+      <button type="button" className="vb-progress-restart" onClick={onRestart}>
+        ← Start over
+      </button>
+      <ol>
+        {steps.map((s, i) => (
+          <li key={s} className={s === current ? "is-current" : ""} aria-current={s === current ? "step" : undefined}>
+            <button type="button" onClick={() => go(s)}>
+              <span className="vb-progress-num">{i + 1}</span> {labels[s]}
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  );
+}
+
+/** Back / Continue footer used by every step. */
+function StepNav({
+  onBack,
+  onNext,
+  nextLabel = "Continue",
+  backLabel = "Back",
+  nextDisabled = false,
+  hideNext = false,
+}: {
+  onBack: () => void;
+  onNext?: () => void;
+  nextLabel?: string;
+  backLabel?: string;
+  nextDisabled?: boolean;
+  hideNext?: boolean;
+}) {
+  return (
+    <div className="vb-stepnav">
+      <button type="button" className="vs-btn vs-btn-ghost" onClick={onBack}>
+        {backLabel}
+      </button>
+      {!hideNext && onNext && (
+        <button
+          type="button"
+          className="vs-btn vs-btn-primary"
+          onClick={onNext}
+          disabled={nextDisabled}
+        >
+          {nextLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Wallet step: claim-your-name gating before publish. */
+function WalletStep({
+  account,
+  onBack,
+  onNext,
+}: {
+  account: string | null | undefined;
+  onBack: () => void;
+  onNext: () => void;
+}) {
+  return (
+    <div className="vb-step">
+      <div className="vb-step-head">
+        <h2 className="vb-step-title">Connect your wallet</h2>
+        <p className="vb-step-lede">
+          Your wallet claims your blockpage name on-chain and pays the tiny Hedera network fee at
+          publish. Nothing else moves without your signature.
+        </p>
+      </div>
+      <div className="vb-wallet-card vs-card">
+        {account ? (
+          <p className="vb-wallet-ok">
+            <span aria-hidden="true">✅</span> Connected: <code>{account}</code>
+          </p>
+        ) : (
+          <>
+            <SignInButton />
+            <p className="vs-hint">
+              New to crypto? <a href="/new-to-web3">Start here →</a>
+            </p>
+          </>
+        )}
+      </div>
+      <StepNav onBack={onBack} onNext={onNext} nextLabel="Continue" nextDisabled={!account} />
+    </div>
+  );
+}
 
 function BuilderInner() {
   const chain = getActiveChain();
@@ -3028,16 +3219,24 @@ function BuilderInner() {
       : (JSON.parse(JSON.stringify(TEMPLATES[0].page)) as VoicescapePage);
   });
   const [addType, setAddType] = useState<BlockType>("bio");
-  const [tab, setTab] = useState<TabId>("customize");
+  // Stepped flow (2026-10-18): path first, then one step per screen.
+  // Restored from autosave so a killed tab resumes mid-flow.
+  const [path, setPath] = useState<BuilderPath>(() => readBuilderAutosave()?.path ?? "undecided");
+  const [selfStep, setSelfStep] = useState<SelfStep>("template");
+  const [aiStep, setAiStep] = useState<AiStep>("chat");
+  // One-tap "Remix with AI": the customize step hands the AI chat a
+  // prefilled restyle prompt; VibecodeChat auto-sends it on mount.
+  const [remixPrompt, setRemixPrompt] = useState<string | null>(null);
 
   // Voice mic handoff: the dapp mic's "Help me build it" chip dispatches
-  // vs:open-builder-ai — switch to the AI tab and bring the Vibecode AI
-  // chat into view. Decoupled by event so the mic never imports the
-  // builder's tab state.
+  // vs:open-builder-ai — jump to the AI path's chat step and bring the
+  // Vibecode AI chat into view. Decoupled by event so the mic never
+  // imports the builder's step state.
   useEffect(() => {
     const openAi = () => {
-      setTab("ai");
-      // The chat mounts after the tab switch — scroll once it's there.
+      setPath("ai");
+      setAiStep("chat");
+      // The chat mounts after the step switch — scroll once it's there.
       setTimeout(() => {
         document.querySelector(".vb-chat")?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 150);
@@ -3047,12 +3246,14 @@ function BuilderInner() {
   }, []);
 
   // Internal usage telemetry (founder eyes only): when the user reaches
-  // the Publish tab, snapshot the draft page so the founder dashboard can
+  // the Publish step, snapshot the draft page so the founder dashboard can
   // render exactly what their preview looked like. Anonymous — no wallet,
-  // IP, or username attached. Once per visit to the tab.
+  // IP, or username attached. Once per visit to the step.
   const previewSentRef = useRef(false);
+  const atPublishStep =
+    (path === "self" && selfStep === "publish") || (path === "ai" && aiStep === "publish");
   useEffect(() => {
-    if (tab !== "publish") {
+    if (!atPublishStep) {
       previewSentRef.current = false;
       return;
     }
@@ -3064,7 +3265,7 @@ function BuilderInner() {
     const { username: _anonymous, ...previewPage } = page;
     recordUsageEvent("builder.preview", undefined, previewPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab ]);
+  }, [atPublishStep]);
   const [aiDraft, setAiDraft] = useState<AiDraft | null>(null);
 
   // Name-first claim (2026-09-28): the blockpage name is picked in step 1,
@@ -3090,7 +3291,7 @@ function BuilderInner() {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       try {
-        const payload: BuilderAutosave = { v: 1, savedAt: Date.now(), templateId, username, page };
+        const payload: BuilderAutosave = { v: 1, savedAt: Date.now(), templateId, username, page, path };
         localStorage.setItem(BUILDER_AUTOSAVE_KEY, JSON.stringify(payload));
         setDraftSavedAt(Date.now());
       } catch {
@@ -3100,7 +3301,7 @@ function BuilderInner() {
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [page, templateId, username]);
+  }, [page, templateId, username, path]);
   const setUsername = useCallback((v: string) => {
     nameTouchedRef.current = true;
     setUsernameRaw(v);
@@ -3222,7 +3423,8 @@ function BuilderInner() {
       }
       setAiDraft(null);
       setPage(fresh);
-      setTab("customize");
+      setPath("self");
+      setSelfStep("customize");
     } catch {
       /* keep the current canvas on failure */
     }
@@ -3252,7 +3454,45 @@ function BuilderInner() {
     // draft — drop the liaison-assisted publish assertion.
     setLiaisonDraftId(null);
     // Deep-clone so edits don't mutate the template definition.
-    editPage(JSON.parse(JSON.stringify(t.page)) as VoicescapePage);
+    const fresh = JSON.parse(JSON.stringify(t.page)) as VoicescapePage;
+    // Generative templates (2026-10-18): every pick mints a fresh seeded
+    // variant of the template's design system — no two blockpages look
+    // identical from the same template. The variant rides in theme.variant
+    // so it autosaves and publishes with the page.
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    fresh.theme = {
+      ...fresh.theme,
+      variant: createThemeVariant(fresh.theme, getTemplateDesign(t), seed),
+    };
+    editPage(fresh);
+  };
+
+  // Free re-roll: a new unique variant of the current template, no AI
+  // involved and no cost. Used by the "Surprise me" button in customize.
+  const rerollVariant = () => {
+    const t = TEMPLATES.find((x) => x.id === templateId);
+    if (!t) return;
+    const seed = Math.floor(Math.random() * 2 ** 31);
+    const variant = createThemeVariant(t.page.theme, getTemplateDesign(t), seed);
+    editPage((p) => ({ ...p, theme: { ...p.theme, variant } }));
+    recordUsageEvent("builder.variant_reroll");
+  };
+
+  // Intelligent remix (2026-10-18): one tap hands the AI chat a prefilled
+  // restyle prompt drawn from the page's own content/links. It goes
+  // through the normal Vibecode flow — same 25¢/edit economics, wallet
+  // pays, the human reviews everything before anything applies.
+  const remixWithAi = () => {
+    const links = socialsUrls(page).slice(0, 6);
+    const prompt =
+      "Give my blockpage a bespoke, one-of-a-kind visual restyle — new theme, new energy, unmistakably mine. " +
+      (links.length > 0
+        ? `Draw inspiration from my links: ${links.join(", ")}. `
+        : "") +
+      "Keep all my blocks and content exactly as they are; change only the design.";
+    setRemixPrompt(prompt);
+    setPath("ai");
+    setAiStep("chat");
   };
 
   // Buddy draft: if the visitor tapped "Open in Builder" in the Buddy chat,
@@ -3272,19 +3512,24 @@ function BuilderInner() {
       setDraftVanity(draft.username.toLowerCase());
     }
     // "Publish page" from the chat widget: open the builder on its Publish
-    // tab so the visitor signs and publishes through the existing flow.
-    if (consumeBuddyPublishIntent()) setTab("publish");
+    // step so the visitor signs and publishes through the existing flow.
+    // A Buddy draft is AI-assisted work, so it lands on the AI path.
+    if (consumeBuddyPublishIntent()) {
+      setPath("ai");
+      setAiStep("publish");
+    }
     // Internal usage telemetry (founder eyes only): builder opened.
     recordUsageEvent("builder.open");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Deep link: /builder?tab=publish selects the Publish tab (used after a
+  // Deep link: /builder?tab=publish selects the Publish step (used after a
   // Buddy draft handoff when the widget goes straight to publishing).
   useEffect(() => {
     try {
       if (new URLSearchParams(window.location.search).get("tab") === "publish") {
-        setTab("publish");
+        setPath("ai");
+        setAiStep("publish");
       }
     } catch {
       /* URL unavailable — keep the default tab */
@@ -3661,181 +3906,267 @@ function BuilderInner() {
         </div>
       )}
 
-      <div className="vb-main">
-        {/* Left: controls */}
-        <div className="vb-controls">
-          <TemplatePicker
-            activeId={templateId}
-            onPick={pickTemplate}
-            account={account}
-            liaisonDraft={liaisonDraftMeta}
-            onPickLiaisonDraft={pickLiaisonDraft}
+      <div className="vb-steps">
+        {/* Stepped flow (2026-10-18, Brandon: "don't try to force every
+            section on 1 page"): one step per screen. */}
+        {path !== "undecided" && (
+          <StepProgress
+            path={path}
+            selfStep={selfStep}
+            aiStep={aiStep}
+            onSelfStep={setSelfStep}
+            onAiStep={setAiStep}
+            onRestart={() => setPath("undecided")}
           />
+        )}
 
-          <div className="vb-tabs" role="tablist" aria-label="Builder panels">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className={`vb-tab${tab === t.id ? " is-active" : ""}`}
-              >
-                {t.icon} {t.label}
-              </button>
-            ))}
-          </div>
+        {path === "undecided" && <PathChoice onPick={setPath} />}
 
-          {tab === "customize" && (
-            <>
-              {/* Name-first (2026-09-28): the blockpage name is picked here in
-                  step 1 — no wallet needed. Same shared state as publish. */}
-              <UsernameField
-                username={username}
-                onChange={setUsername}
-                account={account}
-                availability={nameAvailability}
-                label="Your blockpage name"
-                hint="Pick it now — claim it on-chain when you publish. No wallet needed yet."
-              />
-              <ChecklistCard
-                nameDone={usernameValid && nameAvailability !== "taken"}
-                walletDone={!!account}
-                publishedDone={!!publishedUsername}
-              />
-
-              <div>
-                <div className="vb-panel-title">Blocks</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {page.blocks.map((block, i) => (
-                    <BlockEditor
-                      key={i}
-                      block={block}
-                      index={i}
-                      onChange={(next) => editPage((p) => ({ ...p, blocks: setBlock(p.blocks, i, next) }))}
-                      onRemove={() =>
-                        editPage((p) => ({
-                          ...p,
-                          // Drop the profile-song ref if its music block is removed.
-                          profileSong:
-                            p.profileSong && p.profileSong.blockIndex === i
-                              ? undefined
-                              : p.profileSong &&
-                                  p.profileSong.blockIndex > i
-                                ? { ...p.profileSong, blockIndex: p.profileSong.blockIndex - 1 }
-                                : p.profileSong,
-                          blocks: p.blocks.filter((_, j) => j !== i),
-                        }))
-                      }
-                      profileSong={page.profileSong}
-                      onProfileSongChange={(ref) =>
-                        editPage((p) => ({ ...p, profileSong: ref }))
-                      }
-                    />
-                  ))}
+        {path === "self" && (
+          <>
+            {selfStep === "template" && (
+              <div className="vb-step">
+                <div className="vb-step-head">
+                  <h2 className="vb-step-title">Pick a template</h2>
+                  <p className="vb-step-lede">A starting point, not a copy — every pick mints a one-of-a-kind variant of the design.</p>
                 </div>
-                <div className="vb-add-row">
-                  <select
-                    className="vs-input"
-                    value={addType}
-                    onChange={(e) => setAddType(e.target.value as BlockType)}
-                    aria-label="Block type to add"
-                  >
-                    {PICKER_BLOCK_TYPES.map((bt) => (
-                      <option key={bt} value={bt}>
-                        {PICKER_LABELS[bt] ?? bt}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    type="button"
-                    className="vs-btn vs-btn-primary"
-                    onClick={() => {
-                      editPage((p) => ({ ...p, blocks: [...p.blocks, createDefaultBlock(addType, p.username)] }));
-                      // Internal usage telemetry: block added (type only, no content).
-                      recordUsageEvent("builder.block_add", { detail: addType });
-                    }}
-                  >
-                    <IconPlus size={16} /> Add block
-                  </button>
-                </div>
-                {addType === "socials" && (
-                  <p className="vs-hint" style={{ marginTop: 6 }}>
-                    Paste any link — social profiles get their platform icon automatically.
-                  </p>
-                )}
+            <TemplatePicker
+              activeId={templateId}
+              onPick={pickTemplate}
+              account={account}
+              liaisonDraft={liaisonDraftMeta}
+              onPickLiaisonDraft={pickLiaisonDraft}
+              />
+                <StepNav onBack={() => setPath("undecided")} onNext={() => setSelfStep("customize")} nextLabel="Continue" />
               </div>
+            )}
+            {selfStep === "customize" && (
+              <div className="vb-step">
+                <div className="vb-step-head">
+                  <h2 className="vb-step-title">Make it yours</h2>
+                  <p className="vb-step-lede">Name it, add your blocks, tune the theme. Nothing publishes until you say so.</p>
+                </div>
+              <>
+                {/* Name-first (2026-09-28): the blockpage name is picked here in
+                    step 1 — no wallet needed. Same shared state as publish. */}
+                <UsernameField
+                  username={username}
+                  onChange={setUsername}
+                  account={account}
+                  availability={nameAvailability}
+                  label="Your blockpage name"
+                  hint="Pick it now — claim it on-chain when you publish. No wallet needed yet."
+                />
+                <ChecklistCard
+                  nameDone={usernameValid && nameAvailability !== "taken"}
+                  walletDone={!!account}
+                  publishedDone={!!publishedUsername}
+                />
 
-              {/* Quick-build audit (2026-09-29): theme sits below content —
-                  first-timers style a page that exists, not a blank canvas. */}
-              <ThemeEditor theme={page.theme} onChange={updateTheme} />
-            </>
-          )}
-
-          {tab === "ai" && (
-            <>
-              <VibecodeChat
-                page={page}
-                draft={aiDraft}
-                onDraftChange={setAiDraft}
-                onApplyDraft={applyDraft}
-                onDiscardDraft={discardDraft}
-              />
-              {/* Quick-build audit (2026-09-29): the "Next: publish" nudge is
-                  gone — the numbered tabs (1·Customize 2·AI edit 3·Publish)
-                  already do this job. One navigation mechanism. */}
-            </>
-          )}
-
-          {tab === "publish" && (
-            <PublishPanel
-              page={page}
-              onPageChange={(p) => editPage(p)}
-              initialOwnerType={draftOwnerType ?? undefined}
-              // Name-first: the shared name state (picked in step 1) flows
-              // into publish; the wallet-derived default is applied in the
-              // builder's auto-fill effect, not here.
-              username={username}
-              onUsernameChange={setUsername}
-              availability={nameAvailability}
-              liaisonAssisted={liaisonDraftId !== null}
-              onPublished={() => {
-                // Stop the debounced autosave — the work is live.
-                autosaveStopped.current = true;
-                if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
-              }}
-            />
-          )}
-        </div>
-
-        {/* Right: live preview */}
-        <div className="vb-preview" id="vb-preview">
-          {aiDraft ? (
-            <div className="vb-draft-wrap">
-              <div className="vb-draft-inner">
-                {/* role="status": announce the draft arrival to screen readers — the
-                    pane swaps without moving focus, so SR users need the cue. */}
-                <div className="vb-draft-bar vs-glass" role="status">
-                  <span className="vb-draft-bar-text">
-                    <IconSpark size={16} /> Previewing AI changes
-                  </span>
-                  <div className="vb-draft-bar-actions">
-                    <button type="button" className="vs-btn vs-btn-ghost" onClick={discardDraft}>
-                      <IconClose size={14} /> Discard
-                    </button>
-                    <button type="button" className="vs-btn vs-btn-primary" onClick={applyDraft}>
-                      <IconCheck size={14} /> Apply
+                <div>
+                  <div className="vb-panel-title">Blocks</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                    {page.blocks.map((block, i) => (
+                      <BlockEditor
+                        key={i}
+                        block={block}
+                        index={i}
+                        onChange={(next) => editPage((p) => ({ ...p, blocks: setBlock(p.blocks, i, next) }))}
+                        onRemove={() =>
+                          editPage((p) => ({
+                            ...p,
+                            // Drop the profile-song ref if its music block is removed.
+                            profileSong:
+                              p.profileSong && p.profileSong.blockIndex === i
+                                ? undefined
+                                : p.profileSong &&
+                                    p.profileSong.blockIndex > i
+                                  ? { ...p.profileSong, blockIndex: p.profileSong.blockIndex - 1 }
+                                  : p.profileSong,
+                            blocks: p.blocks.filter((_, j) => j !== i),
+                          }))
+                        }
+                        profileSong={page.profileSong}
+                        onProfileSongChange={(ref) =>
+                          editPage((p) => ({ ...p, profileSong: ref }))
+                        }
+                      />
+                    ))}
+                  </div>
+                  <div className="vb-add-row">
+                    <select
+                      className="vs-input"
+                      value={addType}
+                      onChange={(e) => setAddType(e.target.value as BlockType)}
+                      aria-label="Block type to add"
+                    >
+                      {PICKER_BLOCK_TYPES.map((bt) => (
+                        <option key={bt} value={bt}>
+                          {PICKER_LABELS[bt] ?? bt}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="vs-btn vs-btn-primary"
+                      onClick={() => {
+                        editPage((p) => ({ ...p, blocks: [...p.blocks, createDefaultBlock(addType, p.username)] }));
+                        // Internal usage telemetry: block added (type only, no content).
+                        recordUsageEvent("builder.block_add", { detail: addType });
+                      }}
+                    >
+                      <IconPlus size={16} /> Add block
                     </button>
                   </div>
+                  {addType === "socials" && (
+                    <p className="vs-hint" style={{ marginTop: 6 }}>
+                      Paste any link — social profiles get their platform icon automatically.
+                    </p>
+                  )}
                 </div>
-                <PageRenderer page={aiDraft.page} preview />
+
+                {/* Quick-build audit (2026-09-29): theme sits below content —
+                    first-timers style a page that exists, not a blank canvas. */}
+                <ThemeEditor theme={page.theme} onChange={updateTheme} />
+              </>
+                <div className="vb-remix-row">
+                  <button type="button" className="vs-btn vs-btn-ghost" onClick={rerollVariant}>
+                    <span style={{ display: "inline-flex", verticalAlign: "-2px", marginRight: 4 }}>
+                      <IconSpark size={16} />
+                    </span>Surprise me — new unique look
+                  </button>
+                  <button type="button" className="vs-btn vs-btn-primary" onClick={remixWithAi}>
+                    <IconSpark size={16} /> Remix with AI
+                  </button>
+                </div>
+                <p className="vs-hint">Surprise me is free and instant. Remix with AI goes through the normal AI edit flow — your wallet pays per edit, you review everything first.</p>
+                <StepNav onBack={() => setSelfStep("template")} onNext={() => setSelfStep("preview")} nextLabel="Continue" />
               </div>
-            </div>
-          ) : (
-            <PageRenderer page={page} preview />
-          )}
-        </div>
+            )}
+            {selfStep === "preview" && (
+              <div className="vb-step">
+                <div className="vb-step-head">
+                  <h2 className="vb-step-title">Preview</h2>
+                  <p className="vb-step-lede">Exactly what visitors will see.</p>
+                </div>
+                <div className="vb-preview vb-preview-step" id="vb-preview">
+                  <PageRenderer page={page} preview />
+                </div>
+                <StepNav onBack={() => setSelfStep("customize")} onNext={() => setSelfStep("wallet")} nextLabel="Continue" />
+              </div>
+            )}
+            {selfStep === "wallet" && (
+              <WalletStep
+                account={account}
+                onBack={() => setSelfStep("preview")}
+                onNext={() => setSelfStep("publish")}
+              />
+            )}
+            {selfStep === "publish" && (
+              <div className="vb-step">
+              <PublishPanel
+                page={page}
+                onPageChange={(p) => editPage(p)}
+                initialOwnerType={draftOwnerType ?? undefined}
+                // Name-first: the shared name state (picked in step 1) flows
+                // into publish; the wallet-derived default is applied in the
+                // builder's auto-fill effect, not here.
+                username={username}
+                onUsernameChange={setUsername}
+                availability={nameAvailability}
+                liaisonAssisted={liaisonDraftId !== null}
+                onPublished={() => {
+                  // Stop the debounced autosave — the work is live.
+                  autosaveStopped.current = true;
+                  if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+                }}
+              />
+                <StepNav onBack={() => setSelfStep("wallet")} hideNext />
+              </div>
+            )}
+          </>
+        )}
+
+        {path === "ai" && (
+          <>
+            {aiStep === "chat" && (
+              <div className="vb-step">
+                <div className="vb-step-head">
+                  <h2 className="vb-step-title">Describe your page</h2>
+                  <p className="vb-step-lede">Tell the AI what to build — you review everything before it goes live.</p>
+                </div>
+              <>
+                <VibecodeChat
+                  page={page}
+                  draft={aiDraft}
+                  onDraftChange={setAiDraft}
+                  onApplyDraft={applyDraft}
+                  onDiscardDraft={discardDraft}
+                  initialPrompt={remixPrompt}
+                  onInitialPromptConsumed={() => setRemixPrompt(null)}
+                />
+                {/* Stepped flow (2026-10-18): step progress + Continue buttons
+                    are the one navigation mechanism — no extra nudges here. */}
+              </>
+                {aiDraft && (
+                  <button type="button" className="vs-btn vs-btn-primary vb-review-cta" onClick={() => setAiStep("review")}>
+                    Review changes →
+                  </button>
+                )}
+                <StepNav onBack={() => setPath("undecided")} hideNext backLabel="← Start over" />
+              </div>
+            )}
+            {aiStep === "review" && (
+              <div className="vb-step">
+                {aiDraft ? (
+                  <>
+                    <div className="vb-draft-bar vs-glass" role="status">
+                      <span className="vb-draft-bar-text">
+                        <IconSpark size={16} /> Previewing AI changes
+                      </span>
+                      <div className="vb-draft-bar-actions">
+                        <button type="button" className="vs-btn vs-btn-ghost" onClick={() => { discardDraft(); setAiStep("chat"); }}>
+                          <IconClose size={14} /> Discard
+                        </button>
+                      </div>
+                    </div>
+                    <div className="vb-preview vb-preview-step">
+                      <PageRenderer page={aiDraft.page} preview />
+                    </div>
+                    <StepNav onBack={() => setAiStep("chat")} onNext={() => { applyDraft(); setAiStep("publish"); }} nextLabel="Apply & continue" />
+                  </>
+                ) : (
+                  <>
+                    <p className="vs-hint">No draft to review yet — describe your page first.</p>
+                    <StepNav onBack={() => setAiStep("chat")} hideNext />
+                  </>
+                )}
+              </div>
+            )}
+            {aiStep === "publish" && (
+              <div className="vb-step">
+              <PublishPanel
+                page={page}
+                onPageChange={(p) => editPage(p)}
+                initialOwnerType={draftOwnerType ?? undefined}
+                // Name-first: the shared name state (picked in step 1) flows
+                // into publish; the wallet-derived default is applied in the
+                // builder's auto-fill effect, not here.
+                username={username}
+                onUsernameChange={setUsername}
+                availability={nameAvailability}
+                liaisonAssisted={liaisonDraftId !== null}
+                onPublished={() => {
+                  // Stop the debounced autosave — the work is live.
+                  autosaveStopped.current = true;
+                  if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
+                }}
+              />
+                <StepNav onBack={() => setAiStep("chat")} hideNext />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* Mobile only (≤960px, CSS-gated): the controls stack above the
