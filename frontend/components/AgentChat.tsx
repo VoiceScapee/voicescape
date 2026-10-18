@@ -19,6 +19,68 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { IconBolt, IconClose, IconSpark, IconWallet } from "@/components/icons";
+
+/** Buddy's build-tool icons — custom SVG, no emoji (Lucide-style paths). */
+function HammerSvg({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ verticalAlign: "-3px" }}
+      aria-hidden="true"
+    >
+      <path d="M15 12l-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9" />
+      <path d="M17.64 15L22 10.64" />
+      <path d="M20.91 11.7l-1.25-1.25c-.6-.6-.93-1.4-.93-2.25v-.86L16.01 4.6a5.56 5.56 0 0 0-3.94-1.64H9l.92.82A6.18 6.18 0 0 1 12 8.4v1.56l2 2h2.47l2.26 1.91" />
+    </svg>
+  );
+}
+
+function PencilSvg({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ verticalAlign: "-3px" }}
+      aria-hidden="true"
+    >
+      <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+    </svg>
+  );
+}
+
+function EyeSvg({ size = 14 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ verticalAlign: "-3px" }}
+      aria-hidden="true"
+    >
+      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
 import { BUDDY_CELEBRATE_KEY } from "./OnboardingTrigger";
 import { type VoicescapePage, isValidPage, normalizeBlockForRender } from "@/lib/schema";
 import { extractPageDraft, stripPageDraft } from "@/lib/buddy-draft";
@@ -119,8 +181,20 @@ const GREETING_MSGS: Msg[] = [
     content: "Want the quick tour, or ready to build your page?",
   },
 ];
-/** Greeting quick-reply chips: tapping one posts it as the user's message. */
-const GREETING_CHIPS = ["✨ Quick tour", "🛠️ Build with me", "⛓️ Check my wallet"];
+/** Greeting quick-reply chips: tapping one posts it as the user's message.
+ *  Labels are plain text (the agent understands them); icons are SVG. */
+const GREETING_CHIPS: { label: string; icon: "spark" | "bolt" | "wallet" }[] = [
+  { label: "Quick tour", icon: "spark" },
+  { label: "Build with me", icon: "bolt" },
+  { label: "Check my wallet", icon: "wallet" },
+];
+
+function ChipIcon({ icon }: { icon: "spark" | "bolt" | "wallet" }) {
+  const size = 14;
+  if (icon === "spark") return <IconSpark size={size} />;
+  if (icon === "bolt") return <IconBolt size={size} />;
+  return <IconWallet size={size} />;
+}
 
 /** Assistant replies, rendered as styled markdown for a narrow chat bubble. */
 function BuddyMarkdown({ content }: { content: string }) {
@@ -512,7 +586,7 @@ export default function AgentChat() {
   // Builder banner handoff (2026-09-28): the builder's "Ask Buddy to build
   // it" banner dispatches this to open the chat. With { intent: "build" }
   // the banner jumps straight into build mode — same as tapping the
-  // "🛠️ Build with me" chip — instead of leaving the user to find it.
+  // "Build with me" chip — instead of leaving the user to find it.
   const buildIntentRef = useRef(false);
   useEffect(() => {
     const onOpenBuddy = (e: Event) => {
@@ -526,7 +600,7 @@ export default function AgentChat() {
   useEffect(() => {
     if (open && buildIntentRef.current && !busy) {
       buildIntentRef.current = false;
-      void sendMessage("🛠️ Build with me");
+      void sendMessage("Build with me");
     }
   });
 
@@ -1069,6 +1143,9 @@ export default function AgentChat() {
             borderRadius: "50%",
             border: "none",
             cursor: "grab",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             fontSize: 24,
             color: "#fff",
             background: "linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%)",
@@ -1076,7 +1153,7 @@ export default function AgentChat() {
             touchAction: "none",
           }}
         >
-          🔨
+          <HammerSvg size={24} />
         </button>
       )}
 
@@ -1138,15 +1215,25 @@ export default function AgentChat() {
                   textDecoration: "none",
                 }}
               >
-                🔨 Blockpage Buddy
+                <span
+                  style={{ display: "inline-flex", verticalAlign: "-2px", marginRight: 6, color: "#ffb14e" }}
+                >
+                  <IconBolt size={16} />
+                </span>
+                Blockpage Buddy
               </a>
               <div style={{ fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)" }}>{HEADER_TAGLINE}</div>
+                alignItems: "center",
+                justifyContent: "center",
             </div>
             <button
               type="button"
               aria-label="Close Blockpage Buddy chat"
               onClick={() => setOpen(false)}
               style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 marginLeft: "auto",
                 flex: "none",
                 width: 44,
@@ -1162,7 +1249,7 @@ export default function AgentChat() {
                 lineHeight: 1,
               }}
             >
-              ✕
+              <IconClose size={15} />
             </button>
           </div>
 
@@ -1320,7 +1407,7 @@ export default function AgentChat() {
                                 background: "rgba(255, 255, 255, 0.07)",
                               }}
                             >
-                              ✏️ Tweak
+                              <PencilSvg size={13} /> Tweak
                             </button>
                           </div>
                           <button
@@ -1439,7 +1526,7 @@ export default function AgentChat() {
                 aria-label="Building your page"
               >
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                  🔨 Building your page…
+                  <HammerSvg size={15} /> Building your page…
                 </div>
                 <div
                   style={{
@@ -1494,7 +1581,7 @@ export default function AgentChat() {
                 }}
               >
                 <strong style={{ fontSize: 13 }}>
-                  🎨 Preview{" "}
+                  <EyeSvg size={13} /> Preview{" "}
                   <span
                     style={{
                       fontWeight: 400,
@@ -1518,6 +1605,9 @@ export default function AgentChat() {
                     setTweakingPreview(false);
                   }}
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     background: "none",
                     border: "none",
                     color: "rgba(232, 234, 240, 0.6)",
@@ -1526,7 +1616,7 @@ export default function AgentChat() {
                     padding: 4,
                   }}
                 >
-                  ✕
+                  <IconClose size={15} />
                 </button>
               </div>
               <PreviewErrorBoundary>
@@ -1552,7 +1642,7 @@ export default function AgentChat() {
                     background: "rgba(255, 255, 255, 0.07)",
                   }}
                 >
-                  ✏️ Tweak this preview
+                  <PencilSvg size={13} /> Tweak this preview
                 </button>
               ) : (
                 <div
@@ -1585,10 +1675,10 @@ export default function AgentChat() {
             >
               {GREETING_CHIPS.map((chip) => (
                 <button
-                  key={chip}
+                  key={chip.label}
                   type="button"
                   disabled={busy}
-                  onClick={() => void sendMessage(chip)}
+                  onClick={() => void sendMessage(chip.label)}
                   style={{
                     padding: "8px 14px",
                     minHeight: 44,
@@ -1599,9 +1689,12 @@ export default function AgentChat() {
                     fontSize: 13,
                     cursor: busy ? "default" : "pointer",
                     opacity: busy ? 0.5 : 1,
+                    alignItems: "center",
+                    gap: 7,
                   }}
                 >
-                  {chip}
+                  <ChipIcon icon={chip.icon} />
+                  {chip.label}
                 </button>
               ))}
             </div>
@@ -1624,7 +1717,7 @@ export default function AgentChat() {
                   marginBottom: 8,
                 }}
               >
-                <strong style={{ fontSize: 13 }}>🏗️ Build payment</strong>
+                <strong style={{ fontSize: 13 }}><IconWallet size={13} /> Build payment</strong>
                 <button
                   type="button"
                   aria-label="Dismiss build payment panel"
@@ -1633,6 +1726,9 @@ export default function AgentChat() {
                     stopCreditPoll();
                   }}
                   style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                     background: "none",
                     border: "none",
                     color: "rgba(232, 234, 240, 0.6)",
@@ -1641,7 +1737,7 @@ export default function AgentChat() {
                     padding: 4,
                   }}
                 >
-                  ✕
+                  <IconClose size={15} />
                 </button>
               </div>
               {paywall === "anon" ? (
@@ -1711,12 +1807,15 @@ export default function AgentChat() {
                 color: "rgba(232, 234, 240, 0.9)",
               }}
             >
-              <span>🎨 Tweaking your preview — tell me what to change.</span>
+              <span><EyeSvg size={13} /> Tweaking your preview — tell me what to change.</span>
               <button
                 type="button"
                 aria-label="Stop tweaking preview"
                 onClick={() => setTweakingPreview(false)}
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   background: "none",
                   border: "none",
                   color: "rgba(232, 234, 240, 0.6)",
@@ -1725,7 +1824,7 @@ export default function AgentChat() {
                   padding: 4,
                 }}
               >
-                ✕
+                <IconClose size={15} />
               </button>
             </div>
           )}
@@ -1743,7 +1842,7 @@ export default function AgentChat() {
               }}
             >
               <span>
-                ✏️ Refining your draft — tell me what to change.{" "}
+                <PencilSvg size={13} /> Refining your draft — tell me what to change.{" "}
                 <strong>@{tweakDraft.username}</strong>
               </span>
               <button
@@ -1751,6 +1850,9 @@ export default function AgentChat() {
                 aria-label="Stop refining draft"
                 onClick={() => setTweakDraft(null)}
                 style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   background: "none",
                   border: "none",
                   color: "rgba(232, 234, 240, 0.6)",
@@ -1759,7 +1861,7 @@ export default function AgentChat() {
                   padding: 4,
                 }}
               >
-                ✕
+                <IconClose size={15} />
               </button>
             </div>
           )}

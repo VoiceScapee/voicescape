@@ -1697,3 +1697,85 @@ a {
   border-top: 1px solid var(--vs-border);
   padding-top: 8px;
 }
+
+/* ------------------------------------------------------------------ */
+/* Voice mic dialog — panel entrance, chip states, icon button        */
+/* (2026-10-18). Professional micro-interactions for the intelligent   */
+/* UI's conversation surface.                                          */
+/* ------------------------------------------------------------------ */
+
+.pv-mic-panel {
+  animation: pvPanelIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: bottom left;
+}
+
+@keyframes pvPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pv-chip {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.1s ease,
+    opacity 0.15s ease;
+}
+
+.pv-chip:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.pv-chip:not(:disabled):active {
+  transform: scale(0.95);
+}
+
+.pv-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pv-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.pv-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #e8e4da;
+}
+
+.pv-icon-btn:active {
+  transform: scale(0.9);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-mic-panel {
+    animation: none;
+  }
+  .pv-chip,
+  .pv-icon-btn {
+    transition: none;
+  }
+  .pv-chip:not(:disabled):active,
+  .pv-icon-btn:active {
+    transform: none;
+  }
+}
