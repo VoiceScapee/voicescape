@@ -1468,3 +1468,61 @@ a {
 .vs-no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ------------------------------------------------------------------ */
+/* Voice mic — the dapp's signature intelligent-UI element (2026-10-18) */
+/* Custom SVG iconography, expanding pulse rings while listening,      */
+/* crisp press feedback. Brand palette only — never seasonal.          */
+/* ------------------------------------------------------------------ */
+
+.pv-mic-btn {
+  position: relative;
+  transition:
+    transform 0.12s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.pv-mic-btn:active {
+  transform: scale(0.92);
+}
+
+.pv-mic-btn.is-listening::before,
+.pv-mic-btn.is-listening::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid rgba(239, 68, 68, 0.55);
+  pointer-events: none;
+  animation: pvMicPulse 1.8s ease-out infinite;
+}
+
+.pv-mic-btn.is-listening::after {
+  animation-delay: 0.9s;
+}
+
+@keyframes pvMicPulse {
+  0% {
+    transform: scale(0.82);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pv-mic-btn.is-listening::before,
+  .pv-mic-btn.is-listening::after {
+    animation: none;
+    display: none;
+  }
+  .pv-mic-btn {
+    transition: none;
+  }
+  .pv-mic-btn:active {
+    transform: none;
+  }
+}

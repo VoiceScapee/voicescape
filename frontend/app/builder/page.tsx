@@ -1618,7 +1618,10 @@ function HashpackProfileImport({
     <div className="vb-info-hint" style={{ marginTop: 8 }}>
       {state === "idle" && (
         <button type="button" className="vb-quiet-link" onClick={load}>
-          ✨ Import my HashPack profile
+          <span style={{ display: "inline-flex", verticalAlign: "-2px", marginRight: 4 }}>
+            <IconSpark size={14} />
+          </span>
+          Import my HashPack profile
         </button>
       )}
       {state === "loading" && <span>Looking up your HashPack profile…</span>}
@@ -1713,7 +1716,12 @@ function TemplatePicker({
               background: "linear-gradient(135deg, #38bdf8 0%, #a78bfa 55%, #f472b6 100%)",
             }}
           />
-          <span className="vb-template-name">✨ Made for you</span>
+          <span className="vb-template-name">
+            <span style={{ display: "inline-flex", verticalAlign: "-2px", marginRight: 4 }}>
+              <IconSpark size={14} />
+            </span>
+            Made for you
+          </span>
           <span className="vb-template-desc">
             Danny&apos;s draft{liaisonDraft.usernameHint ? ` · @${liaisonDraft.usernameHint}` : ""} — bound to your wallet
           </span>
@@ -2070,7 +2078,7 @@ function VibecodeChat({
               : "Paste some links into your socials block first (Customize tab)"
           }
         >
-          ✨ Design my page from my links
+          <IconSpark size={16} /> Design my page from my links
         </button>
         {designLinkCount === 0 && (
           <p className="vs-hint" style={{ marginTop: 6 }}>
