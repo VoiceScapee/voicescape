@@ -45,6 +45,7 @@ export const KNOWN_MCP_TOOLS = [
   "finalize_agent_self_claim",
   "complete_agent_self_claim",
   "release_reservation",
+  "self_fund_hedera",
   "prepare_nft_collection",
   "prepare_nft_mint",
   "get_nft_collection",

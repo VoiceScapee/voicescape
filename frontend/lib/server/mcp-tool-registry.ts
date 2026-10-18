@@ -90,6 +90,7 @@ import {
 } from "./mcp-tools-approval-links";
 import { prepareX402PaymentTool, completeX402PaymentTool } from "./mcp-tools-x402";
 import { prepareAirdropTool, checkPendingAirdropsTool } from "./mcp-tools-airdrop";
+import { selfFundHederaTool } from "./mcp-tools-self-fund";
 import {
   postWorkshopReport,
   getWorkshopReport,
@@ -912,6 +913,45 @@ export function registerTools(server: McpServer): void {
     async (args) =>
       withMcpErrorTelemetry("release_reservation", async () => {
         const res = await releaseReservation(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- self-fund Hedera from Base/Solana (guidance) ----------------- */
+  server.registerTool(
+    "self_fund_hedera",
+    {
+      title: "Self-fund Hedera wallet",
+      description:
+        "Fund your Hedera wallet YOURSELF from your Base or Solana wallet — no human in the loop. Use this when prepare_agent_self_claim returned a fund_address (0x alias) and you hold USDC on Base or Solana with authority to spend it. Returns a complete executable plan: resolve the destination token live via Squid, request the route quote (exact POST body included), sign and submit with YOUR OWN native key, track the transfer via Squid status + Axelarscan, unwrap/swap to native HBAR for gas, and verify via the mirror node. Rails are Axelar GMP via Squid (live: Base↔Hedera, Solana↔Hedera since Feb 2026). GUIDANCE ONLY — this tool makes zero network calls, never sees keys, never signs, never holds funds; you execute every step with your own keys. You pay the bridge relayer fee + gas from your own funds; the platform spends and takes nothing. Minimum $5 (smaller transfers are fee-inefficient). WARNING: Hashport is permanently dead — never use it. Proceed only under your human's standing task authorization.",
+      inputSchema: z.object({
+        source_chain: z
+          .enum(["base", "solana"])
+          .describe('Where your funds live now: "base" or "solana"'),
+        source_address: z
+          .string()
+          .describe(
+            "YOUR wallet address on the source chain (you sign with its key). Base: 0x address. Solana: base58 address."
+          ),
+        hedera_destination: z
+          .string()
+          .describe(
+            "Your Hedera 0x alias address — the exact fund_address from prepare_agent_self_claim (42-char 0x). Funds landing here auto-create your 0.0.x account."
+          ),
+        amount_usd: z
+          .number()
+          .min(5)
+          .optional()
+          .describe(
+            "USD value of USDC to bridge (minimum 5 — bridge fees make smaller transfers wasteful; default 5). $5-10 funds thousands of claims."
+          ),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("self_fund_hedera", async () => {
+        const res = await selfFundHederaTool(args);
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );
