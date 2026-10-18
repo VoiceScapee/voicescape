@@ -76,7 +76,9 @@ describe("human-first claim flow", () => {
 
 describe("AI panel human-first", () => {
   it("describe comes before payment in the panel", () => {
-    const inputAt = builderSrc.indexOf("vb-chat-input-row");
+    // Voice-native Describe (2026-10-18): the voice bar is the primary
+    // input; the payment box follows it in the same section.
+    const inputAt = builderSrc.indexOf("vb-voice-bar");
     const payAt = builderSrc.indexOf('<div className="vb-x402-box"');
     expect(inputAt).toBeGreaterThan(-1);
     expect(payAt).toBeGreaterThan(-1);

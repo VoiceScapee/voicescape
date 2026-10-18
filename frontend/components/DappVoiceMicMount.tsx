@@ -21,7 +21,9 @@ const DAPP_VOICE_PATHS = [
   "/",
   "/explore",
   "/agents",
-  "/builder",
+  // "/builder" intentionally absent (2026-10-18): the builder's Describe
+  // step has its own integrated voice input — a floating mic would cover
+  // step content. The path-choice screen's own buttons cover navigation.
   "/console",
   "/ai-agent",
   "/trust",

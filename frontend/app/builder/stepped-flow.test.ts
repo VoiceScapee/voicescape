@@ -52,7 +52,7 @@ describe("builder stepped flow", () => {
     expect(builderSrc).toContain('"vs:open-builder-ai"');
     expect(builderSrc).toContain('setPath("ai")');
     expect(builderSrc).toContain('setAiStep("chat")');
-    expect(builderSrc).toContain('querySelector(".vb-chat")');
+    expect(builderSrc).toContain('querySelector(".vb-voice-sec")');
   });
 
   it("reviews AI drafts on their own step before publish", () => {
