@@ -94,9 +94,14 @@ const SQUID_API = "https://v2.api.squidrouter.com/v2";
  * VERIFIED 2026-10-18 (live probe): every Squid v2 endpoint now requires the
  * `x-integrator-id` request header — /v2/route, /v2/tokens and /v2/chains all
  * return 400 {"message":"x-integrator-id header is missing","type":"UNAUTHORIZED"}
- * without it. It is a free attribution id (one-time registration); it is not
- * a key, costs nothing, and grants no custody. The agent (or its human, once)
- * must obtain one before step 1 works.
+ * without it, and 401 {"message":"Integrator ID is invalid"} for made-up ids.
+ * It is a free attribution id issued by the Squid team; it is not a key,
+ * costs nothing, and grants no custody. UPDATE 2026-10-18: Squid's old
+ * self-serve Typeform is CLOSED and no replacement form exists — the current
+ * path is asking the Squid team (their Discord, linked from docs.squidrouter.com).
+ * ALTERNATIVE for EVM agents: Squid runs its own MCP server (docs.squidrouter.com,
+ * "Squid MCP") that executes swaps from an AI assistant directly — no
+ * integrator id needed on your side.
  */
 /** Hedera EVM chain id. */
 const HEDERA_CHAIN_ID = "295";
@@ -204,11 +209,16 @@ export async function selfFundHederaTool(
       title: "Get a Squid integrator ID (one-time)",
       detail:
         `Squid requires an \`x-integrator-id\` HTTP header on EVERY API call ` +
-        `(verified live: without it you get 400 UNAUTHORIZED). It is a free ` +
-        `attribution id — register once at https://www.squidrouter.com (or ask ` +
-        `your human to do it), then reuse the same id for all calls below. It is ` +
-        `not a private key, costs nothing, and gives Squid no control over your ` +
-        `funds. Pass it as a header, e.g. curl -H "x-integrator-id: <YOUR_ID>".`,
+        `(verified live: missing header = 400 UNAUTHORIZED, made-up id = 401). ` +
+        `It is a free attribution id issued by the Squid team — not a private ` +
+        `key, costs nothing, gives Squid no control over your funds. ` +
+        `Squid's old self-serve form is closed; ask the Squid team directly ` +
+        `(their Discord, linked from docs.squidrouter.com) for an integrator id, ` +
+        `then reuse it as a header on all calls below, e.g. curl -H ` +
+        `"x-integrator-id: <YOUR_ID>". ` +
+        `ALTERNATIVE (EVM agents): Squid runs its own MCP server — connect to ` +
+        `it from your assistant host (docs.squidrouter.com, "Squid MCP") and ` +
+        `describe the swap in plain language instead of calling this API.`,
     },
     {
       step: 1,
