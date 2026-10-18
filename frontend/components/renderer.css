@@ -76,7 +76,10 @@
   padding: 8px 16px 0;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  /* Builder stepped flow (2026-10-18): --pv-spacing comes from the page's
+     seeded theme variant when present; fallback keeps the current 28px
+     when no variant is set. */
+  gap: var(--pv-spacing, 28px);
 }
 
 .pv-block {
@@ -101,7 +104,10 @@
 .pv-glass {
   background: color-mix(in srgb, var(--pv-fg) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--pv-fg) 14%, transparent);
-  border-radius: var(--vs-radius, 16px);
+  /* Builder stepped flow (2026-10-18): --pv-radius comes from the page's
+     seeded theme variant when present; the nested fallback keeps visuals
+     pixel-identical when no variant is set. */
+  border-radius: var(--pv-radius, var(--vs-radius, 16px));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
@@ -2510,4 +2516,18 @@ a.pv-friend:hover {
 .pv-nft-own {
   font-size: 0.85rem;
   margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Reduced motion (builder stepped flow, 2026-10-18): no keyframe       */
+/* animations and no smooth scrolling inside rendered blockpages.       */
+/* ------------------------------------------------------------------ */
+@media (prefers-reduced-motion: reduce) {
+  .pv-root,
+  .pv-root *,
+  .pv-root *::before,
+  .pv-root *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+  }
 }

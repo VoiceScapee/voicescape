@@ -5,6 +5,9 @@ import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
 import { normalizeBlockForRender } from "@/lib/schema";
+// Builder stepped flow (2026-10-18): generative template variants.
+import type { ThemeVariant } from "@/lib/template-variants";
+import { variantCssVars } from "@/lib/template-variants";
 import { resolveFounderBadge } from "@/lib/founders";
 import FounderBadge from "@/components/FounderBadge";
 import Logo from "@/components/Logo";
@@ -987,11 +990,16 @@ function AgentBanner({ meta }: { meta: RegistryMeta }) {
 
 export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, meta, onPayService, canonicalUsername, preview }: RendererProps) {
   const { theme } = page;
+  // Builder stepped flow (2026-10-18): when the page carries a seeded theme
+  // variant, it overrides bg/accent/font plus radius/spacing/gradient-angle
+  // vars. --pv-fg always stays on the base theme (readability).
+  const variant: ThemeVariant | undefined = theme.variant;
   const themeStyle = {
-    "--pv-bg": theme.background,
+    "--pv-bg": variant?.background ?? theme.background,
     "--pv-fg": theme.foreground,
-    "--pv-accent": theme.accent,
-    "--pv-font": theme.fontFamily,
+    "--pv-accent": variant?.accent ?? theme.accent,
+    "--pv-font": variant?.fontFamily ?? theme.fontFamily,
+    ...(variant ? variantCssVars(variant) : {}),
   } as CSSProperties;
 
   // The on-chain registry is the source of truth for agent status. Fall back
