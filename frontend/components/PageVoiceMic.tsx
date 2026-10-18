@@ -84,6 +84,39 @@ interface VoiceAction {
   /** Builder surface only: the builder page switches to its AI tab. */
   builderAi?: boolean;
 }
+
+/**
+ * Custom SVG iconography — no emoji. The mic is the dapp's signature
+ * intelligent-UI element; it gets drawn, not emoji'd.
+ */
+function MicSvg({ size = 22 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="2" width="6" height="12" rx="3" />
+      <path d="M5 10a7 7 0 0 0 14 0" />
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <line x1="8" y1="22" x2="16" y2="22" />
+    </svg>
+  );
+}
+
+function StopSvg({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="6" width="12" height="12" rx={2.5} />
+    </svg>
+  );
+}
 interface VoiceReply {
   ok: boolean;
   speak: string;
@@ -399,7 +432,9 @@ export default function PageVoiceMic({
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span aria-hidden>🎙</span>
+            <span style={{ display: "inline-flex", color: "#ffb14e" }}>
+              <MicSvg size={18} />
+            </span>
             <span style={{ fontWeight: 600, flex: 1 }}>{panelTitle}</span>
             <select
               value={lang}
@@ -486,9 +521,14 @@ export default function PageVoiceMic({
               background: listening ? "#ef4444" : "#e8e4da",
               color: listening ? "#fff" : "#111",
               marginBottom: 8,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
             }}
           >
-            {listening ? "⏹ Stop listening" : busy ? "…" : "🎙 Tap and speak"}
+            {listening ? <StopSvg size={15} /> : !busy ? <MicSvg size={17} /> : null}
+            {listening ? "Stop listening" : busy ? "…" : "Tap and speak"}
           </button>
           {transcript && listening && (
             <p style={{ fontSize: 13, opacity: 0.8, margin: "0 0 8px" }}>“{transcript}”</p>
@@ -542,6 +582,7 @@ export default function PageVoiceMic({
 
       <button
         type="button"
+        className={`pv-mic-btn${listening ? " is-listening" : ""}`}
         onClick={() => {
           // A real drag ends with the pointer capture released — plain taps
           // (and keyboard Enter/Space, which fire click without pointers)
@@ -565,7 +606,6 @@ export default function PageVoiceMic({
           border: "1px solid rgba(255,255,255,0.2)",
           background: listening ? "#ef4444" : "rgba(12, 16, 24, 0.92)",
           color: "#e8e4da",
-          fontSize: 22,
           cursor: dragging ? "grabbing" : "grab",
           touchAction: "none",
           boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
@@ -576,7 +616,7 @@ export default function PageVoiceMic({
           WebkitUserSelect: "none",
         }}
       >
-        {listening ? "⏹" : "🎙"}
+        {listening ? <StopSvg size={20} /> : <MicSvg size={24} />}
       </button>
     </div>
   );
