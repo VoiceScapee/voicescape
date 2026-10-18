@@ -32,4 +32,5 @@ export const READONLY_TOOLS = new Set([
   "check_grant_status",
   "check_pending_airdrops",
   "get_nft_collection",
+  "self_fund_hedera",
 ]);
