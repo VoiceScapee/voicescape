@@ -30,7 +30,7 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("Blockpage Buddy");
     expect(widgetSrc).toContain("Ask me anything — I check the chain");
     expect(widgetSrc).toContain("Ask Buddy…");
-    expect(widgetSrc).toContain("🔨");
+    expect(widgetSrc).toContain("<HammerSvg"); // custom SVG launcher, no emoji
     expect(widgetSrc).not.toContain("beta · read-only");
   });
 
@@ -136,7 +136,7 @@ describe("AgentChat", () => {
     expect(widgetSrc).toContain("Publish page");
     expect(widgetSrc).toContain("publishDraft(draft)");
     expect(widgetSrc).toContain("BUDDY_PUBLISH_INTENT_KEY");
-    expect(widgetSrc).toContain("✏️ Tweak");
+    expect(widgetSrc).toContain("<PencilSvg"); // custom SVG icon, no emoji
     expect(widgetSrc).toContain("refine_draft");
     expect(widgetSrc).toContain("Tell Buddy what to change");
   });
@@ -156,7 +156,7 @@ describe("AgentChat", () => {
   });
 
   it("the free-mock panel labels remaining tweaks and placeholder-art status", () => {
-    expect(widgetSrc).toContain("🎨 Preview");
+    expect(widgetSrc).toContain("<EyeSvg"); // custom SVG icon, no emoji
     expect(widgetSrc).toContain("free previews used");
     // Rendered as "· 1 free tweak left" / "· 2 free tweaks left" via a
     // template literal — assert the tokens.
@@ -184,7 +184,7 @@ describe("AgentChat", () => {
   });
 
   it("'Tweak this preview' arms tweak mode and the message sends preview_draft", () => {
-    expect(widgetSrc).toContain("✏️ Tweak this preview");
+    expect(widgetSrc).toContain("Tweak this preview"); // label kept, icon is SVG now
     expect(widgetSrc).toContain("setTweakingPreview(true)");
     expect(widgetSrc).toContain("preview_draft:");
     expect(widgetSrc).toContain("tweakingPreview && previewDraft");
