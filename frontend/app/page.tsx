@@ -5,6 +5,7 @@ import BuiltOnHedera from "@/components/BuiltOnHedera";
 import ExternalLink from "@/components/ExternalLink";
 import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
+import InstallAppButton from "@/components/InstallAppButton";
 import { OnboardingTrigger } from "@/components/OnboardingTrigger";
 import { DateStrip } from "@/components/landing/DateStrip";
 import { ChainPulseStats } from "@/components/landing/ChainPulseStats";
@@ -72,6 +73,25 @@ export default function LandingPage() {
           <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
             <T k="brand.eyebrow" />
           </span>
+          {/* Two ways in: install the app, or use Voicescape inside your AI agent's chat */}
+          <div
+            style={{
+              margin: "18px auto 4px",
+              maxWidth: "34em",
+              fontSize: 15,
+              lineHeight: 1.9,
+              color: "var(--vs-muted)",
+            }}
+          >
+            <T k="landing.getAppCta" /> <InstallAppButton />
+            <br />
+            <Link
+              href="/ai-agent"
+              style={{ color: "var(--vs-accent)", fontWeight: 700, textDecoration: "none" }}
+            >
+              <T k="landing.useAgentChat" /> →
+            </Link>
+          </div>
           <p style={{ color: "var(--vs-muted)", fontSize: "16.5px", lineHeight: 1.55, maxWidth: "34em", margin: "18px auto 26px" }}>
             <T k="landing.brandSub" />
           </p>
