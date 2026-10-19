@@ -54,6 +54,7 @@ const STEPS = [
 
 export default function AiAgentLanePage() {
   const [copied, setCopied] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const copy = async () => {
     try {
@@ -62,6 +63,16 @@ export default function AiAgentLanePage() {
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard unavailable — the text is still selectable */
+    }
+  };
+
+  const copyCode = async () => {
+    try {
+      await navigator.clipboard.writeText("VKOD5F");
+      setCodeCopied(true);
+      setTimeout(() => setCodeCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable — the code is still selectable */
     }
   };
 
@@ -209,6 +220,80 @@ export default function AiAgentLanePage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* No agent yet? Get one free via Brandon's Muse referral */}
+        <div
+          style={{
+            border: "1px solid rgba(123,63,242,.5)",
+            borderRadius: 14,
+            padding: "20px 18px",
+            marginBottom: 36,
+            background:
+              "linear-gradient(135deg, rgba(123,63,242,.14), rgba(180,92,240,.05))",
+          }}
+        >
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 8 }}>
+            🎁 Don&apos;t have an AI agent yet? Get one free.
+          </div>
+          <p
+            style={{
+              fontSize: 14,
+              color: "var(--vs-muted)",
+              lineHeight: 1.65,
+              margin: "0 0 14px",
+            }}
+          >
+            Muse is Meta&apos;s personal AI agent — it lives in chat and can
+            build your Voicescape page for you. New users who redeem an invite
+            code within 48 hours of signing up get{" "}
+            <strong style={{ color: "#fff" }}>1 billion free Muse tokens</strong>{" "}
+            — Brandon&apos;s code is below. (Claude&apos;s free plan works with
+            the connector too — see step 1.)
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <code
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                letterSpacing: 4,
+                padding: "10px 18px",
+                borderRadius: 10,
+                background: "rgba(0,0,0,.35)",
+                border: "1px dashed rgba(255,255,255,.35)",
+                userSelect: "all",
+              }}
+            >
+              VKOD5F
+            </code>
+            <button
+              onClick={copyCode}
+              style={{
+                padding: "8px 16px",
+                minHeight: 44,
+                borderRadius: 8,
+                border: "none",
+                background: codeCopied ? "#10b981" : "linear-gradient(135deg,#7b3ff2,#b45cf0)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {codeCopied ? "Copied ✓" : "Copy code"}
+            </button>
+          </div>
+          <div
+            style={{
+              fontSize: 12.5,
+              color: "var(--vs-muted)",
+              marginTop: 10,
+              lineHeight: 1.6,
+            }}
+          >
+            Redeem it in the Muse app under Settings → Redeem Code, within 48
+            hours of creating your account — after that window the bonus is gone.
+          </div>
         </div>
 
         {/* Plain-words FAQ */}
