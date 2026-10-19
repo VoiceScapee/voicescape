@@ -1223,8 +1223,6 @@ export default function AgentChat() {
                 Blockpage Buddy
               </a>
               <div style={{ fontSize: 11.5, color: "rgba(232, 234, 240, 0.6)" }}>{HEADER_TAGLINE}</div>
-                alignItems: "center",
-                justifyContent: "center",
             </div>
             <button
               type="button"
