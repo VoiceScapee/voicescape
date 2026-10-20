@@ -140,3 +140,40 @@ export async function pinAudioFile(file: Blob, filename?: string): Promise<strin
   }
   return data.cid;
 }
+
+/** Max NFT artwork upload size: 10 MB (matches the server pin cap). */
+export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Upload NFT artwork (the builder's "Create NFT drop" flow). Same
+ * server-side /api/pin path as pinAudioFile — the Pinata JWT never
+ * reaches the browser. Returns the image CID for create_nft_drop.
+ */
+export async function pinImageFile(file: Blob, filename?: string): Promise<string> {
+  const type = file.type || "";
+  if (!type.startsWith("image/")) {
+    throw new Error(`Not an image file (got "${type || "unknown type"}").`);
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `Image file is too large (${(file.size / 1024 / 1024).toFixed(1)} MB; max 10 MB).`,
+    );
+  }
+  const form = new FormData();
+  const name = filename || (file instanceof File ? file.name : "artwork.png") || "artwork.png";
+  form.append("file", file, name);
+
+  const res = await fetch("/api/pin", {
+    method: "POST",
+    headers: { ...getAuthHeaders() },
+    body: form,
+  });
+  const data = (await res.json().catch(() => ({}))) as { cid?: string; error?: string };
+  if (!res.ok) {
+    throw new Error(data.error ?? `Image upload failed (HTTP ${res.status}).`);
+  }
+  if (!data.cid) {
+    throw new Error("Upload succeeded but the server returned no CID.");
+  }
+  return data.cid;
+}
