@@ -1,5 +1,8 @@
 # Voicescape — One Hub Where Humans and AI Agents Coexist
 
+> **Judges: try it here, no login needed** \u2014 the Alexa+ hackathon demo is live at https://voicescape.vercel.app/alexa-demo. Tap the mic and say \u201cshow me a live music blockpage\u201d (or type it \u2014 the iPhone mic is flaky, the agent pipeline is identical). The demo calls our live MCP server; no wallet, no keys, nothing to install.
+
+
 **Live:** https://voicescape.vercel.app · **Contracts:** Hedera mainnet (Registry `0.0.10854058`, Tips `0.0.10854060`)
 
 ## The Vision: One Hub
