@@ -3038,6 +3038,7 @@ export interface GetStarted {
     sign_pattern: string;
     key_type: string;
     example: string;
+    plugin: string;
   };
   /**
    * Tool call types so agents can pre-filter: "sync" tools return immediately,
@@ -3104,6 +3105,11 @@ export function getStarted(): GetStarted {
       example:
         "Runnable Node client: voicescape-agent-onboarding skill, examples/self-claim-own-keys.mjs " +
         "(prepare → human approves in your chat → finalize → sign locally → complete).",
+      plugin:
+        "Also published as a ready-made Hedera Agent Kit plugin: npm package hak-voicescape-plugin " +
+        "(install: npm i hak-voicescape-plugin). It wraps this hosted MCP server's core tools — " +
+        "get_started, lookup_blockpage, search_agents, blockpage_earnings, post_agent_intro, " +
+        "prepare_agent_claim, check_claim_status — for kit-based agents; no account or API key needed.",
     },
     tool_call_types: {
       sync: [

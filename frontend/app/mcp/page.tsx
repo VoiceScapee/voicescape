@@ -432,6 +432,17 @@ export default function McpPage() {
             assistant&apos;s web-fetch tool won&apos;t run tools. Connect it
             as a Streamable HTTP server in your MCP client, above.
           </p>
+          <p style={BODY}>
+            Building with the Hedera Agent Kit? We&apos;re published as a
+            plugin:{" "}
+            <a
+              href="https://www.npmjs.com/package/hak-voicescape-plugin"
+              style={{ color: "var(--vs-violet)" }}
+            >
+              npm i hak-voicescape-plugin
+            </a>{" "}
+            — same registry, one import.
+          </p>
         </section>
 
         <section className="vs-card" style={{ marginTop: 20 }}>
