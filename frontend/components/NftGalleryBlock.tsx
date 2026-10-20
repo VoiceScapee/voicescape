@@ -56,13 +56,41 @@ interface GalleryData {
 
 type AssocState = "idle" | "working" | "done" | "error";
 
-export default function NftGalleryBlock({ block }: { block: NftGalleryBlockT }) {
+export default function NftGalleryBlock({
+  block,
+  ownerAccountId,
+  pageUsername,
+}: {
+  block: NftGalleryBlockT;
+  /** Page owner's Hedera account (0.0.x) when known — drives the owner
+   *  affordances. Visitors never see them. */
+  ownerAccountId?: string | null;
+  /** Page username — the identity prepare_nft_transfer verifies against. */
+  pageUsername?: string | null;
+}) {
   const tokenId = (block.token_id ?? "").trim();
   const title = block.title?.trim() || "NFT Gallery";
   const [data, setData] = useState<GalleryData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [assoc, setAssoc] = useState<AssocState>("idle");
   const [assocMsg, setAssocMsg] = useState<string | null>(null);
+  // Owner affordances: the connected wallet IS the page owner.
+  const [viewerAccount, setViewerAccount] = useState<string | null>(null);
+  const [giftSerial, setGiftSerial] = useState("");
+  const [giftRecipient, setGiftRecipient] = useState("");
+  const [giftState, setGiftState] = useState<AssocState>("idle");
+  const [giftMsg, setGiftMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setViewerAccount(getHederaPairing()?.accountId ?? null);
+    } catch {
+      setViewerAccount(null);
+    }
+  }, []);
+
+  const isOwner =
+    !!ownerAccountId && !!viewerAccount && viewerAccount === ownerAccountId.trim();
 
   useEffect(() => {
     if (!tokenId) return;
@@ -145,6 +173,84 @@ export default function NftGalleryBlock({ block }: { block: NftGalleryBlockT }) 
     }
   }, [tokenId]);
 
+  const gift = useCallback(async () => {
+    const serial = Number(giftSerial);
+    const recipient = giftRecipient.trim();
+    if (!pageUsername) {
+      setGiftState("error");
+      setGiftMsg("This page's username isn't available here — gift from your wallet app instead.");
+      return;
+    }
+    if (!Number.isInteger(serial) || serial < 1) {
+      setGiftState("error");
+      setGiftMsg("Pick the serial to gift.");
+      return;
+    }
+    if (!/^\d+\.\d+\.\d+$/.test(recipient)) {
+      setGiftState("error");
+      setGiftMsg("Recipient must be a Hedera account like 0.0.123456.");
+      return;
+    }
+    setGiftState("working");
+    setGiftMsg(null);
+    try {
+      const pairing = getHederaPairing();
+      if (!pairing) {
+        setGiftState("error");
+        setGiftMsg("Connect your wallet first, then tap Gift again.");
+        return;
+      }
+      const res = await fetch("/api/nfts/transfer-prepare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agent_username: pageUsername,
+          token_id: tokenId,
+          serial_number: serial,
+          recipient_account_id: recipient,
+        }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | {
+            prepared?: boolean;
+            unsignedTxBytes?: string;
+            transactionId?: string;
+            recipientAssociated?: boolean | null;
+            error?: string;
+          }
+        | null;
+      if (!res.ok || !body || body.error || !body.unsignedTxBytes) {
+        setGiftState("error");
+        setGiftMsg(typeof body?.error === "string" && body.error ? body.error : "Couldn't prepare the gift — try again.");
+        return;
+      }
+      if (body.recipientAssociated === false) {
+        setGiftState("error");
+        setGiftMsg(
+          `${recipient} hasn't associated this collection yet — Hedera would reject the transfer. Ask them to associate first (Step 1 on their view of a gallery), then gift.`,
+        );
+        return;
+      }
+      const payload: PreparedTxPayload = {
+        transactionList: body.unsignedTxBytes,
+        signerAccountId: `hedera:mainnet:${pairing.accountId}`,
+        transactionId: body.transactionId as string,
+      };
+      await submitPreparedTx(payload);
+      setGiftState("done");
+      setGiftMsg(`Gifted — serial ${serial} now belongs to ${recipient}.`);
+    } catch (e) {
+      setGiftState("error");
+      if (e instanceof NoWalletPairingError) {
+        setGiftMsg("Connect your wallet first, then tap Gift again.");
+      } else if (e instanceof Error && /dismiss|reject|cancel/i.test(e.message)) {
+        setGiftMsg("Signature dismissed in your wallet — nothing changed. Tap Gift to try again.");
+      } else {
+        setGiftMsg("The gift didn't complete — try again in a moment.");
+      }
+    }
+  }, [giftSerial, giftRecipient, pageUsername, tokenId]);
+
   if (!tokenId) {
     return (
       <section className="pv-block" aria-label={title}>
@@ -183,6 +289,66 @@ export default function NftGalleryBlock({ block }: { block: NftGalleryBlockT }) 
               View on HashScan <IconExternal size={14} />
             </a>
           </div>
+
+          {isOwner && (
+            <div
+              style={{
+                border: "1px solid var(--vs-border)",
+                borderRadius: 10,
+                padding: "12px 14px",
+                margin: "4px 0 14px",
+              }}
+            >
+              <strong>Your collection — owner actions</strong>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+                <a href="/marketplace/sell" className="pv-btn" style={{ textDecoration: "none" }}>
+                  List for sale
+                </a>
+                <span className="pv-muted">
+                  Keep: do nothing — serials you don&apos;t list or gift stay in your wallet.
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10, alignItems: "center" }}>
+                <label>
+                  <span className="pv-muted" style={{ marginRight: 6 }}>Gift serial</span>
+                  <select
+                    value={giftSerial}
+                    onChange={(e) => setGiftSerial(e.target.value)}
+                    aria-label="Serial to gift"
+                  >
+                    <option value="">Pick…</option>
+                    {data.nfts.map((n) => (
+                      <option key={n.serial} value={n.serial}>
+                        #{n.serial}
+                        {n.name ? ` — ${n.name}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <input
+                  value={giftRecipient}
+                  onChange={(e) => setGiftRecipient(e.target.value)}
+                  placeholder="Recipient 0.0.…"
+                  aria-label="Recipient account"
+                  style={{ minWidth: 150 }}
+                />
+                <button
+                  type="button"
+                  className="pv-btn"
+                  onClick={gift}
+                  disabled={giftState === "working" || giftState === "done"}
+                >
+                  {giftState === "done" ? "Gifted" : giftState === "working" ? "Check your wallet…" : "Gift"}
+                </button>
+              </div>
+              <p className="pv-muted" style={{ margin: "8px 0 0" }}>
+                Gifting signs a transfer in YOUR wallet (a fraction of a cent in network
+                fees, no platform fee). Selling uses the marketplace: buyers pay 98% to you,
+                2% to the treasury, then you deliver the serial here.
+              </p>
+              {giftMsg && <p className="pv-muted">{giftMsg}</p>}
+            </div>
+          )}
 
           {/* Buyer journey — association is step 1, never hidden. */}
           <ol className="pv-nft-steps">

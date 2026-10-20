@@ -58,6 +58,7 @@ import { friendlyWalletError, getHederaPairing, isStaleConnectionError, repairSt
 import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { sanitizeDraftName, draftFileUrl } from "@/lib/drafts";
 import { WalletConnect } from "@/components/WalletConnect";
+import NftDropCreator from "@/components/NftDropCreator";
 import { useSession, SignInButton } from "@/lib/session";
 import { useHcsSubmit } from "@/components/townhall/useHcsSubmit";
 import {
@@ -4280,6 +4281,15 @@ function BuilderInner() {
             )}
             {selfStep === "publish" && (
               <div className="vb-step">
+              <NftDropCreator
+                username={username}
+                onAttachGallery={(tokenId, title) =>
+                  editPage({
+                    ...page,
+                    blocks: [...page.blocks, { type: "nftGallery", token_id: tokenId, title }],
+                  })
+                }
+              />
               <PublishPanel
                 page={page}
                 onPageChange={(p) => editPage(p)}

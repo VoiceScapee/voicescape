@@ -736,7 +736,10 @@ function BlockView({
     case "chat":
       return <ChatBox room={tipName} title={block.title} preview={preview} />;
     case "nftGallery":
-      return <NftGalleryBlock block={block} />;
+      // Owner affordances (List / Gift / Keep) render only when the
+      // connected wallet is the page owner's — tipOwner carries the
+      // owner's on-chain account, tipName the canonical username.
+      return <NftGalleryBlock block={block} ownerAccountId={tipOwner} pageUsername={tipName} />;
     case "heartbeat":
       // The heartbeat needs the page owner's on-chain wallet (never page
       // JSON content) to poll /api/heartbeat for real settled tip events.
