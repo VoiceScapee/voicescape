@@ -13,9 +13,16 @@ import {
   findWhaleLegs,
   decodePurchaseAmountHbar,
   hbarPriceUsd,
-  parseNodeCity,
   formatFeedAgo,
   shortHash,
+  txFinalitySeconds,
+  formatFinality,
+  sampleTps,
+  medianFinalitySeconds,
+  nodeAccountToCity,
+  groupTxByCity,
+  selectHeroTxs,
+  type GossipTx,
 } from "@/lib/network-pulse";
 import "./dannys-vision.css";
 
@@ -47,13 +54,23 @@ const NODES: NodeDef[] = [
     quietNote: "Quiet — no messages logged yet." },
 ];
 
-/** Consensus-city satellites: real cities from the Hedera node address book,
- *  drawn as a dim outer ring so the constellation shows the network's live
- *  geography. Capped — the footer counts any overflow. */
-const CITY_NODE_CAP = 10;
+/** Consensus-city satellites: EVERY real city from the Hedera node
+ *  address book, drawn as a dim outer ring so the constellation shows
+ *  the network's live geography. The gossip layer lights them with
+ *  real per-node transaction traffic. */
 const CITY = "#99f6e0"; // consensus-city satellites
 const cityId = (city: string) =>
   `city:${city.toLowerCase().replace(/\s+/g, "-")}`;
+
+/** Gossip-layer palette: hero ripples render near-white so they read
+ *  as light, distinct from every node color. */
+const RIPPLE = "#f4feff";
+const GOSSIP_POLL_MS = 3_000;
+const GOSSIP_LIMIT = 100;
+const HERO_TX_CAP = 4;
+const MAX_RIPPLES = 4;
+const MAX_GOSSIP_PULSES = 40;
+const GOSSIP_SEEN_CAP = 2000;
 
 /* Simplified brand marks, drawn small on canvas via Path2D. */
 const X_PATH =
@@ -74,6 +91,40 @@ interface Ribbon {
   nodeId: string;
   color: string;
   t: number; // 0 → 1, center → node
+}
+/**
+ * Aggregate gossip pulse: one poll's worth of real traffic hitting a
+ * consensus-city satellite. Strength is ∝ the city's tx count in the
+ * window — never a decorative heartbeat.
+ */
+interface GossipPulse {
+  cityId: string; // city:xxx
+  color: string;
+  t: number; // 0 → 1
+  strength: number; // 0 → 1
+}
+/**
+ * Hero ripple: a single real transaction's recorded journey. The light
+ * leaves the submitting node's city and spreads — illustrating how
+ * gossip carried it (the network publishes no literal paths). It
+ * resolves to finalityS, the transaction's OWN finality in seconds.
+ */
+interface Ripple {
+  cityId: string;
+  color: string;
+  t: number; // 0 → 1, the spreading light
+  finalityS: number;
+  txId: string; // mirror transaction_id
+  title: string;
+  sub: string;
+  url: string;
+  ts: number; // consensus ms
+}
+/** Transient "FINAL · 5.7s" label spawned where a ripple resolves. */
+interface FinalLabel {
+  cityId: string;
+  text: string;
+  t: number; // 0 → 1 fade
 }
 interface NodeInfo {
   headline: string; // one-line status for the popup
@@ -192,7 +243,13 @@ export function DannysVision({
   accent: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const fx = useRef<{ pings: Ping[]; ribbons: Ribbon[] }>({ pings: [], ribbons: [] });
+  const fx = useRef<{
+    pings: Ping[];
+    ribbons: Ribbon[];
+    gossip: GossipPulse[];
+    ripples: Ripple[];
+    finals: FinalLabel[];
+  }>({ pings: [], ribbons: [], gossip: [], ripples: [], finals: [] });
   const info = useRef<Record<string, NodeInfo>>({});
   const seen = useRef({
     tips: new Set<string>(),
@@ -201,6 +258,7 @@ export function DannysVision({
     social: new Set<string>(),
     sales: new Set<string>(),
     whales: new Set<string>(),
+    gossip: new Set<string>(),
     feedIds: new Set<string>(),
     primed: false,
   });
@@ -211,6 +269,14 @@ export function DannysVision({
   const pos = useRef<{ id: string; x: number; y: number; r: number }[]>([]);
   /** Live consensus cities (address book) + their outer-ring positions. */
   const citiesRef = useRef<string[]>([]);
+  /** Node account id (0.0.x) -> consensus city, from the address book. */
+  const nodeCityRef = useRef<Record<string, string>>({});
+  /** City -> node account ids in that city (for popups). */
+  const cityNodesRef = useRef<Record<string, string[]>>({});
+  /** Exact-string mirror consensus-timestamp cursor for the gossip
+   *  poller. Never parsed — float rounding would corrupt pagination. */
+  const gossipCursor = useRef<string | null>(null);
+  const gossipOk = useRef(true);
   const cityPos = useRef<{ id: string; x: number; y: number; r: number }[]>([]);
   const chimeDone = useRef(false);
   const [, setTick] = useState(0);
@@ -218,6 +284,7 @@ export function DannysVision({
   const [popupInfo, setPopupInfo] = useState<NodeInfo | null>(null);
   const [live, setLive] = useState(true);
   const [vitals, setVitals] = useState<string | null>(null);
+  const [gossipLine, setGossipLine] = useState<string | null>(null);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [bornLine, setBornLine] = useState<string | null>(null);
   const [citiesLine, setCitiesLine] = useState<string | null>(null);
@@ -601,6 +668,28 @@ export function DannysVision({
       }
     };
 
+    /* Address-book pagination: /api/v1/network/nodes caps at 25 rows
+       per page regardless of `limit` — follow links.next (bounded) so
+       the consensus ring and node map cover the whole live council,
+       not just page one. */
+    const fetchNodePages = async (): Promise<
+      { description?: string; node_account_id?: string }[]
+    > => {
+      const all: { description?: string; node_account_id?: string }[] = [];
+      let url: string | null =
+        "https://mainnet.mirrornode.hedera.com/api/v1/network/nodes?limit=100";
+      for (let i = 0; i < 4 && url; i++) {
+        const d = (await fetchJson(url)) as {
+          nodes?: { description?: string; node_account_id?: string }[];
+          links?: { next?: string | null };
+        };
+        all.push(...(d.nodes ?? []));
+        const next = d.links?.next ?? null;
+        url = next ? `https://mainnet.mirrornode.hedera.com${next}` : null;
+      }
+      return all;
+    };
+
     /* Hedera mainnet vitals, straight from the mirror node: network TPS
        (derived from the latest transaction window), block time (from the
        two latest blocks), consensus node count, the live HBAR price, and —
@@ -612,7 +701,7 @@ export function DannysVision({
       if (!alive || hidden()) return;
       try {
         const hourAgoSec = Math.floor(Date.now() / 1000) - 3600;
-        const [txJ, blkJ, nodeJ, exJ, bornAccJ, bornTokJ, bornTopJ] =
+        const [txJ, blkJ, nodeList, exJ, bornAccJ, bornTokJ, bornTopJ] =
           await Promise.all([
             fetchJson(
               "https://mainnet.mirrornode.hedera.com/api/v1/transactions?limit=100&order=desc",
@@ -620,9 +709,7 @@ export function DannysVision({
             fetchJson(
               "https://mainnet.mirrornode.hedera.com/api/v1/blocks?limit=2&order=desc",
             ),
-            fetchJson(
-              "https://mainnet.mirrornode.hedera.com/api/v1/network/nodes?limit=100",
-            ),
+            fetchNodePages(),
             fetchJson(EXCHANGE_URL),
             fetchJson(BORN_TX_URL("CRYPTOCREATEACCOUNT", hourAgoSec)),
             fetchJson(BORN_TX_URL("TOKENCREATION", hourAgoSec)),
@@ -641,9 +728,10 @@ export function DannysVision({
         ) as {
           timestamp: { from: string };
         }[];
-        const nodes = (
-          (nodeJ as { nodes?: { description?: string }[] }).nodes ?? []
-        ) as { description?: string }[];
+        const nodes = (nodeList ?? []) as {
+          description?: string;
+          node_account_id?: string;
+        }[];
         const parts: string[] = [];
         if (txs.length >= 2) {
           const span =
@@ -704,21 +792,175 @@ export function DannysVision({
           );
         }
 
-        // Consensus geography: real cities from the node address book.
-        // The first CITY_NODE_CAP become constellation satellites; the
-        // footer only counts any overflow beyond the ring.
+        // Consensus geography: EVERY real city from the node address
+        // book, plus node account id -> city so the gossip layer lands
+        // each transaction on the satellite of the node it was really
+        // submitted to (the tx's own `node` field is the evidence).
+        const acctCity = nodeAccountToCity(nodes);
         const cities: string[] = [];
-        for (const n of nodes) {
-          const c = parseNodeCity(n.description);
-          if (c && !cities.includes(c)) cities.push(c);
+        const cityAccts: Record<string, string[]> = {};
+        for (const [acct, c] of Object.entries(acctCity)) {
+          if (!cities.includes(c)) cities.push(c);
+          (cityAccts[c] ??= []).push(acct);
         }
         if (alive && cities.length > 0) {
-          citiesRef.current = cities.slice(0, CITY_NODE_CAP);
-          const rest = cities.length - citiesRef.current.length;
-          setCitiesLine(rest > 0 ? `Consensus · +${rest} more cities` : null);
+          nodeCityRef.current = acctCity;
+          cityNodesRef.current = cityAccts;
+          citiesRef.current = cities;
+          setCitiesLine(
+            `Consensus ring · all ${cities.length} cities · live from the address book`,
+          );
         }
       } catch {
         /* keep last good vitals */
+      }
+    };
+
+    /* Gossip layer — the "not a blockchain" visual. Every ~3s we pull
+       the latest real mainnet transactions. Each tx carries its
+       submitting consensus node's account id (`node` field): the right
+       city satellite pulses with intensity proportional to its traffic,
+       and up to HERO_TX_CAP txs get the full ripple treatment — a light
+       leaves the submitting city and resolves to that transaction's OWN
+       finality time. After priming we page with an exact-string
+       timestamp cursor so payloads stay small. Rendered traffic is
+       seconds-old recorded history; the spreading light illustrates the
+       gossip mechanism (the honesty label in the UI says exactly this). */
+    const pollGossip = async () => {
+      if (!alive || hidden()) return;
+      try {
+        const base = `https://mainnet.mirrornode.hedera.com/api/v1/transactions?limit=${GOSSIP_LIMIT}&order=desc`;
+        const url = gossipCursor.current
+          ? `${base}&timestamp=gt:${gossipCursor.current}`
+          : base;
+        const d = (await fetchJson(url)) as { transactions?: GossipTx[] };
+        const txs = (d.transactions ?? []).filter(
+          (t) => t && typeof t === "object",
+        );
+        const first = txs.length > 0 ? txs[0].consensus_timestamp : undefined;
+        if (typeof first === "string") gossipCursor.current = first;
+        // Empty window = no new traffic since last poll (quiet network),
+        // not a failure: keep the last line, retry next tick.
+
+        // heroes are chosen before this batch joins the seen set;
+        // never from the priming batch (history must not animate)
+        const heroes = seen.current.primed
+          ? selectHeroTxs(txs, seen.current.gossip, HERO_TX_CAP)
+          : [];
+
+        const fresh: GossipTx[] = [];
+        for (const t of txs) {
+          const id =
+            typeof t.transaction_id === "string" ? t.transaction_id : null;
+          if (!id || seen.current.gossip.has(id)) continue;
+          seen.current.gossip.add(id);
+          if (seen.current.gossip.size > GOSSIP_SEEN_CAP) {
+            const drop = seen.current.gossip.size - (GOSSIP_SEEN_CAP - 500);
+            let i = 0;
+            for (const k of seen.current.gossip) {
+              if (i++ >= drop) break;
+              seen.current.gossip.delete(k);
+            }
+          }
+          if (seen.current.primed) fresh.push(t);
+        }
+
+        // Aggregate: pulse each city with intensity ∝ its tx count.
+        const byCity = groupTxByCity(fresh, nodeCityRef.current);
+        const maxCount = Math.max(1, ...byCity.values());
+        for (const [city, count] of byCity) {
+          const cid = cityId(city);
+          fx.current.gossip.push({
+            cityId: cid,
+            color: RIPPLE,
+            t: 0,
+            strength: Math.min(1, count / Math.max(4, maxCount)),
+          });
+          const accts = cityNodesRef.current[city] ?? [];
+          info.current[cid] = {
+            headline: `${city.toUpperCase()} · consensus city`,
+            lines: [
+              `Node${accts.length === 1 ? "" : "s"}: ${accts.join(", ") || "—"}`,
+              `${count} transaction${count === 1 ? "" : "s"} landed here this poll`,
+            ],
+            links: [
+              {
+                label: "Consensus nodes on HashScan",
+                url: "https://hashscan.io/mainnet/nodes",
+              },
+            ],
+            active: true,
+          };
+        }
+        if (fx.current.gossip.length > MAX_GOSSIP_PULSES) {
+          fx.current.gossip.splice(
+            0,
+            fx.current.gossip.length - MAX_GOSSIP_PULSES,
+          );
+        }
+
+        // Heroes: ripple + feed rows. selectHeroTxs already guaranteed a
+        // valid own-tx finality; skip any tx whose node has no satellite.
+        if (fx.current.ripples.length < MAX_RIPPLES) {
+          const feedRows: FeedItem[] = [];
+          for (const h of heroes) {
+            const nodeAcct = typeof h.node === "string" ? h.node : null;
+            const city = nodeAcct ? nodeCityRef.current[nodeAcct] : undefined;
+            if (!city) continue;
+            const txId = h.transaction_id as string;
+            const fin = txFinalitySeconds(h);
+            if (fin === null) continue;
+            const name = typeof h.name === "string" ? h.name : "TRANSACTION";
+            const agoText = mirrorAgo(h.consensus_timestamp as string);
+            const title = `⚡ ${name} · FINAL ${formatFinality(fin)}`;
+            const sub = `via ${nodeAcct} · Hedera mainnet · ${agoText}`;
+            const url = hashscanTxUrl(txId);
+            fx.current.ripples.push({
+              cityId: cityId(city),
+              color: RIPPLE,
+              t: 0,
+              finalityS: fin,
+              txId,
+              title,
+              sub,
+              url,
+              ts: mirrorTsToMs(h.consensus_timestamp as string),
+            });
+            feedRows.push({
+              id: `gossip:${txId}`,
+              color: RIPPLE,
+              title,
+              sub,
+              url,
+              ts: mirrorTsToMs(h.consensus_timestamp as string),
+            });
+          }
+          if (alive) addFeed(feedRows);
+        }
+
+        // Gossip vitals: live TPS, median finality, active nodes — all
+        // computed from this real sample, never guessed.
+        const tps = sampleTps(txs);
+        const med = medianFinalitySeconds(txs);
+        const activeNodes = new Set(
+          txs
+            .map((t) => (typeof t.node === "string" ? t.node : null))
+            .filter((n): n is string => n !== null),
+        ).size;
+        const known = Object.keys(nodeCityRef.current).length;
+        const parts: string[] = [];
+        if (tps !== null) parts.push(`~${tps.toFixed(1)} TPS`);
+        if (med !== null) parts.push(`finality ${formatFinality(med)} median`);
+        parts.push(`${activeNodes} of ${known || 25} nodes saw traffic`);
+        if (parts.length > 0 && alive) setGossipLine(parts.join(" · "));
+        if (!gossipOk.current) gossipOk.current = true;
+      } catch {
+        // Honest quiet: the ring sits dim and says so — same pattern as
+        // every other poller on this page.
+        if (gossipOk.current) {
+          gossipOk.current = false;
+          if (alive) setGossipLine("Gossip stream quiet — retrying.");
+        }
       }
     };
 
@@ -731,6 +973,7 @@ export function DannysVision({
         guard("voicescape", pollVoicescape),
         guard("social", pollSocial),
         guard("vitals", pollVitals),
+        guard("gossip", pollGossip),
       ]);
       if (alive) seen.current.primed = true;
     };
@@ -747,10 +990,14 @@ export function DannysVision({
       void guard("social", pollSocial);
       void guard("vitals", pollVitals);
     }, SLOW_POLL_MS);
+    const g = setInterval(() => {
+      void guard("gossip", pollGossip);
+    }, GOSSIP_POLL_MS);
     return () => {
       alive = false;
       clearInterval(b);
       clearInterval(s);
+      clearInterval(g);
     };
   }, [agent]);
 
@@ -842,6 +1089,64 @@ export function DannysVision({
         ctx.beginPath();
         ctx.arc(x, y, 3.5, 0, 7);
         ctx.fill();
+      }
+
+      // gossip pulses: real per-city traffic, intensity ∝ tx count
+      fx.current.gossip = fx.current.gossip.filter((gp) => {
+        gp.t += 0.035;
+        return gp.t <= 1;
+      });
+      for (const gp of fx.current.gossip) {
+        const p = byId.get(gp.cityId);
+        if (!p) continue;
+        const a = (1 - gp.t) * (0.3 + 0.7 * gp.strength);
+        ctx.strokeStyle = hexA(gp.color, 0.85 * a);
+        ctx.lineWidth = 1.5 + 2 * gp.strength;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6 + gp.t * (22 + 26 * gp.strength), 0, 7);
+        ctx.stroke();
+      }
+
+      // hero ripples: the light leaves the submitting city and spreads —
+      // an illustration of gossip carrying a real, already-final tx
+      fx.current.ripples = fx.current.ripples.filter((rp) => {
+        rp.t += 0.018;
+        if (rp.t > 1) {
+          const p = byId.get(rp.cityId);
+          if (p) {
+            fx.current.pings.push({ nodeId: rp.cityId, color: rp.color, t: 0 });
+            fx.current.finals.push({
+              cityId: rp.cityId,
+              text: `FINAL · ${formatFinality(rp.finalityS)}`,
+              t: 0,
+            });
+          }
+          return false;
+        }
+        return true;
+      });
+      for (const rp of fx.current.ripples) {
+        const p = byId.get(rp.cityId);
+        if (!p) continue;
+        ctx.strokeStyle = hexA(rp.color, 0.65 * (1 - rp.t));
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, Math.max(1, rp.t * Math.min(W, H) * 0.5), 0, 7);
+        ctx.stroke();
+      }
+
+      // final labels: the tx's own finality, fading at the landing city
+      fx.current.finals = fx.current.finals.filter((fl) => {
+        fl.t += 0.022;
+        return fl.t <= 1;
+      });
+      for (const fl of fx.current.finals) {
+        const p = byId.get(fl.cityId);
+        if (!p) continue;
+        ctx.fillStyle = `rgba(232,244,241,${0.9 * (1 - fl.t)})`;
+        ctx.font = "600 10px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(fl.text, p.x, p.y - 26);
       }
 
       // pings: expanding rings at nodes
@@ -994,24 +1299,43 @@ export function DannysVision({
         return;
       }
     }
-    // consensus-city satellites — honest popup: the city is real (address
-    // book), no per-city activity is claimed.
+    // hero ripples — tap the traveling ring for the tx card
+    for (const rp of fx.current.ripples) {
+      const p = cityPos.current.find((c) => c.id === rp.cityId);
+      if (!p) continue;
+      const r = rp.t * Math.min(rect.width, rect.height) * 0.5;
+      if (Math.abs(Math.hypot(x - p.x, y - p.y) - r) < 24) {
+        playChime();
+        setPopupInfo({
+          headline: rp.title,
+          lines: [rp.sub, `Settled ${formatFeedAgo(rp.ts, Date.now())}`],
+          links: [{ label: "This transaction on HashScan", url: rp.url }],
+          active: true,
+        });
+        setPopup(`gossip:${rp.txId}`);
+        return;
+      }
+    }
+    // consensus-city satellites — gossip-populated when traffic has
+    // landed there this session, honest address-book line otherwise
     for (let i = 0; i < cityPos.current.length; i++) {
       const p = cityPos.current[i];
       if (Math.hypot(x - p.x, y - p.y) < p.r + 10) {
         playChime();
         fire(p.id, CITY);
-        setPopupInfo({
-          headline: "Hedera consensus node city",
-          lines: ["Live from the mainnet address book"],
-          links: [
-            {
-              label: "Consensus nodes on HashScan",
-              url: "https://hashscan.io/mainnet/nodes",
-            },
-          ],
-          active: true,
-        });
+        setPopupInfo(
+          info.current[p.id] ?? {
+            headline: "Hedera consensus node city",
+            lines: ["Live from the mainnet address book"],
+            links: [
+              {
+                label: "Consensus nodes on HashScan",
+                url: "https://hashscan.io/mainnet/nodes",
+              },
+            ],
+            active: true,
+          },
+        );
         setPopup(p.id);
         return;
       }
@@ -1023,6 +1347,7 @@ export function DannysVision({
   const popupTitle = (() => {
     if (!popup) return "";
     if (popup === "engine") return centerLabel;
+    if (popup.startsWith("gossip:")) return "GOSSIP · FINAL";
     if (popup.startsWith("city:")) {
       const i = cityPos.current.findIndex((p) => p.id === popup);
       return (citiesRef.current[i] ?? popup).toUpperCase();
@@ -1053,9 +1378,30 @@ export function DannysVision({
           ref={canvasRef}
           className="dv-canvas"
           role="img"
-          aria-label="Live activity constellation: engine at the center, Voicescape systems as satellites"
+          aria-label="Live activity constellation: engine at the center, Voicescape systems as satellites, the consensus-city ring flashing with real gossip traffic"
           onPointerDown={onTap}
         />
+
+        <section className="dv-gossip" aria-label="Hedera gossip network">
+          <div className="dv-gossip-head">NOT A BLOCKCHAIN.</div>
+          <p className="dv-gossip-sub">
+            Each node tells random neighbors what it knows, plus what it
+            just learned. A few seconds later every node has heard every
+            transaction and agrees on the order. No blocks. No mining.
+          </p>
+          {gossipLine && (
+            <div className="dv-gossip-line">{gossipLine}</div>
+          )}
+          <p className="dv-gossip-honest">
+            Each flash is a real transaction from seconds ago — its node,
+            its finality time, its proof. The spreading light shows how
+            gossip carries it. Showing a sample of the live stream.
+          </p>
+          <p className="dv-gossip-shard">
+            An address like 0.0.3229 is itself a coordinate: shard 0 ·
+            realm 0 · account 3229.
+          </p>
+        </section>
 
         {bornLine && <div className="dv-born">{bornLine}</div>}
 
@@ -1089,7 +1435,11 @@ export function DannysVision({
           </section>
         )}
 
-        {popup && (popup === "engine" || popupDef) && (
+        {popup &&
+          (popup === "engine" ||
+            popupDef ||
+            popup.startsWith("city:") ||
+            popup.startsWith("gossip:")) && (
           <div className="dv-backdrop" onPointerDown={() => setPopup(null)}>
             <div
               className="dv-card"
@@ -1142,7 +1492,10 @@ export function DannysVision({
             <div className="dv-vitals">Hedera mainnet · {vitals}</div>
           )}
           {citiesLine && <div className="dv-cities">{citiesLine}</div>}
-          <div>Live Hedera mainnet activity — every ping is a real event.</div>
+          <div>
+            Live Hedera mainnet activity — every ping, flash, and ripple is
+            a real event.
+          </div>
         </footer>
       </div>
     </div>

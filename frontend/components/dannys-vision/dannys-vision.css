@@ -281,3 +281,48 @@
   letter-spacing: 0.08em;
   color: #8aa5a1;
 }
+
+/* Gossip band: the "not a blockchain" explainer under the constellation. */
+.dv-gossip {
+  margin: 0 16px 8px;
+  text-align: center;
+}
+
+.dv-gossip-head {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #f4feff;
+}
+
+.dv-gossip-sub {
+  margin: 6px auto 0;
+  max-width: 460px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #c7ded9;
+}
+
+.dv-gossip-line {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: #99f6e0;
+}
+
+.dv-gossip-honest {
+  margin: 8px auto 0;
+  max-width: 460px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8aa5a1;
+}
+
+.dv-gossip-shard {
+  margin: 6px auto 0;
+  max-width: 460px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #5f7a77;
+}
