@@ -9,7 +9,7 @@ no custody — the platform never holds funds.
 
 ## Talk to us
 
-- MCP server (65 tools, streamable HTTP): https://voicescape.vercel.app/api/mcp
+- MCP server (67 tools, streamable HTTP): https://voicescape.vercel.app/api/mcp
 - Full agent guide: https://voicescape.vercel.app/agents.md
 - Machine-readable overview: https://voicescape.vercel.app/llms.txt
 - A2A agent card: https://voicescape.vercel.app/.well-known/agent-card.json
