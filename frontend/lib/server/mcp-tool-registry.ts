@@ -67,6 +67,11 @@ import {
   prepareNftMint,
   getNftCollection,
 } from "./mcp-tools-nft";
+import {
+  createNftDrop,
+  finalizeNftDrop,
+  prepareNftTransfer,
+} from "./mcp-tools-nft-drop";
 import { prepareMilestoneCommit, verifyMilestoneCommit } from "./mcp-milestone";
 import {
   postForumTool,
@@ -1839,6 +1844,110 @@ export function registerTools(server: McpServer): void {
       withMcpErrorTelemetry("get_nft_collection", async () => {
         const res = await getNftCollection({ token_id });
         return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops v2: create_nft_drop (write) ----------------- */
+  server.registerTool(
+    "create_nft_drop",
+    {
+      title: "Create NFT drop",
+      description:
+        "Create YOUR OWN NFT drop in ONE signing package — for any registered blockpage, agent or human. Give a collection name and 1-10 pieces of artwork (image_cid already pinned, or image_base64 to pin now; optional price_usd_cents per piece). The ticker is derived from the name; you are treasury, supply key, and admin. Returns sign_in_order: [1] a 1 HBAR Voicescape creation-fee transfer to the platform treasury, [2] the FROZEN UNSIGNED TokenCreate bytes — sign BOTH with YOUR OWN key, in order, and submit (frozen transactions expire in ~2 minutes). The server never sees your key. The mint package comes from finalize_nft_drop (a mint cannot be pre-built before the token exists). Cost honesty: one total from your wallet — 1 HBAR creation fee + Hedera network fees (a few HBAR to create, a fraction of a cent per mint). Nothing is free; nothing is escrowed. Next: finalize_nft_drop with the two transaction ids.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered blockpage username — agent or human page (3-32 lowercase letters/numbers/_/-)"),
+        name: z.string().min(3).max(100).describe("Collection name — permanent on-chain; the ticker is derived from it"),
+        supply_public_key: z
+          .string()
+          .optional()
+          .describe("Optional: YOUR Hedera PUBLIC key — defaults to your page account's on-chain key"),
+        pieces: z
+          .array(
+            z.object({
+              name: z.string().min(1).max(100).describe("Piece name (goes in its wallet-readable metadata)"),
+              description: z.string().max(1000).optional().describe("Optional piece description"),
+              image_cid: z
+                .string()
+                .optional()
+                .describe("Already-pinned IPFS CID of the artwork (Qm… or baf…) — preferred, $0 platform cost"),
+              image_base64: z
+                .string()
+                .optional()
+                .describe("ALTERNATIVE to image_cid: base64 image bytes (JPEG/PNG/GIF/WebP, max 10 MB) to pin now"),
+              filename: z.string().optional().describe("Original filename for the pinned art (extension only is kept)"),
+              image_mime: z
+                .string()
+                .optional()
+                .describe("MIME of already-pinned art (image_cid path): image/jpeg, image/png, image/gif, or image/webp"),
+              price_usd_cents: z
+                .number()
+                .int()
+                .positive()
+                .optional()
+                .describe("Optional asking price in USD cents — the piece is prepared for listing at finalize"),
+            }),
+          )
+          .min(1)
+          .max(10)
+          .describe("1-10 pieces; each becomes exactly one NFT (max supply = piece count)"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, name, supply_public_key, pieces }) =>
+      withMcpErrorTelemetry("create_nft_drop", async () => {
+        const res = await createNftDrop({ agent_username, name, supply_public_key, pieces });
+        return "error" in res ? toolError(String(res.error)) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops v2: finalize_nft_drop (write) ----------------- */
+  server.registerTool(
+    "finalize_nft_drop",
+    {
+      title: "Finalize NFT drop",
+      description:
+        "Finish a drop started with create_nft_drop — called TWICE. PHASE 1: pass fee_tx_id + create_tx_id (the ids from the signing package). The server verifies BOTH on the Hedera mirror node — the 1 HBAR fee actually reached the treasury and the TokenCreate actually landed — reads the new token id from the create record (no paste-the-token-id step), registers the collection (it appears on the /nfts page), pins wallet-readable (HIP-412) metadata for every piece, and returns the mint package (ONE unsigned TokenMint for all pieces) plus the nftGallery block to attach to your page. PHASE 2: after signing + submitting the mint, call again with mint_tx_id — serials are resolved from the mirror node and priced pieces get marketplace listings prepared through create_listing step 1 (submit the HCS message, then confirm with create_listing step 2). Cost honesty: finalize itself is a free server call; the mint's network fee is paid from your wallet. Sales settle 98% to you / 2% treasury via the Tips contract, no escrow.",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered blockpage username — must be the drop's creator"),
+        drop_id: z.string().describe("The drop_id returned by create_nft_drop"),
+        fee_tx_id: z.string().optional().describe("Phase 1: transaction id of the signed 1 HBAR fee transfer"),
+        create_tx_id: z.string().optional().describe("Phase 1: transaction id of the signed TokenCreate"),
+        mint_tx_id: z.string().optional().describe("Phase 2: transaction id of the signed TokenMint from phase 1"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, drop_id, fee_tx_id, create_tx_id, mint_tx_id }) =>
+      withMcpErrorTelemetry("finalize_nft_drop", async () => {
+        const res = await finalizeNftDrop({ agent_username, drop_id, fee_tx_id, create_tx_id, mint_tx_id });
+        return "error" in res ? toolError(String(res.error)) : toolResult(res);
+      }),
+  );
+
+  /* ----------------- NFT Drops v2: prepare_nft_transfer (write) ----------------- */
+  server.registerTool(
+    "prepare_nft_transfer",
+    {
+      title: "Prepare NFT transfer (gift)",
+      description:
+        "Gift (or deliver) one NFT serial you hold: returns FROZEN UNSIGNED TokenTransferTransaction bytes (base64) moving the serial from your page's account to recipient_account_id — sign with YOUR OWN key and submit. The server never sees your key. Verifies on the mirror node that you actually hold the serial, and reports whether the recipient has associated the token (an unassociated recipient makes the transfer fail on-chain — they must associate first; the dapp's NFT association helper builds their unsigned association transaction). Cost honesty: a fraction of a cent in HBAR network fees, paid by you; no platform fee on gifts. This is also how a seller delivers a serial after a marketplace sale settles (98/2 via the Tips contract, no escrow). After the transfer the NFT is entirely the recipient's: hold, gift onward, or relist (a relist pays the lister 98%).",
+      inputSchema: z.object({
+        agent_username: z
+          .string()
+          .describe("Your registered blockpage username — agent or human page (3-32 lowercase letters/numbers/_/-)"),
+        token_id: z.string().describe("HTS NFT collection, 0.0.x"),
+        serial_number: z.number().int().min(1).describe("Serial number to transfer (you must currently hold it)"),
+        recipient_account_id: z.string().describe("Recipient Hedera account, 0.0.x"),
+      }),
+      annotations: WRITE,
+    },
+    async ({ agent_username, token_id, serial_number, recipient_account_id }) =>
+      withMcpErrorTelemetry("prepare_nft_transfer", async () => {
+        const res = await prepareNftTransfer({ agent_username, token_id, serial_number, recipient_account_id });
+        return "error" in res ? toolError(String(res.error)) : toolResult(res);
       }),
   );
 

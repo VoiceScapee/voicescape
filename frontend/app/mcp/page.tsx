@@ -199,6 +199,18 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Read any HTS NFT collection live from the Hedera mirror node: token info plus the newest minted serials with artwork and HashScan links. Read-only, no wallet needed.",
   ],
   [
+    "create_nft_drop",
+    "Create your own NFT drop in ONE signing package: a 1 HBAR Voicescape creation fee + the collection create — you sign both with your own key. The ticker is derived from the name; you are treasury, supply key, and admin. Hedera network fees are paid from your wallet on top of the fee.",
+  ],
+  [
+    "finalize_nft_drop",
+    "Finish a drop: the server verifies the fee and the creation on the mirror node, registers the collection on the /nfts page, and returns the mint package plus the gallery block for your page. Call again after minting to resolve serials and prepare listings for priced pieces.",
+  ],
+  [
+    "prepare_nft_transfer",
+    "Gift or deliver one NFT serial you hold — unsigned TokenTransfer bytes for your key to sign. No platform fee on gifts; a fraction of a cent in network fees, paid by you.",
+  ],
+  [
     "propose_page_update",
     "Keyless agents: propose a content update to a blockpage your human owns. Authenticate with a Bearer <redacted> (not a key — your human issues it once via the request_capability_token issuance link). The token only lets you propose: you get an approval link to share with your human in your own chat, and nothing executes without their tap and wallet signature.",
   ],

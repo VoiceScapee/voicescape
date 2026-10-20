@@ -100,8 +100,8 @@ const HASHSCAN_TOKEN = "https://hashscan.io/mainnet/token";
 const IPFS_GATEWAY =
   process.env.NEXT_PUBLIC_IPFS_GATEWAY ?? "https://ipfs.io/ipfs/";
 
-const TOKEN_ID_RE = /^0\.0\.\d+$/;
-const ACCOUNT_ID_RE = /^\d+\.\d+\.\d+$/;
+export const TOKEN_ID_RE = /^0\.0\.\d+$/;
+export const ACCOUNT_ID_RE = /^\d+\.\d+\.\d+$/;
 /** Collection names live on-chain permanently — keep them tight. */
 const MAX_COLLECTION_NAME = 100;
 const MAX_SYMBOL = 10;
@@ -119,7 +119,7 @@ const MAX_NFT_DESCRIPTION = 1000;
 /* Shared: identity + guards                                           */
 /* ------------------------------------------------------------------ */
 
-interface PageIdentity {
+export interface PageIdentity {
   username: string;
   /** Lowercase 0x owner address of the registered page. */
   wallet: string;
@@ -134,7 +134,7 @@ interface PageIdentity {
  * treasury — never anyone else's, so collections stay attributable.
  * Returns the identity or an error string.
  */
-async function resolvePageOwner(
+export async function resolvePageOwner(
   rawUsername: unknown,
   fetchFn: NftFetchFn,
 ): Promise<PageIdentity | { error: string }> {
@@ -157,7 +157,7 @@ async function resolvePageOwner(
 }
 
 /** Per-IP rate-limit gate. Returns an error string when limited, null when OK. */
-async function ipRateLimit(bucket: string, limit: number, windowMs: number): Promise<string | null> {
+export async function ipRateLimit(bucket: string, limit: number, windowMs: number): Promise<string | null> {
   const ip = getRequestContext().clientIp;
   try {
     const r = await checkIpRateLimit(ip, bucket, limit, windowMs);
@@ -170,7 +170,7 @@ async function ipRateLimit(bucket: string, limit: number, windowMs: number): Pro
 }
 
 /** Restriction gate: banned/timed-out/copyright-suspended wallets cannot write. */
-async function restrictionError(deps: TownhallDeps, wallet: string): Promise<string | null> {
+export async function restrictionError(deps: TownhallDeps, wallet: string): Promise<string | null> {
   try {
     const blocked = await requireNotRestricted(deps, wallet);
     if (blocked) {
@@ -185,7 +185,7 @@ async function restrictionError(deps: TownhallDeps, wallet: string): Promise<str
 }
 
 /** Per-wallet daily prepare quota (off-chain prepares are cheap but not free to abuse). */
-async function prepareQuota(
+export async function prepareQuota(
   quotaStore: QuotaStore,
   wallet: string,
 ): Promise<string | null> {
@@ -207,7 +207,7 @@ async function prepareQuota(
  * Freeze an SDK transaction into base64 unsigned bytes. Never signs —
  * freezeWith only finalizes the body for the caller's own key.
  */
-function freezeUnsigned(
+export function freezeUnsigned(
   tx: Transaction,
   payerAccountId: string,
 ): { unsignedTxBytes: string; transactionId: string } {
@@ -224,14 +224,14 @@ function freezeUnsigned(
 }
 
 /** Plausible IPFS CID (v0 Qm… or v1 baf…) — shape check, mirrors createListing. */
-function isPlausibleCid(s: string): boolean {
+export function isPlausibleCid(s: string): boolean {
   return (
     s.length <= 128 &&
     (/^Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(s) || /^baf[a-z0-9]{50,120}$/.test(s))
   );
 }
 
-interface MirrorToken {
+export interface MirrorToken {
   token_id: string;
   name: string;
   symbol: string;
@@ -242,7 +242,7 @@ interface MirrorToken {
 }
 
 /** Fetch token info from the mirror node. Throws on transport errors. */
-async function fetchMirrorToken(tokenId: string, fetchFn: NftFetchFn): Promise<MirrorToken | null> {
+export async function fetchMirrorToken(tokenId: string, fetchFn: NftFetchFn): Promise<MirrorToken | null> {
   let res: Response;
   try {
     res = await fetchFn(`${MIRROR_API}/tokens/${tokenId}`);
@@ -534,6 +534,173 @@ function safeArtFilename(raw: unknown, ext: string): string {
   return `nft-art-${Date.now()}.${ext}`;
 }
 
+/* ------------------------------------------------------------------ */
+/* Shared pin helpers (used by prepareNftMint AND the drop pipeline)     */
+/* ------------------------------------------------------------------ */
+
+export interface PinNftArtworkArgs {
+  image_cid?: unknown;
+  image_base64?: unknown;
+  filename?: unknown;
+  image_mime?: unknown;
+}
+
+/**
+ * Resolve a piece's artwork CID: caller-pinned CID preferred ($0 platform
+ * cost); else validate + pin the base64 bytes now. The pin consumes the
+ * shared "pin:nft-art" daily quota. Returns the CID + mime, or an error.
+ */
+export async function pinNftArtwork(
+  args: PinNftArtworkArgs,
+  identity: PageIdentity,
+  quotaStore: QuotaStore,
+  publishFn: NonNullable<NftToolDeps["publishFn"]>,
+): Promise<{ artCid: string; artMime: string } | { error: string }> {
+  const plimit = quotaLimitFromEnv("NFT_ART_DAILY_QUOTA", 10);
+  let artCid: string;
+  let artMime = "image/png";
+  const givenCid = (args.image_cid ?? "").toString().trim();
+  if (givenCid) {
+    if (!isPlausibleCid(givenCid)) return { error: "image_cid must be a valid IPFS CID (Qm… or baf…)" };
+    artCid = givenCid;
+    const hinted = (args.image_mime ?? "").toString().trim().toLowerCase();
+    if (hinted) {
+      if (!Object.values(NFT_ART_MIME).includes(hinted)) {
+        return { error: "image_mime must be image/jpeg, image/png, image/gif, or image/webp" };
+      }
+      artMime = hinted;
+    }
+    return { artCid, artMime };
+  }
+  if (typeof args.image_base64 !== "string" || !args.image_base64.trim()) {
+    return { error: "pass image_cid (already pinned) or image_base64 (to pin now)" };
+  }
+  let pq;
+  try {
+    pq = await quotaStore.consume("pin:nft-art", identity.wallet, plimit);
+  } catch (e) {
+    console.error(`[mcp-nft] art quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    return { error: "temporarily unavailable — please retry in a moment" };
+  }
+  if (!pq.allowed) {
+    return { error: quotaExceededBody(pq, `daily NFT art pin limit reached (${plimit}/day)`).error as string };
+  }
+  const b64text = args.image_base64.trim().replace(/\s+/g, "");
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(Buffer.from(b64text, "base64"));
+  } catch {
+    return { error: "image_base64 is not valid base64" };
+  }
+  // Buffer.from never throws on bad base64 — re-encode and compare.
+  const recoded = Buffer.from(bytes).toString("base64").replace(/=+$/, "");
+  if (recoded !== b64text.replace(/=+$/, "")) return { error: "image_base64 is not valid base64" };
+  if (bytes.length === 0) return { error: "empty file" };
+  if (bytes.length > MAX_DIGITAL_GOOD_BYTES) {
+    return { error: `file too large (max ${MAX_DIGITAL_GOOD_BYTES / 1024 / 1024} MB)` };
+  }
+  const sniffed = sniffMediaKind(bytes);
+  const mime = NFT_ART_MIME[sniffed];
+  if (!mime) {
+    return { error: "NFT art must be an image (JPEG, PNG, GIF, or WebP)" };
+  }
+  artMime = mime;
+  const ext = sniffed === "jpeg" ? "jpg" : sniffed;
+  try {
+    const pinned = await publishFn(bytes, safeArtFilename(args.filename, ext), mime);
+    artCid = pinned.cid;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "PINATA_UNAVAILABLE") return { error: "file pinning is temporarily unavailable" };
+    console.error(`[mcp-nft] pin failed: ${msg}`);
+    return { error: "file upload failed — try again in a moment" };
+  }
+  if (!isPlausibleCid(artCid)) {
+    console.error(`[mcp-nft] pin returned implausible CID: ${artCid}`);
+    return { error: "file upload failed — try again in a moment" };
+  }
+  return { artCid, artMime };
+}
+
+export interface PinNftMetadataArgs {
+  name: string;
+  description: string;
+  artCid: string;
+  artMime: string;
+  /** Creator label for the HIP-412 `creator` field. */
+  creator: string;
+  collectionName: string;
+  tokenId: string;
+  /** Page owner's wallet (lowercase 0x) — the pin-quota subject. */
+  wallet: string;
+}
+
+/**
+ * Build + validate + pin the wallet-readable HIP-412 metadata JSON for one
+ * NFT. HashPack's NFT gallery renders art from THIS document, so the mint's
+ * metadata field points at the JSON — never at the raw image. Consumes
+ * one "pin:nft-art" quota unit (shared bucket with artwork pins).
+ */
+export async function pinNftMetadata(
+  args: PinNftMetadataArgs,
+  quotaStore: QuotaStore,
+  publishFn: NonNullable<NftToolDeps["publishFn"]>,
+): Promise<
+  | { metadataCid: string; metadataUri: string; metadataJson: Record<string, unknown> }
+  | { error: string }
+> {
+  const plimit = quotaLimitFromEnv("NFT_ART_DAILY_QUOTA", 10);
+  const metadataJson = buildHip412Metadata({
+    name: args.name,
+    description: args.description,
+    imageCid: args.artCid,
+    mime: args.artMime,
+    creator: args.creator,
+    collectionName: args.collectionName,
+    tokenId: args.tokenId,
+  });
+  const schemaErrors = validateHip412Metadata(metadataJson);
+  if (schemaErrors.length > 0) {
+    // Should never happen — the builder above is fixed-shape. Fail closed
+    // rather than minting metadata wallets can't render.
+    console.error(`[mcp-nft] built invalid HIP-412 metadata: ${schemaErrors.join("; ")}`);
+    return { error: "could not build valid NFT metadata — try again in a moment" };
+  }
+  let mq;
+  try {
+    mq = await quotaStore.consume("pin:nft-art", args.wallet, plimit);
+  } catch (e) {
+    console.error(`[mcp-nft] metadata quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
+    return { error: "temporarily unavailable — please retry in a moment" };
+  }
+  if (!mq.allowed) {
+    return { error: quotaExceededBody(mq, `daily NFT art pin limit reached (${plimit}/day)`).error as string };
+  }
+  let metadataCid: string;
+  try {
+    const pinned = await publishFn(
+      new Uint8Array(Buffer.from(JSON.stringify(metadataJson), "utf8")),
+      `nft-metadata-${Date.now()}.json`,
+      "application/json",
+    );
+    metadataCid = pinned.cid;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "PINATA_UNAVAILABLE") return { error: "metadata pinning is temporarily unavailable" };
+    console.error(`[mcp-nft] metadata pin failed: ${msg}`);
+    return { error: "metadata upload failed — try again in a moment" };
+  }
+  if (!isPlausibleCid(metadataCid)) {
+    console.error(`[mcp-nft] metadata pin returned implausible CID: ${metadataCid}`);
+    return { error: "metadata upload failed — try again in a moment" };
+  }
+  const metadataUri = `ipfs://${metadataCid}`;
+  if (Buffer.byteLength(metadataUri, "utf8") > MAX_METADATA_BYTES) {
+    return { error: "metadata URI too long for the 100-byte HTS metadata field" };
+  }
+  return { metadataCid, metadataUri, metadataJson };
+}
+
 export async function prepareNftMint(
   args: PrepareNftMintArgs,
   injected: NftToolDeps = {},
@@ -601,122 +768,31 @@ export async function prepareNftMint(
 
   // --- Artwork: caller-pinned CID preferred ($0 platform cost); else pin it. ---
   // The art pin shares one quota bucket with the metadata-JSON pin below.
-  const plimit = quotaLimitFromEnv("NFT_ART_DAILY_QUOTA", 10);
-  let artCid: string;
-  let artMime = "image/png";
-  const givenCid = (args.image_cid ?? "").toString().trim();
-  if (givenCid) {
-    if (!isPlausibleCid(givenCid)) return { error: "image_cid must be a valid IPFS CID (Qm… or baf…)" };
-    artCid = givenCid;
-    const hinted = (args.image_mime ?? "").toString().trim().toLowerCase();
-    if (hinted) {
-      if (!Object.values(NFT_ART_MIME).includes(hinted)) {
-        return { error: "image_mime must be image/jpeg, image/png, image/gif, or image/webp" };
-      }
-      artMime = hinted;
-    }
-  } else {
-    if (typeof args.image_base64 !== "string" || !args.image_base64.trim()) {
-      return { error: "pass image_cid (already pinned) or image_base64 (to pin now)" };
-    }
-    let pq;
-    try {
-      pq = await quotaStore.consume("pin:nft-art", identity.wallet, plimit);
-    } catch (e) {
-      console.error(`[mcp-nft] art quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
-      return { error: "temporarily unavailable — please retry in a moment" };
-    }
-    if (!pq.allowed) {
-      return { error: quotaExceededBody(pq, `daily NFT art pin limit reached (${plimit}/day)`).error as string };
-    }
-    const b64text = args.image_base64.trim().replace(/\s+/g, "");
-    let bytes: Uint8Array;
-    try {
-      bytes = new Uint8Array(Buffer.from(b64text, "base64"));
-    } catch {
-      return { error: "image_base64 is not valid base64" };
-    }
-    // Buffer.from never throws on bad base64 — re-encode and compare.
-    const recoded = Buffer.from(bytes).toString("base64").replace(/=+$/, "");
-    if (recoded !== b64text.replace(/=+$/, "")) return { error: "image_base64 is not valid base64" };
-    if (bytes.length === 0) return { error: "empty file" };
-    if (bytes.length > MAX_DIGITAL_GOOD_BYTES) {
-      return { error: `file too large (max ${MAX_DIGITAL_GOOD_BYTES / 1024 / 1024} MB)` };
-    }
-    const sniffed = sniffMediaKind(bytes);
-    const mime = NFT_ART_MIME[sniffed];
-    if (!mime) {
-      return { error: "NFT art must be an image (JPEG, PNG, GIF, or WebP)" };
-    }
-    artMime = mime;
-    const ext = sniffed === "jpeg" ? "jpg" : sniffed;
-    try {
-      const pinned = await publishFn(bytes, safeArtFilename(args.filename, ext), mime);
-      artCid = pinned.cid;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg === "PINATA_UNAVAILABLE") return { error: "file pinning is temporarily unavailable" };
-      console.error(`[mcp-nft] pin failed: ${msg}`);
-      return { error: "file upload failed — try again in a moment" };
-    }
-    if (!isPlausibleCid(artCid)) {
-      console.error(`[mcp-nft] pin returned implausible CID: ${artCid}`);
-      return { error: "file upload failed — try again in a moment" };
-    }
-  }
+  const art = await pinNftArtwork(args, identity, quotaStore, publishFn);
+  if ("error" in art) return art;
+  const { artCid, artMime } = art;
 
   // --- Wallet-readable metadata (HIP-412): pin the JSON, mint its CID. ---
   // HashPack's NFT gallery renders art from THIS document, so the metadata
   // field points at the JSON — never at the raw image.
-  const metadataJson = buildHip412Metadata({
-    name: nftName,
-    description: nftDescription,
-    imageCid: artCid,
-    mime: artMime,
-    creator: identity.username,
-    collectionName: token.name,
-    tokenId,
-  });
-  const schemaErrors = validateHip412Metadata(metadataJson);
-  if (schemaErrors.length > 0) {
-    // Should never happen — the builder above is fixed-shape. Fail closed
-    // rather than minting metadata wallets can't render.
-    console.error(`[mcp-nft] built invalid HIP-412 metadata: ${schemaErrors.join("; ")}`);
-    return { error: "could not build valid NFT metadata — try again in a moment" };
-  }
-  let mq;
-  try {
-    mq = await quotaStore.consume("pin:nft-art", identity.wallet, plimit);
-  } catch (e) {
-    console.error(`[mcp-nft] metadata quota store unreachable: ${e instanceof Error ? e.message : String(e)}`);
-    return { error: "temporarily unavailable — please retry in a moment" };
-  }
-  if (!mq.allowed) {
-    return { error: quotaExceededBody(mq, `daily NFT art pin limit reached (${plimit}/day)`).error as string };
-  }
-  let metadataCid: string;
-  try {
-    const pinned = await publishFn(
-      new Uint8Array(Buffer.from(JSON.stringify(metadataJson), "utf8")),
-      `nft-metadata-${Date.now()}.json`,
-      "application/json",
-    );
-    metadataCid = pinned.cid;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    if (msg === "PINATA_UNAVAILABLE") return { error: "metadata pinning is temporarily unavailable" };
-    console.error(`[mcp-nft] metadata pin failed: ${msg}`);
-    return { error: "metadata upload failed — try again in a moment" };
-  }
-  if (!isPlausibleCid(metadataCid)) {
-    console.error(`[mcp-nft] metadata pin returned implausible CID: ${metadataCid}`);
-    return { error: "metadata upload failed — try again in a moment" };
-  }
-
-  const metadata = `ipfs://${metadataCid}`;
-  if (Buffer.byteLength(metadata, "utf8") > MAX_METADATA_BYTES) {
-    return { error: "metadata URI too long for the 100-byte HTS metadata field" };
-  }
+  const pinnedMeta = await pinNftMetadata(
+    {
+      name: nftName,
+      description: nftDescription,
+      artCid,
+      artMime,
+      creator: identity.username,
+      collectionName: token.name,
+      tokenId,
+      wallet: identity.wallet,
+    },
+    quotaStore,
+    publishFn,
+  );
+  if ("error" in pinnedMeta) return pinnedMeta;
+  const metadataCid = pinnedMeta.metadataCid;
+  const metadata = pinnedMeta.metadataUri;
+  const metadataJson = pinnedMeta.metadataJson;
 
   const tx = new TokenMintTransaction()
     .setTokenId(TokenId.fromString(tokenId))
