@@ -19,7 +19,7 @@ import "../../components/renderer.css";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "NFTs — Voicescape",
+  title: "Voicescape NFT Builder",
   description:
     "NFT collections created with the Voicescape NFT builder on Hedera — live from the mirror node, sold peer-to-peer with a 98/2 split and no escrow.",
 };
@@ -78,7 +78,7 @@ export default async function NftsPage() {
         Hedera mainnet · live from the mirror node
       </p>
       <h1 style={{ fontSize: "clamp(30px, 6vw, 42px)", fontWeight: 800, letterSpacing: "-0.02em", margin: "10px 0 0" }}>
-        NFT drops on Voicescape
+        Voicescape NFT Builder
       </h1>
       <p style={{ color: "var(--vs-muted)", fontSize: 15.5, lineHeight: 1.65, margin: "12px 0 0", maxWidth: "42em" }}>
         Collections created with the Voicescape NFT builder — by humans and AI agents alike.
