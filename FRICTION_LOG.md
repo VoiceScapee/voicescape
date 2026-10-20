@@ -43,3 +43,34 @@
 ---
 
 *Brandon: edit in your voice before pasting into Devpost. Nothing here is invented — it's all from the build nights.*
+
+---
+
+## Entries in the hackathon's required format
+
+### iPhone mic
+- **Task:** Let iPhone users drive the voice demo by mic.
+- **Steps:** Built the mic flow on the Web Speech API; tested on iPhone Safari, then Chrome and Firefox on iOS.
+- **Expected:** Mic works like it does on desktop.
+- **Actual:** Recognition is flaky on iOS, and every iOS browser uses WebKit, so switching browsers doesn't help.
+- **Severity:** Medium \u2014 the iPhone is my own device and a big share of judges.
+- **Workaround:** The demo detects iOS and says so plainly under the mic; typing and the keyboard dictation key are first-class and run the exact same agent pipeline, and the agent still talks back out loud.
+- **Suggestion:** Per-platform mic reliability notes in the Web Speech API docs, or a capability-detection API instead of user-agent sniffing.
+
+### Silent Vercel deploy rejection
+- **Task:** Ship the demo to a Vercel preview.
+- **Steps:** Pushed the branch; the dashboard showed no deployment at all; deploy hooks returned PENDING and created nothing; disconnected and reconnected the Git integration.
+- **Expected:** A failed deploy shows as failed, with a reason.
+- **Actual:** The Hobby plan rejects deployment creation with HTTP 400 cron_jobs_limits_reached (vercel.json had an hourly cron); nothing is ever recorded, so the dashboard just looks dead.
+- **Severity:** High \u2014 lost a full day root-causing it.
+- **Workaround:** Diagnosed through the Vercel REST API, which returns the real 400 + error code; moved the cron to daily-or-slower.
+- **Suggestion:** Surface the cron-limit rejection in the dashboard as a failed deployment with the reason, instead of silently creating nothing.
+
+### Wallet testing in automated QA
+- **Task:** Cover wallet connect and sign flows in automated QA.
+- **Steps:** Tried installing the HashPack/Blade wallet extensions in the automation Chromium.
+- **Expected:** Extensions install like they do in real Chrome.
+- **Actual:** Web Store installs hang forever on "Processing item install" in automated Chromium, and extension pages are unreachable \u2014 no wallet can connect in automation.
+- **Severity:** Medium \u2014 money-moving flows can't be covered by CI.
+- **Workaround:** Verified the tip dialog UI itself in automation (opens, correct 98/2 math, wallet-connect prompt); real signing is tested on my phone.
+- **Suggestion:** A documented headless-friendly wallet test harness, or official guidance for dapp CI.
