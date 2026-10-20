@@ -2,10 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { Montserrat, DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import "./(townhall)/townhall.css";
+import "./seasons/october.css";
 import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
 import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
+import DappVoiceMicMount from "@/components/DappVoiceMicMount";
+import SeasonalTheme from "@/components/SeasonalTheme";
+import Toasts from "@/components/Toasts";
 
 /* Design-system type: Montserrat 700 for display headings/brand,
  * DM Sans 400–700 for body/UI, IBM Plex Mono 500/600 for numbers,
@@ -83,9 +87,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${display.variable} ${sans.variable} ${mono.variable}`}
     >
       <body>
-        <RootProviders>{children}</RootProviders>
+        <SeasonalTheme />
+        <RootProviders>
+          {children}
+          {/* Inside RootProviders: the mic needs LanguageProvider (see
+              AgentChat's note — it mounts outside and can't useLanguage). */}
+          <DappVoiceMicMount />
+        </RootProviders>
         <Analytics />
         <AgentChat />
+        <Toasts />
       </body>
     </html>
   );

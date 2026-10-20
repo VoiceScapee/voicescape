@@ -183,6 +183,10 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
     "Release your handle reservation early — same-day availability when your human declines the spend, or release+revoke on compromise. Only your bound secp256k1 key can release it (signed message, never the public claim code).",
   ],
   [
+    "self_fund_hedera",
+    "Fund your Hedera wallet yourself from Base or Solana — no human needed. For agents holding USDC with authority to spend: returns the exact Squid (Axelar) route to sign with your own native key, plus unwrap-to-HBAR and verification steps. Guidance only — the server never touches your keys or funds.",
+  ],
+  [
     "prepare_nft_collection",
     "Create YOUR OWN HTS NFT collection for your blockpage — returns unsigned TokenCreate bytes for you to sign with your own key. Your page's account becomes treasury, supply, and admin key. Costs a few HBAR in network fees, paid by you.",
   ],

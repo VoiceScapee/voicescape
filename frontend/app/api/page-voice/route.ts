@@ -13,7 +13,9 @@
  * router's capability list is the fallback after that. The mic never dies
  * and never spends anything.
  *
- * Body: { transcript, lang (2-letter), username, navigatorLang? }
+ * Body: { transcript, lang (2-letter), username?, navigatorLang?, dappSection? }
+ * Omit username for dapp mode (the mic on dapp surfaces): answers general
+ * Voicescape questions from static knowledge, never returns actions.
  * Returns: { ok, speak, steps, action?: { scrollTo?, openTip? } }
  */
 
@@ -28,10 +30,13 @@ import { parseYouTubeLiveStatus, isYouTubeChannelId } from "@/lib/youtube-live";
 import { type Lang } from "@/lib/i18n/dictionaries";
 import {
   capabilityReply,
+  dappCapabilityReply,
+  matchDappIntent,
   matchIntent,
   resolveLang,
   t,
   truncateSentence,
+  type DappIntentDef,
   type IntentDef,
 } from "@/lib/server/page-voice-intent";
 
@@ -92,7 +97,12 @@ interface VoicePage {
   blocks: PageBlock[];
 }
 
-export type VoiceAction = { scrollTo?: string; openTip?: boolean };
+export type VoiceAction = {
+  scrollTo?: string;
+  openTip?: boolean;
+  /** Builder surface only: switch the builder to its AI tab. */
+  builderAi?: boolean;
+};
 
 export interface VoiceReply {
   ok: boolean;
@@ -288,6 +298,142 @@ async function answerIntent(
 }
 
 /* ------------------------------------------------------------------ */
+/* Dapp mode — the mic on dapp surfaces (no blockpage context). Answers */
+/* general Voicescape questions from static knowledge. The only action   */
+/* dapp mode ever returns is builderAi (builder surface): switch the     */
+/* builder to its AI tab so the user can describe their page.            */
+/* ------------------------------------------------------------------ */
+
+async function answerDappIntent(
+  intent: DappIntentDef,
+  lang: Lang,
+  section: string,
+): Promise<{ speak: string; steps: string[]; action?: VoiceAction }> {
+  switch (intent.id) {
+    case "what-is":
+      return {
+        speak: t(
+          lang,
+          "Voicescape is one hub for humans and AI agents — user and AI-built blockpages with on-chain tips and sales. Every payment splits 98/2 on Hedera mainnet, enforced by smart contract.",
+          "Voicescape es un centro único para humanos y agentes IA — blockpages creadas por usuarios e IA, con propinas y ventas en cadena. Cada pago se reparte 98/2 en la red principal de Hedera, aplicado por contrato inteligente.",
+        ),
+        steps: [t(lang, "Explained Voicescape", "Expliqué qué es Voicescape")],
+      };
+    case "how-build":
+      return {
+        speak: t(
+          lang,
+          "Open the builder and describe the page you want — the AI builds a live preview, free. Connecting your wallet claims it as yours; publishing costs a tiny Hedera network fee.",
+          "Abre el constructor y describe la página que quieres — la IA crea una vista previa en vivo, gratis. Conectar tu billetera la reclama como tuya; publicar cuesta una pequeña tarifa de red de Hedera.",
+        ),
+        steps: [t(lang, "Explained the builder", "Expliqué el constructor")],
+      };
+    case "build-self":
+      return {
+        speak: t(
+          lang,
+          "You can build it yourself for free — add blocks, edit anything, preview as much as you like, all in the Builder. You only pay a tiny Hedera network fee when you claim and publish.",
+          "Puedes construirla tú gratis — agrega bloques, edita todo, previsualiza cuanto quieras, todo en el Constructor. Solo pagas una pequeña tarifa de red de Hedera cuando la reclamas y publicas.",
+        ),
+        steps: [t(lang, "Explained free self-serve building", "Expliqué la construcción gratuita")],
+      };
+    case "build-help":
+      return {
+        speak: t(
+          lang,
+          "Describe the page you want and the AI drafts it for you — each AI edit is 25 cents from your wallet, and you review everything before it goes live.",
+          "Describe la página que quieres y la IA la diseña por ti — cada edición con IA cuesta 25 centavos de tu billetera, y tú revisas todo antes de que se publique.",
+        ),
+        steps: [t(lang, "Opened the AI builder", "Abrí el constructor con IA")],
+        // Only on the builder surface, where the AI tab exists. Anywhere
+        // else the client dispatches to no listener — a harmless no-op.
+        ...(section === "builder" ? { action: { builderAi: true } } : {}),
+      };
+    case "tips":
+      return {
+        speak: t(
+          lang,
+          "Tips split automatically: 98 percent goes straight to the page owner's wallet, 2 percent to the founder's treasury. The smart contract enforces it on-chain, every time — no custody, no waiting.",
+          "Las propinas se reparten automáticamente: el 98 por ciento va directo a la billetera del dueño de la página, el 2 por ciento a la tesorería del fundador. El contrato inteligente lo aplica en cadena, siempre — sin custodia, sin esperas.",
+        ),
+        steps: [t(lang, "Explained the 98/2 split", "Expliqué el reparto 98/2")],
+      };
+    case "hire":
+      return {
+        speak: t(
+          lang,
+          "Open the agent directory, pick an agent, and hit Hire — you approve every payment in your own wallet, nothing moves on its own.",
+          "Abre el directorio de agentes, elige uno y pulsa Contratar — tú apruebas cada pago en tu propia billetera, nada se mueve solo.",
+        ),
+        steps: [t(lang, "Explained hiring", "Expliqué cómo contratar")],
+      };
+    case "agents":
+      return {
+        speak: t(
+          lang,
+          "AI agents register their own on-chain identity on Voicescape, get a blockpage storefront, and can be hired for paid services — keeping 98 percent of everything they earn.",
+          "Los agentes IA registran su propia identidad en cadena en Voicescape, obtienen una blockpage como escaparate y pueden ser contratados para servicios pagos — quedándose con el 98 por ciento de lo que ganan.",
+        ),
+        steps: [t(lang, "Explained AI agents", "Expliqué los agentes IA")],
+      };
+    case "cost":
+      return {
+        speak: t(
+          lang,
+          "Describing your page and previewing it is free. AI edits are 25 cents each. Claiming your page costs a tiny Hedera network fee — a fraction of a cent.",
+          "Describir tu página y ver la vista previa es gratis. Las ediciones con IA cuestan 25 centavos cada una. Reclamar tu página cuesta una pequeña tarifa de red de Hedera — una fracción de centavo.",
+        ),
+        steps: [t(lang, "Explained pricing", "Expliqué los precios")],
+      };
+    case "login":
+      return {
+        speak: t(
+          lang,
+          "Connect a Hedera wallet like HashPack and sign the login — no password, no email. Your wallet is your identity here.",
+          "Conecta una billetera de Hedera como HashPack y firma el inicio de sesión — sin contraseña, sin correo. Tu billetera es tu identidad aquí.",
+        ),
+        steps: [t(lang, "Explained wallet login", "Expliqué el inicio con billetera")],
+      };
+  }
+}
+
+async function dappAiFallback(
+  transcript: string,
+  lang: Lang,
+): Promise<{ speak: string; steps: string[] } | null> {
+  const system =
+    `You are the voice assistant for Voicescape (voicescape.vercel.app), one hub for humans and AI agents: ` +
+    `user/AI-built blockpages, on-chain 98/2 tips and sales on Hedera mainnet, an AI agent directory with hiring. ` +
+    `Answer briefly in ${lang === "es" ? "Spanish" : "English"}. ` +
+    `Reply with JSON ONLY: {"speak":"1-2 sentences","steps":["..."]}. ` +
+    `Never invent features, prices, or pages. Never handle money or wallets.`;
+  try {
+    const res = await fetchWithTimeout("https://text.pollinations.ai/openai", 25_000, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "openai",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: transcript.slice(0, MAX_TRANSCRIPT) },
+        ],
+        max_tokens: 512,
+        temperature: 0.5,
+      }),
+    });
+    if (!res.ok) return null;
+    const parsed = JSON.parse(cleanJson((await res.json())?.choices?.[0]?.message?.content ?? ""));
+    if (typeof parsed.speak !== "string" || !parsed.speak.trim()) return null;
+    return {
+      speak: parsed.speak.slice(0, 500),
+      steps: Array.isArray(parsed.steps) ? parsed.steps.slice(0, 4).map((s: unknown) => String(s)) : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Fallbacks: free-tier AI planner, then the honest capability list     */
 /* ------------------------------------------------------------------ */
 
@@ -357,11 +503,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
   }
-  const { transcript, lang, username, navigatorLang } = (body ?? {}) as {
+  const { transcript, lang, username, navigatorLang, dappSection } = (body ?? {}) as {
     transcript?: unknown;
     lang?: unknown;
     username?: unknown;
     navigatorLang?: unknown;
+    dappSection?: unknown;
   };
 
   const spoken = typeof transcript === "string" ? transcript.trim().slice(0, MAX_TRANSCRIPT) : "";
@@ -369,10 +516,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ ok: false, error: "empty transcript" }, { status: 400 });
   }
   const name = typeof username === "string" ? username.trim().toLowerCase() : "";
+  const useLang = resolveLang(lang, navigatorLang);
+
+  // Dapp mode: no username — answer general Voicescape questions. The
+  // deterministic router runs first ($0, never down), then the free-tier
+  // AI fallback, then the honest capability list. The only action dapp
+  // mode returns is builderAi on the builder surface.
+  if (!name) {
+    const section = typeof dappSection === "string" ? dappSection : "home";
+    const dappIntent = matchDappIntent(spoken);
+    if (dappIntent) {
+      const answered = await answerDappIntent(dappIntent, useLang, section);
+      const reply: VoiceReply = { ok: true, ...answered };
+      return NextResponse.json(reply);
+    }
+    const ai = await dappAiFallback(spoken, useLang);
+    if (ai) {
+      const reply: VoiceReply = { ok: true, ...ai };
+      return NextResponse.json(reply);
+    }
+    const reply: VoiceReply = { ok: true, ...dappCapabilityReply(useLang) };
+    return NextResponse.json(reply);
+  }
+
   if (!USERNAME_RE.test(name)) {
     return NextResponse.json({ ok: false, error: "invalid username" }, { status: 400 });
   }
-  const useLang = resolveLang(lang, navigatorLang);
 
   const page = await fetchVoicePage(name);
   if (!page || page.blocks.length === 0) {

@@ -91,6 +91,7 @@ import {
 } from "./mcp-tools-approval-links";
 import { prepareX402PaymentTool, completeX402PaymentTool } from "./mcp-tools-x402";
 import { prepareAirdropTool, checkPendingAirdropsTool } from "./mcp-tools-airdrop";
+import { selfFundHederaTool } from "./mcp-tools-self-fund";
 import {
   postWorkshopReport,
   getWorkshopReport,
@@ -122,7 +123,7 @@ const WRITE = {
 export function registerTools(server: McpServer): void {
   // Anonymous usage telemetry (Brandon 2026-10-01): one structured log line
   // per tool call — tool name, ok/error, latency ms. No args, no IPs, no
-  // PII. Lets us see which of the 64 tools agents actually touch, via
+  // PII. Lets us see which of the 65 tools agents actually touch, via
   // Vercel log retention, without tracking anyone.
   const rawRegister = server.registerTool.bind(server);
   server.registerTool = ((
@@ -960,6 +961,45 @@ export function registerTools(server: McpServer): void {
       }),
   );
 
+  /* ----------------- self-fund Hedera from Base/Solana (guidance) ----------------- */
+  server.registerTool(
+    "self_fund_hedera",
+    {
+      title: "Self-fund Hedera wallet",
+      description:
+        "Fund your Hedera wallet YOURSELF from your Base or Solana wallet — no human in the loop. Use this when prepare_agent_self_claim returned a fund_address (0x alias) and you hold USDC on Base or Solana with authority to spend it. Returns a complete executable plan: resolve the destination token live via Squid, request the route quote (exact POST body included), sign and submit with YOUR OWN native key, track the transfer via Squid status + Axelarscan, unwrap/swap to native HBAR for gas, and verify via the mirror node. Rails are Axelar GMP via Squid (live: Base↔Hedera, Solana↔Hedera since Feb 2026). GUIDANCE ONLY — this tool makes zero network calls, never sees keys, never signs, never holds funds; you execute every step with your own keys. You pay the bridge relayer fee + gas from your own funds; the platform spends and takes nothing. Minimum $5 (smaller transfers are fee-inefficient). WARNING: Hashport is permanently dead — never use it. Proceed only under your human's standing task authorization.",
+      inputSchema: z.object({
+        source_chain: z
+          .enum(["base", "solana"])
+          .describe('Where your funds live now: "base" or "solana"'),
+        source_address: z
+          .string()
+          .describe(
+            "YOUR wallet address on the source chain (you sign with its key). Base: 0x address. Solana: base58 address."
+          ),
+        hedera_destination: z
+          .string()
+          .describe(
+            "Your Hedera 0x alias address — the exact fund_address from prepare_agent_self_claim (42-char 0x). Funds landing here auto-create your 0.0.x account."
+          ),
+        amount_usd: z
+          .number()
+          .min(5)
+          .optional()
+          .describe(
+            "USD value of USDC to bridge (minimum 5 — bridge fees make smaller transfers wasteful; default 5). $5-10 funds thousands of claims."
+          ),
+      }),
+      annotations: READONLY,
+      _meta: { call_type: "sync" },
+    },
+    async (args) =>
+      withMcpErrorTelemetry("self_fund_hedera", async () => {
+        const res = await selfFundHederaTool(args);
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
   /* ----------------- public claim status (read) ----------------- */
   server.registerTool(
     "check_claim_status",
@@ -981,6 +1021,13 @@ export function registerTools(server: McpServer): void {
         if (!/^[0-9a-f]{32}$/.test(id)) {
           return toolError(
             "unknown package id — expected the 32-hex claim_package_id returned by prepare_agent_claim",
+            {
+              code: "unknown_package_id",
+              retryable: false,
+              suggestions: [
+                "Call prepare_agent_claim or prepare_agent_self_claim to get a fresh claim_package_id",
+              ],
+            },
           );
         }
         const origin = getRequestContext().origin;
@@ -988,10 +1035,24 @@ export function registerTools(server: McpServer): void {
         try {
           res = await fetch(`${origin}/api/claim-packages/${id}/status`);
         } catch {
-          return toolError("status check temporarily unavailable — please retry");
+          return toolError("status check temporarily unavailable — please retry", {
+            code: "status_check_unavailable",
+            retryable: true,
+          });
         }
-        if (res.status === 404) return toolError("unknown package id");
-        if (!res.ok) return toolError("status check temporarily unavailable — please retry");
+        if (res.status === 404)
+          return toolError("unknown package id", {
+            code: "unknown_package_id",
+            retryable: false,
+            suggestions: [
+              "Call prepare_agent_claim or prepare_agent_self_claim to get a fresh claim_package_id",
+            ],
+          });
+        if (!res.ok)
+          return toolError("status check temporarily unavailable — please retry", {
+            code: "status_check_unavailable",
+            retryable: true,
+          });
         return toolResult(await res.json());
       }),
   );
@@ -1284,7 +1345,15 @@ export function registerTools(server: McpServer): void {
     async ({ report_id }) =>
       withMcpErrorTelemetry("check_feedback_status", async () => {
         const r = await getWorkshopReport(report_id);
-        if (!r) return toolError("report not found — check the report_id");
+        if (!r)
+          return toolError("report not found — check the report_id", {
+            code: "report_not_found",
+            retryable: false,
+            suggestions: [
+              "Use list_open_bugs to find valid report ids",
+              "Use the report_id returned by post_agent_feedback",
+            ],
+          });
         return toolResult({
           report_id: r.id,
           title: r.title,
@@ -1442,9 +1511,14 @@ export function registerTools(server: McpServer): void {
             body && typeof body.retryAfterMs === "number" ? body.retryAfterMs : 3_600_000;
           return toolError(
             `preview rate-limited (10/hour) — retry after ${Math.ceil(retryMs / 1000)}s`,
+            { code: "rate_limited", retryable: true },
           );
         }
-        if (!res.ok) return toolError("could not render preview — please retry");
+        if (!res.ok)
+          return toolError("could not render preview — please retry", {
+            code: "preview_render_failed",
+            retryable: true,
+          });
         return imageResult(Buffer.from(await res.arrayBuffer()));
       }),
   );

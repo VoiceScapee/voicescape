@@ -102,6 +102,108 @@ const CAPABILITY_LABELS: Record<string, { en: string; es: string }> = {
   booking: { en: "booking options", es: "opciones de reserva" },
 };
 
+/* ------------------------------------------------------------------ */
+/* Dapp mode — the mic on dapp surfaces (homepage, explore, …), where   */
+/* there is no blockpage context. Same $0 deterministic-first pattern:  */
+/* keyword intents over general Voicescape knowledge, en/es templates, */
+/* English fallback per the dapp i18n convention.                      */
+/* ------------------------------------------------------------------ */
+
+export type DappIntentId =
+  | "what-is"
+  | "how-build"
+  | "build-self"
+  | "build-help"
+  | "tips"
+  | "agents"
+  | "hire"
+  | "cost"
+  | "login";
+
+export interface DappIntentDef {
+  id: DappIntentId;
+  /** en|es keyword patterns. */
+  pattern: RegExp;
+}
+
+export const DAPP_INTENTS: DappIntentDef[] = [
+  // Builder two-path intents first — most specific ("Build it myself
+  // (free)" / "Help me build it" chips and their ES twins).
+  {
+    id: "build-self",
+    pattern: /\bmyself\b|do it myself|on my own|por mi cuenta|yo mism[oa]|hago yo/,
+  },
+  {
+    id: "build-help",
+    pattern: /help me build|ay[úu]dame a construir|ay[úu]dame con (la|mi) p[aá]gina/,
+  },
+  {
+    id: "tips",
+    pattern: /\b98\/?2\b|\btips?\b|\btipping\b|donat|propina|donar|donaci[oó]n|split|reparto|fee|comisi[oó]n/,
+  },
+  {
+    id: "how-build",
+    pattern: /how (do|can) i (build|make|create)|build (a|my) page|create (a|my) page|make (a|my) page|builder|¿c[oó]mo (creo|hago|construyo)|crear (una |mi )?p[aá]gina|constructor/,
+  },
+  {
+    id: "hire",
+    // "contrat" covers contratar / contrato / contratación.
+    pattern: /\bhire\b|hiring|contrat|alquilar un agente/,
+  },
+  {
+    id: "agents",
+    pattern: /\bagents?\b|agente|ai agent|bot/,
+  },
+  {
+    id: "cost",
+    pattern: /how much|price|cost|free|gratis|cu[aá]nto|precio|costo|cuesta/,
+  },
+  {
+    id: "login",
+    pattern: /log ?in|sign ?in|wallet|connect|conectar|billetera|iniciar sesi[oó]n|hashpack/,
+  },
+  {
+    id: "what-is",
+    pattern: /what is voicescape|about voicescape|qu[eé] es voicescape|what('s| is) this (site|app|dapp)/,
+  },
+];
+
+/** First dapp intent whose keywords match the transcript. */
+export function matchDappIntent(transcript: string): DappIntentDef | null {
+  const lower = transcript.toLowerCase();
+  for (const intent of DAPP_INTENTS) {
+    if (intent.pattern.test(lower)) return intent;
+  }
+  return null;
+}
+
+/* (dapp chips now live in lib/voice-dapp-chips.ts, per dapp section.) */
+
+const DAPP_CAPABILITIES: { en: string; es: string }[] = [
+  { en: "explain what Voicescape is", es: "explicar qué es Voicescape" },
+  { en: "how to build your own blockpage", es: "cómo crear tu propia blockpage" },
+  { en: "how the 98/2 on-chain tips work", es: "cómo funcionan las propinas 98/2 en cadena" },
+  { en: "how AI agents earn and get hired", es: "cómo los agentes IA ganan y son contratados" },
+];
+
+/** Honest last resort for dapp mode: what the mic can answer about. */
+export function dappCapabilityReply(lang: Lang): { speak: string; steps: string[] } {
+  const useEs = lang === "es";
+  const labels = DAPP_CAPABILITIES.map((c) => (useEs ? c.es : c.en));
+  const list =
+    labels.length > 1
+      ? `${labels.slice(0, -1).join(", ")} ${useEs ? "o" : "or"} ${labels[labels.length - 1]}`
+      : (labels[0] ?? "");
+  return {
+    speak: t(
+      lang,
+      `Here's what I can tell you about: ${list}.`,
+      `Esto es de lo que te puedo hablar: ${list}.`,
+    ),
+    steps: [],
+  };
+}
+
 /**
  * Honest last resort: offer what the page ACTUALLY has. Never invents.
  * hero/socials fold into the bio/links capabilities they back.

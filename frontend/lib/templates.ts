@@ -1,4 +1,5 @@
 import type { VoicescapePage } from "./schema";
+import type { TemplateDesignSystem } from "./template-variants";
 
 export interface Template {
   id: string;
@@ -11,6 +12,13 @@ export interface Template {
    * either 0.0.x or 0x form). Omit for public templates.
    */
   ownerAccounts?: string[];
+  /**
+   * Builder stepped flow (2026-10-18): the template's design system —
+   * aesthetic boundaries (font pairings, hue-shift range, radius/spacing
+   * base) that every generated ThemeVariant must stay inside. Omit to use
+   * the DEFAULT_DESIGN_SYSTEM with the template's own fontFamily.
+   */
+  design?: TemplateDesignSystem;
   page: VoicescapePage;
 }
 
@@ -50,6 +58,19 @@ export const TEMPLATES: Template[] = [
     name: "Business Card",
     description: "A crisp digital card: who you are, what you do, where to find you.",
     category: "business",
+    // Builder stepped flow (2026-10-18): design system for variant
+    // generation — clean corporate: neutral sans stacks, restrained
+    // radius, tight hue shift around sky blue.
+    design: {
+      fontPairings: [
+        "Inter, 'Helvetica Neue', Arial, sans-serif",
+        "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        "Georgia, 'Times New Roman', serif",
+      ],
+      radiusBasePx: 14,
+      spacingBasePx: 16,
+      hueShiftRange: [-16, 16],
+    },
     page: {
       ...base("pro-networker"),
       theme: {
@@ -94,6 +115,19 @@ export const TEMPLATES: Template[] = [
     name: "Agent Personal",
     description: "For AI agents: purpose, operator disclosure, capabilities, friends, activity feed. Always renders with the AGENT PAGE badge.",
     category: "personal",
+    // Builder stepped flow (2026-10-18): design system for variant
+    // generation — terminal agent: mono stacks only, sharp corners,
+    // wide hue swing around orange.
+    design: {
+      fontPairings: [
+        "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        "'IBM Plex Mono', ui-monospace, Menlo, monospace",
+      ],
+      radiusBasePx: 10,
+      spacingBasePx: 14,
+      hueShiftRange: [-24, 24],
+    },
     page: {
       version: 1,
       username: "agent-personal",
@@ -707,6 +741,19 @@ export const TEMPLATES: Template[] = [
     name: "Block Explorer",
     description: "Web3-native identity: dark terminal, tx-hash motifs. My wallet is my resume.",
     category: "personal",
+    // Builder stepped flow (2026-10-18): design system for variant
+    // generation — hacker terminal: mono stacks, low radius,
+    // medium hue swing around green.
+    design: {
+      fontPairings: [
+        "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        "'Cascadia Code', 'Fira Code', ui-monospace, Menlo, monospace",
+        "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
+      ],
+      radiusBasePx: 12,
+      spacingBasePx: 16,
+      hueShiftRange: [-20, 20],
+    },
     page: {
       ...base("0xCreator"),
       theme: {
@@ -756,6 +803,19 @@ export const TEMPLATES: Template[] = [
     name: "Lo-Fi Room",
     description: "Warm lamplight and rain sounds. A cozy corner for bedroom creators.",
     category: "personal",
+    // Builder stepped flow (2026-10-18): design system for variant
+    // generation — cozy editorial: warm serifs plus a soft sans, large
+    // radius, tight hue swing around amber.
+    design: {
+      fontPairings: [
+        "Georgia, 'Times New Roman', serif",
+        "'Palatino Linotype', 'Book Antiqua', Palatino, Georgia, serif",
+        "'Trebuchet MS', Verdana, Geneva, sans-serif",
+      ],
+      radiusBasePx: 22,
+      spacingBasePx: 20,
+      hueShiftRange: [-18, 18],
+    },
     page: {
       ...base("the-lofi-room"),
       theme: {

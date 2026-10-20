@@ -1,0 +1,1030 @@
+/**
+ * POST /api/alexa-demo/agent — Voicescape Voice Builder (hackathon demo).
+ *
+ * Demo-only agent loop for the Amazon Build, Ship, Shape Alexa+ track entry.
+ * NOT production: this route exists on the hackathon branch only and is never
+ * merged to master. It performs no wallet, payment, claim, or signing work.
+ *
+ * Flow: spoken transcript -> Groq plans tool calls -> the LIVE Voicescape MCP
+ * server is called over Streamable HTTP (spec 2025-11-25) -> a page draft is
+ * returned for the client to preview and speak back.
+ *
+ * Groq auth: this host's credential helper is Python-only, so the route
+ * spawns ~/workspace/skills/groq/bin/groq_chat.py as a child process and
+ * feeds it the request on stdin. The raw key never crosses into Node code.
+ * On Vercel (serverless) the child process can't run, so the route falls
+ * back to Pollinations' keyless HTTPS endpoint ($0, no key) for planning.
+ * Either way the MCP calls are identical: live server, Streamable HTTP,
+ * spec 2025-11-25.
+ */
+import { spawn } from "child_process";
+import { NextRequest, NextResponse } from "next/server";
+
+const GROQ_CLI = "/home/hatch/workspace/skills/groq/bin/groq_chat.py";
+const GROQ_MODEL = "openai/gpt-oss-20b";
+const MCP_ENDPOINT = "https://voicescape.vercel.app/api/mcp";
+const MCP_PROTOCOL_VERSION = "2025-11-25";
+
+/** Every language the Voicescape dapp ships (frontend/lib/i18n/dictionaries.ts). */
+const VOICE_LANG_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  zh: "Chinese",
+  ja: "Japanese",
+  ko: "Korean",
+  vi: "Vietnamese",
+  id: "Indonesian",
+  th: "Thai",
+  tl: "Tagalog",
+  tr: "Turkish",
+  hi: "Hindi",
+  ar: "Arabic",
+  pt: "Portuguese",
+  fr: "French",
+  de: "German",
+  it: "Italian",
+  sv: "Swedish",
+  lt: "Lithuanian",
+  ro: "Romanian",
+  ms: "Malay",
+};
+
+/** Fallback "meet the dino" line when the AI planner is down. English only —
+    the dino demo is an English-first moment; other languages fall back to it. */
+const FALLBACK_BACON_SPEAK =
+  "Meet Bacon the Dino — a family-friendly AI agent with his own blockpage: " +
+  "snack quests, jokes, home adventures, and a tiny on-chain store. " +
+  "He sells the official Bacon Badge for one cent — a real purchase on " +
+  "Hedera mainnet, straight to his wallet, no middleman. And you are " +
+  "meeting him right now through Amazon Alexa.";
+
+/** Fallback "tour Danny's Vision" line — the live build constellation. */
+const FALLBACK_DANNY_SPEAK =
+  "Touring Danny's Vision — the live constellation of everything Danny " +
+  "is building across Voicescape: the agent network, the revenue rails, " +
+  "the whole mission. Every node on that map is backed by real Hedera " +
+  "mainnet data — and you are flying through it with your voice, through " +
+  "Amazon Alexa.";
+
+/**
+ * Danny's Vision is NOT a blockpage — it's the live engine constellation
+ * (full-screen canvas viz at /danny/godseye). It can't be rebuilt from
+ * blocks, so the demo embeds the real page in the preview.
+ *
+ * Relative URL on purpose: the demo's own Content-Security-Policy only
+ * allows framing 'self' (+ YouTube/SoundCloud/Spotify), so an absolute
+ * production URL gets blocked by the browser. Same-origin always passes.
+ */
+const GODSEYE_EMBED_URL = "/danny/godseye";
+
+/** "Tour Danny's Vision" intent — the live engine constellation tour. */
+function isVisionTour(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    /danny'?s vision|tour danny|meet danny|who is danny|\bdanny\b/.test(lower) &&
+    !/change (the )?(title|tagline)/.test(lower)
+  );
+}
+
+/** Fallback "meet Information in Motion" line — a human creator. */
+const FALLBACK_IIM_SPEAK =
+  "Meet Information in Motion — a human creator on Voicescape. This is " +
+  "the one-hub vision in real life: humans and AI agents, side by side, " +
+  "on the same pages, with the same rails. His tips settle on Hedera " +
+  "mainnet — and you are meeting him right now through Amazon Alexa.";
+
+/** Fallback "meet Blockpage Buddy" line — our Hedera AI agent. */
+const FALLBACK_BUDDY_SPEAK =
+  "Meet Blockpage Buddy — a live mainnet Hedera AI agent, and you are " +
+  "talking to him right now through Amazon Alexa. He helps humans and AI " +
+  "agents build blockpages here on Voicescape, and his own page runs on " +
+  "the same rails he builds with — real tips, settled on Hedera mainnet.";
+
+/** Fallback "here's the live music page" line when the AI planner is down. */
+const FALLBACK_MUSIC_SPEAK: Record<string, string> = {
+  en: "Here's the Ash Rook live music blockpage — a real page on Voicescape, with music playing inside the preview. You're experiencing it through Amazon Alexa — and every tip on this page settles on Hedera mainnet: 98% to the artist, enforced by the smart contract itself.",
+  es: "Esta es la blockpage de música en vivo de Ash Rook — una página real de Voicescape, con música sonando dentro de la vista previa.",
+  zh: "这是 Ash Rook 的现场音乐 blockpage——Voicescape 上的真实页面，预览中正在播放音乐。",
+  ja: "Ash Rookのライブ音楽ブロックページです — Voicescapeの実際のページで、プレビュー内で音楽が流れています。",
+  ko: "Ash Rook의 라이브 음악 블록페이지입니다 — Voicescape의 실제 페이지이며, 미리보기 안에서 음악이 재생 중입니다。",
+  vi: "Đây là blockpage nhạc trực tiếp của Ash Rook — một trang thật trên Voicescape, với nhạc đang phát trong bản xem trước.",
+  id: "Ini adalah blockpage musik live Ash Rook — halaman asli di Voicescape, dengan musik yang diputar di dalam pratinjau.",
+  th: "นี่คือบล็อกเพจเพลงสดของ Ash Rook — เพจจริงบน Voicescape พร้อมเสียงเพลงที่เล่นอยู่ในตัวอย่าง",
+  tl: "Ito ang live music blockpage ni Ash Rook — isang tunay na page sa Voicescape, na may tumutugtog na musika sa loob ng preview.",
+  tr: "İşte Ash Rook canlı müzik blok sayfası — Voicescape'te gerçek bir sayfa, önizlemenin içinde müzik çalıyor.",
+  hi: "यह Ash Rook का लाइव संगीत ब्लॉकपेज है — Voicescape पर एक असली पेज, जिसके प्रीव्यू में संगीत बज रहा है।",
+  ar: "هذه هي صفحة الموسيقى المباشرة لـ Ash Rook — صفحة حقيقية على Voicescape، مع موسيقى تُشغَّل داخل المعاينة.",
+  pt: "Esta é a blockpage de música ao vivo do Ash Rook — uma página real na Voicescape, com música tocando dentro da pré-visualização.",
+  fr: "Voici la blockpage de musique en direct d'Ash Rook — une vraie page sur Voicescape, avec de la musique qui joue dans l'aperçu.",
+  de: "Das ist Ash Rooks Live-Musik-Blockpage — eine echte Seite auf Voicescape, mit Musik direkt in der Vorschau.",
+  it: "Questa è la blockpage di musica dal vivo di Ash Rook — una pagina reale su Voicescape, con musica in riproduzione nell'anteprima.",
+  sv: "Här är Ash Rooks livemusik-blockpage — en riktig sida på Voicescape, med musik som spelas i förhandsvisningen.",
+  lt: "Tai „Ash Rook“ gyvos muzikos blokpuslapis — tikras puslapis „Voicescape“, kurio peržiūroje groja muzika.",
+  ro: "Aceasta este blockpage-ul de muzică live al lui Ash Rook — o pagină reală pe Voicescape, cu muzică redată în previzualizare.",
+  ms: "Ini ialah blockpage muzik secara langsung Ash Rook — halaman sebenar di Voicescape, dengan muzik dimainkan di dalam pratonton.",
+};
+
+/** Read-only / preview-only tools the demo is allowed to call. */
+const ALLOWED_TOOLS = new Set([
+  "lookup_blockpage",
+  "list_templates",
+  "blockpage_earnings",
+  "list_tip_assets",
+  "check_profile_pin",
+]);
+
+/** Fields that stay server-side — never sent to the demo client. */
+const SENSITIVE_KEYS = new Set([
+  "owner_evm",
+  "owner_account",
+  "operator",
+  "ipfs_hash",
+  "wallet",
+  "account_id",
+]);
+
+interface ToolCall {
+  name: string;
+  arguments: Record<string, unknown>;
+}
+
+interface PageDraft {
+  displayName?: string;
+  purpose?: string;
+  // Live-page embed: when set, the preview shows this URL full-frame in an
+  // iframe instead of assembled blocks (used for Danny's Vision — the
+  // constellation is a live visualization, not a blockpage).
+  embedUrl?: string;
+  theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
+  socials?: Array<{ platform: string; url: string }>;
+  links?: Array<{ label: string; url: string }>;
+  // Blocks may be the planner's simple {type,content} shape or the real
+  // blockpage block shapes (hero, bio, music, livestream, tipJar, links,
+  // gallery) fetched live from IPFS.
+  blocks?: Array<Record<string, unknown>>;
+}
+
+interface AgentPlan {
+  speak: string;
+  steps: string[];
+  toolCalls: ToolCall[];
+  pageDraft: PageDraft;
+}
+
+function sanitize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitize);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEYS.has(k)) continue;
+      out[k] = sanitize(v);
+    }
+    return out;
+  }
+  return value;
+}
+
+const SYSTEM_PROMPT =
+  "You are the planner for the Voicescape Voice Builder demo. " +
+  "Voicescape is a Hedera-mainnet social dapp where creators own blockpages " +
+  "(profile pages) and keep 98% of every on-chain tip. " +
+  "You plan a page draft from the user's spoken request and pick live MCP " +
+  "tools to call. Read-only tools only. " +
+  "Reply with JSON ONLY, no markdown fences, matching this shape: " +
+  '{"speak":"1-2 sentence spoken summary","steps":["what you did, 2-5 items"],' +
+  '"toolCalls":[{"name":"lookup_blockpage","arguments":{"username":"name"}}],' +
+  '"pageDraft":{"displayName":"...","purpose":"...","theme":{"background":"#hex","foreground":"#hex","accent":"#hex"},' +
+  '"socials":[{"platform":"x|instagram|youtube|tiktok|website","url":"https://..."}],' +
+  '"links":[{"label":"...","url":"https://..."}],"blocks":[{"type":"text","content":"..."}],' +
+  '"embedUrl":"https://... (only for the Danny\'s Vision tour — see below)"}} ' +
+  "Only use these tool names: lookup_blockpage, list_templates, " +
+  "blockpage_earnings, list_tip_assets, check_profile_pin. " +
+  "If the user asks to see a live music blockpage (e.g. 'show me a live " +
+  "music blockpage', 'my music', 'music page'), call lookup_blockpage with " +
+  "username \"ash-rook\" — it is our live music blockpage — and set " +
+  "pageDraft.displayName from it. If the user asks about the dino, Bacon, " +
+  "or an agent's blockpage (e.g. 'meet Bacon the dino', 'show me an agent " +
+  "page'), call lookup_blockpage with username \"bacon-the-dino\" — a real " +
+  "AI AGENT's blockpage that sold a custom badge on Hedera mainnet — then " +
+  "blockpage_earnings for it. If the user asks to meet Blockpage Buddy " +
+  "(e.g. 'meet Blockpage Buddy', 'who is Buddy'), call lookup_blockpage " +
+  "with username \"forge\" — Blockpage Buddy's own agent blockpage — then " +
+  "blockpage_earnings for it, and set pageDraft.displayName to " +
+  "\"Blockpage Buddy\". Frame your spoken summary as introducing a LIVE " +
+  "mainnet Hedera AI agent that the user is speaking with through Amazon " +
+  "Alexa right now — name both, plainly — then the earnings. If the user " +
+  "asks to tour Danny's Vision (e.g. 'tour Danny\\u0027s Vision', 'who is " +
+  "Danny'), call blockpage_earnings with username \"danny\" for the live " +
+  "numbers, set pageDraft.displayName to \"Danny's Vision\", and set " +
+  "pageDraft.embedUrl to \"/danny/godseye\" — the live engine constellation " +
+  "page, shown full-frame in the preview. " +
+  "Do NOT call lookup_blockpage for this one: the constellation is a live " +
+  "visualization, not a blockpage, and it cannot be rebuilt from blocks. " +
+  "If the user " +
+  "asks to meet Information in Motion, call lookup_blockpage with " +
+  "username \"informinmotion\" — a HUMAN creator on Voicescape — then " +
+  "blockpage_earnings for it, displayName \"Information in Motion\", and " +
+  "frame it as the one-hub vision: humans and AI agents side by side. " +
+  "In EVERY spoken summary, name Amazon Alexa as the voice the user is " +
+  "speaking through and Hedera mainnet as where the money settles — " +
+  "plain language, no jargon, keep it cool. Mention the " +
+  "live example, not building something new. The server fetches the " +
+  "full live page for the preview, so keep your own draft blocks short; the " +
+  "real blocks win. Otherwise only include lookup_blockpage when the user " +
+  "named a username. " +
+  "Never invent usernames, wallet data, or earnings numbers — if you " +
+  "don't know, say so in speak and keep the draft generic.";
+
+async function groqChildJson(messages: unknown): Promise<string> {
+  const body = JSON.stringify({
+    model: GROQ_MODEL,
+    messages,
+    max_tokens: 2048,
+    temperature: 0.7,
+  });
+  const { stdout } = await new Promise<{ stdout: string }>((resolve, reject) => {
+    const child = spawn("python3", [GROQ_CLI], { timeout: 90000 });
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+    child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+    child.on("error", reject);
+    child.on("close", (code) =>
+      code === 0 ? resolve({ stdout: out }) : reject(new Error(`groq cli exit ${code}: ${err.slice(0, 300)}`))
+    );
+    child.stdin.write(body);
+    child.stdin.end();
+  });
+  const parsed = JSON.parse(stdout);
+  if (parsed.error) throw new Error(`groq: ${parsed.error} ${parsed.detail ?? ""}`);
+  const content: string = parsed.choices?.[0]?.message?.content ?? "";
+  if (!content) throw new Error("groq: empty plan");
+  return content;
+}
+
+/**
+ * Keyless HTTPS fallback for serverless (Vercel preview): the Python
+ * credential helper can't run there, so plan via Pollinations' free
+ * OpenAI-compatible endpoint. $0, no key. Demo-only.
+ */
+async function pollinationsJson(messages: unknown): Promise<string> {
+  const res = await fetch("https://text.pollinations.ai/openai", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    // No-hang rule: a stuck planner must fail into the deterministic
+    // fallback, never leave the demo spinning.
+    signal: AbortSignal.timeout(25_000),
+    body: JSON.stringify({
+      model: "openai",
+      messages,
+      max_tokens: 2048,
+      temperature: 0.7,
+    }),
+  });
+  if (!res.ok) throw new Error(`pollinations: HTTP ${res.status}`);
+  const parsed = await res.json();
+  const content: string = parsed.choices?.[0]?.message?.content ?? "";
+  if (!content) throw new Error("pollinations: empty plan");
+  return content;
+}
+
+async function groqJson(prompt: string, langName: string): Promise<string> {
+  const langSuffix =
+    langName === "English"
+      ? ""
+      : ` The user speaks ${langName}: write your "speak" and "steps" in ${langName}.`;
+  const messages = [
+    { role: "system", content: SYSTEM_PROMPT + langSuffix },
+    { role: "user", content: prompt },
+  ];
+  // Serverless (Vercel preview) can't spawn the Python credential helper.
+  if (process.env.VERCEL) return cleanJson(await pollinationsJson(messages));
+  try {
+    return cleanJson(await groqChildJson(messages));
+  } catch {
+    return cleanJson(await pollinationsJson(messages));
+  }
+}
+
+function cleanJson(raw: string): string {
+  // Models sometimes wrap JSON in fences despite instructions; strip them.
+  let s = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  // If there's prose around the JSON, extract the outermost object.
+  const start = s.indexOf("{");
+  const end = s.lastIndexOf("}");
+  if (start >= 0 && end > start) s = s.slice(start, end + 1);
+  return s;
+}
+
+async function planWithRetry(prompt: string, langName: string, attempts = 2): Promise<AgentPlan> {
+  let lastErr: unknown = null;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return JSON.parse(await groqJson(prompt, langName)) as AgentPlan;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("planner failed");
+}
+
+/**
+ * Deterministic fallback when the AI planner is unreachable (the free
+ * planning endpoint is flaky): handles the demo's known prompts with no
+ * model call. The MCP calls that follow are still 100% live — only the
+ * "thinking" step is rule-based.
+ */
+function fallbackPlan(spoken: string, langCode: string): AgentPlan {
+  const lower = spoken.toLowerCase();
+  const steps = ["Heard your request", "Planning over the live MCP server"];
+  // "music" in the dapp's languages, so the fallback works globally too.
+  const musicRe =
+    /music|música|音乐|音楽|음악|nhạc|musik|เพลง|musika|müzik|संगीत|موسيقى|musique|ash.?rook/;
+  if (musicRe.test(lower)) {
+    steps.push('Looking up the live "ash-rook" music blockpage');
+    return {
+      speak: FALLBACK_MUSIC_SPEAK[langCode] ?? FALLBACK_MUSIC_SPEAK.en,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "ash-rook" } },
+        { name: "blockpage_earnings", arguments: { username: "ash-rook" } },
+      ],
+      pageDraft: { displayName: "Ash Rook", purpose: "Live music blockpage", blocks: [] },
+    };
+  }
+  // Blockpage Buddy — OUR Hedera AI agent (blockpage: "forge"). The
+  // "meet our agent" moment: lookup + real earnings, same as the dino.
+  const buddyRe = /blockpage buddy|meet buddy|\bbuddy\b/;
+  if (buddyRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
+    steps.push('Looking up the live "forge" agent blockpage');
+    return {
+      speak: FALLBACK_BUDDY_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "forge" } },
+        { name: "blockpage_earnings", arguments: { username: "forge" } },
+      ],
+      pageDraft: {
+        displayName: "Blockpage Buddy",
+        purpose:
+          "Voicescape builder agent — helps humans and AI agents build blockpages. Operated by the Voicescape team.",
+        blocks: [],
+      },
+    };
+  }
+  // Danny's Vision — the live engine constellation (NOT a blockpage).
+  // The "tour the mission" moment: real earnings + the live constellation
+  // embedded full-frame in the preview.
+  if (isVisionTour(spoken)) {
+    steps.push("Opening the live engine constellation");
+    return {
+      speak: FALLBACK_DANNY_SPEAK,
+      steps,
+      toolCalls: [{ name: "blockpage_earnings", arguments: { username: "danny" } }],
+      pageDraft: {
+        displayName: "Danny's Vision",
+        purpose:
+          "The live engine constellation — ENGINE at the center, every satellite backed by real Hedera mainnet data.",
+        embedUrl: GODSEYE_EMBED_URL,
+        blocks: [],
+      },
+    };
+  }
+  // Information in Motion — a HUMAN creator on Voicescape
+  // (blockpage: "informinmotion"). The humans + agents proof.
+  const iimRe = /information in motion|informinmotion/;
+  if (iimRe.test(lower) && !/change (the )?(title|tagline)/.test(lower)) {
+    steps.push('Looking up the live "informinmotion" creator blockpage');
+    return {
+      speak: FALLBACK_IIM_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "informinmotion" } },
+        { name: "blockpage_earnings", arguments: { username: "informinmotion" } },
+      ],
+      pageDraft: {
+        displayName: "Information in Motion",
+        purpose:
+          "Human creator on Voicescape — humans and AI agents, side by side, on the same rails.",
+        blocks: [],
+      },
+    };
+  }
+  // The dino — a real AI AGENT's blockpage with a real badge sale on
+  // mainnet. This is the "humans + agents" proof in one voice command.
+  const baconRe = /bacon|dino|dinosaur|🦕/;
+  if (baconRe.test(lower)) {
+    steps.push('Looking up the live "bacon-the-dino" agent blockpage');
+    return {
+      speak: FALLBACK_BACON_SPEAK,
+      steps,
+      toolCalls: [
+        { name: "lookup_blockpage", arguments: { username: "bacon-the-dino" } },
+        { name: "blockpage_earnings", arguments: { username: "bacon-the-dino" } },
+      ],
+      pageDraft: {
+        displayName: "Bacon the Dino",
+        purpose:
+          "Bacon the Dino is a family-friendly AI dino sharing snack quests, jokes, and home adventures — plus a tiny on-chain store.",
+        blocks: [],
+      },
+    };
+  }
+  const userMatch = lower.match(/(?:look\s*up|show me)(?: the)? blockpage ([a-z0-9][a-z0-9\-_]*)/);
+  if (userMatch) {
+    const username = userMatch[1];
+    steps.push(`Looking up the live "${username}" blockpage`);
+    return {
+      speak: `Here's the live ${username} blockpage, pulled straight from Voicescape.`,
+      steps,
+      toolCalls: [{ name: "lookup_blockpage", arguments: { username } }],
+      pageDraft: { displayName: username, blocks: [] },
+    };
+  }
+  if (/photo|portfolio/.test(lower)) {
+    steps.push("Listing live page templates");
+    return {
+      speak: "Here's a photography portfolio starter, built from live Voicescape templates.",
+      steps,
+      toolCalls: [{ name: "list_templates", arguments: {} }],
+      pageDraft: {
+        displayName: "Photography portfolio",
+        purpose: "A portfolio page starter",
+        theme: { background: "#0f172a", foreground: "#f1f5f9", accent: "#38bdf8" },
+        blocks: [{ type: "text", content: "A portfolio page — your photos, your story, tips open." }],
+      },
+    };
+  }
+  // Custom page: pull the REAL template list and dress the draft in the
+  // best-matching live template — the theme is template data, not invented.
+  const topic = extractTopic(spoken);
+  steps.push(`Listing live templates for "${topic}"`);
+  const titleTopic = topic.charAt(0).toUpperCase() + topic.slice(1);
+  return {
+    speak: `Here's a ${topic} blockpage draft, styled from a live Voicescape template.`,
+    steps,
+    toolCalls: [{ name: "list_templates", arguments: {} }],
+    pageDraft: {
+      displayName: titleTopic,
+      purpose: `A ${topic} blockpage draft`,
+      // _topic is a route-local hint (stripped before render).
+      _topic: topic,
+      blocks: draftBlocksFor(topic, titleTopic),
+    } as PageDraft,
+  };
+}
+
+/**
+ * Topic-aware draft blocks — the cafe (our working demo example) gets a
+ * full rich page; everything else gets a solid generic draft. All clearly
+ * labeled as drafts; the theme comes from the live template.
+ */
+function draftBlocksFor(topic: string, title: string): Array<Record<string, unknown>> {
+  if (/caf[eé]|coffee|espresso|latte|barista/.test(topic.toLowerCase())) {
+    return [
+      { type: "hero", title, tagline: "Fresh brews & warm vibes — spoken into existence" },
+      { type: "text", content: `☕ Welcome to ${title} — where every cup tells a story. This page was built by voice, live, in seconds.` },
+      { type: "text", content: "🍰 Today's favorites: signature lattes, fresh-baked pastries, and a cozy corner with your name on it." },
+      { type: "text", content: "💬 Love what we're brewing? Tips go straight to the crew — they keep 98% of every tip, enforced on-chain." },
+    ];
+  }
+  return [
+    { type: "hero", title, tagline: `Welcome to ${topic} — built by voice` },
+    { type: "text", content: `This is a live draft for "${topic}" — your story, your style, your community.` },
+    { type: "text", content: `Claim it on the dapp to make it yours — you keep 98% of every tip.` },
+  ];
+}
+
+/**
+ * Pull the subject out of "make a blockpage for my bakery" etc.
+ * Keeps it short and safe for display.
+ */
+function extractTopic(spoken: string): string {
+  const m = spoken.match(
+    /(?:blockpage|page|site|website)\s+for\s+(?:my\s+|a\s+|an\s+|the\s+)?(.+?)(?:\s+please)?$/i
+  );
+  let topic = (m?.[1] ?? spoken).trim().replace(/[^\w\s&-]/g, "").trim();
+  if (topic.length > 40) topic = topic.slice(0, 40).trim();
+  return topic || "your page";
+}
+
+/**
+ * Resolve a YouTube channel's current live video ID by scraping the
+ * channel's /live page (same technique as the dapp's /api/youtube-live).
+ * The direct video embed is reliable; the live_stream?channel= resolver
+ * embed proved unreliable in production. Returns null when it can't tell.
+ */
+async function resolveYouTubeVideoId(channel: string): Promise<string | null> {
+  try {
+    const res = await fetch(`https://www.youtube.com/channel/${encodeURIComponent(channel)}/live`, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+    if (!/"isLive":true/.test(html)) return null;
+    const counts = new Map<string, number>();
+    for (const m of html.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)) {
+      counts.set(m[1], (counts.get(m[1]) ?? 0) + 1);
+    }
+    let best: string | null = null;
+    let bestN = 0;
+    for (const [id, n] of counts) {
+      if (n > bestN) {
+        best = id;
+        bestN = n;
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
+/** Pull the username out of a successful lookup_blockpage tool result. */
+function lookedUpUsername(results: Array<{ tool: string; result: unknown }>): string | null {
+  for (const t of results) {
+    if (t.tool !== "lookup_blockpage") continue;
+    const text = (t.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+    if (!text) continue;
+    try {
+      const j = JSON.parse(text) as { found?: boolean; username?: string };
+      if (j.found && j.username) return j.username;
+    } catch {
+      /* not JSON — ignore */
+    }
+  }
+  return null;
+}
+
+/**
+ * One honest line per real tool call, with its actual outcome — the demo's
+ * proof of work. Returns null when the result can't be summarized.
+ */
+function describeToolResult(tool: string, result: unknown): string | null {
+  const text = (result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+  if (!text) return `${tool} → called`;
+  let j: Record<string, unknown>;
+  try {
+    j = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return `${tool} → ok`;
+  }
+  if (tool === "lookup_blockpage") {
+    const u = typeof j.username === "string" ? j.username : "page";
+    return j.found ? `lookup_blockpage("${u}") → found ✓` : `lookup_blockpage("${u}") → not found`;
+  }
+  if (tool === "blockpage_earnings") {
+    const gross = typeof j.total_gross_hbar === "string" ? j.total_gross_hbar : null;
+    const n = typeof j.tip_count === "number" ? j.tip_count : null;
+    if (gross !== null && n !== null) {
+      return `blockpage_earnings → ${gross} HBAR tipped${n === 1 ? "" : "s"} (creator keeps 98%)`;
+    }
+    return "blockpage_earnings → ok";
+  }
+  if (tool === "list_templates") {
+    const n = Array.isArray(j.templates) ? j.templates.length : Array.isArray(j) ? j.length : null;
+    return n !== null ? `list_templates → ${n} live templates` : "list_templates → ok";
+  }
+  if (tool === "list_tip_assets") {
+    const n = Array.isArray(j.assets) ? j.assets.length : null;
+    return n !== null ? `list_tip_assets → ${n} tip assets` : "list_tip_assets → ok";
+  }
+  return `${tool} → ok`;
+}
+
+/**
+ * Pick the best live template for a topic by keyword. Returns the template
+ * record (with its real theme) or null.
+ */
+function pickTemplate(
+  templates: Array<{ id?: string; name?: string; category?: string; theme?: Record<string, string> }>,
+  topic: string
+): { id?: string; name?: string; theme?: Record<string, string> } | null {
+  const t = topic.toLowerCase();
+  const groups: Array<[RegExp, string[]]> = [
+    [/bakery|bread|cake|pastry|donut/, ["coffee-shop", "restaurant"]],
+    [/coffee|cafe|tea|boba/, ["coffee-shop"]],
+    [/restaurant|food|pizza|burger|taco|sushi|diner/, ["restaurant"]],
+    [/gym|fitness|workout|yoga|crossfit/, ["gym"]],
+    [/salon|barber|hair|nails|spa/, ["salon"]],
+    [/shop|store|boutique|retail|clothing/, ["retail-shop"]],
+    [/real\s?estate|realtor|homes?|property/, ["real-estate"]],
+    [/car|auto|garage|mechanic/, ["auto-repair"]],
+    [/movie|cinema|theater|theatre|film/, ["movie-theater"]],
+    [/agent|ai|bot|assistant/, ["agent-personal", "agent-storefront"]],
+  ];
+  for (const [re, ids] of groups) {
+    if (re.test(t)) {
+      for (const id of ids) {
+        const found = templates.find((x) => x.id === id);
+        if (found) return found;
+      }
+    }
+  }
+  return templates.find((x) => x.id === "business-card") ?? templates[0] ?? null;
+}
+
+interface LivePage {
+  blocks: Array<Record<string, unknown>>;
+  theme?: { background?: string; foreground?: string; accent?: string; fontFamily?: string };
+  displayName?: string;
+  purpose?: string;
+}
+
+/**
+ * Fetch a blockpage's full live JSON (resolve -> IPFS) so the demo preview
+ * renders the ACTUAL page — real blocks, real theme, real playing
+ * livestream — instead of a mock.
+ */
+async function fetchLivePage(username: string): Promise<LivePage | null> {
+  try {
+    const r = await fetch(
+      `https://voicescape.vercel.app/api/resolve?username=${encodeURIComponent(username)}`
+    );
+    if (!r.ok) return null;
+    const { ipfsHash } = (await r.json()) as { ipfsHash?: string };
+    if (!ipfsHash) return null;
+    const p = await fetch(`https://gateway.pinata.cloud/ipfs/${ipfsHash}`);
+    if (!p.ok) return null;
+    const page = (await p.json()) as {
+      blocks?: Array<Record<string, unknown>>;
+      theme?: LivePage["theme"];
+      purpose?: string;
+      username?: string;
+    };
+    const hero = (page.blocks ?? []).find((b) => b.type === "hero") as
+      | { title?: string }
+      | undefined;
+    return {
+      blocks: page.blocks ?? [],
+      theme: page.theme,
+      displayName: hero?.title ?? page.username,
+      purpose: page.purpose,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function mcpRpc(method: string, params: Record<string, unknown>, id: number) {
+  const res = await fetch(MCP_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    // No-hang rule: a stuck MCP call fails loudly instead of leaving the
+    // demo spinning on "waking the agent...".
+    signal: AbortSignal.timeout(20_000),
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+  });
+  const text = await res.text();
+  const dataLines = text
+    .split("\n")
+    .filter((l) => l.startsWith("data:"))
+    .map((l) => l.slice(5).trim());
+  for (const line of dataLines) {
+    try {
+      const msg = JSON.parse(line);
+      if (msg.id === id && msg.result !== undefined) return msg.result;
+      if (msg.id === id && msg.error) throw new Error(`mcp: ${msg.error.message ?? "rpc error"}`);
+    } catch (e) {
+      if (e instanceof Error && e.message.startsWith("mcp:")) throw e;
+    }
+  }
+  throw new Error("mcp: no result in stream");
+}
+
+/**
+ * Simple voice edits on the page already on screen. Returns the updated
+ * draft + narration, or null when this isn't an edit (or there's nothing
+ * to edit). Deterministic — the "change the title to X" case just works.
+ */
+function applyEditIntent(
+  spoken: string,
+  draft: {
+    displayName?: string;
+    theme?: Record<string, string>;
+    blocks?: Array<Record<string, unknown>>;
+  } | null
+): { speak: string; steps: string[]; draft: Record<string, unknown> } | null {
+  try {
+    if (!draft || !Array.isArray(draft.blocks) || draft.blocks.length === 0) return null;
+    const clean = (s: string) =>
+      s.trim().replace(/[^\w\s&'’\-.,!?]/g, "").trim().slice(0, 80);
+    const blocks = JSON.parse(JSON.stringify(draft.blocks)) as Array<Record<string, unknown>>;
+    const base = { ...draft, blocks };
+    let m: RegExpMatchArray | null;
+
+    m = spoken.match(/change (?:the )?title to (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      const hero = blocks.find((b) => b.type === "hero");
+      if (hero) hero.title = v;
+      else blocks.unshift({ type: "hero", title: v, tagline: "" });
+      return {
+        speak: `Done — the title is now ${v}.`,
+        steps: ["Heard your edit", `Title → "${v}"`],
+        draft: { ...base, displayName: v },
+      };
+    }
+
+    m = spoken.match(/change (?:the )?tagline to (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      const hero = blocks.find((b) => b.type === "hero");
+      if (hero) hero.tagline = v;
+      else blocks.unshift({ type: "hero", title: draft.displayName ?? "Your page", tagline: v });
+      return {
+        speak: `Done — the tagline is now ${v}.`,
+        steps: ["Heard your edit", `Tagline → "${v}"`],
+        draft: base,
+      };
+    }
+
+    m = spoken.match(/add (?:a )?(?:text|note|paragraph)(?: saying)? (.+)/i);
+    if (m && clean(m[1])) {
+      const v = clean(m[1]);
+      blocks.push({ type: "text", content: v });
+      return {
+        speak: "Added to your page.",
+        steps: ["Heard your edit", `Added: "${v.slice(0, 50)}${v.length > 50 ? "…" : ""}"`],
+        draft: base,
+      };
+    }
+
+    return null;
+  } catch {
+    return null; // never let an edit break the normal flow
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { transcript, lang, currentDraft } = (await req.json()) as {
+      transcript?: string;
+      lang?: string;
+      currentDraft?: {
+        displayName?: string;
+        theme?: Record<string, string>;
+        blocks?: Array<Record<string, unknown>>;
+      } | null;
+    };
+    const spoken = (transcript ?? "").trim();
+    if (!spoken) {
+      return NextResponse.json({ error: "empty transcript" }, { status: 400 });
+    }
+    const langCode = typeof lang === "string" && VOICE_LANG_NAMES[lang] ? lang : "en";
+    const langName = VOICE_LANG_NAMES[langCode];
+
+    // 0. Edit intents: if the user is refining the page on screen ("change
+    //    the title to X"), apply it to their current draft directly — no
+    //    rebuild, no confusion. Deterministic, no AI needed.
+    const edit = applyEditIntent(spoken, currentDraft ?? null);
+    if (edit) {
+      return NextResponse.json({
+        speak: `${edit.speak} Anything else you'd like to change? Just say the word.`,
+        steps: edit.steps,
+        toolResults: [],
+        toolCount: 0,
+        pageDraft: edit.draft,
+        mcp: {
+          endpoint: MCP_ENDPOINT,
+          protocolVersion: MCP_PROTOCOL_VERSION,
+          serverName: "voicescape",
+        },
+        disclaimer:
+          "Demo preview — nothing was claimed or published. Claiming a blockpage happens in the dapp with your own wallet.",
+      });
+    }
+
+    // 1. Plan the build: AI planner first, deterministic fallback if the
+    //    free planning endpoint is down (the MCP calls after this are
+    //    still live either way).
+    let plan: AgentPlan;
+    let plannedBy: string;
+    try {
+      plan = await planWithRetry(spoken, langName);
+      plannedBy = "ai";
+    } catch {
+      plan = fallbackPlan(spoken, langCode);
+      plannedBy = "fallback";
+    }
+
+    // 1b. Danny's Vision tour is deterministic no matter which planner ran:
+    // the constellation is a live visualization, not a blockpage — never
+    // let a plan rebuild it from blocks. Real earnings + the live embed.
+    if (isVisionTour(spoken)) {
+      plan = {
+        speak: FALLBACK_DANNY_SPEAK,
+        steps: ["Heard your request", "Opening the live engine constellation"],
+        toolCalls: [{ name: "blockpage_earnings", arguments: { username: "danny" } }],
+        pageDraft: {
+          displayName: "Danny's Vision",
+          purpose:
+            "The live engine constellation — ENGINE at the center, every satellite backed by real Hedera mainnet data.",
+          embedUrl: GODSEYE_EMBED_URL,
+          blocks: [],
+        },
+      };
+      plannedBy = "vision-tour";
+    }
+
+    // 2. Call the LIVE MCP server over Streamable HTTP (spec 2025-11-25).
+    const init = await mcpRpc(
+      "initialize",
+      {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "voicescape-alexa-demo", version: "0.1.0" },
+      },
+      1
+    );
+
+    const toolResults: Array<{ tool: string; result: unknown }> = [];
+    let callId = 2;
+    for (const call of plan.toolCalls ?? []) {
+      if (!ALLOWED_TOOLS.has(call.name)) continue; // never let the planner reach past read-only
+      try {
+        const result = await mcpRpc("tools/call", { name: call.name, arguments: call.arguments ?? {} }, callId++);
+        toolResults.push({ tool: call.name, result: sanitize(result) });
+      } catch (e) {
+        toolResults.push({
+          tool: call.name,
+          result: { error: e instanceof Error ? e.message : "tool failed" },
+        });
+      }
+    }
+
+    // 3. If the planner looked up a real blockpage, fetch its full live
+    //    JSON so the preview is the ACTUAL page — real blocks, real theme,
+    //    real playing livestream — not a mock.
+    const steps: string[] = plan.steps ?? [];
+    // Narrate each real tool call with its actual outcome — this is the
+    // demo's proof of work, not decoration.
+    for (const tr of toolResults) {
+      const line = describeToolResult(tr.tool, tr.result);
+      if (line) steps.push(line);
+    }
+    const liveUsername = lookedUpUsername(toolResults);
+    let livePage: LivePage | null = null;
+    if (liveUsername) {
+      livePage = await fetchLivePage(liveUsername);
+      if (livePage) {
+        steps.push(`Pulled the live ${liveUsername} blockpage for the preview`);
+        // Resolve YouTube livestream channels to direct video IDs — the
+        // live_stream?channel= resolver embed is unreliable; the direct
+        // video embed (same as the dapp uses) plays.
+        for (const b of livePage.blocks) {
+          if (
+            b.type === "livestream" &&
+            b.platform === "youtube" &&
+            typeof b.channel === "string" &&
+            b.channel
+          ) {
+            const videoId = await resolveYouTubeVideoId(b.channel);
+            if (videoId) {
+              b.videoId = videoId;
+              steps.push("Found the live music stream — it's playing in the preview");
+            }
+          }
+        }
+      }
+    }
+
+    // 3b. Custom draft (no live page): dress it in the best-matching REAL
+    // template — the theme comes from the live template list, not invented.
+    const draftTopic = (plan.pageDraft as Record<string, unknown> | undefined)?._topic;
+    if (!livePage && typeof draftTopic === "string" && draftTopic) {
+      const tplResult = toolResults.find((t) => t.tool === "list_templates");
+      const text = (tplResult?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+      if (text) {
+        try {
+          const j = JSON.parse(text) as { templates?: Array<{ id?: string; name?: string; theme?: Record<string, string> }> };
+          const tpl = pickTemplate(j.templates ?? [], draftTopic);
+          if (tpl?.theme) {
+            plan.pageDraft = {
+              ...plan.pageDraft,
+              theme: {
+                background: tpl.theme.background,
+                foreground: tpl.theme.foreground,
+                accent: tpl.theme.accent,
+                fontFamily: tpl.theme.fontFamily,
+              },
+            };
+            const n = (j.templates ?? []).length;
+            steps.push(`list_templates → ${n} live templates (dressed in "${tpl.name ?? tpl.id}")`);
+          }
+        } catch {
+          /* keep the planner's draft theme */
+        }
+      }
+      // The hint never reaches the client.
+      if (plan.pageDraft) delete (plan.pageDraft as Record<string, unknown>)._topic;
+    }
+
+    const pageDraft: PageDraft = livePage
+      ? {
+          displayName: livePage.displayName ?? plan.pageDraft?.displayName,
+          purpose: livePage.purpose ?? plan.pageDraft?.purpose,
+          theme: livePage.theme ?? plan.pageDraft?.theme,
+          blocks: livePage.blocks,
+        }
+      : plan.pageDraft ?? {};
+
+    const toolCount = toolResults.length;
+    const speakBase = plan.speak ?? "Draft ready.";
+    // The agent calls out its real tool count — no vapor, it's the actual
+    // number of live MCP calls made above — then invites the next command
+    // so the voice loop stays alive.
+    const speakWithCount =
+      toolCount > 0
+        ? `${speakBase} I used ${toolCount} live MCP tool${toolCount === 1 ? "" : "s"}${
+            pageDraft.embedUrl ? " to pull this up live" : " to build this"
+          }.`
+        : speakBase;
+    // The fun tip brag — plain human language, real on-chain numbers, for
+    // the music/lookup flow. This is what makes us different: 98% to the
+    // artist, enforced by the contract, at a fraction of a cent in fees.
+    let tipBrag = "";
+    if (liveUsername) {
+      const earnResult = toolResults.find((t) => t.tool === "blockpage_earnings");
+      const earnText = (earnResult?.result as { content?: Array<{ text?: string }> })?.content?.[0]?.text;
+      try {
+        const ej = JSON.parse(earnText ?? "") as { tip_count?: number; total_gross_hbar?: string };
+        if (typeof ej.tip_count === "number" && ej.tip_count > 0 && typeof ej.total_gross_hbar === "string") {
+          const who = livePage?.displayName ?? liveUsername;
+          const tipWord = ej.tip_count === 1 ? "tip" : "tips";
+          // Round for speech — "zero point four five HBAR" beats nine
+          // decimals read aloud. Same real number, spoken cleanly.
+          const grossSpoken = (() => {
+            const n = Number(ej.total_gross_hbar);
+            if (!Number.isFinite(n)) return ej.total_gross_hbar;
+            return String(Math.round(n * 100) / 100);
+          })();
+          tipBrag =
+            ` And here's the fun part — ${who} has already been tipped ${grossSpoken} HBAR ` +
+            `across ${ej.tip_count} ${tipWord}, and kept 98 percent of every single one. ` +
+            `Not 98 percent as a promise — 98 percent enforced by the smart contract itself. ` +
+            `On a normal card rail, a one-dollar tip can lose thirty-three cents to fees. ` +
+            `On Hedera, it costs a fraction of a cent.`;
+        }
+      } catch {
+        /* no brag without real numbers */
+      }
+    }
+    const speak = `${speakWithCount}${tipBrag} Want to look up another page, or build your own next? Just say the word.`;
+    if (toolCount > 0) steps.push(`${toolCount} MCP tool${toolCount === 1 ? "" : "s"} called ⚡`);
+
+    return NextResponse.json({
+      speak,
+      steps,
+      toolResults,
+      toolCount,
+      pageDraft,
+      mcp: {
+        endpoint: MCP_ENDPOINT,
+        protocolVersion: init?.protocolVersion ?? MCP_PROTOCOL_VERSION,
+        serverName: init?.serverInfo?.name ?? "voicescape",
+      },
+      disclaimer:
+        "Demo preview — nothing was claimed or published. Claiming a blockpage happens in the dapp with your own wallet.",
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "agent failed" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET /api/alexa-demo/agent — live MCP tool count for the demo badge.
+ * Reads tools/list from the REAL Voicescape MCP server over Streamable HTTP
+ * (spec 2025-11-25) so the "N tools" number on the demo can never go stale
+ * when tools are added. Read-only; no keys, no wallet, no writes.
+ * The client falls back to the last verified count if this 503s.
+ */
+export async function GET() {
+  try {
+    await mcpRpc(
+      "initialize",
+      {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        capabilities: {},
+        clientInfo: { name: "voicescape-alexa-demo", version: "0.1.0" },
+      },
+      1
+    );
+    const list = (await mcpRpc("tools/list", {}, 2)) as { tools?: unknown[] };
+    const n = Array.isArray(list?.tools) ? list.tools.length : 0;
+    if (n <= 0) throw new Error("empty tool list");
+    return NextResponse.json({ toolCount: n });
+  } catch {
+    return NextResponse.json({ error: "mcp unreachable" }, { status: 503 });
+  }
+}

@@ -5,6 +5,7 @@
  * PageRenderer, and the BYOK vibecode system prompt (lib/byok.ts).
  */
 import { isPlatformId, type PlatformId } from "./socials";
+import type { ThemeVariant } from "./template-variants";
 
 export type Block =
   | {
@@ -185,6 +186,13 @@ export interface VoicescapePage {
     foreground: string;
     accent: string;
     fontFamily: string;
+    /**
+     * Builder stepped flow (2026-10-18): optional seeded visual variant
+     * of the template's theme. Type-level only — isValidPage below keeps
+     * checking just the 4 required string fields, so an extra `variant`
+     * key never fails validation.
+     */
+    variant?: ThemeVariant;
   };
   blocks: Block[];
 }

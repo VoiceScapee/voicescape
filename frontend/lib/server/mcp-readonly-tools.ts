@@ -34,4 +34,5 @@ export const READONLY_TOOLS = new Set([
   "get_nft_collection",
   "prepare_milestone_commit",
   "verify_milestone_commit",
+  "self_fund_hedera",
 ]);

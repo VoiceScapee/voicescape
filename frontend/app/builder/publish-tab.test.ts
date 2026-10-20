@@ -1,8 +1,9 @@
 /**
- * Builder publish-tab handoff tests (source assertions, repo convention):
+ * Builder publish-step handoff tests (source assertions, repo convention):
  * the chat widget's "Publish page" button hands a Buddy draft to the
  * builder with a one-time intent flag; the builder must open its existing
- * Publish tab (no duplicated publish logic).
+ * Publish step (no duplicated publish logic). Stepped flow (2026-10-18):
+ * the old tab switch is now a path + step switch.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -17,9 +18,12 @@ const onboardingSrc = readFileSync(
 );
 
 describe("builder publish handoff", () => {
-  it("consumes the one-time Buddy publish intent and opens the Publish tab", () => {
+  it("consumes the one-time Buddy publish intent and opens the Publish step", () => {
     expect(builderSrc).toContain("consumeBuddyPublishIntent");
-    expect(builderSrc).toContain('setTab("publish")');
+    // Stepped flow: the handoff lands on the AI path's publish step
+    // (a Buddy draft is AI-assisted work).
+    expect(builderSrc).toContain('setAiStep("publish")');
+    expect(builderSrc).toContain('setPath("ai")');
   });
 
   it("supports a /builder?tab=publish deep link", () => {
@@ -38,7 +42,7 @@ describe("builder publish handoff", () => {
   });
 
   it("does not duplicate the publish flow — the existing PublishPanel stays the owner", () => {
-    // The handoff only switches tabs; PublishPanel keeps doing the
+    // The handoff only switches steps; PublishPanel keeps doing the
     // signing/pinning/registering. No second publish implementation.
     expect(builderSrc).toContain("PublishPanel");
     expect(builderSrc).not.toContain("publishBuddyDraft");
