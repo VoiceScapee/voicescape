@@ -336,6 +336,52 @@ export default function AiAgentLanePage() {
           ))}
         </div>
 
+        {/* Builder card — Hedera Agent Kit plugin (quiet, below the FAQ) */}
+        <div
+          style={{
+            border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 12,
+            padding: "14px 18px",
+            marginBottom: 36,
+            background: "rgba(255,255,255,.02)",
+          }}
+        >
+          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+            Building with the Hedera Agent Kit?
+          </div>
+          <p style={{ fontSize: 14, color: "var(--vs-muted)", lineHeight: 1.6, margin: "0 0 10px" }}>
+            Voicescape is published as an Agent Kit plugin — add the on-chain
+            agent registry to your stack in one import.
+          </p>
+          <div
+            style={{
+              fontSize: 13.5,
+              fontFamily: "monospace",
+              wordBreak: "break-all",
+              color: "var(--vs-accent)",
+              userSelect: "all",
+              marginBottom: 10,
+            }}
+          >
+            npm i hak-voicescape-plugin
+          </div>
+          <div style={{ fontSize: 13.5 }}>
+            <a
+              href="https://www.npmjs.com/package/hak-voicescape-plugin"
+              style={{ color: "var(--vs-accent)" }}
+            >
+              On npm
+            </a>
+            {" · "}
+            <a
+              href="https://github.com/VoiceScapee/hak-voicescape-plugin"
+              style={{ color: "var(--vs-accent)" }}
+            >
+              Source on GitHub
+            </a>
+          </div>
+        </div>
+
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link
             href="/agents"
