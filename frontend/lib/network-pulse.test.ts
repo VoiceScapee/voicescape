@@ -11,6 +11,13 @@ import {
   parseMirrorTimestampMs,
   formatBlockAgo,
   formatBlockNumber,
+  txFinalitySeconds,
+  formatFinality,
+  sampleTps,
+  medianFinalitySeconds,
+  nodeAccountToCity,
+  groupTxByCity,
+  selectHeroTxs,
 } from "./network-pulse";
 
 describe("planBlockPulses", () => {
@@ -248,5 +255,108 @@ describe("vision feed helpers", () => {
     expect(shortHash("0xa37f5d71abebed339bdeda3207f7f9197823d3867731cd364696c94334cf8d99ad25f896dfc835400d7e98e40f99bcda")).toBe(
       "0xa37f…bcda",
     );
+  });
+});
+
+describe("gossip layer helpers", () => {
+  const mkTx = (over: Record<string, unknown>) => ({
+    transaction_id: "0.0.1-1700000000-123456789",
+    name: "CRYPTOTRANSFER",
+    node: "0.0.38",
+    consensus_timestamp: "1700000005.500000000",
+    valid_start_timestamp: "1700000000.000000000",
+    transaction_hash: "0xabc",
+    transfers: [{ account: "0.0.1", amount: -100 }],
+    ...over,
+  });
+
+  it("txFinalitySeconds measures the tx's own interval, exactly", () => {
+    expect(txFinalitySeconds(mkTx({}))).toBeCloseTo(5.5, 2);
+  });
+
+  it("txFinalitySeconds rejects missing/negative intervals — never guesses", () => {
+    expect(txFinalitySeconds(mkTx({ consensus_timestamp: undefined }))).toBeNull();
+    expect(txFinalitySeconds(mkTx({ valid_start_timestamp: "garbage" }))).toBeNull();
+    expect(
+      txFinalitySeconds(
+        mkTx({
+          consensus_timestamp: "1700000000.000000000",
+          valid_start_timestamp: "1700000005.500000000",
+        }),
+      ),
+    ).toBeNull();
+    expect(txFinalitySeconds({} as never)).toBeNull();
+  });
+
+  it("formatFinality renders one decimal", () => {
+    expect(formatFinality(5.66)).toBe("5.7s");
+  });
+
+  it("sampleTps derives tx/s from the consensus span", () => {
+    const txs = [
+      mkTx({ consensus_timestamp: "1700000004.000000000" }),
+      mkTx({ consensus_timestamp: "1700000002.000000000" }),
+      mkTx({ consensus_timestamp: "1700000000.000000000" }),
+    ];
+    expect(sampleTps(txs)).toBeCloseTo(0.5, 3);
+  });
+
+  it("sampleTps refuses zero spans and tiny samples", () => {
+    expect(sampleTps([])).toBeNull();
+    expect(sampleTps([mkTx({})])).toBeNull();
+    expect(
+      sampleTps([
+        mkTx({ consensus_timestamp: "1700000000.000000000" }),
+        mkTx({ consensus_timestamp: "1700000000.000000000" }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("medianFinalitySeconds is the median of valid intervals", () => {
+    const txs = [1, 3, 9].map((s) =>
+      mkTx({
+        consensus_timestamp: `170000000${s}.000000000`,
+        valid_start_timestamp: "1700000000.000000000",
+      }),
+    );
+    expect(medianFinalitySeconds(txs)).toBe(3);
+    const even = [1, 3].map((s) =>
+      mkTx({
+        consensus_timestamp: `170000000${s}.000000000`,
+        valid_start_timestamp: "1700000000.000000000",
+      }),
+    );
+    expect(medianFinalitySeconds(even)).toBe(2);
+    expect(medianFinalitySeconds([mkTx({ consensus_timestamp: undefined })])).toBeNull();
+  });
+
+  it("nodeAccountToCity maps account ids from the address book", () => {
+    const map = nodeAccountToCity([
+      { node_account_id: "0.0.3", description: "Hosted by LG | Singapore" },
+      { node_account_id: "0.0.4", description: "Hosted by Swirlds | Iowa, USA" },
+      { node_account_id: "0.0.5", description: "" },
+      { description: "no account id" },
+    ]);
+    expect(map).toEqual({ "0.0.3": "Singapore", "0.0.4": "Iowa, USA" });
+  });
+
+  it("groupTxByCity counts per city and skips unknown nodes", () => {
+    const by = groupTxByCity(
+      [mkTx({ node: "0.0.38" }), mkTx({ node: "0.0.38" }), mkTx({ node: "0.0.999" })],
+      { "0.0.38": "Singapore" },
+    );
+    expect(by.get("Singapore")).toBe(2);
+    expect(by.size).toBe(1);
+  });
+
+  it("selectHeroTxs prefers value transfers, dedupes, and caps", () => {
+    const a = mkTx({ transaction_id: "a", name: "CRYPTOTRANSFER", transfers: [{ account: "0.0.1", amount: -5 }] });
+    const b = mkTx({ transaction_id: "b", name: "CONSENSUSSUBMITMESSAGE" });
+    const c = mkTx({ transaction_id: "c", consensus_timestamp: undefined }); // no finality
+    const seen = new Set(["a"]);
+    const heroes = selectHeroTxs([a, b, c], seen, 4);
+    expect(heroes.map((t) => t.transaction_id)).toEqual(["b"]);
+    const fresh = selectHeroTxs([a, b], new Set(), 1);
+    expect(fresh.map((t) => t.transaction_id)).toEqual(["a"]);
   });
 });

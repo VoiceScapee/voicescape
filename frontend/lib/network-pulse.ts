@@ -289,3 +289,160 @@ export function shortHash(hash: string): string {
   if (typeof hash !== "string" || hash.length < 12) return hash;
   return `${hash.slice(0, 6)}…${hash.slice(-4)}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Gossip layer — live "not a blockchain" visualization                */
+/*                                                                     */
+/* Every helper is pure: the browser shows real mirror-node data only.  */
+/* Nothing here guesses. Anything malformed returns null / is skipped, */
+/* so the constellation sits honestly quiet instead of rendering       */
+/* simulated network activity.                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Minimal shape of a mirror /api/v1/transactions row needed by the
+ * gossip layer. Field `node` is the submitting consensus node's account
+ * id (e.g. "0.0.38") — the real evidence of where each transaction
+ * entered the gossip network.
+ */
+export interface GossipTx {
+  transaction_id?: unknown;
+  name?: unknown;
+  node?: unknown;
+  consensus_timestamp?: unknown;
+  valid_start_timestamp?: unknown;
+  transaction_hash?: unknown;
+  transfers?: unknown;
+}
+
+/**
+ * String-guarded timestamp parse: malformed rows yield NaN, never a
+ * throw. parseMirrorTimestampMs assumes a string; gossip rows arrive as
+ * unknown-shaped mirror JSON.
+ */
+const gossipTsMs = (v: unknown): number =>
+  typeof v === "string" ? parseMirrorTimestampMs(v) : NaN;
+
+/**
+ * That transaction's OWN finality time: consensus_timestamp minus
+ * valid_start_timestamp, in seconds. Exact via parseMirrorTimestampMs.
+ * Null for any malformed or non-positive interval — a ripple never
+ * shows a guessed number.
+ */
+export function txFinalitySeconds(tx: GossipTx): number | null {
+  if (!tx || typeof tx !== "object") return null;
+  const c = gossipTsMs(tx.consensus_timestamp);
+  const v = gossipTsMs(tx.valid_start_timestamp);
+  if (!Number.isFinite(c) || !Number.isFinite(v)) return null;
+  const s = (c - v) / 1000;
+  return Number.isFinite(s) && s > 0 ? s : null;
+}
+
+/** Format a finality readout: 5.66 -> "5.7s". */
+export function formatFinality(seconds: number): string {
+  return `${seconds.toFixed(1)}s`;
+}
+
+/**
+ * Live TPS from a mirror transaction window (order=desc): (n-1) over the
+ * consensus-timestamp span. Null when the span is zero or unusable —
+ * the vitals line omits TPS rather than printing a guess.
+ */
+export function sampleTps(txs: GossipTx[]): number | null {
+  if (!Array.isArray(txs) || txs.length < 2) return null;
+  const newest = gossipTsMs(txs[0].consensus_timestamp);
+  const oldest = gossipTsMs(txs[txs.length - 1].consensus_timestamp);
+  if (!Number.isFinite(newest) || !Number.isFinite(oldest)) return null;
+  const span = (newest - oldest) / 1000;
+  if (!Number.isFinite(span) || span <= 0) return null;
+  return (txs.length - 1) / span;
+}
+
+/**
+ * Median finality of a transaction sample. Null when no tx in the sample
+ * yields a valid finality — honest silence over a fake number.
+ */
+export function medianFinalitySeconds(txs: GossipTx[]): number | null {
+  if (!Array.isArray(txs) || txs.length === 0) return null;
+  const finals = txs
+    .map(txFinalitySeconds)
+    .filter((s): s is number => s !== null)
+    .sort((a, b) => a - b);
+  if (finals.length === 0) return null;
+  const mid = Math.floor(finals.length / 2);
+  return finals.length % 2 === 1
+    ? finals[mid]
+    : (finals[mid - 1] + finals[mid]) / 2;
+}
+
+/**
+ * Submitting-node account id -> consensus city, from the /api/v1/network/nodes
+ * address book. Entries without a usable account id or city are skipped.
+ */
+export function nodeAccountToCity(
+  nodes: { node_account_id?: unknown; description?: unknown }[],
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!Array.isArray(nodes)) return out;
+  for (const n of nodes) {
+    if (!n || typeof n !== "object") continue;
+    const acct =
+      typeof n.node_account_id === "string" ? n.node_account_id : null;
+    const city = parseNodeCity(n.description);
+    if (acct && city) out[acct] = city;
+  }
+  return out;
+}
+
+/**
+ * City -> transaction count for one gossip sample. Transactions whose
+ * submitting node isn't in the address-book map are skipped (never
+ * attributed to the wrong city).
+ */
+export function groupTxByCity(
+  txs: GossipTx[],
+  nodeCity: Record<string, string>,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  if (!Array.isArray(txs)) return out;
+  for (const t of txs) {
+    if (!t || typeof t !== "object") continue;
+    const city =
+      typeof t.node === "string" ? nodeCity[t.node] : undefined;
+    if (!city) continue;
+    out.set(city, (out.get(city) ?? 0) + 1);
+  }
+  return out;
+}
+
+const GOSSIP_TX_ID = (t: GossipTx): string | null =>
+  typeof t.transaction_id === "string" ? t.transaction_id : null;
+
+/**
+ * Pick hero transactions for the full ripple treatment: fresh
+ * CRYPTOTRANSFER rows carrying real transfers first (value moved is
+ * the most legible gossip story), then any other fresh transactions to
+ * fill up to `count`. Never returns a tx without a valid finality —
+ * the ripple's "FINAL · Xs" label must always be that tx's own number.
+ */
+export function selectHeroTxs(
+  txs: GossipTx[],
+  seenIds: Set<string>,
+  count: number,
+): GossipTx[] {
+  if (!Array.isArray(txs) || count <= 0) return [];
+  const fresh = txs.filter((t) => {
+    if (!t || typeof t !== "object") return false;
+    const id = GOSSIP_TX_ID(t);
+    if (!id || seenIds.has(id)) return false;
+    return txFinalitySeconds(t) !== null;
+  });
+  const withValue = fresh.filter(
+    (t) =>
+      t.name === "CRYPTOTRANSFER" &&
+      Array.isArray(t.transfers) &&
+      t.transfers.length > 0,
+  );
+  const rest = fresh.filter((t) => !withValue.includes(t));
+  return [...withValue, ...rest].slice(0, count);
+}
