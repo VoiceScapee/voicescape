@@ -130,7 +130,18 @@ export default function Navbar({
   const [open, setOpen] = useState(false);
   // Which mobile accordion group is expanded (null = all collapsed).
   const [openGroup, setOpenGroup] = useState<string | null>("create");
+  // D4: once the page scrolls, the transparent header gains a translucent
+  // solid + blur (vs-nav-scrolled) so content stops sliding visibly
+  // through the gaps between the pulse chip, badge, and burger.
+  const [scrolled, setScrolled] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   // The mobile menu closes on outside tap or Escape, same as NavDropdown.
   useEffect(() => {
@@ -175,7 +186,9 @@ export default function Navbar({
       // (Brandon 2026-10-01): while the mobile menu is open the header goes
       // solid — page content scrolling through behind the open menu looked
       // broken. Desktop keeps the floating look.
-      className={open ? "vs-nav-menu-open" : undefined}
+      className={
+        open ? "vs-nav-menu-open" : scrolled ? "vs-nav-scrolled" : undefined
+      }
       style={{
         position: "sticky",
         top: 0,
@@ -188,14 +201,13 @@ export default function Navbar({
       <nav
         className="vs-nav"
         style={{
-          maxWidth: 1080,
+          maxWidth: "var(--vs-reading)",
           margin: "0 auto",
-          padding: "12px 24px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 16,
-          // Anchor for the mobile menu panel.
+          // Padding + gap live in .vs-nav (globals.css) so narrow widths
+          // can tighten them (M1/D2).
           position: "relative",
         }}
       >
@@ -234,6 +246,7 @@ export default function Navbar({
         </button>
         {/* Global network pulse: the dapp breathing with Hedera mainnet. */}
         <span
+          className="vs-pulse-badge-wrap"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -252,7 +265,15 @@ export default function Navbar({
               target="_blank"
               rel="noreferrer"
               aria-label="Commonworld Atlas: Verified"
-              style={{ display: "inline-flex", flexShrink: 0 }}
+              className="vs-atlas-badge"
+              style={{
+                display: "inline-flex",
+                flexShrink: 0,
+                /* M2: 12px vertical padding lifts the 20px artwork to a
+                   44px hit area; M1: artwork drops to 16px below 480px
+                   via .vs-atlas-badge img in globals.css. */
+                padding: "12px 0",
+              }}
             >
               <img
                 src="https://commonworld.one/atlas/badge/voicescape-dark.svg"

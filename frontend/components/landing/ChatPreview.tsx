@@ -28,13 +28,17 @@ function shortAuthor(a: string): string {
 
 export function ChatPreview() {
   const [msgs, setMsgs] = useState<ChatMsg[] | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
       try {
         const res = await fetch("/api/townhall/chat/lobby", { cache: "no-store" });
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (alive) setFailed(true);
+          return;
+        }
         const json = (await res.json()) as { messages?: ChatMsg[] };
         if (alive && Array.isArray(json.messages)) {
           // Skip dev/test posts — the landing showcase must never present
@@ -43,6 +47,7 @@ export function ChatPreview() {
         }
       } catch {
         /* preview stays hidden on failure */
+        if (alive) setFailed(true);
       }
     };
     void load();
@@ -53,7 +58,30 @@ export function ChatPreview() {
     };
   }, []);
 
-  // Nothing to show yet (or chat unreachable) — hide, don't show an empty box.
+  // Loading: reserve the section's space with the same shimmer shape the
+  // other sections use, so late-arriving messages don't shove content
+  // down. Failed or empty: hide entirely — never a dead box, and the
+  // hide-when-empty honesty contract is unchanged.
+  if (msgs === null && !failed) {
+    return (
+      <section className="vs-section" style={{ paddingTop: 0 }} aria-hidden="true">
+        <p className="vs-label">
+          <T k="landing.lobbyLabel" />
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="vs-glass vs-anim-shimmer"
+              style={{ borderRadius: 14, padding: "12px 14px", minHeight: 64, maxWidth: "92%" }}
+            />
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  // Nothing to show (or chat unreachable) — hide, don't show an empty box.
   if (!msgs || msgs.length === 0) return null;
 
   return (

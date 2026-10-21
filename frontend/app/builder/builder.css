@@ -67,7 +67,10 @@
 
 .vb-brand {
   width: 100%;
-  max-width: 1120px;
+  /* D3: aligned to the shared reading width (1080px, --vs-reading) so the
+     builder shell matches the landing/explore shells; single-column
+     reading views (public blockpages) keep the 860px narrow width. */
+  max-width: var(--vs-reading);
   margin: 0 auto;
   padding: 26px 20px 6px;
 }

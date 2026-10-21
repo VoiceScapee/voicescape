@@ -49,7 +49,9 @@ export default function BuiltOnHedera() {
       <p
         style={{
           margin: 0,
-          fontSize: 11,
+          /* C2: 11px at opacity 0.8 was the page's weakest text (and it
+             carries the legal disclaimer) — 12px lifts it. */
+          fontSize: 12,
           lineHeight: 1.6,
           color: "var(--vs-muted)",
           opacity: 0.8,
