@@ -43,6 +43,7 @@ export default function LandingPage() {
       <main id="enter">
         <Navbar
           hideLogo
+          atlasBadge
           right={
             <WalletConnect />
           }
