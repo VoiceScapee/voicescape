@@ -50,6 +50,9 @@ describe("selfFundHederaTool", () => {
     expect(r.route.from_chain_id).toBe("solana");
     expect(r.route.from_token).toBe("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
     expect(r.steps[3].detail).toContain("Solana");
+    // Solana routes through Chainflip first, then Axelar — never Axelar-only.
+    expect(r.route.via).toContain("Chainflip");
+    expect(r.summary).toContain("Chainflip");
     // Default amount applies.
     expect(r.summary).toContain("$5 USDC");
   });
