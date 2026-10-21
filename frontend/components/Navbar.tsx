@@ -18,6 +18,12 @@ interface NavbarProps {
    * Every other destination stays exactly as-is.
    */
   hideLogo?: boolean;
+  /**
+   * Show the Commonworld Atlas Verified badge beside the NetworkPulse
+   * heartbeat chip (Brandon 2026-10-21). Homepage only: the navbar row is
+   * already tight on phones, so other pages stay exactly as-is.
+   */
+  atlasBadge?: boolean;
 }
 
 /**
@@ -116,7 +122,11 @@ function MobileNavGroup({
   );
 }
 
-export default function Navbar({ right, hideLogo = false }: NavbarProps) {
+export default function Navbar({
+  right,
+  hideLogo = false,
+  atlasBadge = false,
+}: NavbarProps) {
   const [open, setOpen] = useState(false);
   // Which mobile accordion group is expanded (null = all collapsed).
   const [openGroup, setOpenGroup] = useState<string | null>("create");
@@ -223,7 +233,36 @@ export default function Navbar({ right, hideLogo = false }: NavbarProps) {
           <span aria-hidden="true">{open ? "✕" : "☰"}</span>
         </button>
         {/* Global network pulse: the dapp breathing with Hedera mainnet. */}
-        <NetworkPulse />
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            minWidth: 0,
+          }}
+        >
+          <NetworkPulse />
+          {atlasBadge ? (
+            /* Commonworld Atlas Verified badge (dark variant: chrome sits
+               on #090b12). Plain SVG, no scripts/cookies/tracking; updates
+               with Atlas weekly checks. Card:
+               https://commonworld.one/atlas/platforms/voicescape/ */
+            <a
+              href="https://commonworld.one/atlas/platforms/voicescape/"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Commonworld Atlas: Verified"
+              style={{ display: "inline-flex", flexShrink: 0 }}
+            >
+              <img
+                src="https://commonworld.one/atlas/badge/voicescape-dark.svg"
+                alt="Commonworld Atlas: Verified"
+                height="20"
+                style={{ display: "block" }}
+              />
+            </a>
+          ) : null}
+        </span>
         <div className={`vs-nav-items${open ? " vs-nav-open" : ""}`}>
           {/* Desktop: grouped dropdowns. Mobile: accordions below. */}
           <div className="vs-nav-desktop-only">
