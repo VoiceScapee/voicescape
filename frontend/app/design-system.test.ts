@@ -5,6 +5,13 @@
  * and identity tokens in app/globals.css so a later edit can't silently
  * drift off the approved system (e.g. reintroducing the artifact's
  * misnamed --green violet token).
+ *
+ * TYPE UPDATE (sorting-colors UI, Brandon-approved 2026-10-21): the
+ * type system standardized on Montserrat for display AND body (Hedera's
+ * own published free replacement; Styrene is licensed and never used).
+ * DM_Sans was retired — the test below pins its absence so a later edit
+ * can't silently reintroduce it. IBM Plex Mono stays for mono contexts
+ * (numbers, handles, timestamps) only.
  */
 import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -63,10 +70,11 @@ describe("design-system tokens", () => {
     expect(css).not.toMatch(/#10b981|#34d399|#6ee7b7/);
   });
 
-  it("wires the three typefaces through next/font variables", () => {
+  it("wires the typefaces through next/font variables (Montserrat display + body, mono for numbers)", () => {
     expect(layout).toMatch(/Montserrat/);
-    expect(layout).toMatch(/DM_Sans/);
     expect(layout).toMatch(/IBM_Plex_Mono/);
+    // DM_Sans retired by the sorting-colors UI direction — pin its absence.
+    expect(layout).not.toMatch(/DM_Sans/);
     expect(css).toMatch(/--font-display/);
     expect(css).toMatch(/--font-sans/);
     expect(css).toMatch(/--font-mono/);
