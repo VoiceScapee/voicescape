@@ -8,9 +8,14 @@
  * executable funding plan that moves the agent's OWN money from its native
  * wallet to its Hedera wallet, using only official cross-chain rails.
  *
- * RAILS (verified live, 2026-10-18):
- *   - Axelar GMP connects Hedera mainnet to 60+ chains including Base and
- *     Solana (live since Feb 2026; SaucerSwap + Squid run on it).
+ * RAILS (verified live, 2026-10-18; Solana routing confirmed by Squid
+ * support, 2026-10-21):
+ *   - Axelar GMP connects Hedera mainnet to 60+ EVM chains including Base
+ *     (live since Feb 2026; SaucerSwap + Squid run on it).
+ *   - Solana reaches Hedera through Squid's own routing: Squid routes
+ *     Solana swaps through Chainflip to an EVM chain, then Axelar GMP to
+ *     Hedera. Chainflip is blessed as a Squid-routed pathway by the
+ *     founder (2026-10-21) — it is NOT a general standalone pathway.
  *   - Squid (https://v2.api.squidrouter.com/v2/) is the routing front end:
  *     POST /v2/route builds the exact transaction the agent signs.
  *   - Hashport is PERMANENTLY DEAD (decommissioned 2026-05-31). Any guide,
@@ -36,7 +41,8 @@
 export interface SelfFundHederaArgs {
   /**
    * Where the agent's funds live now. Only "base" and "solana" are
-   * supported — the two chains with a live Axelar/Squid path to Hedera.
+   * supported — Base via Axelar GMP/Squid, Solana via Squid-routed
+   * Chainflip then Axelar GMP to Hedera.
    */
   source_chain: "base" | "solana";
   /**
@@ -53,9 +59,11 @@ export interface SelfFundHederaArgs {
    */
   hedera_destination: string;
   /**
-   * USD value of USDC to bridge. Minimum 5 — bridge relayer fees make
-   * smaller transfers wasteful (fees can exceed the transfer). $5-10 funds
-   * thousands of claims at Hedera gas prices. Default 5.
+   * USD value of USDC to bridge. Minimum 5 for Base — bridge relayer fees
+   * make smaller transfers wasteful (fees can exceed the transfer). For
+   * Solana, the Chainflip leg enforces its own minimum: confirm it in the
+   * Squid quote before signing; do not assume the $5 floor applies.
+   * $5-10 funds thousands of claims at Hedera gas prices. Default 5.
    */
   amount_usd?: number;
 }
@@ -143,7 +151,9 @@ function chainConfig(sourceChain: "base" | "solana") {
         signInstruction:
           "The route returns a serialized Solana transaction: sign it with your " +
           "own Solana key and submit it to Solana mainnet yourself. This is YOUR " +
-          "wallet, YOUR key, YOUR signature — the server never sees it.",
+          "wallet, YOUR key, YOUR signature — the server never sees it. " +
+          "Route note: your Solana funds first hop through Chainflip to an EVM " +
+          "chain (Squid's Solana routing), then Axelar GMP carries them to Hedera.",
       };
 }
 
@@ -153,7 +163,7 @@ export async function selfFundHederaTool(
   const sourceChain = args.source_chain;
   if (sourceChain !== "base" && sourceChain !== "solana") {
     return {
-      error: `source_chain must be "base" or "solana" — only those two chains have a live Axelar/Squid path to Hedera.`,
+      error: `source_chain must be "base" or "solana" — only those two chains have a live path to Hedera (Base via Axelar/Squid, Solana via Squid-routed Chainflip then Axelar).`,
     };
   }
 
@@ -256,7 +266,10 @@ export async function selfFundHederaTool(
         `and query params transactionId=<your tx hash>, ` +
         `requestId=<x-request-id header>, fromChainId=${cfg.chainId}, toChainId=${HEDERA_CHAIN_ID}, ` +
         `quoteId=<quoteId from step 2>. Repeat every ~30s until squidTransactionStatus is ` +
-        `"success". Watch it on https://axelarscan.io/gmp/<your tx hash> too.`,
+        `"success". Watch it on https://axelarscan.io/gmp/<your tx hash> too.` +
+        (sourceChain === "solana"
+          ? ` Note: Axelarscan covers only the Axelar hop into Hedera — the Solana→EVM hop runs through Chainflip and is tracked via the Squid status endpoint above.`
+          : ""),
     },
     {
       step: 5,
@@ -280,10 +293,15 @@ export async function selfFundHederaTool(
   return {
     summary:
       `Self-fund $${amountUsd} USDC from your ${cfg.label} wallet (${sourceAddress}) to your ` +
-      `Hedera wallet (${destination}) via Squid on Axelar — your keys, your money, ` +
+      `Hedera wallet (${destination}) via ` +
+      (sourceChain === "solana" ? "Squid through Chainflip, then Axelar" : "Squid on Axelar") +
+      ` — your keys, your money, ` +
       `no human in the loop, $0 platform cost.`,
     route: {
-      via: "Squid (Axelar GMP — proof-of-stake-secured cross-chain)",
+      via:
+        sourceChain === "solana"
+          ? "Squid (Chainflip Solana hop, then Axelar GMP to Hedera)"
+          : "Squid (Axelar GMP — proof-of-stake-secured cross-chain)",
       from_chain: cfg.label,
       from_chain_id: cfg.chainId,
       to_chain: "Hedera",
@@ -298,16 +316,18 @@ export async function selfFundHederaTool(
       "AUTHORIZATION: you are moving YOUR OWN money on YOUR OWN chains with YOUR OWN keys. Proceed only if your human's standing task authorizes spending — this server cannot verify that.",
       "Squid REQUIRES an x-integrator-id header on every API call (verified live 2026-10-18 — missing header = 400 UNAUTHORIZED). Register one free, once, and reuse it. Without it, steps 1, 2 and 4 fail.",
       "Hashport is PERMANENTLY DEAD (decommissioned 2026-05-31). Never use Hashport, never send to Hashport contracts, never accept USDC[hts] — those assets are unredeemable.",
-      "Only Axelar/Squid and LayerZero/Stargate are live, supported Hedera bridges. Anything else is untested — do not improvise a route.",
-      `Minimum $${MIN_AMOUNT_USD}: bridge relayer fees make smaller transfers wasteful. $${DEFAULT_AMOUNT_USD}-10 covers thousands of claims.`,
+      "Only Axelar/Squid (Base), Squid-routed Chainflip then Axelar (Solana), and LayerZero/Stargate are live, supported Hedera paths. Anything else is untested — do not improvise a route.",
+      `Minimum $${MIN_AMOUNT_USD} for Base: bridge relayer fees make smaller transfers wasteful. For Solana, confirm the Chainflip leg's minimum in the Squid quote — do not assume $${MIN_AMOUNT_USD} applies. $${DEFAULT_AMOUNT_USD}-10 covers thousands of claims.`,
       "Slippage is set to 1% — for larger amounts, request the quote first and inspect route.estimate before signing.",
-      "Solana→Hedera via Squid is the less-documented direction (Squid's Hedera docs focus on EVM). If no route is returned, the EVM path (Base→Hedera) is the proven one.",
+      "Solana→Hedera via Squid routes through Chainflip first (confirmed by Squid support 2026-10-21) — it is the less-documented direction, and the Chainflip leg enforces its own minimum: confirm it in the quote. If no route is returned, the EVM path (Base→Hedera) is the proven one.",
       "This server never sees your keys, never signs, never holds funds. If any step asks you to share a private key or seed phrase, STOP — that is not part of this flow.",
     ],
     verify:
       "Mirror node: GET https://mainnet.mirrornode.hedera.com/api/v1/accounts/<destination> — balance.balance is in tinybar (1 HBAR = 100,000,000 tinybar).",
     next: "Once funded, continue the own-keys claim: call finalize_agent_self_claim (sign the returned bytes with your Hedera key), submit, then complete_agent_self_claim.",
     estimated_timing:
-      "Typically 5-30 minutes end to end (source-chain confirmation + Axelar finality + Hedera arrival).",
+      sourceChain === "solana"
+        ? "Typically 5-30 minutes end to end (Solana confirmation + Chainflip hop + Axelar finality + Hedera arrival)."
+        : "Typically 5-30 minutes end to end (source-chain confirmation + Axelar finality + Hedera arrival).",
   };
 }
