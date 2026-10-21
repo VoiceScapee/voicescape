@@ -326,3 +326,361 @@
   line-height: 1.5;
   color: #5f7a77;
 }
+
+/* ------------------------------------------------------------------ */
+/* Stream views — Lanes + Rain. Dark, glowing, phone-first.            */
+/* Every moving element is a real transaction; quiet = no motion.      */
+/* ------------------------------------------------------------------ */
+
+.dv-viewbar {
+  display: flex;
+  gap: 6px;
+  margin: 0 16px 14px;
+  padding: 4px;
+  border: 1px solid rgba(138, 165, 161, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.dv-view-btn {
+  flex: 1;
+  border: none;
+  border-radius: 999px;
+  padding: 9px 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #8aa5a1;
+  background: transparent;
+  cursor: pointer;
+}
+
+.dv-view-btn.active {
+  color: #04110e;
+  background: linear-gradient(135deg, #2dd4bf, #7dd3fc);
+  box-shadow: 0 0 18px rgba(45, 212, 191, 0.45);
+}
+
+.dv-stream-head {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 16px 14px;
+}
+
+.dv-stream-card {
+  padding: 12px;
+  border: 1px solid rgba(138, 165, 161, 0.22);
+  border-radius: 14px;
+  background:
+    radial-gradient(120% 140% at 20% 0%, rgba(45, 212, 191, 0.14), transparent 60%),
+    rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(6px);
+  min-width: 0;
+}
+
+.dv-stream-hero {
+  background:
+    radial-gradient(120% 160% at 50% 0%, rgba(125, 211, 252, 0.18), transparent 65%),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(125, 211, 252, 0.35);
+}
+
+.dv-stream-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #8aa5a1;
+}
+
+.dv-stream-quiet {
+  color: #fb923c;
+}
+
+.dv-stream-big {
+  font-size: clamp(34px, 9vw, 52px);
+  font-weight: 900;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: #f4feff;
+  text-shadow: 0 0 24px rgba(125, 211, 252, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.dv-stream-value {
+  margin-top: 6px;
+  font-size: 17px;
+  font-weight: 800;
+  color: #e8f4f1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dv-stream-foot {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #8aa5a1;
+  overflow-wrap: anywhere;
+}
+
+.dv-stream-note {
+  margin: 12px auto 0;
+  max-width: 460px;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #8aa5a1;
+  text-align: center;
+}
+
+/* Lanes */
+
+.dv-lanes {
+  margin: 0 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dv-lane {
+  padding: 14px;
+  border: 1px solid rgba(138, 165, 161, 0.22);
+  border-radius: 16px;
+  background:
+    radial-gradient(140% 120% at 0% 0%, color-mix(in srgb, var(--lane) 14%, transparent), transparent),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.dv-lane-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dv-lane-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #e8f4f1;
+}
+
+.dv-lane-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.dv-lane-rate {
+  font-size: 15px;
+  font-weight: 800;
+  color: #e8f4f1;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.dv-lane-share {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8aa5a1;
+}
+
+.dv-lane-fee {
+  margin-top: 4px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: #8aa5a1;
+  font-variant-numeric: tabular-nums;
+}
+
+.dv-lane-proof {
+  color: #2dd4bf;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+}
+
+.dv-lane-bar {
+  margin-top: 10px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.dv-lane-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  box-shadow: 0 0 12px currentColor;
+  transition: width 0.6s ease;
+}
+
+.dv-lane-track {
+  position: relative;
+  margin-top: 10px;
+  height: 22px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+}
+
+.dv-lane-dot-static {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+@keyframes dv-streak {
+  from {
+    left: -8%;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  to {
+    left: 104%;
+    opacity: 0.9;
+  }
+}
+
+.dv-lane-streak {
+  position: absolute;
+  top: 50%;
+  width: 42px;
+  height: 3px;
+  border-radius: 999px;
+  transform: translateY(-50%);
+  animation: dv-streak 3.2s linear forwards;
+  pointer-events: none;
+}
+
+/* Rain */
+
+.dv-rain {
+  margin: 0 16px 8px;
+}
+
+.dv-rain-sky {
+  position: relative;
+  min-height: 440px;
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  border-radius: 18px;
+  overflow: hidden;
+  background:
+    radial-gradient(60% 40% at 50% 18%, rgba(125, 211, 252, 0.14), transparent 70%),
+    radial-gradient(80% 60% at 50% 100%, rgba(45, 212, 191, 0.08), transparent 70%),
+    #04070a;
+}
+
+@keyframes dv-rain-fall {
+  from {
+    transform: translateY(-12vh);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(52vh);
+    opacity: 0.9;
+  }
+}
+
+.dv-rain-drop {
+  position: absolute;
+  top: 0;
+  width: 3px;
+  height: 26px;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, transparent, currentColor);
+  animation: dv-rain-fall 6s linear forwards;
+  pointer-events: none;
+}
+
+.dv-rain-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #e8f4f1;
+  text-align: center;
+}
+
+.dv-rain-empty span {
+  font-size: 11px;
+  color: #8aa5a1;
+}
+
+.dv-rain-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: center;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(138, 165, 161, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.dv-rain-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #c7ded9;
+  white-space: nowrap;
+}
+
+.dv-rain-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 8px currentColor;
+}
+
+@media (max-width: 640px) {
+  .dv-stream-head {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dv-lane-streak,
+  .dv-rain-drop {
+    animation: none;
+  }
+  .dv-rain-drop {
+    position: static;
+    height: 8px;
+    width: 8px;
+    border-radius: 50%;
+  }
+  .dv-rain-sky {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 8px;
+    padding: 16px;
+    min-height: 0;
+  }
+}

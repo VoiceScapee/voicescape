@@ -313,6 +313,8 @@ export interface GossipTx {
   valid_start_timestamp?: unknown;
   transaction_hash?: unknown;
   transfers?: unknown;
+  /** Network fee actually charged, in tinybars (verified live 2026-10-21). */
+  charged_tx_fee?: unknown;
 }
 
 /**
@@ -445,4 +447,124 @@ export function selectHeroTxs(
   );
   const rest = fresh.filter((t) => !withValue.includes(t));
   return [...withValue, ...rest].slice(0, count);
+}
+
+/* ------------------------------------------------------------------ */
+/* Stream views — Lanes + Rain (Danny's Vision, Oct 2026)              */
+/*                                                                     */
+/* Both views render ONE rolling sample already collected by the       */
+/* gossip poller — they never fetch, never simulate, and never         */
+/* re-animate history. A transaction's type comes from the mirror's    */
+/* own `name` field; anything unrecognised is "other", never guessed.  */
+/* Fees come from `charged_tx_fee` (tinybars, verified live           */
+/* 2026-10-21); a row without a numeric fee is excluded from fee       */
+/* sums, never counted as zero in a way that would hide the gap.       */
+/* ------------------------------------------------------------------ */
+
+/** The five stream lanes, in display order. */
+export type StreamType = "crypto" | "hcs" | "contract" | "file" | "other";
+
+/** Mirror `name` -> stream lane. Unknown / malformed -> "other". */
+export function classifyStreamType(name: unknown): StreamType {
+  switch (name) {
+    case "CRYPTOTRANSFER":
+      return "crypto";
+    case "CONSENSUSSUBMITMESSAGE":
+      return "hcs";
+    case "CONTRACTCALL":
+      return "contract";
+    case "FILEAPPEND":
+      return "file";
+    default:
+      return "other";
+  }
+}
+
+/** Minimal shape a stream sample row needs. */
+export interface StreamSampleTx {
+  name?: unknown;
+  charged_tx_fee?: unknown;
+  /** Consensus time, milliseconds since epoch. NaN / missing = skipped. */
+  tsMs?: unknown;
+}
+
+export interface StreamTypeGroup {
+  count: number;
+  /** Sum of numeric charged fees in tinybars; feeCount rows contributed. */
+  feesTinybars: number;
+  feeCount: number;
+}
+
+/** Group a sample by lane. Rows with no usable name still count as other. */
+export function groupStreamByType(
+  txs: StreamSampleTx[],
+): Record<StreamType, StreamTypeGroup> {
+  const out: Record<StreamType, StreamTypeGroup> = {
+    crypto: { count: 0, feesTinybars: 0, feeCount: 0 },
+    hcs: { count: 0, feesTinybars: 0, feeCount: 0 },
+    contract: { count: 0, feesTinybars: 0, feeCount: 0 },
+    file: { count: 0, feesTinybars: 0, feeCount: 0 },
+    other: { count: 0, feesTinybars: 0, feeCount: 0 },
+  };
+  if (!Array.isArray(txs)) return out;
+  for (const t of txs) {
+    if (!t || typeof t !== "object") continue;
+    const g = out[classifyStreamType(t.name)];
+    g.count += 1;
+    if (typeof t.charged_tx_fee === "number" && Number.isFinite(t.charged_tx_fee)) {
+      g.feesTinybars += t.charged_tx_fee;
+      g.feeCount += 1;
+    }
+  }
+  return out;
+}
+
+/** Consensus-time span of a sample in seconds. Null when <2 usable rows. */
+export function streamSpanSeconds(txs: StreamSampleTx[]): number | null {
+  if (!Array.isArray(txs)) return null;
+  const times = txs
+    .map((t) => (typeof t.tsMs === "number" ? t.tsMs : NaN))
+    .filter((n) => Number.isFinite(n))
+    .sort((a, b) => a - b);
+  if (times.length < 2) return null;
+  const span = (times[times.length - 1] - times[0]) / 1000;
+  return Number.isFinite(span) && span > 0 ? span : null;
+}
+
+/** TPS over a sample: (n-1) over its consensus span. Null when unusable. */
+export function streamTps(txs: StreamSampleTx[]): number | null {
+  const span = streamSpanSeconds(txs);
+  if (span === null) return null;
+  const n = txs.filter(
+    (t) => typeof t.tsMs === "number" && Number.isFinite(t.tsMs),
+  ).length;
+  if (n < 2) return null;
+  return (n - 1) / span;
+}
+
+/**
+ * Fee rate in HBAR per hour over the sample's own span — a windowed
+ * extrapolation, never measured hourly revenue. Null when the span is
+ * unusable or no row carries a numeric fee. Callers must label it with
+ * its window ("last N tx") because short windows swing wildly.
+ */
+export function streamFeePerHourHbar(txs: StreamSampleTx[]): number | null {
+  const span = streamSpanSeconds(txs);
+  if (span === null) return null;
+  let total = 0;
+  let counted = 0;
+  for (const t of txs) {
+    if (!t || typeof t !== "object") continue;
+    if (typeof t.charged_tx_fee === "number" && Number.isFinite(t.charged_tx_fee)) {
+      total += t.charged_tx_fee;
+      counted += 1;
+    }
+  }
+  if (counted === 0) return null;
+  return (total / 100_000_000) * (3600 / span);
+}
+
+/** Daily pace from a TPS figure: TPS x 86,400. A pace, never a forecast. */
+export function dailyPaceTx(tps: number): number {
+  return tps * 86_400;
 }

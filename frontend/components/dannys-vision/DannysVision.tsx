@@ -22,7 +22,14 @@ import {
   nodeAccountToCity,
   groupTxByCity,
   selectHeroTxs,
+  classifyStreamType,
+  groupStreamByType,
+  streamSpanSeconds,
+  streamTps,
+  streamFeePerHourHbar,
+  dailyPaceTx,
   type GossipTx,
+  type StreamType,
 } from "@/lib/network-pulse";
 import {
   IDENTITY_BAND,
@@ -81,6 +88,69 @@ const HERO_TX_CAP = 4;
 const MAX_RIPPLES = 4;
 const MAX_GOSSIP_PULSES = 40;
 const GOSSIP_SEEN_CAP = 2000;
+
+/* ------------------------------------------------------------------ */
+/* Stream views — Lanes + Rain (Oct 2026, HashStream-inspired)         */
+/*                                                                     */
+/* Both views render the SAME rolling sample the gossip poller         */
+/* already collects. No new fetch, no new route, no simulation:        */
+/* priming history fills the lanes' rates but never animates; only     */
+/* post-priming fresh transactions spawn rain drops and lane streaks.  */
+/* ------------------------------------------------------------------ */
+
+type VisionView = "constellation" | "lanes" | "rain";
+
+interface StreamDef {
+  type: StreamType;
+  label: string;
+  color: string;
+}
+
+/** Display order matches the HashStream legend, colours stay distinct. */
+const STREAM_DEFS: StreamDef[] = [
+  { type: "crypto", label: "Crypto transfer", color: "#4ade80" },
+  { type: "hcs", label: "HCS messages", color: "#7dd3fc" },
+  { type: "contract", label: "Contract call", color: "#fb923c" },
+  { type: "file", label: "File append", color: "#c4b5fd" },
+  { type: "other", label: "Other", color: "#e5e7eb" },
+];
+
+const STREAM_COLOR: Record<StreamType, string> = {
+  crypto: "#4ade80",
+  hcs: "#7dd3fc",
+  contract: "#fb923c",
+  file: "#c4b5fd",
+  other: "#e5e7eb",
+};
+
+/** Rolling sample cap — the last 120 observed transactions, newest first. */
+const STREAM_CAP = 120;
+/** Live animated events on screen at once (rain drops / lane streaks). */
+const MAX_STREAM_EVENTS = 48;
+/** Rain / streak animation length, ms — events are pruned after it. */
+const STREAM_EVENT_TTL_MS = 7_000;
+
+interface StreamTx {
+  id: string;
+  type: StreamType;
+  name: string;
+  tsMs: number;
+  feeTinybars: number | null;
+  url: string;
+}
+
+interface StreamEvent {
+  id: string;
+  type: StreamType;
+  /** Horizontal position 0-100, deterministic from the tx id. */
+  x: number;
+}
+
+const streamEventX = (id: string): number => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 1000;
+  return 4 + (h % 92);
+};
 
 /* Simplified brand marks, drawn small on canvas via Path2D. */
 const X_PATH =
@@ -298,6 +368,13 @@ export function DannysVision({
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [bornLine, setBornLine] = useState<string | null>(null);
   const [citiesLine, setCitiesLine] = useState<string | null>(null);
+  const [view, setView] = useState<VisionView>("constellation");
+  const [streamTxs, setStreamTxs] = useState<StreamTx[]>([]);
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
+  const [streamQuiet, setStreamQuiet] = useState(false);
+  const [hbarPrice, setHbarPrice] = useState<number | null>(null);
+  const [sessionStats, setSessionStats] = useState({ count: 0, feesHbar: 0 });
+  const streamRef = useRef<StreamTx[]>([]);
 
   /** Merge new feed items, newest first, capped — duplicates never render. */
   const addFeed = (items: FeedItem[]) => {
@@ -778,7 +855,10 @@ export function DannysVision({
         }
         if (nodes.length > 0) parts.push(`${nodes.length} network nodes`);
         const price = hbarPriceUsd(exJ);
-        if (price !== null) parts.push(`$${price.toFixed(4)} HBAR`);
+        if (price !== null) {
+          parts.push(`$${price.toFixed(4)} HBAR`);
+          if (alive) setHbarPrice(price);
+        }
         if (parts.length > 0 && alive) setVitals(parts.join(" · "));
 
         // Whale watch: biggest single transfer legs in this window.
@@ -895,6 +975,71 @@ export function DannysVision({
           if (seen.current.primed) fresh.push(t);
         }
 
+        // Stream views: fold this poll into ONE rolling sample shared
+        // by Lanes + Rain. Priming history fills the rates (no motion);
+        // only post-priming fresh txs spawn drops/streaks and count
+        // toward the session counter. No new fetch — this is the same
+        // gossip poll, reused.
+        {
+          const incoming: StreamTx[] = (seen.current.primed ? fresh : txs)
+            .map((t) => {
+              const id =
+                typeof t.transaction_id === "string" ? t.transaction_id : null;
+              if (!id) return null;
+              const tsMs = mirrorTsToMs(t.consensus_timestamp as string);
+              return {
+                id,
+                type: classifyStreamType(t.name),
+                name: typeof t.name === "string" ? t.name : "TRANSACTION",
+                tsMs,
+                feeTinybars:
+                  typeof t.charged_tx_fee === "number" &&
+                  Number.isFinite(t.charged_tx_fee)
+                    ? t.charged_tx_fee
+                    : null,
+                url: hashscanTxUrl(id),
+              } as StreamTx;
+            })
+            .filter((t): t is StreamTx => t !== null);
+          const byId = new Map(streamRef.current.map((t) => [t.id, t]));
+          for (const t of incoming) byId.set(t.id, t);
+          streamRef.current = [...byId.values()]
+            .sort((a, b) => b.tsMs - a.tsMs)
+            .slice(0, STREAM_CAP);
+          if (alive) {
+            setStreamTxs(streamRef.current);
+            setStreamQuiet(false);
+          }
+          if (seen.current.primed && fresh.length > 0 && alive) {
+            const freshStream = incoming.filter((t) =>
+              fresh.some((f) => f.transaction_id === t.id),
+            );
+            const feeHbar = freshStream.reduce(
+              (sum, t) => sum + (t.feeTinybars ?? 0) / 100_000_000,
+              0,
+            );
+            setSessionStats((prev) => ({
+              count: prev.count + freshStream.length,
+              feesHbar: prev.feesHbar + feeHbar,
+            }));
+            const events: StreamEvent[] = freshStream
+              .filter((t) => Number.isFinite(t.tsMs))
+              .map((t) => ({ id: t.id, type: t.type, x: streamEventX(t.id) }));
+            if (events.length > 0) {
+              setStreamEvents((prev) =>
+                [...events, ...prev].slice(0, MAX_STREAM_EVENTS),
+              );
+              const eventIds = new Set(events.map((e) => e.id));
+              setTimeout(() => {
+                if (!alive) return;
+                setStreamEvents((prev) =>
+                  prev.filter((e) => !eventIds.has(e.id)),
+                );
+              }, STREAM_EVENT_TTL_MS);
+            }
+          }
+        }
+
         // Aggregate: pulse each city with intensity ∝ its tx count.
         const byCity = groupTxByCity(fresh, nodeCityRef.current);
         const maxCount = Math.max(1, ...byCity.values());
@@ -989,7 +1134,10 @@ export function DannysVision({
         // every other poller on this page.
         if (gossipOk.current) {
           gossipOk.current = false;
-          if (alive) setGossipLine("Gossip stream quiet — retrying.");
+          if (alive) {
+            setGossipLine("Gossip stream quiet — retrying.");
+            setStreamQuiet(true);
+          }
         }
       }
     };
@@ -1300,7 +1448,7 @@ export function DannysVision({
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", size);
     };
-  }, [centerLabel]);
+  }, [centerLabel, view]);
 
   const onTap = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -1385,6 +1533,33 @@ export function DannysVision({
     return popupDef?.label ?? NODE_TITLES[popup] ?? popup;
   })();
 
+  /* Stream-view stats, derived from the rolling sample at render time.
+     Every number carries its window: rates are over the sample's own
+     consensus span, fees are a windowed extrapolation, pace is TPS x
+     86,400 — a pace, never a forecast. Empty sample = "—", never 0. */
+  const streamSample = streamTxs.map((t) => ({
+    name: t.name,
+    charged_tx_fee: t.feeTinybars,
+    tsMs: t.tsMs,
+  }));
+  const streamSpan = streamSpanSeconds(streamSample);
+  const streamTpsValue = streamTps(streamSample);
+  const streamFeeHbarHr = streamFeePerHourHbar(streamSample);
+  const streamFeeUsdHr =
+    streamFeeHbarHr !== null && hbarPrice !== null
+      ? streamFeeHbarHr * hbarPrice
+      : null;
+  const streamPace =
+    streamTpsValue !== null ? dailyPaceTx(streamTpsValue) : null;
+  const streamGrouped = groupStreamByType(streamSample);
+  const streamTotal = streamTxs.length;
+  const viewSub =
+    view === "lanes"
+      ? "LIVE STREAM · BY TYPE"
+      : view === "rain"
+        ? "LIVE STREAM · RAIN"
+        : "LIVE CONSTELLATION";
+
   return (
     <div className="dv-scope" style={{ "--accent": accent } as CSSProperties}>
       <Navbar />
@@ -1392,7 +1567,7 @@ export function DannysVision({
         <header className="dv-head">
           <div>
             <div className="dv-title">DANNY&rsquo;S VISION</div>
-            <div className="dv-sub">LIVE CONSTELLATION</div>
+            <div className="dv-sub">{viewSub}</div>
           </div>
           <div className={live ? "dv-live" : "dv-live off"}>
             <span className="dv-dot" />
@@ -1440,13 +1615,215 @@ export function DannysVision({
           </section>
         )}
 
-        <canvas
-          ref={canvasRef}
-          className="dv-canvas"
-          role="img"
-          aria-label="Live activity constellation: engine at the center, Voicescape systems as satellites, the consensus-city ring flashing with real gossip traffic"
-          onPointerDown={onTap}
-        />
+        <nav className="dv-viewbar" aria-label="Vision view">
+          {(
+            [
+              ["constellation", "CONSTELLATION"],
+              ["lanes", "LANES"],
+              ["rain", "RAIN"],
+            ] as [VisionView, string][]
+          ).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              className={view === v ? "dv-view-btn active" : "dv-view-btn"}
+              aria-pressed={view === v}
+              onClick={() => setView(v)}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {(view === "lanes" || view === "rain") && (
+          <section className="dv-stream-head" aria-label="Live network stream">
+            <div className="dv-stream-card dv-stream-hero">
+              <div className="dv-stream-label">
+                TRANSACTIONS / SEC
+                {streamQuiet && <span className="dv-stream-quiet"> · STREAM QUIET</span>}
+              </div>
+              <div className="dv-stream-big">
+                {streamTpsValue !== null ? streamTpsValue.toFixed(2) : "—"}
+              </div>
+              <div className="dv-stream-foot">
+                {streamTotal > 0
+                  ? `last ${streamTotal} tx · rolling sample`
+                  : "waiting for the mirror…"}
+              </div>
+            </div>
+            <div className="dv-stream-card">
+              <div className="dv-stream-label">FEE REVENUE · WINDOWED</div>
+              <div className="dv-stream-value">
+                {streamFeeHbarHr !== null
+                  ? `${streamFeeHbarHr.toFixed(2)} HBAR/hr`
+                  : "—"}
+              </div>
+              <div className="dv-stream-foot">
+                {streamFeeUsdHr !== null
+                  ? `$${streamFeeUsdHr.toFixed(2)}/hr · $${hbarPrice?.toFixed(4)} HBAR`
+                  : "HBAR price unavailable — $ rate hidden"}
+                {" · short window, swings fast"}
+              </div>
+            </div>
+            <div className="dv-stream-card">
+              <div className="dv-stream-label">DAILY PACE · WHILE YOU WATCH</div>
+              <div className="dv-stream-value">
+                {streamPace !== null
+                  ? `${Math.round(streamPace).toLocaleString()} tx`
+                  : "—"}
+              </div>
+              <div className="dv-stream-foot">
+                {`pace, not a forecast · you: ${sessionStats.count} tx · ${sessionStats.feesHbar.toFixed(4)} HBAR`}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {view === "constellation" && (
+          <canvas
+            ref={canvasRef}
+            className="dv-canvas"
+            role="img"
+            aria-label="Live activity constellation: engine at the center, Voicescape systems as satellites, the consensus-city ring flashing with real gossip traffic"
+            onPointerDown={onTap}
+          />
+        )}
+
+        {view === "lanes" && (
+          <section className="dv-lanes" aria-label="Transactions by type">
+            {STREAM_DEFS.map((def) => {
+              const g = streamGrouped[def.type];
+              const share = streamTotal > 0 ? (g.count / streamTotal) * 100 : 0;
+              const rate =
+                streamSpan !== null && streamSpan > 0
+                  ? g.count / streamSpan
+                  : null;
+              const laneFeeHbarHr =
+                streamSpan !== null && streamSpan > 0 && g.feeCount > 0
+                  ? (g.feesTinybars / 100_000_000) * (3600 / streamSpan)
+                  : null;
+              const latest = streamTxs.find((t) => t.type === def.type);
+              const streaks = streamEvents.filter((e) => e.type === def.type);
+              const dots = streamTxs
+                .filter((t) => t.type === def.type)
+                .slice(0, 24);
+              return (
+                <article
+                  key={def.type}
+                  className="dv-lane"
+                  style={{ "--lane": def.color } as CSSProperties}
+                >
+                  <div className="dv-lane-head">
+                    <span className="dv-lane-name">
+                      <span
+                        className="dv-lane-dot"
+                        style={{ background: def.color }}
+                      />
+                      {def.label}
+                    </span>
+                    <span className="dv-lane-rate">
+                      {rate !== null ? `${rate.toFixed(2)}/s` : "—"}
+                      <span className="dv-lane-share">
+                        {" "}
+                        · {share.toFixed(0)}%
+                      </span>
+                    </span>
+                  </div>
+                  <div className="dv-lane-fee">
+                    {laneFeeHbarHr !== null
+                      ? `${laneFeeHbarHr.toFixed(2)} HBAR/hr · ${g.count} tx`
+                      : `${g.count} tx · fee —`}
+                    {latest && (
+                      <a
+                        href={latest.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="dv-lane-proof"
+                      >
+                        Latest on HashScan ↗
+                      </a>
+                    )}
+                  </div>
+                  <div className="dv-lane-bar">
+                    <span
+                      className="dv-lane-fill"
+                      style={{
+                        width: `${share}%`,
+                        background: def.color,
+                        color: def.color,
+                      }}
+                    />
+                  </div>
+                  <div className="dv-lane-track" aria-hidden="true">
+                    {streaks.map((s) => (
+                      <span
+                        key={s.id}
+                        className="dv-lane-streak"
+                        style={{
+                          background: def.color,
+                          boxShadow: `0 0 12px ${def.color}`,
+                        }}
+                      />
+                    ))}
+                    {dots.map((t) => (
+                      <span
+                        key={t.id}
+                        className="dv-lane-dot-static"
+                        style={{ background: def.color }}
+                      />
+                    ))}
+                  </div>
+                </article>
+              );
+            })}
+            <p className="dv-stream-note">
+              Each streak is a real transaction that just landed — its type,
+              its fee, its HashScan proof. Quiet lanes sit quiet; nothing
+              is drawn to fill them.
+            </p>
+          </section>
+        )}
+
+        {view === "rain" && (
+          <section className="dv-rain" aria-label="Falling transaction rain">
+            <div className="dv-rain-sky">
+              {streamEvents.map((e) => (
+                <span
+                  key={e.id}
+                  className="dv-rain-drop"
+                  style={{
+                    left: `${e.x}%`,
+                    background: STREAM_COLOR[e.type],
+                    boxShadow: `0 0 10px ${STREAM_COLOR[e.type]}`,
+                    animationDuration: `${5 + (e.x % 3)}s`,
+                  }}
+                />
+              ))}
+              {streamTpsValue === null && streamTxs.length === 0 && (
+                <div className="dv-rain-empty">
+                  Waiting for live traffic…
+                  <br />
+                  <span>Stream quiet — retrying.</span>
+                </div>
+              )}
+            </div>
+            <div className="dv-rain-legend">
+              {STREAM_DEFS.map((def) => (
+                <span key={def.type} className="dv-rain-legend-item">
+                  <span
+                    className="dv-rain-legend-dot"
+                    style={{ background: def.color }}
+                  />
+                  {def.label}
+                </span>
+              ))}
+            </div>
+            <p className="dv-stream-note">
+              Every falling dot is a real transaction from seconds ago.
+              Colour is its type — nothing falls when the stream is quiet.
+            </p>
+          </section>
+        )}
 
         <section className="dv-gossip" aria-label="Hedera gossip network">
           <div className="dv-gossip-head">NOT A BLOCKCHAIN.</div>

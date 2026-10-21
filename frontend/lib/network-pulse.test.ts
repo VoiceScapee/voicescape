@@ -18,6 +18,12 @@ import {
   nodeAccountToCity,
   groupTxByCity,
   selectHeroTxs,
+  classifyStreamType,
+  groupStreamByType,
+  streamSpanSeconds,
+  streamTps,
+  streamFeePerHourHbar,
+  dailyPaceTx,
 } from "./network-pulse";
 
 describe("planBlockPulses", () => {
@@ -358,5 +364,61 @@ describe("gossip layer helpers", () => {
     expect(heroes.map((t) => t.transaction_id)).toEqual(["b"]);
     const fresh = selectHeroTxs([a, b], new Set(), 1);
     expect(fresh.map((t) => t.transaction_id)).toEqual(["a"]);
+  });
+});
+
+describe("stream views (Lanes + Rain)", () => {
+  it("classifyStreamType maps mirror names, unknown -> other", () => {
+    expect(classifyStreamType("CRYPTOTRANSFER")).toBe("crypto");
+    expect(classifyStreamType("CONSENSUSSUBMITMESSAGE")).toBe("hcs");
+    expect(classifyStreamType("CONTRACTCALL")).toBe("contract");
+    expect(classifyStreamType("FILEAPPEND")).toBe("file");
+    expect(classifyStreamType("CRYPTOCREATEACCOUNT")).toBe("other");
+    expect(classifyStreamType(undefined)).toBe("other");
+    expect(classifyStreamType(42)).toBe("other");
+  });
+
+  it("groupStreamByType counts lanes and sums only numeric fees", () => {
+    const grouped = groupStreamByType([
+      { name: "CRYPTOTRANSFER", charged_tx_fee: 116985, tsMs: 1000 },
+      { name: "CRYPTOTRANSFER", charged_tx_fee: "not-a-number", tsMs: 2000 },
+      { name: "CONSENSUSSUBMITMESSAGE", charged_tx_fee: 5000, tsMs: 3000 },
+      { name: "MYSTERY", tsMs: 4000 },
+    ]);
+    expect(grouped.crypto.count).toBe(2);
+    expect(grouped.crypto.feesTinybars).toBe(116985);
+    expect(grouped.crypto.feeCount).toBe(1);
+    expect(grouped.hcs.count).toBe(1);
+    expect(grouped.other.count).toBe(1);
+    expect(grouped.other.feeCount).toBe(0);
+    expect(grouped.contract.count).toBe(0);
+  });
+
+  it("streamTps / span / fee-per-hour derive from the sample window only", () => {
+    // 3 tx over 2s: TPS = 2/2 = 1; fees 200k tinybars = 0.002 HBAR in 2s
+    // -> 0.002 * 1800 = 3.6 HBAR/hr (windowed extrapolation, labelled so).
+    const sample = [
+      { name: "CRYPTOTRANSFER", charged_tx_fee: 100000, tsMs: 1000 },
+      { name: "CRYPTOTRANSFER", charged_tx_fee: 100000, tsMs: 2000 },
+      { name: "CONSENSUSSUBMITMESSAGE", charged_tx_fee: 0, tsMs: 3000 },
+    ];
+    expect(streamSpanSeconds(sample)).toBe(2);
+    expect(streamTps(sample)).toBe(1);
+    expect(streamFeePerHourHbar(sample)).toBeCloseTo(3.6, 6);
+    expect(dailyPaceTx(1)).toBe(86400);
+  });
+
+  it("stream helpers go silent on unusable samples, never guess", () => {
+    expect(streamSpanSeconds([])).toBeNull();
+    expect(streamSpanSeconds([{ tsMs: 1000 }])).toBeNull();
+    expect(streamTps([{ tsMs: 1000 }, { tsMs: 1000 }])).toBeNull();
+    expect(streamFeePerHourHbar([{ name: "CRYPTOTRANSFER", tsMs: 1000 }, { name: "CRYPTOTRANSFER", tsMs: 3000 }])).toBeNull();
+    expect(groupStreamByType(null as unknown as [])).toEqual({
+      crypto: { count: 0, feesTinybars: 0, feeCount: 0 },
+      hcs: { count: 0, feesTinybars: 0, feeCount: 0 },
+      contract: { count: 0, feesTinybars: 0, feeCount: 0 },
+      file: { count: 0, feesTinybars: 0, feeCount: 0 },
+      other: { count: 0, feesTinybars: 0, feeCount: 0 },
+    });
   });
 });
