@@ -3870,6 +3870,25 @@ function BuilderInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ?create=nft deep-link: the Voicescape NFT Builder shop page (/nfts)
+  // links here. Skip the generic page-building flow entirely — land on the
+  // Publish step, where the NFT drop creator lives at the top. A visitor
+  // without a page yet sees the creator's own "set your username first"
+  // guidance instead of a blank canvas, and the Publish panel below it is
+  // the way to claim that page. One-shot: later step navigation is the
+  // user's own, and it never fires alongside the ?draft= / ?ownerType=
+  // flows (those params are absent on the shop link).
+  const nftDeepLinkApplied = useRef(false);
+  useEffect(() => {
+    if (nftDeepLinkApplied.current) return;
+    if (searchParams.get("create") !== "nft") return;
+    nftDeepLinkApplied.current = true;
+    setPath("self");
+    setSelfStep("publish");
+    // Mount-only: the param is read once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Load the wallet's published page for editing: when the connected wallet
   // owns a registered page on-chain and no draft is pending (no ?draft= link,
   // no just-completed onboarding draft), hydrate the editor with the

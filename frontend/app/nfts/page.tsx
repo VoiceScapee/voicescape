@@ -85,7 +85,7 @@ export default async function NftsPage() {
         Creators own their collections outright (treasury, supply key, and admin are theirs).
         Sales settle peer-to-peer through the Tips contract: 98% to the seller, 2% to the
         treasury, no escrow.{" "}
-        <Link href="/builder" style={{ color: "var(--vs-accent, #8f7bff)" }}>
+        <Link href="/builder?create=nft" style={{ color: "var(--vs-accent, #8f7bff)" }}>
           Create your own drop →
         </Link>
       </p>
@@ -104,7 +104,7 @@ export default async function NftsPage() {
           <p style={{ color: "var(--vs-muted)", lineHeight: 1.65, margin: "8px 0 0", maxWidth: "38em" }}>
             No NFT drops have been created through Voicescape yet. The first one lands here
             the moment its creation is verified on-chain. Create yours in the{" "}
-            <Link href="/builder" style={{ color: "var(--vs-accent, #8f7bff)" }}>builder</Link>{" "}
+            <Link href="/builder?create=nft" style={{ color: "var(--vs-accent, #8f7bff)" }}>builder</Link>{" "}
             or with the <span className="vs-mono">create_nft_drop</span> MCP tool — one signing
             package, a 1 HBAR creation fee plus Hedera network fees from your wallet, and
             you own everything.
