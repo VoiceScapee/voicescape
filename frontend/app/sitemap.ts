@@ -2,10 +2,13 @@
  * Sitemap for search engines — part of keeping Voicescape discoverable
  * outside its own walls ("not silo'd").
  *
- * Static routes cover the public surfaces; the top 100 most-active town
- * hall users get their public profile pages (/{username}) listed too.
+ * Static routes cover the public surfaces; registered blockpages
+ * (/{username}) come from the AUTHORITATIVE source — the on-chain
+ * Registry, replayed from the mirror node's registerPage calldata feed
+ * (scanRegisteredUsernames). Town-hall activity used to be the proxy
+ * here; it is not the registry, so it no longer decides what is listed.
  *
- * Fail-open by design: if HCS/the mirror node is unreachable (or slow),
+ * Fail-open by design: if the mirror node is unreachable (or slow),
  * the sitemap still serves every static route with zero usernames rather
  * than breaking the build or the /sitemap.xml request.
  */
@@ -30,8 +33,13 @@ export const SITEMAP_STATIC_ROUTES: StaticRoute[] = [
   { path: "/fundraiser", changeFrequency: "daily", priority: 0.7 },
   { path: "/events", changeFrequency: "daily", priority: 0.7 },
   { path: "/polls", changeFrequency: "daily", priority: 0.7 },
+  { path: "/agents", changeFrequency: "weekly", priority: 0.8 },
   { path: "/agents/hire", changeFrequency: "weekly", priority: 0.7 },
   { path: "/agents/join", changeFrequency: "weekly", priority: 0.7 },
+  { path: "/intros", changeFrequency: "weekly", priority: 0.7 },
+  { path: "/ai-agent", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/explore", changeFrequency: "daily", priority: 0.8 },
+  { path: "/console", changeFrequency: "weekly", priority: 0.6 },
   { path: "/agents.md", changeFrequency: "monthly", priority: 0.5 },
   { path: "/builder", changeFrequency: "weekly", priority: 0.6 },
   { path: "/new-to-web3", changeFrequency: "monthly", priority: 0.7 },
@@ -45,27 +53,60 @@ export const SITEMAP_STATIC_ROUTES: StaticRoute[] = [
 export const SITEMAP_MAX_USERNAMES = 100;
 
 /**
- * Top usernames by town hall activity score. Never throws — returns []
- * when HCS is down, slow (>15s), or empty, so sitemap generation always
- * succeeds.
+ * First segments a registered username must NOT equal: static routes win
+ * over the [username] route in Next.js, so a registered name like
+ * "agents" or "forum" is not that user's page URL and must not be listed
+ * as one. Operational surfaces are excluded for the same reason.
+ */
+export function sitemapReservedFirstSegments(): Set<string> {
+  const reserved = new Set<string>(["api", "mod", "analytics", "admin"]);
+  for (const r of SITEMAP_STATIC_ROUTES) {
+    const first = r.path.split("/")[1];
+    if (first) reserved.add(first);
+  }
+  return reserved;
+}
+
+/**
+ * Registered blockpage usernames, in first-registration order, from the
+ * on-chain Registry (mirror-node registerPage calldata replay). Never
+ * throws — returns [] when the registry is unconfigured, the mirror node
+ * is down, or the scan is slow (>15s), so sitemap generation always
+ * succeeds with the static routes alone.
  */
 export async function sitemapUsernames(limit = SITEMAP_MAX_USERNAMES): Promise<string[]> {
   try {
-    const { getTownhallStats, scoreFromEntry } = await import(
-      "@/lib/server/townhall/badges"
-    );
-    const blob = await Promise.race([
-      getTownhallStats(),
+    const [{ scanRegisteredUsernames }, { getRegistryAddress }] =
+      await Promise.all([
+        import("@/lib/server/agents-directory"),
+        import("@/lib/contracts"),
+      ]);
+    const registry = getRegistryAddress();
+    if (!registry) return [];
+    const rows = await Promise.race([
+      scanRegisteredUsernames(registry),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("sitemap HCS timeout")), 15000),
+        setTimeout(() => reject(new Error("sitemap registry timeout")), 15000),
       ),
     ]);
-    return Object.values(blob.users)
-      .map((u) => ({ username: u.username, score: scoreFromEntry(u) }))
-      .filter((e) => typeof e.username === "string" && e.username.length > 0)
-      .sort((a, b) => b.score - a.score || a.username.localeCompare(b.username))
-      .slice(0, Math.max(0, limit))
-      .map((e) => e.username);
+    const reserved = sitemapReservedFirstSegments();
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const username = row.username;
+      if (
+        typeof username !== "string" ||
+        username.length === 0 ||
+        reserved.has(username.toLowerCase()) ||
+        seen.has(username)
+      ) {
+        continue;
+      }
+      seen.add(username);
+      out.push(username);
+      if (out.length >= Math.max(0, limit)) break;
+    }
+    return out;
   } catch {
     return [];
   }
