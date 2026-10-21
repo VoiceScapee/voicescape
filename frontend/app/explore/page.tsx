@@ -76,7 +76,9 @@ export default function ExplorePage() {
               border: "1px solid var(--vs-border)",
               background: "var(--vs-glass)",
               color: "var(--vs-text)",
-              fontSize: 15,
+              /* 16px minimum: iOS Safari auto-zooms on focus for smaller
+                 inputs (same rule .vs-input documents). */
+              fontSize: 16,
             }}
           />
           <button
@@ -97,7 +99,7 @@ export default function ExplorePage() {
             <span>
               Found <strong className="vs-mono">@{searchResult}</strong>
             </span>
-            <Link href={`/${searchResult}`} className="vs-btn vs-btn-primary" style={{ padding: "8px 20px", fontSize: 14, textDecoration: "none" }}>
+            <Link href={`/${searchResult}`} className="vs-btn vs-btn-primary" style={{ padding: "12px 24px", fontSize: 14, textDecoration: "none" }}>
               Visit
             </Link>
           </div>
@@ -158,7 +160,8 @@ export default function ExplorePage() {
                 onClick={() => setSort(s)}
                 aria-pressed={sort === s}
                 style={{
-                  padding: "6px 14px",
+                  /* 44px-ish hit area (13px text + 20px vertical padding). */
+                  padding: "10px 16px",
                   borderRadius: 999,
                   border: "1px solid var(--vs-border)",
                   background: sort === s ? "var(--vs-gradient)" : "var(--vs-glass)",

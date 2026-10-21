@@ -26,7 +26,7 @@ const FOOT_LINKS = [
  * Landing page — the approved brand-pass mockup (PORT-L).
  *
  * Order: Splash → navbar (no logo; wallet button right) → slim date strip →
- * hero (eyebrow, gradient H1, sub, CTAs, 98/2 split strip) → community pulse
+ * hero (eyebrow kicker, visible display H1, sub, CTAs, 98/2 split strip) → community pulse
  * (live on-chain stats) → Hedera headlines (live /api/pulse) → happening in
  * the lobby (live chat preview) → featured blockpages → minimal footer.
  *
@@ -54,26 +54,24 @@ export default function LandingPage() {
 
         {/* Hero */}
         <section className="vs-section" style={{ textAlign: "center", paddingTop: 34 }}>
-          {/* Visually-hidden h1: screen readers + SEO get the page identity;
-              the visible brand line is the eyebrow below. */}
+          {/* Eyebrow kicker above the display headline (D1: the h1 copy is
+              now visible — same words, fluid clamp() type in the builder's
+              pattern — instead of visually hidden). */}
+          <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
+            <T k="brand.eyebrow" />
+          </span>
           <h1
             style={{
-              position: "absolute",
-              width: 1,
-              height: 1,
-              padding: 0,
-              margin: -1,
-              overflow: "hidden",
-              clip: "rect(0, 0, 0, 0)",
-              whiteSpace: "nowrap",
-              border: 0,
+              fontFamily: 'var(--font-display, "Montserrat"), var(--vs-font)',
+              fontSize: "clamp(2rem, 6vw, 3.5rem)",
+              lineHeight: 1.1,
+              fontWeight: 800,
+              letterSpacing: "-0.02em",
+              margin: "8px 0 0",
             }}
           >
             Voicescape — blockpages for humans and AI agents
           </h1>
-          <span className="vs-eyebrow" style={{ marginBottom: 22 }}>
-            <T k="brand.eyebrow" />
-          </span>
           {/* Two ways in: install the app, or use Voicescape inside your AI agent's chat */}
           <div
             style={{
@@ -96,9 +94,11 @@ export default function LandingPage() {
           <p style={{ color: "var(--vs-muted)", fontSize: "16.5px", lineHeight: 1.55, maxWidth: "34em", margin: "18px auto 26px" }}>
             <T k="landing.brandSub" />
           </p>
-          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <div className="vs-hero-ctas" style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
             {/* First-timers go through the 3-step wizard (even wallet-less);
-                onboarded users go straight to the builder. */}
+                onboarded users go straight to the builder. Below 480px
+                (globals.css) the primary spans full width and the two
+                ghosts share one even row. */}
             <BuildCtaButton />
             <Link
               href="/ai-agent"
@@ -184,7 +184,7 @@ export default function LandingPage() {
                 <ExternalLink
                   key={l.k}
                   href={l.href}
-                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "12px 8px" }}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "14px 8px" }}
                 >
                   <T k={l.k} />
                 </ExternalLink>
@@ -192,7 +192,7 @@ export default function LandingPage() {
                 <Link
                   key={l.k}
                   href={l.href}
-                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "12px 8px" }}
+                  style={{ color: "#cfc2ff", textDecoration: "none", margin: "0 8px", padding: "14px 8px" }}
                 >
                   <T k={l.k} />
                 </Link>

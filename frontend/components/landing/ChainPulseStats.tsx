@@ -31,25 +31,17 @@ function Stat({
   loading: boolean;
 }) {
   return (
-    <div className="vs-card vs-stat" style={{ padding: "18px 14px" }}>
+    <div className="vs-card vs-stat vs-pulse-stat">
       <span className="vs-stat-live">
         <span className="vs-stat-live-dot" aria-hidden="true" />
         <T k="landing.liveBadge" />
       </span>
       <div
-        className={`vs-mono${loading ? " vs-anim-shimmer" : ""}`}
-        style={{ fontSize: 24, fontWeight: 700 }}
+        className={`vs-mono vs-stat-value${loading ? " vs-anim-shimmer" : ""}`}
       >
         {loading ? "—" : value}
       </div>
-      <div
-        style={{
-          fontSize: 12,
-          color: "var(--vs-muted)",
-          marginTop: 4,
-          lineHeight: 1.4,
-        }}
-      >
+      <div className="vs-stat-label">
         <T k={labelKey} />
       </div>
     </div>
@@ -106,13 +98,7 @@ export function ChainPulseStats() {
       <p className="vs-label">
         <T k="landing.pulseLabel" />
       </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: 12,
-        }}
-      >
+      <div className="vs-pulse-grid">
         <Stat
           value={pagesValue}
           labelKey="landing.pulsePages"

@@ -51,6 +51,12 @@
     Roboto, sans-serif;
   --vs-mono: var(--font-mono, "IBM Plex Mono"), ui-monospace, "SF Mono",
     SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Reading widths (UI polish 2026-10-21): 1080px for landing / explore /
+     builder shells, 860px for single-column reading views (public
+     blockpages). Breakpoint scale: 480 / 768 / 1024 / 1280. */
+  --vs-reading: 1080px;
+  --vs-reading-narrow: 860px;
 }
 
 * {
@@ -439,6 +445,56 @@ a {
   margin-left: auto;
 }
 
+/* Nav row chrome (padding/gap live here, not inline, so narrow widths can
+   tighten them — UI polish 2026-10-21, M1/D2). */
+.vs-nav {
+  padding: 12px 24px;
+  gap: 16px;
+}
+
+/* M1: buy back ~36px on small phones (padding 24→12 each side, gap
+   16→12) so the pulse + Atlas badge row fits 360px viewports. */
+@media (max-width: 480px) {
+  .vs-nav {
+    padding: 12px;
+    gap: 12px;
+  }
+}
+
+/* D2: tighten desktop chrome in the 1024–1280px overflow zone (nav-link
+   padding + row gap) instead of dropping any destination or the badge. */
+@media (min-width: 1024px) and (max-width: 1280px) {
+  .vs-nav {
+    gap: 12px;
+  }
+  .vs-btn.vs-nav-link {
+    padding: 6px 10px;
+  }
+}
+
+/* Atlas badge artwork: 20px tall normally, 16px below 480px (M1 — same
+   artwork, narrower, so the navbar row fits small phones). */
+.vs-atlas-badge img {
+  height: 20px;
+  width: auto;
+}
+
+@media (max-width: 480px) {
+  .vs-atlas-badge img {
+    height: 16px;
+  }
+}
+
+/* M1 fallback: the tightened row still measures ~349px, so below 360px
+   the badge stacks under the pulse chip (same navbar, same column) —
+   never hidden, never removed, even on 320px-class phones. */
+@media (max-width: 360px) {
+  .vs-pulse-badge-wrap {
+    flex-direction: column;
+    gap: 2px;
+  }
+}
+
 /* Tighter than the default ghost button so the full desktop row fits. */
 .vs-btn.vs-nav-link {
   padding: 8px 14px;
@@ -487,6 +543,12 @@ a {
   .vs-nav-menu-open {
     background: var(--vs-bg);
     border-bottom: 1px solid var(--vs-border);
+  }
+  /* M6: menu-footer controls (install, language, wallet) get a 44px
+     minimum hit area in the open mobile menu. */
+  .vs-nav-mobile-footer button,
+  .vs-nav-mobile-footer select {
+    min-height: 44px;
   }
   /* The single mobile menu: grouped accordions, not a tall flat stack. */
   .vs-nav-items.vs-nav-open {
@@ -596,6 +658,17 @@ a {
   }
 }
 
+/* D4: once scrolled, the transparent sticky header gains a translucent
+   solid + blur so page content stops sliding visibly through the gaps
+   between the pulse chip, badge, and burger. At the very top of the page
+   the floating look is unchanged. */
+.vs-nav-scrolled {
+  background: rgba(9, 11, 18, 0.82);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--vs-border);
+}
+
 .vs-input {
   width: 100%;
   background: #0d111a;
@@ -648,7 +721,7 @@ a {
 }
 
 .vs-section {
-  max-width: 1080px;
+  max-width: var(--vs-reading);
   margin: 0 auto;
   padding: 72px 24px;
 }
@@ -665,13 +738,13 @@ a {
   gap: 20px;
 }
 
-@media (max-width: 1050px) {
+@media (max-width: 1024px) {
   .vs-grid-3 {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 768px) {
   .vs-grid-2,
   .vs-grid-3 {
     grid-template-columns: 1fr;
@@ -681,9 +754,87 @@ a {
   }
 }
 
-@media (max-width: 420px) {
+@media (max-width: 480px) {
   .vs-section {
     padding: 40px 14px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Landing sections — headlines grid, pulse stats, hero CTAs            */
+/* ------------------------------------------------------------------ */
+
+/* Headlines grid (D5: moved from the duplicated inline <style> in
+   Headlines.tsx so the breakpoint follows the section scale). */
+.vs-headlines-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 1024px) {
+  .vs-headlines-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* M4: headline titles clamp to 3 lines so rows align and cards stay
+   near the skeleton height instead of stretching to 5–7 lines. */
+.vs-headline-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Community pulse stat cards (M3: tightening below 520px; C4: fluid
+   values via clamp, matching the builder's fluid-type pattern). */
+.vs-pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+.vs-pulse-stat {
+  padding: 18px 14px;
+}
+
+.vs-stat-value {
+  font-size: clamp(20px, 5vw, 28px);
+  font-weight: 700;
+}
+
+.vs-stat-label {
+  font-size: 12px;
+  color: var(--vs-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+@media (max-width: 520px) {
+  .vs-pulse-grid {
+    gap: 8px;
+  }
+  .vs-pulse-stat {
+    padding: 12px 8px;
+  }
+  .vs-stat-value {
+    font-size: 20px;
+  }
+  .vs-stat-label {
+    font-size: 11px;
+  }
+}
+
+/* M7: hero CTA row below 480px — primary spans full width, the two
+   ghost buttons share one even row. Copy, order, destinations unchanged. */
+@media (max-width: 480px) {
+  .vs-hero-ctas > :first-child {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  .vs-hero-ctas .vs-btn-ghost {
+    flex: 1 1 40%;
   }
 }
 
@@ -1427,7 +1578,13 @@ a {
   opacity: 0.5;
   cursor: pointer;
   font-size: 0.85rem;
+  /* M6: 44px hit area, same glyph (scrim-tap + Escape still dismiss). */
   padding: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 .vs-netpulse-card-close:hover {
