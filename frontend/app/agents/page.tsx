@@ -5,11 +5,19 @@ import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { T } from "@/components/T";
 import { WalletConnect } from "@/components/WalletConnect";
+import {
+  identityCssVars,
+  identityPalette,
+} from "@/lib/identity-palette";
 
 interface Agent {
   username: string;
   purpose: string;
   owner: string | null;
+  /** Declared skills — rendered as tags ONLY when the entry declares
+   *  them. The directory API does not return skills today, so the row
+   *  stays hidden rather than inventing any. */
+  skills?: string[];
 }
 
 /**
@@ -168,7 +176,7 @@ export default function AgentsPage() {
             border: "1px solid var(--vs-border)",
             background: "var(--vs-glass)",
             color: "var(--vs-text)",
-            fontSize: 15,
+            fontSize: 16,
             marginBottom: 24,
           }}
         />
@@ -198,10 +206,20 @@ export default function AgentsPage() {
           </div>
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
-            {filtered.map((agent) => (
+            {filtered.map((agent) => {
+              /* A2A-shaped card (sorting-colors UI): name, description,
+               * capabilities, verification, hire CTA — tinted by this
+               * agent's own deterministic palette (same agent, same
+               * colors everywhere). Skills tags render ONLY when the
+               * entry declares them; otherwise the row stays hidden. */
+              const palette = identityPalette(agent.username, "agent");
+              const initial = (agent.username || "?")[0].toUpperCase();
+              return (
               <div
                 key={agent.username}
+                className="vs-identity-card"
                 style={{
+                  ...identityCssVars(palette),
                   display: "block",
                   padding: 16,
                   border: "1px solid var(--vs-border)",
@@ -215,14 +233,32 @@ export default function AgentsPage() {
                 >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
                   <span
+                    aria-hidden="true"
+                    className="vs-identity-avatar"
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: "50%",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 15,
+                      fontWeight: 800,
+                      color: "#fff",
+                      flex: "none",
+                    }}
+                  >
+                    {initial}
+                  </span>
+                  <span
                     style={{
                       fontSize: 11,
                       fontWeight: 700,
                       padding: "2px 8px",
                       borderRadius: 999,
-                      background: "rgba(245, 158, 11, 0.15)",
-                      color: "#f59e0b",
-                      border: "1px solid rgba(245, 158, 11, 0.3)",
+                      background: palette.soft,
+                      color: palette.primary,
+                      border: `1px solid ${palette.glow}`,
                     }}
                   >
                     AGENT
@@ -238,14 +274,53 @@ export default function AgentsPage() {
                   </p>
                 )}
                 </Link>
+                {/* Capabilities: only verified facts. Every directory entry
+                    IS an on-chain identity (registry-sourced); HCS-10
+                    verification shows only when the verifier confirms it. */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                  <span
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 999,
+                      background: "var(--vs-glass)",
+                      color: "var(--vs-muted)",
+                      border: "1px solid var(--vs-border)",
+                    }}
+                  >
+                    On-chain identity
+                  </span>
+                </div>
+                {agent.skills && agent.skills.length > 0 && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                    {agent.skills.map((skill) => (
+                      <span
+                        key={skill}
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          background: palette.soft,
+                          color: palette.primary,
+                          border: `1px solid ${palette.glow}`,
+                        }}
+                      >
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <Link
                   href={`/agents/hire?agent=${encodeURIComponent(agent.username)}`}
-                  style={{ fontSize: 13, fontWeight: 700, color: "var(--vs-accent)", textDecoration: "none" }}
+                  style={{ fontSize: 13, fontWeight: 700, color: palette.primary, textDecoration: "none" }}
                 >
                   Hire →
                 </Link>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { identityPalette } from "@/lib/identity-palette";
 
 /**
  * <AgentMark> — the shared human/agent distinction mark for every shared
@@ -89,6 +90,12 @@ export default function AgentMark({
 
   if (resolved !== "agent") return null;
 
+  /* Identity tint (sorting-colors UI): the mark takes this agent's own
+   * deterministic palette — same agent, same colors everywhere the mark
+   * appears. This tints ONLY the disclosure pill; it never restyles
+   * owner blockpage content (sovereignty holds). */
+  const palette = identityPalette(username, "agent");
+
   return (
     <span
       title="This page is operated by an AI agent, not a human"
@@ -101,9 +108,9 @@ export default function AgentMark({
         fontWeight: 700,
         padding: "2px 8px",
         borderRadius: 999,
-        background: "rgba(139, 92, 246, 0.14)",
-        color: "#a78bfa",
-        border: "1px solid rgba(139, 92, 246, 0.4)",
+        background: palette.soft,
+        color: palette.primary,
+        border: `1px solid ${palette.glow}`,
         whiteSpace: "nowrap",
         lineHeight: 1.4,
       }}

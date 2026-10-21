@@ -47,7 +47,7 @@
   --vs-accent-dim: #4a3791;
   --vs-accent-soft: rgba(130, 89, 239, 0.12);
   --vs-radius: 18px;
-  --vs-font: var(--font-sans, "DM Sans"), system-ui, -apple-system, "Segoe UI",
+  --vs-font: var(--font-sans, "Montserrat"), system-ui, -apple-system, "Segoe UI",
     Roboto, sans-serif;
   --vs-mono: var(--font-mono, "IBM Plex Mono"), ui-monospace, "SF Mono",
     SFMono-Regular, Menlo, Consolas, monospace;
@@ -57,6 +57,46 @@
      blockpages). Breakpoint scale: 480 / 768 / 1024 / 1280. */
   --vs-reading: 1080px;
   --vs-reading-narrow: 860px;
+
+  /* ---- Official Hedera brand tokens (brand.hedera.com) — FIXED ----
+   * These are deliberately NOT the seasonal tokens above. The October
+   * (and any future) season remaps --violet/--gradient/--vs-accent for
+   * the shell environment, but brand devices and identity palettes must
+   * stay Hedera-true and deterministic year-round: the same identity
+   * must render the same colors in every season. Nothing in
+   * app/seasons/*.css remaps these names; the sovereignty guard mirrors
+   * them with identical values (see that file's rule). */
+  --vs-hedera-black: #000000;
+  --vs-hedera-white: #ffffff;
+  --vs-hedera-charcoal: #11151d;
+  --vs-hedera-smoke: #9b9b9d;
+  --vs-hedera-ultraviolet: #8259ef;
+  --vs-hedera-azure: #0031ff;
+  --vs-hedera-cobalt: #2d84eb;
+  --vs-hedera-indigo: #00156e;
+  --vs-hedera-violet: #4f46e5;
+  --vs-hedera-gradient: linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%);
+}
+
+/* Hero gradient device: the signature Ultraviolet → Azure gradient as
+ * gradient text. Uses the FIXED brand gradient, never the seasonal one. */
+.vs-hero-gradient-text {
+  background: var(--vs-hedera-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Identity accents — driven by --id-* vars set inline from
+ * lib/identity-palette (per-identity colors can't be classes). These
+ * classes only wire the vars into shapes; unknown identities set no vars
+ * and fall back to the neutral border, never a guessed color. */
+.vs-identity-card {
+  border-top: 3px solid var(--id-primary, var(--vs-border)) !important;
+}
+.vs-identity-avatar {
+  background: var(--id-gradient, var(--vs-hedera-gradient));
+  box-shadow: 0 0 0 2px var(--id-soft, transparent), 0 4px 16px var(--id-glow, transparent);
 }
 
 * {

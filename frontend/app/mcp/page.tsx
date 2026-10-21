@@ -11,6 +11,7 @@
  */
 import Link from "next/link";
 import AgentLandingNav from "@/components/AgentLandingNav";
+import McpToolBrowser from "@/components/McpToolBrowser";
 import CopyButton from "./CopyButton";
 
 export const metadata = {
@@ -573,13 +574,11 @@ export default function McpPage() {
             {PUBLIC_TOOLS.length} public tools, open to everyone — the server
             never holds keys, never signs, never spends.
           </p>
-          <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
-            {PUBLIC_TOOLS.map(([name, desc]) => (
-              <div key={name}>
-                <div style={TOOL_NAME}>{name}</div>
-                <p style={TOOL_DESC}>{desc}</p>
-              </div>
-            ))}
+          {/* Inspector-style browser (sorting-colors UI): searchable list
+              + inspector pane, replacing the flat name/description grid.
+              Same PUBLIC_TOOLS data — only the presentation changes. */}
+          <div style={{ marginTop: 16 }}>
+            <McpToolBrowser tools={PUBLIC_TOOLS} endpoint={ENDPOINT} />
           </div>
         </section>
 

@@ -99,6 +99,16 @@ import type { PendingAction } from "@/lib/server/pending-actions";
 import { BUDDY_PUBLISH_INTENT_KEY, saveBuddyDraft } from "./Onboarding";
 import { restoreSession, SESSION_HEADER } from "@/lib/session-message";
 import { SESSION_STORAGE_KEY } from "@/lib/session";
+import {
+  identityCssVars,
+  identityPalette,
+} from "@/lib/identity-palette";
+
+/** Buddy's identity palette (sorting-colors UI): the assistant speaking
+ *  in this chat is Blockpage Buddy, an AI agent — his messages carry his
+ *  own deterministic agent-band palette, same colors everywhere Buddy
+ *  appears. Computed once at module load (pure function). */
+const BUDDY_PALETTE = identityPalette("buddy", "agent");
 import { recordConversionEvent } from "@/lib/metrics";
 import { TIP_PANEL_EVENT } from "@/lib/tip-currency";
 
@@ -1325,6 +1335,47 @@ export default function AgentChat() {
                 >
                   {m.role === "assistant" ? (
                     <>
+                      {/* Identity header (sorting-colors UI): every
+                          assistant bubble names its speaker and wears
+                          Buddy's own agent-band palette — the chat avatar
+                          for the agent on the other end. */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          marginBottom: 6,
+                        }}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="vs-identity-avatar"
+                          style={{
+                            ...identityCssVars(BUDDY_PALETTE),
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: "#fff",
+                            flex: "none",
+                          }}
+                        >
+                          B
+                        </span>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: BUDDY_PALETTE.primary,
+                          }}
+                        >
+                          Buddy · AI agent
+                        </span>
+                      </div>
                       <BuddyMarkdown content={visible} />
                       {/* The agent's proposal message carries its inline
                           one-tap approval card — the approval lives where

@@ -146,6 +146,20 @@ html[data-season="october"] [data-sovereign] {
   --vs-accent: #8259ef;
   --vs-accent-dim: #4a3791;
   --vs-accent-soft: rgba(130, 89, 239, 0.12);
+  /* Fixed Hedera brand tokens (sorting-colors UI): mirrored with
+   * IDENTICAL values per the guard rule. They are never remapped by the
+   * season — brand devices and identity palettes stay Hedera-true and
+   * deterministic year-round, inside sovereign pages too. */
+  --vs-hedera-black: #000000;
+  --vs-hedera-white: #ffffff;
+  --vs-hedera-charcoal: #11151d;
+  --vs-hedera-smoke: #9b9b9d;
+  --vs-hedera-ultraviolet: #8259ef;
+  --vs-hedera-azure: #0031ff;
+  --vs-hedera-cobalt: #2d84eb;
+  --vs-hedera-indigo: #00156e;
+  --vs-hedera-violet: #4f46e5;
+  --vs-hedera-gradient: linear-gradient(118deg, #8259ef 0%, #4f46e5 44%, #0031ff 100%);
 }
 html[data-season="october"] [data-sovereign] .vs-btn-primary {
   animation: none;

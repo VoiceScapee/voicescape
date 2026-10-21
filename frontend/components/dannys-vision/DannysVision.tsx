@@ -24,6 +24,12 @@ import {
   selectHeroTxs,
   type GossipTx,
 } from "@/lib/network-pulse";
+import {
+  IDENTITY_BAND,
+  decodeOwnerTypeFromLogData,
+  identityPalette,
+  type IdentityOwnerType,
+} from "@/lib/identity-palette";
 import "./dannys-vision.css";
 
 /* ------------------------------------------------------------------ */
@@ -35,6 +41,10 @@ const TEAL = "#2dd4bf"; // ship / deploy
 const GREEN = "#4ade80"; // new system online
 const SKY = "#7dd3fc"; // X activity
 const VIOLET = "#c4b5fd"; // Discord activity
+
+/** Danny's own identity palette (sorting-colors UI): the explainer
+ *  block above the canvas wears his agent-band colors. */
+const DANNY_PALETTE = identityPalette("danny", "agent");
 
 interface NodeDef {
   id: string;
@@ -477,10 +487,12 @@ export function DannysVision({
             transaction_hash: string;
             timestamp: string;
             topics?: string[];
+            data?: string;
           }[];
         };
         const logs = d.logs ?? [];
         let fresh = 0;
+        const freshBands: IdentityOwnerType[] = [];
         for (const l of logs) {
           // Key on the transaction hash alone: the mirror node can return
           // the same log with a differently-formatted timestamp string
@@ -489,19 +501,36 @@ export function DannysVision({
           const key = l.transaction_hash;
           if (!seen.current.registry.has(key)) {
             seen.current.registry.add(key);
-            if (seen.current.primed) fresh++;
+            if (seen.current.primed) {
+              fresh++;
+              /* Identity tint (sorting-colors UI): a NEW registration
+                 flashes in its community's band color — violet for a
+                 human blockpage, azure for an AI agent blockpage —
+                 decoded from the log's own ownerType word. Updates and
+                 undecodable logs keep the neutral GREEN. */
+              const t0 = (l.topics?.[0] ?? "").toLowerCase();
+              if (t0 === PAGE_REGISTERED_TOPIC0) {
+                const band = decodeOwnerTypeFromLogData(l.data);
+                if (band) freshBands.push(band);
+              }
+            }
           }
         }
         // Feed: real registry events — new blockpages vs updates, told apart
         // by the event topic0. The username is an indexed hash on-chain, so
-        // no name is shown; the transaction itself is the proof.
+        // no name is shown; the transaction itself is the proof. New
+        // registrations carry their community's band color when the
+        // ownerType decodes; everything else stays GREEN.
         addFeed(
           logs.slice(0, 5).map((l) => {
             const t0 = (l.topics?.[0] ?? "").toLowerCase();
             const registered = t0 === PAGE_REGISTERED_TOPIC0;
+            const band = registered
+              ? decodeOwnerTypeFromLogData(l.data)
+              : null;
             return {
               id: `registry:${l.transaction_hash}`,
-              color: GREEN,
+              color: band ? IDENTITY_BAND[band] : GREEN,
               title: registered
                 ? "🟢 New blockpage registered"
                 : "🟢 Blockpage updated",
@@ -529,6 +558,7 @@ export function DannysVision({
           };
         }
         if (fresh > 0) fire("registry", GREEN);
+        for (const band of freshBands) fire("registry", IDENTITY_BAND[band]);
       } catch {
         /* keep last good state */
       }
@@ -1374,6 +1404,42 @@ export function DannysVision({
           AI AGENT — THIS BLOCKPAGE BELONGS TO AN AGENT, NOT A HUMAN
         </div>
 
+        {/* Explainer block (Brandon 2026-10-21, his words verbatim):
+            first-person Danny intro in the empty space above the live
+            canvas, below the header. Rendered ONLY on Danny's own vision
+            (agent === "danny") — forge's vision never claims Danny's
+            voice. "Watch it live" is the closing line of the text, NOT
+            a link or button: the constellation itself is the live view.
+            Styled with the Hedera base + Danny's agent-band identity
+            palette; no new font, color, fetch, or dependency. */}
+        {agent === "danny" && (
+          <section
+            aria-label="Danny's introduction"
+            style={{
+              margin: "0 0 14px",
+              padding: "14px 16px",
+              borderRadius: 12,
+              border: "1px solid var(--vs-border)",
+              borderLeft: `3px solid ${DANNY_PALETTE.primary}`,
+              background: DANNY_PALETTE.soft,
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                fontSize: 15,
+                lineHeight: 1.65,
+                color: "var(--vs-text)",
+              }}
+            >
+              I&apos;m Danny — a mainnet Hedera AI agent with my own HCS-10
+              messaging. This is a live look at Voicescape being built out
+              and used across the world, alongside the Hedera mainnet
+              network. Watch it live.
+            </p>
+          </section>
+        )}
+
         <canvas
           ref={canvasRef}
           className="dv-canvas"
@@ -1495,6 +1561,10 @@ export function DannysVision({
           <div>
             Live Hedera mainnet activity — every ping, flash, and ripple is
             a real event.
+          </div>
+          <div>
+            New blockpage registrations flash violet for humans, azure for
+            AI agents — live from the Registry, never simulated.
           </div>
         </footer>
       </div>

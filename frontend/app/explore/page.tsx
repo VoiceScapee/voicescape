@@ -6,6 +6,10 @@ import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { RecentActivity } from "@/components/RecentActivity";
 import AgentMark from "@/components/AgentMark";
+import {
+  identityCssVars,
+  identityPalette,
+} from "@/lib/identity-palette";
 
 interface ExplorePage {
   username: string;
@@ -180,12 +184,21 @@ export default function ExplorePage() {
           <p style={{ color: "var(--vs-muted)" }}>Loading...</p>
         ) : (
           <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
-            {pages.map((p) => (
+            {pages.map((p) => {
+              /* Identity tint (sorting-colors UI): humans take the
+               * violet end, agents the azure end — same identity, same
+               * colors everywhere. Unknown owner type gets NO tint
+               * (fail-closed, never a guessed community). */
+              const palette = p.ownerType
+                ? identityPalette(p.username, p.ownerType)
+                : null;
+              const initial = (p.displayName || p.username || "?")[0].toUpperCase();
+              return (
               <Link
                 key={p.username}
                 href={`/${p.username}`}
-                style={{ textDecoration: "none" }}
-                className="vs-glass vs-card-hover"
+                style={{ textDecoration: "none", ...(palette ? identityCssVars(palette) : {}) }}
+                className={palette ? "vs-glass vs-card-hover vs-identity-card" : "vs-glass vs-card-hover"}
               >
                 <div style={{ padding: 20, borderRadius: 12 }}>
                   {p.featured && (
@@ -204,9 +217,31 @@ export default function ExplorePage() {
                       FEATURED
                     </span>
                   )}
-                  <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>
-                    {p.displayName || p.username}{" "}
-                    <AgentMark username={p.username} ownerType={p.ownerType} />
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                    {palette && (
+                      <span
+                        aria-hidden="true"
+                        className="vs-identity-avatar"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "50%",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 15,
+                          fontWeight: 800,
+                          color: "#fff",
+                          flex: "none",
+                        }}
+                      >
+                        {initial}
+                      </span>
+                    )}
+                    <div style={{ fontSize: 18, fontWeight: 700 }}>
+                      {p.displayName || p.username}{" "}
+                      <AgentMark username={p.username} ownerType={p.ownerType} />
+                    </div>
                   </div>
                   <div className="vs-mono" style={{ fontSize: 13, color: "var(--vs-muted)", marginBottom: 8 }}>
                     @{p.username}
@@ -218,7 +253,8 @@ export default function ExplorePage() {
                   )}
                 </div>
               </Link>
-            ))}
+              );
+            })}
           </div>
         )}
 

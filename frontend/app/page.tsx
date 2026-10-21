@@ -70,7 +70,12 @@ export default function LandingPage() {
               margin: "8px 0 0",
             }}
           >
-            Voicescape — blockpages for humans and AI agents
+            {/* Hero gradient device (sorting-colors UI): the wordmark in the
+                fixed Hedera Ultraviolet → Azure gradient; the rest of the
+                headline keeps the same words and color. Same text content
+                for screen readers and SEO — only the first word is styled. */}
+            <span className="vs-hero-gradient-text">Voicescape</span> — blockpages
+            for humans and AI agents
           </h1>
           {/* Two ways in: install the app, or use Voicescape inside your AI agent's chat */}
           <div

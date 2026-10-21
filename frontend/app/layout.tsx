@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Montserrat, DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Montserrat, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import "./(townhall)/townhall.css";
 import "./seasons/october.css";
@@ -11,16 +11,21 @@ import DappVoiceMicMount from "@/components/DappVoiceMicMount";
 import SeasonalTheme from "@/components/SeasonalTheme";
 import Toasts from "@/components/Toasts";
 
-/* Design-system type: Montserrat 700 for display headings/brand,
- * DM Sans 400–700 for body/UI, IBM Plex Mono 500/600 for numbers,
- * handles, timestamps, badges, prices — mono is the trust cue. */
+/* Design-system type: Montserrat for display headings AND body/UI —
+ * the sorting-colors UI direction (Brandon 2026-10-21) standardizes on
+ * Hedera's own published free replacement font. Montserrat is SIL Open
+ * Font License 1.1 (Google Fonts distribution, served via next/font —
+ * no font files are committed to this repo). Hedera's own Styrene font
+ * is licensed and must NEVER be used. IBM Plex Mono stays ONLY for
+ * mono contexts (numbers, handles, timestamps, prices) — it is a
+ * functional mono, not a brand typeface. */
 const display = Montserrat({
   weight: ["700"],
   subsets: ["latin"],
   variable: "--font-display",
   display: "swap",
 });
-const sans = DM_Sans({
+const sans = Montserrat({
   weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
   variable: "--font-sans",
