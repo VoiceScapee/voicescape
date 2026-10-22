@@ -52,14 +52,23 @@ export interface WeeklyLeader {
 }
 
 /**
- * Decode one mirror-node log into a TipEvent. Returns null for anything
- * that is not a well-formed TipSent event (wrong topic, missing parties,
- * unparseable amount) — callers skip nulls.
- *
- * amountHbar is the creator's NET 98% share (gross amount minus the treasury
- * fee word) — the only figure any UI total may display as "received".
+ * Raw TipSent decode: the same validation as decodeTipSentLog, but
+ * returning exact tinybar words instead of the float net amount.
+ * Verification code (server-side EVM payment checks) must compare
+ * grossTinybar exactly — never compare float HBAR amounts.
  */
-export function decodeTipSentLog(log: unknown): TipEvent | null {
+export interface TipSentRaw {
+  from: string;
+  to: string;
+  /** msg.value in tinybar (gross, before the treasury fee). */
+  grossTinybar: bigint;
+  /** Treasury fee word in tinybar. */
+  feeTinybar: bigint;
+  /** Mirror-node timestamp string, or "" when the endpoint omits it. */
+  timestamp: string;
+}
+
+export function decodeTipSentLogRaw(log: unknown): TipSentRaw | null {
   if (!log || typeof log !== "object") return null;
   const l = log as {
     topics?: unknown;
@@ -78,23 +87,20 @@ export function decodeTipSentLog(log: unknown): TipEvent | null {
   if (!/^0x[0-9a-f]{40}$/.test(from) || !/^0x[0-9a-f]{40}$/.test(to)) return null;
 
   // TipSent data layout: word0 = gross amount (msg.value, tinybar),
-  // word1 = treasury fee (tinybar). The creator's actual 98% share — the
-  // only figure any UI total may show — is gross minus fee.
-  let amountHbar = 0;
+  // word1 = treasury fee (tinybar).
+  let grossTinybar: bigint;
+  let feeTinybar: bigint;
   if (typeof l.data === "string" && l.data.length >= 130) {
     try {
-      const grossTinybar = BigInt("0x" + l.data.slice(2, 66));
-      const feeTinybar = BigInt("0x" + l.data.slice(66, 130));
+      grossTinybar = BigInt("0x" + l.data.slice(2, 66));
+      feeTinybar = BigInt("0x" + l.data.slice(66, 130));
       if (feeTinybar < 0n || feeTinybar > grossTinybar) return null;
-      const netTinybar = grossTinybar - feeTinybar;
-      amountHbar = Number(netTinybar) / TINYBAR_PER_HBAR;
     } catch {
       return null;
     }
   } else {
     return null;
   }
-  if (!Number.isFinite(amountHbar) || amountHbar <= 0) return null;
 
   const timestamp = typeof l.timestamp === "string" ? l.timestamp : "";
   // The per-transaction contract-results endpoint omits the timestamp
@@ -103,7 +109,24 @@ export function decodeTipSentLog(log: unknown): TipEvent | null {
   // than rejecting every log from that endpoint.
   if (timestamp && !/^\d+\.\d+$/.test(timestamp)) return null;
 
-  return { from, to, amountHbar, timestamp };
+  return { from, to, grossTinybar, feeTinybar, timestamp };
+}
+
+/**
+ * Decode one mirror-node log into a TipEvent. Returns null for anything
+ * that is not a well-formed TipSent event (wrong topic, missing parties,
+ * unparseable amount) — callers skip nulls.
+ *
+ * amountHbar is the creator's NET 98% share (gross amount minus the treasury
+ * fee word) — the only figure any UI total may display as "received".
+ */
+export function decodeTipSentLog(log: unknown): TipEvent | null {
+  const raw = decodeTipSentLogRaw(log);
+  if (!raw) return null;
+  const netTinybar = raw.grossTinybar - raw.feeTinybar;
+  const amountHbar = Number(netTinybar) / TINYBAR_PER_HBAR;
+  if (!Number.isFinite(amountHbar) || amountHbar <= 0) return null;
+  return { from: raw.from, to: raw.to, amountHbar, timestamp: raw.timestamp };
 }
 
 /**

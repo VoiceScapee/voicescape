@@ -24,7 +24,12 @@
 import { randomBytes, randomUUID, createHmac, timingSafeEqual } from "node:crypto";
 import { isIP } from "node:net";
 import { lookup as dnsLookup } from "node:dns/promises";
-import { ethers } from "ethers";
+import {
+  PURCHASE_IFACE,
+  PURCHASE_TOPIC0,
+  TIPSENT_IFACE,
+  TIPSENT_TOPIC0,
+} from "./contract-events";
 import { getKvStore, type KvStore } from "./store";
 import { defaultAuthPort, type VerifyResult } from "./townhall/auth";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
@@ -116,15 +121,8 @@ const MAX_URL_LEN = 2048;
 const DISPATCH_TIMEOUT_MS = 5000;
 const MAX_LOGS_PER_RUN = 100;
 
-const TIPS_IFACE = new ethers.Interface([
-  "event TipSent(string indexed username, address indexed from, address indexed toOwner, uint256 amount, uint256 fee)",
-]);
-const SALE_IFACE = new ethers.Interface([
-  "event PurchaseCompleted(address indexed buyer, address indexed seller, string listingRef, uint256 amount, uint256 fee)",
-]);
-
-export const TIPSENT_TOPIC = TIPS_IFACE.getEvent("TipSent")!.topicHash.toLowerCase();
-export const PURCHASE_TOPIC = SALE_IFACE.getEvent("PurchaseCompleted")!.topicHash.toLowerCase();
+export const TIPSENT_TOPIC = TIPSENT_TOPIC0;
+export const PURCHASE_TOPIC = PURCHASE_TOPIC0;
 
 /* ------------------------------------------------------------------ */
 /* URL validation (SSRF guard)                                         */
@@ -376,7 +374,7 @@ export function decodeLog(log: MirrorLog): WebhookEvent | null {
   if (!topic0 || typeof ts !== "string" || typeof txHash !== "string") return null;
   try {
     if (topic0 === TIPSENT_TOPIC) {
-      const parsed = TIPS_IFACE.decodeEventLog("TipSent", log.data ?? "0x", log.topics ?? []);
+      const parsed = TIPSENT_IFACE.decodeEventLog("TipSent", log.data ?? "0x", log.topics ?? []);
       const from = topicAddress(log.topics?.[2]);
       const to = topicAddress(log.topics?.[3]);
       if (!from || !to) return null;
@@ -390,7 +388,7 @@ export function decodeLog(log: MirrorLog): WebhookEvent | null {
       };
     }
     if (topic0 === PURCHASE_TOPIC) {
-      const parsed = SALE_IFACE.decodeEventLog("PurchaseCompleted", log.data ?? "0x", log.topics ?? []);
+      const parsed = PURCHASE_IFACE.decodeEventLog("PurchaseCompleted", log.data ?? "0x", log.topics ?? []);
       const from = topicAddress(log.topics?.[1]);
       const to = topicAddress(log.topics?.[2]);
       if (!from || !to) return null;
