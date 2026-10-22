@@ -21,6 +21,8 @@
  * performs GET requests against the public mirror node only.
  */
 
+import { decodeTipSentLogRaw, type TipSentRaw } from "../leaderboard";
+
 const TRANSFER_TOPIC0 =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
 
@@ -176,14 +178,23 @@ export interface VerifyEvmTransferInput {
  * reported as { ok: false, reason } so callers can say "couldn't verify"
  * instead of asserting an absence.
  */
-export async function verifyEvmTransfer(
-  input: VerifyEvmTransferInput,
-): Promise<TransferVerification> {
-  const contractId = input.contractId?.trim();
-  if (!contractId) return { ok: false, reason: "bad-input" };
-  const fetchImpl = input.fetchImpl ?? fetch;
+type FetchLogsResult =
+  | { ok: true; logs: MirrorContractLog[] }
+  | { ok: false; reason: "mirror-unreachable" | "mirror-malformed" };
+
+/**
+ * Shared mirror-node contract-logs fetch (newest page, limit 100, newest
+ * first) with retries. Callers assert client-side regardless of any
+ * server-side filtering, so a relay or proxy that strips filters cannot
+ * manufacture a match.
+ */
+async function fetchContractLogs(
+  contractId: string,
+  sinceTimestamp: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<FetchLogsResult> {
   const params = new URLSearchParams({ limit: "100", order: "desc" });
-  if (input.sinceTimestamp) params.set("timestamp", `gt:${input.sinceTimestamp}`);
+  if (sinceTimestamp) params.set("timestamp", `gt:${sinceTimestamp}`);
   const url =
     `${mirrorBaseUrl()}/contracts/${encodeURIComponent(contractId)}/results/logs?${params.toString()}`;
   let response: Response | null = null;
@@ -210,5 +221,90 @@ export async function verifyEvmTransfer(
   }
   const logs = (body as { logs?: MirrorContractLog[] }).logs;
   if (!Array.isArray(logs)) return { ok: false, reason: "mirror-malformed" };
-  return evaluateTransferLogs(logs, input.expected);
+  return { ok: true, logs };
+}
+
+export async function verifyEvmTransfer(
+  input: VerifyEvmTransferInput,
+): Promise<TransferVerification> {
+  const contractId = input.contractId?.trim();
+  if (!contractId) return { ok: false, reason: "bad-input" };
+  const fetched = await fetchContractLogs(contractId, input.sinceTimestamp, input.fetchImpl ?? fetch);
+  if (!fetched.ok) return { ok: false, reason: fetched.reason };
+  return evaluateTransferLogs(fetched.logs, input.expected);
+}
+
+export interface ExpectedTipSent {
+  from?: string;
+  to?: string;
+  /** Gross msg.value in tinybar; accepts bigint, decimal string, or hex string. */
+  grossTinybar?: bigint | string;
+}
+
+export interface TipSentVerification {
+  ok: boolean;
+  /** Machine-readable reason when !ok: "matched" | "no-matching-log" | "mirror-unreachable" | "mirror-malformed" | "bad-input". */
+  reason: string;
+  matched?: TipSentRaw;
+}
+
+export interface VerifyTipSentInput {
+  /** Hedera Tips contract id (0.0.x) or EVM address. */
+  contractId: string;
+  expected: ExpectedTipSent;
+  /** Mirror-node timestamp filter — when set, only logs at/after it are fetched (via timestamp=gt:). */
+  sinceTimestamp?: string;
+  /** Injectable fetch for tests; defaults to global fetch. */
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * Pure evaluation: find the first TipSent log matching every expected
+ * field that was provided. Amounts compare as exact tinybar bigints —
+ * never as float HBAR. The 98/2 split is checked implicitly: a matched
+ * log's fee word is what the contract took, so gross minus fee is the
+ * creator's share; callers that need the split asserted should also
+ * check matched.feeTinybar * 50n === matched.grossTinybar.
+ */
+export function evaluateTipSentLogs(
+  logs: MirrorContractLog[],
+  expected: ExpectedTipSent,
+): TipSentVerification {
+  const wantFrom = expected.from ? normalizeAddress(expected.from) : null;
+  const wantTo = expected.to ? normalizeAddress(expected.to) : null;
+  const wantGross =
+    expected.grossTinybar !== undefined ? parseExpectedValue(expected.grossTinybar) : null;
+  if (
+    (expected.from && !wantFrom) ||
+    (expected.to && !wantTo) ||
+    (expected.grossTinybar !== undefined && wantGross === null)
+  ) {
+    return { ok: false, reason: "bad-input" };
+  }
+  for (const log of logs) {
+    const decoded = decodeTipSentLogRaw(log);
+    if (!decoded) continue;
+    if (wantFrom && decoded.from !== wantFrom) continue;
+    if (wantTo && decoded.to !== wantTo) continue;
+    if (wantGross !== null && decoded.grossTinybar !== wantGross) continue;
+    return { ok: true, reason: "matched", matched: decoded };
+  }
+  return { ok: false, reason: "no-matching-log" };
+}
+
+/**
+ * Fetch a contract's recent logs from the mirror node and assert that one
+ * of them is the expected TipSent event. This is the server-side proof
+ * for an EVM-wallet tip: the wallet's relay receipt is only a hint, this
+ * mirror-node check is what credits anything. Never throws for
+ * verification outcomes.
+ */
+export async function verifyTipSent(
+  input: VerifyTipSentInput,
+): Promise<TipSentVerification> {
+  const contractId = input.contractId?.trim();
+  if (!contractId) return { ok: false, reason: "bad-input" };
+  const fetched = await fetchContractLogs(contractId, input.sinceTimestamp, input.fetchImpl ?? fetch);
+  if (!fetched.ok) return { ok: false, reason: fetched.reason };
+  return evaluateTipSentLogs(fetched.logs, input.expected);
 }

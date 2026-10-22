@@ -11,10 +11,13 @@ import { describe, expect, it, vi } from "vitest";
 import {
   EVM_TRANSFER_TOPIC0,
   decodeTransferLog,
+  evaluateTipSentLogs,
   evaluateTransferLogs,
   verifyEvmTransfer,
+  verifyTipSent,
   type MirrorContractLog,
 } from "./evm-verify";
+import { TIPSENT_TOPIC } from "../leaderboard";
 
 const REFERENCE_LOG: MirrorContractLog = {
   contract_id: "0.0.10652328",
@@ -127,5 +130,59 @@ describe("verifyEvmTransfer", () => {
     });
     expect(result.reason).toBe("mirror-unreachable");
     expect(failing).toHaveBeenCalledTimes(3);
+  });
+});
+
+function padTopic(address: string): string {
+  return "0x" + "0".repeat(24) + address.slice(2).toLowerCase();
+}
+
+function word(value: bigint): string {
+  return "0x" + value.toString(16).padStart(64, "0");
+}
+
+const TIP_FROM = "0x1111111111111111111111111111111111111111";
+const TIP_TO = "0x2222222222222222222222222222222222222222";
+
+function tipSentLog(gross = 10_000_000n, fee = 200_000n): MirrorContractLog {
+  return {
+    contract_id: "0.0.10854060",
+    topics: [TIPSENT_TOPIC, padTopic(TIP_FROM), padTopic(TIP_FROM), padTopic(TIP_TO)],
+    data: word(gross) + word(fee).slice(2),
+    timestamp: "1791392670.082124104",
+    index: 0,
+  };
+}
+
+describe("verifyTipSent", () => {
+  it("matches a TipSent log on from/to/gross and proves the 98/2 split words", () => {
+    const result = evaluateTipSentLogs([tipSentLog()], {
+      from: TIP_FROM,
+      to: TIP_TO,
+      grossTinybar: 10_000_000n,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.reason).toBe("matched");
+    // 2% fee word: fee * 50 === gross, so creator net is exactly 98%.
+    expect(result.matched?.feeTinybar).toBe(200_000n);
+    expect(result.matched!.feeTinybar * 50n).toBe(result.matched!.grossTinybar);
+  });
+
+  it("reports no-matching-log on gross mismatch and bad-input on bad addresses", () => {
+    expect(evaluateTipSentLogs([tipSentLog()], { grossTinybar: 1n }).reason).toBe(
+      "no-matching-log",
+    );
+    expect(evaluateTipSentLogs([tipSentLog()], { from: "nope" }).reason).toBe("bad-input");
+  });
+
+  it("verifies a matching TipSent through a mocked mirror node", async () => {
+    const fetchImpl = vi.fn(async (_url: unknown) => jsonResponse({ logs: [tipSentLog()] }));
+    const result = await verifyTipSent({
+      contractId: "0.0.10854060",
+      expected: { to: TIP_TO, grossTinybar: "10000000" },
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.matched?.grossTinybar).toBe(10_000_000n);
   });
 });
