@@ -175,3 +175,12 @@ describe("getEvmProvider", () => {
     expect(getEvmProvider()).toBe(mock);
   });
 });
+
+describe("tinybarToWei", () => {
+  it("converts 1 HBAR of tinybar to 10^18 wei exactly", async () => {
+    const { tinybarToWei } = await import("./evm-wallet");
+    expect(tinybarToWei(100_000_000n)).toBe(1_000_000_000_000_000_000n);
+    expect(tinybarToWei(0n)).toBe(0n);
+    expect(() => tinybarToWei(-1n)).toThrow(EvmWalletError);
+  });
+});

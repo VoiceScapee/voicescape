@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
-import { tipPage, resolvePage } from "@/lib/contracts";
+import { tipPage, resolvePage, getTipsAddress } from "@/lib/contracts";
 import {
   friendlyWalletError,
   isStaleConnectionError,
@@ -22,6 +22,12 @@ import {
   WALLET_ADAPTERS,
 } from "@/lib/wallet";
 import { useSession } from "@/lib/session";
+import {
+  getEvmProvider,
+  isUserRejection,
+  submitEvmTip,
+  tinybarToWei,
+} from "@/lib/evm-wallet";
 import { getActiveChain } from "@/lib/chains";
 import { getHbarUsdPrice } from "@/lib/x402";
 import { usdToWei, hbarToWei } from "@/lib/tokens";
@@ -148,6 +154,21 @@ export default function TipModal({
   // Set once the wallet approves: the hook polls the mirror node until the
   // transaction reaches consensus, so the UI reacts to the real outcome.
   const [confirmTxId, setConfirmTxId] = useState<string | null>(null);
+  // EVM-wallet tip path (additive — the Hedera path above is untouched).
+  // When set, the modal polls /api/evm/verify-tip until the mirror node
+  // proves the TipSent event, then promotes the tip to the confirmed
+  // receipt exactly like the Hedera path.
+  const [evmAvailable, setEvmAvailable] = useState(false);
+  const [evmBusy, setEvmBusy] = useState(false);
+  const [evmPending, setEvmPending] = useState<{
+    from: string;
+    toOwner: string;
+    grossTinybar: string;
+    sinceTimestamp: string;
+  } | null>(null);
+  useEffect(() => {
+    setEvmAvailable(getEvmProvider() !== null);
+  }, []);
   // Finality clock: wallet approval → consensus, shown on the receipt.
   const [approvedAt, setApprovedAt] = useState<number | null>(null);
   const [finalizedAt, setFinalizedAt] = useState<Date | null>(null);
@@ -339,6 +360,129 @@ export default function TipModal({
     }
   };
 
+  // EVM-wallet tip: same amount math and registry guard as the Hedera
+  // path, but the transaction goes through the visitor's own EVM wallet
+  // (MetaMask-style) on Hedera mainnet via the JSON-RPC relay. The
+  // returned hash is UNCONFIRMED — the polling effect below promotes it
+  // to the receipt only when the mirror node proves the TipSent event.
+  const evmTip = async () => {
+    setError(null);
+    tap();
+    const p = price;
+    if (!isHbar && p == null) {
+      setError(
+        priceFailed
+          ? "HBAR price is unavailable right now — switch to HBAR mode to tip the exact amount."
+          : "HBAR price is still loading — try again in a moment.",
+      );
+      return;
+    }
+    const provider = getEvmProvider();
+    if (!provider) {
+      setError("No EVM wallet found in this browser — install MetaMask or another EVM wallet to tip this way.");
+      return;
+    }
+    const tipsAddress = getTipsAddress();
+    if (!tipsAddress) {
+      setError("Tips contract address is not configured.");
+      return;
+    }
+    setEvmBusy(true);
+    recordConversionEvent("tip_attempt", "post");
+    try {
+      const resolved = await resolvePage(author, getActiveChain());
+      if (!resolved) {
+        setError(`@${author} isn't registered on-chain — the tip would fail.`);
+        return;
+      }
+      const hbarAmt = isHbar ? hbarAmount : usd / (p as number);
+      const receiptTiny = BigInt(Math.round(hbarAmt * 1e8));
+      const { txHash, from } = await submitEvmTip(provider, {
+        tipsAddress,
+        username: author,
+        valueWei: tinybarToWei(receiptTiny),
+      });
+      const sinceTimestamp = `${Math.floor(Date.now() / 1000) - 300}.000000000`;
+      setEvmPending({
+        from,
+        toOwner: resolved.owner,
+        grossTinybar: receiptTiny.toString(),
+        sinceTimestamp,
+      });
+      setApprovedAt(Date.now());
+      setSubmittedTxId(txHash);
+      pushToast({
+        kind: "pending",
+        title: "Tip submitted",
+        sub: "Confirming on Hedera — checking for the on-chain tip…",
+        txId: txHash,
+        explorerBase: chain.blockExplorer,
+      });
+    } catch (e) {
+      if (isUserRejection(e)) {
+        setError("Tip cancelled in your wallet.");
+      } else {
+        reportError(e, "post-tip", { action: "evm-tip-submit", walletState: "connected" });
+        setError(`Tip failed: ${friendlyWalletError(e)}`);
+      }
+      recordConversionEvent("tip_failed", "post");
+    } finally {
+      setEvmBusy(false);
+    }
+  };
+
+  // Poll the server TipSent proof for a submitted EVM tip. On proof, the
+  // tip graduates to the same confirmed receipt as the Hedera path; on
+  // timeout (~2 minutes) the submitted panel (with HashScan link) stays
+  // put and polling stops — the tip is neither confirmed nor failed.
+  useEffect(() => {
+    if (!evmPending || !submittedTxId || txId) return;
+    let stopped = false;
+    let attempts = 0;
+    const check = async () => {
+      attempts += 1;
+      try {
+        const res = await fetch("/api/evm/verify-tip", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(evmPending),
+        });
+        const json = (await res.json()) as {
+          verified?: boolean;
+          matched?: { grossTinybar?: string; feeTinybar?: string };
+        };
+        if (!json.verified || !json.matched) return;
+        if (stopped) return;
+        const gross = BigInt(json.matched.grossTinybar ?? "0");
+        const fee = BigInt(json.matched.feeTinybar ?? "0");
+        const creatorHbar = Number(gross - fee) / 1e8;
+        const treasuryHbar = Number(fee) / 1e8;
+        setReceiptCreatorHbar(creatorHbar.toFixed(4));
+        setReceiptLines([
+          { label: "You sent", value: `${(Number(gross) / 1e8).toFixed(4)} HBAR` },
+          { label: `@${author} gets (98%)`, value: `${creatorHbar.toFixed(4)} HBAR` },
+          { label: "Treasury gets (2%)", value: `${treasuryHbar.toFixed(4)} HBAR` },
+        ]);
+        setFinalizedAt(new Date());
+        setTxId(submittedTxId);
+        setEvmPending(null);
+      } catch {
+        // Transient fetch failure — keep polling until the attempt budget ends.
+      }
+      if (attempts >= 24) {
+        setEvmPending(null);
+      }
+    };
+    void check();
+    const id = setInterval(() => {
+      void check();
+    }, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+    };
+  }, [evmPending, submittedTxId, txId, author]);
+
   const reset = () => {
     setTxId(null);
     setSubmittedTxId(null);
@@ -348,6 +492,8 @@ export default function TipModal({
     setReceiptLines([]);
     setReceiptCreatorHbar(null);
     setError(null);
+    setEvmPending(null);
+    setEvmBusy(false);
     // Fresh dwell flow for the next attempt (T1 re-stamped on open).
     dwellReset();
     void dwellFlowOpen(surface);
@@ -495,6 +641,24 @@ export default function TipModal({
                     ? `Tip ${hbarAmount} HBAR`
                     : `Tip $${usd}`}
             </button>
+            {evmAvailable && (
+              <button
+                type="button"
+                className="vs-btn vs-btn-ghost th-btn-block"
+                onClick={evmTip}
+                disabled={busy || evmBusy || confirmStatus === "confirming"}
+                style={{ marginTop: 8 }}
+              >
+                <IconTip size={18} />{" "}
+                {evmBusy ? "Waiting on your EVM wallet…" : "Tip with EVM wallet (MetaMask)"}
+              </button>
+            )}
+            {evmBusy && (
+              <TxConfirming
+                title="Waiting on your EVM wallet…"
+                sub="Approve the transaction in your wallet, then Voicescape checks the mirror node for the on-chain tip."
+              />
+            )}
             {busy && !confirmTxId && (
               <TxConfirming
                 title="Waiting on your wallet…"

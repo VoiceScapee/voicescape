@@ -39,6 +39,21 @@ import { getRelayUrl } from "./evm-relay";
 export const HEDERA_MAINNET_CHAIN_ID = 295;
 export const HEDERA_MAINNET_CHAIN_ID_HEX = "0x127";
 
+/**
+ * 1 tinybar = 10^10 wei. Hedera docs (evm/development/troubleshooting,
+ * "Decimal handling: 8 vs 18"): the native ledger uses 8 decimals, the
+ * JSON-RPC relay scales values to 18-decimal wei, and inside an EVM
+ * contract msg.value is wei. Same constant as WEI_PER_TINYBAR in lib/tx.ts
+ * (the Hedera-native write path) — if either changes, both must change.
+ */
+export const WEI_PER_TINYBAR = 10_000_000_000n;
+
+/** Exact tinybar → EVM wei conversion (integer math, never floats for money). */
+export function tinybarToWei(tinybar: bigint): bigint {
+  if (tinybar < 0n) throw new EvmWalletError("Tinybar amount cannot be negative.");
+  return tinybar * WEI_PER_TINYBAR;
+}
+
 export class EvmWalletError extends Error {
   constructor(message: string) {
     super(message);
