@@ -129,8 +129,9 @@ describe("verifyEvmTransfer", () => {
       fetchImpl: failing as unknown as typeof fetch,
     });
     expect(result.reason).toBe("mirror-unreachable");
-    expect(failing).toHaveBeenCalledTimes(3);
-  });
+    // Shared fetch-mirror helper: 1 initial attempt + 3 retries.
+    expect(failing).toHaveBeenCalledTimes(4);
+  }, 10000);
 });
 
 function padTopic(address: string): string {

@@ -47,6 +47,7 @@ import {
   type PushSender,
 } from "./push";
 import { resolveUsernameForOwner } from "@/lib/registry-reverse";
+import { PURCHASE_IFACE, PURCHASE_TOPIC0 } from "./contract-events";
 
 /* ------------------------------------------------------------------ */
 /* Types (shared shapes live in lib/notify-types.ts — client-safe)     */
@@ -276,9 +277,8 @@ export function shortWallet(wallet: string): string {
 
 export const TIPS_CONTRACT_ID = "0.0.10854060";
 export const MIRROR_NODE = "https://mainnet.mirrornode.hedera.com/api/v1";
-/** keccak256("PurchaseCompleted(address,address,string,uint256,uint256)") */
-export const PURCHASE_COMPLETED_TOPIC0 =
-  "0x8555727c6813e10ae0b5a9b0a53a88a93176679845f5a005a248cdb9f1c05f2e";
+/** PurchaseCompleted topic hash — single source: ./contract-events.ts. */
+export const PURCHASE_COMPLETED_TOPIC0 = PURCHASE_TOPIC0;
 
 export interface MirrorLog {
   transaction_hash?: string;
@@ -311,36 +311,22 @@ export function decodePurchaseLog(log: MirrorLog): DecodedPurchase | null {
   try {
     const topics = log.topics ?? [];
     if ((topics[0] ?? "").toLowerCase() !== PURCHASE_COMPLETED_TOPIC0) return null;
-    const buyer = topics[1] ? "0x" + topics[1].slice(-40).toLowerCase() : null;
-    const seller = topics[2] ? "0x" + topics[2].slice(-40).toLowerCase() : null;
+    // The event ABI is the single source in ./contract-events.ts — no
+    // hand-rolled offset math here anymore. A malformed log throws inside
+    // decodeEventLog and lands in the catch below as null.
+    const parsed = PURCHASE_IFACE.decodeEventLog(
+      "PurchaseCompleted",
+      log.data ?? "0x",
+      topics,
+    );
+    const buyer = typeof parsed.buyer === "string" ? parsed.buyer.toLowerCase() : null;
+    const seller = typeof parsed.seller === "string" ? parsed.seller.toLowerCase() : null;
     if (!buyer || !seller) return null;
     if (!/^0x[0-9a-f]{40}$/.test(buyer) || !/^0x[0-9a-f]{40}$/.test(seller)) return null;
-    // data = offset(32) | amount uint256 | fee uint256 | strlen(32) | string bytes
-    // Fewer than 3 ABI words means garbage, not a PurchaseCompleted event.
-    const data = typeof log.data === "string" && log.data.startsWith("0x") ? log.data.slice(2) : "";
-    if (!/^[0-9a-fA-F]+$/.test(data) || data.length < 192) return null;
-    let amountHbar = "0";
-    let listingRef: string | null = null;
-    {
-      const hex = data;
-      const amountWei = BigInt("0x" + hex.slice(64, 128));
-      amountHbar = (Number(amountWei) / 100_000_000).toFixed(4);
-      // Decode the listingRef string via its ABI offset.
-      const offsetBytes = Number(BigInt("0x" + hex.slice(0, 64)));
-      const strPos = offsetBytes * 2;
-      if (
-        Number.isInteger(offsetBytes) &&
-        offsetBytes >= 0 &&
-        strPos + 64 <= hex.length
-      ) {
-        const len = Number(BigInt("0x" + hex.slice(strPos, strPos + 64)));
-        const bytesStart = strPos + 64;
-        if (Number.isInteger(len) && len >= 0 && bytesStart + len * 2 <= hex.length) {
-          const raw = Buffer.from(hex.slice(bytesStart, bytesStart + len * 2), "hex").toString("utf8");
-          if (LISTING_ID_RE.test(raw)) listingRef = raw;
-        }
-      }
-    }
+    if (typeof parsed.amount !== "bigint") return null;
+    const amountHbar = (Number(parsed.amount) / 100_000_000).toFixed(4);
+    const listingRefRaw = typeof parsed.listingRef === "string" ? parsed.listingRef : null;
+    const listingRef = listingRefRaw && LISTING_ID_RE.test(listingRefRaw) ? listingRefRaw : null;
     const timestampSec = parseFloat(log.timestamp ?? "");
     if (!Number.isFinite(timestampSec)) return null;
     const txHash = typeof log.transaction_hash === "string" ? log.transaction_hash : "";

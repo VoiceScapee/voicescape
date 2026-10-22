@@ -16,13 +16,19 @@
  *   answer is a hint; the production proof is the mirror node
  *   (see lib/server/evm-verify.ts). Treat relay data as untrusted input
  *   until the mirror node corroborates it.
- * - ENDPOINT POLICY: the URL comes ONLY from NEXT_PUBLIC_HEDERA_RELAY_URL.
- *   There is deliberately NO built-in default. The free public relay
- *   (https://mainnet.hashio.io/api) is for development and low-volume
- *   reads only — it is throttled and not intended for production traffic.
- *   Production use requires a self-hosted relay or a managed provider,
- *   which is a cost decision for Brandon (see the 2026-10-22 EVM report),
- *   not something this client silently picks.
+ * - ENDPOINT POLICY: the URL comes from NEXT_PUBLIC_HEDERA_RELAY_URL,
+ *   falling back to NEXT_PUBLIC_HEDERA_MAINNET_RPC (the chain-config var
+ *   in lib/chains.ts) when the relay var is empty. Both are explicit
+ *   configuration — there is deliberately NO built-in default. The free
+ *   public relay (https://mainnet.hashio.io/api) is for development and
+ *   low-volume reads only — it is throttled and not intended for
+ *   production traffic. Production use requires a self-hosted relay or
+ *   a managed provider, which is a cost decision for Brandon (see the
+ *   2026-10-22 EVM report), not something this client silently picks.
+ *   Note the distinction: lib/chains.ts hardcodes the Hashio URL as a
+ *   wallet chain-config fallback; this client never does — a silent
+ *   public default here would make verification reads depend on a
+ *   throttled endpoint nobody configured.
  */
 
 export class RelayUnreachable extends Error {
@@ -42,12 +48,16 @@ export class RelayRpcError extends Error {
 }
 
 /**
- * Configured relay URL, or null when none is configured. Callers must
- * treat null as "EVM reads unavailable" — never fall back to a public
- * endpoint silently.
+ * Configured relay URL, or null when none is configured. Resolution order
+ * is NEXT_PUBLIC_HEDERA_RELAY_URL, then NEXT_PUBLIC_HEDERA_MAINNET_RPC
+ * (the chain-config var) — both explicit configuration, never a hardcoded
+ * public endpoint. Callers must treat null as "EVM reads unavailable" —
+ * never fall back to a public endpoint silently.
  */
 export function getRelayUrl(): string | null {
-  const url = process.env.NEXT_PUBLIC_HEDERA_RELAY_URL?.trim();
+  const url =
+    process.env.NEXT_PUBLIC_HEDERA_RELAY_URL?.trim() ||
+    process.env.NEXT_PUBLIC_HEDERA_MAINNET_RPC?.trim();
   return url ? url : null;
 }
 

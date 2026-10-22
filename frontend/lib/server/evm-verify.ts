@@ -22,6 +22,7 @@
  */
 
 import { decodeTipSentLogRaw, type TipSentRaw } from "../leaderboard";
+import { fetchMirrorWithRetry } from "./fetch-mirror";
 
 const TRANSFER_TOPIC0 =
   "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
@@ -155,10 +156,6 @@ function mirrorBaseUrl(): string {
   return "https://mainnet.mirrornode.hedera.com/api/v1";
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 export interface VerifyEvmTransferInput {
   /** Hedera contract id (0.0.x) or EVM address. */
   contractId: string;
@@ -186,7 +183,9 @@ type FetchLogsResult =
  * Shared mirror-node contract-logs fetch (newest page, limit 100, newest
  * first) with retries. Callers assert client-side regardless of any
  * server-side filtering, so a relay or proxy that strips filters cannot
- * manufacture a match.
+ * manufacture a match. Retries use the shared fetch-mirror helper (429s
+ * and transient errors with backoff), so this module keeps no second
+ * retry loop.
  */
 async function fetchContractLogs(
   contractId: string,
@@ -197,19 +196,10 @@ async function fetchContractLogs(
   if (sinceTimestamp) params.set("timestamp", `gt:${sinceTimestamp}`);
   const url =
     `${mirrorBaseUrl()}/contracts/${encodeURIComponent(contractId)}/results/logs?${params.toString()}`;
-  let response: Response | null = null;
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      response = await fetchImpl(url, { headers: { accept: "application/json" } });
-      break;
-    } catch (error) {
-      lastError = error;
-      if (attempt < 2) await sleep(250 * (attempt + 1));
-    }
-  }
-  if (!response) {
-    void lastError;
+  let response: Response;
+  try {
+    response = await fetchMirrorWithRetry(url, { fetchImpl });
+  } catch {
     return { ok: false, reason: "mirror-unreachable" };
   }
   if (!response.ok) return { ok: false, reason: "mirror-unreachable" };

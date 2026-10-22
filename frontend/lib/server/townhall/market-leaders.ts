@@ -22,7 +22,12 @@
  * surface, and it ranks by on-chain totals only.
  */
 
-import { ethers } from "ethers";
+import {
+  PURCHASE_IFACE,
+  PURCHASE_TOPIC0,
+  TIPSENT_IFACE,
+  TIPSENT_TOPIC0,
+} from "../contract-events";
 import { getKvStore } from "../store";
 import { tinybarToHbar } from "../analytics";
 import { mirrorBaseUrl } from "./topics";
@@ -51,14 +56,6 @@ const LEADERS_CACHE_TTL_MS = 10 * 60 * 1000;
 const LOG_PAGE_CAP = 10;
 const LOG_PAGE_LIMIT = 100;
 
-const TIPSENT_IFACE = new ethers.Interface([
-  "event TipSent(string indexed username, address indexed from, address indexed toOwner, uint256 amount, uint256 fee)",
-]);
-const PURCHASE_IFACE = new ethers.Interface([
-  "event PurchaseCompleted(address indexed buyer, address indexed seller, string listingRef, uint256 amount, uint256 fee)",
-]);
-const TIPSENT_TOPIC0 = TIPSENT_IFACE.getEvent("TipSent")!.topicHash;
-const PURCHASE_TOPIC0 = PURCHASE_IFACE.getEvent("PurchaseCompleted")!.topicHash;
 
 function tipsContract(): string | null {
   // Single source of truth — handles zero-address placeholder fallback.

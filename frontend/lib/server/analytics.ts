@@ -11,7 +11,7 @@
  * route never fails the page load (fail-open). Stats are only ever served
  * to the page owner — the session wallet must own the username.
  */
-import { ethers } from "ethers";
+import { PURCHASE_IFACE, TIPSENT_IFACE } from "./contract-events";
 import { getKvStore, type KvStore } from "./store";
 import { mirrorBaseUrl } from "./townhall/topics";
 import { checkContent } from "./townhall/content-filter";
@@ -224,12 +224,6 @@ export async function getViewStats(
 /* On-chain tips (mirror node, fail-open)                             */
 /* ------------------------------------------------------------------ */
 
-const TIPSENT_IFACE = new ethers.Interface([
-  "event TipSent(string indexed username, address indexed from, address indexed toOwner, uint256 amount, uint256 fee)",
-]);
-const PURCHASE_IFACE = new ethers.Interface([
-  "event PurchaseCompleted(address indexed buyer, address indexed seller, string listingRef, uint256 amount, uint256 fee)",
-]);
 
 function tipsContract(): string | null {
   // Single source of truth — handles zero-address placeholder fallback.

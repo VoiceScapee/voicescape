@@ -25,11 +25,24 @@ afterEach(() => {
 describe("getRelayUrl", () => {
   it("returns null when no relay is configured (no silent public default)", () => {
     vi.stubEnv("NEXT_PUBLIC_HEDERA_RELAY_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_HEDERA_MAINNET_RPC", "");
     expect(getRelayUrl()).toBeNull();
   });
 
   it("returns the configured URL trimmed", () => {
     vi.stubEnv("NEXT_PUBLIC_HEDERA_RELAY_URL", `  ${RELAY_URL}  `);
+    expect(getRelayUrl()).toBe(RELAY_URL);
+  });
+
+  it("falls back to the chain-config RPC var when the relay var is empty", () => {
+    vi.stubEnv("NEXT_PUBLIC_HEDERA_RELAY_URL", "");
+    vi.stubEnv("NEXT_PUBLIC_HEDERA_MAINNET_RPC", "https://chain-rpc.example.test/api");
+    expect(getRelayUrl()).toBe("https://chain-rpc.example.test/api");
+  });
+
+  it("prefers the relay var over the chain-config var", () => {
+    vi.stubEnv("NEXT_PUBLIC_HEDERA_RELAY_URL", RELAY_URL);
+    vi.stubEnv("NEXT_PUBLIC_HEDERA_MAINNET_RPC", "https://chain-rpc.example.test/api");
     expect(getRelayUrl()).toBe(RELAY_URL);
   });
 });

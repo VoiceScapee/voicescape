@@ -27,6 +27,7 @@ import { createHash, timingSafeEqual } from "crypto";
 import { generateVAPIDKeys, setVapidDetails, sendNotification } from "web-push";
 import type { KvStore } from "./store";
 import { canonicalAddress } from "@/lib/session-message";
+import { TIPSENT_TOPIC0 } from "./contract-events";
 import { dictionaries, type Lang } from "@/lib/i18n/dictionaries";
 import {
   isValidVapidPrivateKey,
@@ -101,8 +102,8 @@ export async function ensureVapidKeypair(kv: KvStore): Promise<VapidKeypair> {
 /* ------------------------------------------------------------------ */
 
 export const TIPS_CONTRACT_ID = "0.0.10854060";
-/** TipSent(string indexed username, address indexed from, address indexed toOwner, uint256 amount, uint256 fee) */
-export const TIPSENT_TOPIC0 = "0xddb557901a5c7e767f2276c1190ca61ae148d62a74cfa61e4f7fa5319eaa431e";
+/** TipSent topic hash — single source: ./contract-events.ts. */
+export { TIPSENT_TOPIC0 };
 export const MIRROR_NODE = "https://mainnet.mirrornode.hedera.com/api/v1";
 export const VAPID_SUBJECT = "mailto:support@voicescape";
 
