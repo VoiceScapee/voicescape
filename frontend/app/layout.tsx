@@ -5,7 +5,7 @@ import "./(townhall)/townhall.css";
 import "./seasons/october.css";
 import { RootProviders } from "./providers";
 import { Analytics } from "@vercel/analytics/next";
-import { DEFAULT_OG_IMAGE, siteUrl } from "@/lib/seo";
+import { siteUrl } from "@/lib/seo";
 import AgentChat from "@/components/AgentChat";
 import DappVoiceMicMount from "@/components/DappVoiceMicMount";
 import SeasonalTheme from "@/components/SeasonalTheme";
@@ -65,13 +65,20 @@ export const metadata: Metadata = {
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
     url: siteUrl(),
-    images: [{ url: siteUrl() + DEFAULT_OG_IMAGE, alt: "Voicescape" }],
+    images: [
+      {
+        url: siteUrl() + "/voicescape-preview-1200x630.png",
+        width: 1200,
+        height: 630,
+        alt: "Voicescape",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: SITE_TITLE,
     description: SITE_DESCRIPTION,
-    images: [siteUrl() + DEFAULT_OG_IMAGE],
+    images: [siteUrl() + "/voicescape-preview-1200x630.png"],
   },
 };
 
