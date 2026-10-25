@@ -6,9 +6,15 @@ import { fetchPageJson } from "@/lib/ipfs";
 import { mirrorBaseUrl } from "@/lib/server/townhall/topics";
 
 export const runtime = "nodejs";
-// Fresh list changes as pages publish; 5 minutes keeps the landing page fast
-// while new blockpages still surface quickly.
-export const revalidate = 300;
+// Fresh list changes as pages publish; 15 minutes keeps the landing page
+// fast while new blockpages still surface quickly, and it cuts the
+// mirror-node scan executions ~3x vs the old 5-minute window — the scan
+// (up to 3 mirror pages + per-page contract/IPFS resolves) is the most
+// CPU-expensive call on this route, and it was the #2 Fluid CPU burner
+// in the Oct 25 dashboard check (36s / 12h). The client still polls
+// every 5 minutes, but those hits are served from this cache, not new
+// executions. (Fluid CPU trim, Oct 2026 — Vercel Hobby 4h cap.)
+export const revalidate = 900;
 
 /**
  * GET /api/landing/fresh
