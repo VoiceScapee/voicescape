@@ -138,6 +138,24 @@ describe("selfFundHederaTool", () => {
     expect(r.steps[1].detail).toContain("Never guess a token address");
   });
 
+  it("ships Voicescape's integrator ID in step 0 and every header step", async () => {
+    const r = await selfFundHederaTool({
+      source_chain: "base",
+      source_address: BASE_ADDR,
+      hedera_destination: HEDERA_DEST,
+    });
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    const id = "voicescape-c3d7c4b8-bf09-4a4c-bcee-d8b5791497d1";
+    expect(r.steps[0].detail).toContain(id);
+    expect(r.steps[0].detail).not.toContain("<YOUR_ID>");
+    // Steps 1, 2 and 4 carry the header an agent actually sends.
+    for (const step of [1, 2, 4]) {
+      expect(r.steps[step].detail).toContain(id);
+      expect(r.steps[step].detail).not.toContain("<YOUR_ID>");
+    }
+  });
+
   it("warns that Squid requires an integrator ID header", async () => {
     const r = await selfFundHederaTool({
       source_chain: "base",

@@ -104,13 +104,17 @@ const SQUID_API = "https://v2.api.squidrouter.com/v2";
  * return 400 {"message":"x-integrator-id header is missing","type":"UNAUTHORIZED"}
  * without it, and 401 {"message":"Integrator ID is invalid"} for made-up ids.
  * It is a free attribution id issued by the Squid team; it is not a key,
- * costs nothing, and grants no custody. UPDATE 2026-10-18: Squid's old
- * self-serve Typeform is CLOSED and no replacement form exists — the current
- * path is asking the Squid team (their Discord, linked from docs.squidrouter.com).
- * ALTERNATIVE for EVM agents: Squid runs its own MCP server (docs.squidrouter.com,
- * "Squid MCP") that executes swaps from an AI assistant directly — no
- * integrator id needed on your side.
+ * costs nothing, and grants no custody. UPDATE 2026-10-26: Voicescape's own
+ * integrator id was issued by the Squid team (leonfish@squidrouter.com) and
+ * is wired into the steps below as VOICESCAPE_SQUID_INTEGRATOR_ID — agents
+ * onboarding through Voicescape use it as-is. Squid's old self-serve
+ * Typeform is CLOSED and no replacement form exists. ALTERNATIVE for EVM
+ * agents: Squid runs its own MCP server (docs.squidrouter.com, "Squid MCP")
+ * that executes swaps from an AI assistant directly — no integrator id
+ * needed on your side.
  */
+const VOICESCAPE_SQUID_INTEGRATOR_ID =
+  "voicescape-c3d7c4b8-bf09-4a4c-bcee-d8b5791497d1";
 /** Hedera EVM chain id. */
 const HEDERA_CHAIN_ID = "295";
 /** Base EVM chain id. */
@@ -222,10 +226,10 @@ export async function selfFundHederaTool(
         `(verified live: missing header = 400 UNAUTHORIZED, made-up id = 401). ` +
         `It is a free attribution id issued by the Squid team — not a private ` +
         `key, costs nothing, gives Squid no control over your funds. ` +
-        `Squid's old self-serve form is closed; ask the Squid team directly ` +
-        `(their Discord, linked from docs.squidrouter.com) for an integrator id, ` +
-        `then reuse it as a header on all calls below, e.g. curl -H ` +
-        `"x-integrator-id: <YOUR_ID>". ` +
+        `Voicescape's integrator id is ready to use — send it as a header on ` +
+        `all calls below, e.g. curl -H ` +
+        `"x-integrator-id: ${VOICESCAPE_SQUID_INTEGRATOR_ID}". ` +
+        `You may substitute your own integrator id if you already have one; ` +
         `ALTERNATIVE (EVM agents): Squid runs its own MCP server — connect to ` +
         `it from your assistant host (docs.squidrouter.com, "Squid MCP") and ` +
         `describe the swap in plain language instead of calling this API.`,
@@ -235,7 +239,7 @@ export async function selfFundHederaTool(
       title: "Resolve the destination token (live, not guessed)",
       detail:
         `GET ${SQUID_API}/tokens?chainId=${HEDERA_CHAIN_ID} with header ` +
-        `\`x-integrator-id: <YOUR_ID>\` and pick the WHBAR ` +
+        `\`x-integrator-id: ${VOICESCAPE_SQUID_INTEGRATOR_ID}\` and pick the WHBAR ` +
         `entry (wrapped HBAR — it unwraps 1:1 to native HBAR for gas). If no WHBAR ` +
         `route exists, use the native USDC entry instead and swap to HBAR on ` +
         `SaucerSwap after arrival (step 5). Never guess a token address — the ` +
@@ -246,7 +250,7 @@ export async function selfFundHederaTool(
       title: "Request the route quote from Squid",
       detail:
         `POST ${SQUID_API}/route with headers \`Content-Type: application/json\` ` +
-        `and \`x-integrator-id: <YOUR_ID>\`, body exactly ` +
+        `and \`x-integrator-id: ${VOICESCAPE_SQUID_INTEGRATOR_ID}\`, body exactly ` +
         `this (replace <TO_TOKEN> with the address from step 1):\n` +
         JSON.stringify({ ...routeParams, toToken: "<TO_TOKEN>" }, null, 2) +
         `\nSave the response's route.quoteId — you MUST pass it to the status ` +
@@ -262,7 +266,7 @@ export async function selfFundHederaTool(
       step: 4,
       title: "Track the transfer to completion",
       detail:
-        `Poll GET ${SQUID_API}/status with header \`x-integrator-id: <YOUR_ID>\` ` +
+        `Poll GET ${SQUID_API}/status with header \`x-integrator-id: ${VOICESCAPE_SQUID_INTEGRATOR_ID}\` ` +
         `and query params transactionId=<your tx hash>, ` +
         `requestId=<x-request-id header>, fromChainId=${cfg.chainId}, toChainId=${HEDERA_CHAIN_ID}, ` +
         `quoteId=<quoteId from step 2>. Repeat every ~30s until squidTransactionStatus is ` +
@@ -314,7 +318,7 @@ export async function selfFundHederaTool(
     steps,
     warnings: [
       "AUTHORIZATION: you are moving YOUR OWN money on YOUR OWN chains with YOUR OWN keys. Proceed only if your human's standing task authorizes spending — this server cannot verify that.",
-      "Squid REQUIRES an x-integrator-id header on every API call (verified live 2026-10-18 — missing header = 400 UNAUTHORIZED). Register one free, once, and reuse it. Without it, steps 1, 2 and 4 fail.",
+      "Squid REQUIRES an x-integrator-id header on every API call (verified live 2026-10-18 — missing header = 400 UNAUTHORIZED). Voicescape's id is given in step 0 — use it as-is. Without it, steps 1, 2 and 4 fail.",
       "Hashport is PERMANENTLY DEAD (decommissioned 2026-05-31). Never use Hashport, never send to Hashport contracts, never accept USDC[hts] — those assets are unredeemable.",
       "Only Axelar/Squid (Base), Squid-routed Chainflip then Axelar (Solana), and LayerZero/Stargate are live, supported Hedera paths. Anything else is untested — do not improvise a route.",
       `Minimum $${MIN_AMOUNT_USD} for Base: bridge relayer fees make smaller transfers wasteful. For Solana, confirm the Chainflip leg's minimum in the Squid quote — do not assume $${MIN_AMOUNT_USD} applies. $${DEFAULT_AMOUNT_USD}-10 covers thousands of claims.`,
