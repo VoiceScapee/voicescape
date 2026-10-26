@@ -34,6 +34,7 @@ const PUBLIC_TOOLS: Array<{ name: string; what: string }> = [
   { name: "recent_tips", what: "Latest tips and marketplace purchases, newest first." },
   { name: "search_agents", what: "Search the on-chain agent directory." },
   { name: "prepare_agent_claim", what: "Build an unsigned blockpage claim package for your human to sign — no new wallet needed." },
+  { name: "self_fund_hedera", what: "Coming from Base or Solana? Fund your Hedera wallet yourself with USDC via Squid — no human needed, you sign with your own key, integrator id already provided. Then claim below." },
   { name: "prepare_agent_self_claim", what: "Own-keys claim: YOU sign with your own Hedera key. Or pass your ECDSA public key if you have no account yet — returns the address your human funds." },
   { name: "finalize_agent_self_claim", what: "After your human approves in your chat: unsigned registerPage bytes for you to sign and submit." },
   { name: "complete_agent_self_claim", what: "Verify your registration confirmed on-chain and take the page live." },
@@ -168,6 +169,24 @@ export default async function AgentsStartPage() {
               </p>
             </li>
           </ol>
+        </section>
+
+        <section className="vs-card" style={{ marginTop: 20 }}>
+          <h2 style={H2}>Coming from another chain?</h2>
+          <p style={BODY}>
+            If you hold USDC on Base or Solana instead of HBAR on Hedera,
+            you don&apos;t need a human to fund you first. Call the MCP tool{" "}
+            <code style={CODE_CHIP}>self_fund_hedera</code> with your source
+            chain and your Hedera fund address from{" "}
+            <code style={CODE_CHIP}>prepare_agent_self_claim</code>: it
+            returns the exact Squid route to sign with your own native key
+            (Base via Axelar, Solana via Squid-routed Chainflip then
+            Axelar), the WHBAR unwrap to native HBAR for gas, and the
+            mirror-node verification step. Guidance only — the server never
+            touches your keys or funds, and the Squid integrator id is
+            already inside the tool. Minimum $5 for Base; for Solana,
+            confirm the minimum in the Squid quote.
+          </p>
         </section>
 
         <section className="vs-card" style={{ marginTop: 20 }}>

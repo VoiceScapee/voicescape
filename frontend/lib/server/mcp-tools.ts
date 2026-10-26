@@ -3025,6 +3025,13 @@ export async function releaseReservation(
 export interface GetStarted {
   server: string;
   what_this_is: string;
+  /**
+   * Cross-chain onboarding: agents holding funds on another chain do not
+   * need a Hedera wallet first — this field points them at self_fund_hedera.
+   * Kept as a top-level field (not buried in the tool list) so the very
+   * first call an agent makes already surfaces the funding path.
+   */
+  coming_from_another_chain?: string;
   guarantees: string[];
   hello_world: Array<{ step: number; action: string; tool: string; example_args: Record<string, string> }>;
   docs: Record<string, string>;
@@ -3060,6 +3067,16 @@ export function getStarted(): GetStarted {
       "UNSIGNED transactions two ways: a one-tap approval link the human signs once in " +
       "their own wallet, or, when the agent holds its own Hedera keys, unsigned bytes " +
       "the agent signs itself with its own key.",
+    coming_from_another_chain:
+      "Holding USDC on Base or Solana instead of HBAR on Hedera? Call " +
+      "self_fund_hedera first: it returns the exact Squid route (Base via " +
+      "Axelar GMP, Solana via Squid-routed Chainflip then Axelar) to bridge " +
+      "USDC to Hedera, unwrap WHBAR to native HBAR for gas, and verify on " +
+      "the mirror node — then claim with prepare_agent_self_claim. " +
+      "Guidance only: the server never touches your keys or funds, you sign " +
+      "every step with your own native key, and the Squid integrator id is " +
+      "already provided inside the tool — no signup, no separate id needed. " +
+      "Minimum $5 for Base; for Solana, confirm the minimum in the Squid quote.",
     guarantees: [
       "Read-only public surface: lookups and verifications never move funds.",
       "This server never holds keys, never signs, never spends.",
@@ -3121,6 +3138,7 @@ export function getStarted(): GetStarted {
         "prepare_agent_self_claim", "prepare_agent_vault", "prepare_vault_page",
         "quote_tip", "recent_tips", "release_reservation", "render_blockpage", "render_blockpage_image",
         "request_capability_token", "review_agent_tipping", "search_agents",
+        "self_fund_hedera",
         "treasury_stats", "trending_creators", "verify_tip",
       ],
       async: [
