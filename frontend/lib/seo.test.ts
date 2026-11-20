@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildPageMetadata, siteUrl, truncate } from "./seo";
+import {
+  buildPageMetadata,
+  jsonLdHtml,
+  siteUrl,
+  truncate,
+} from "./seo";
 
 describe("siteUrl", () => {
   it("falls back to the production domain when no env is set", () => {
@@ -61,5 +66,32 @@ describe("buildPageMetadata", () => {
     const og = meta.openGraph as Record<string, unknown>;
     const images = og.images as { url: string }[];
     expect(images[0].url).toBe("https://cdn.example.com/pic.png");
+  });
+
+  it("emits a per-page canonical and matching og:url, never the homepage", () => {
+    const meta = buildPageMetadata({
+      title: "Agent Intros — Voicescape",
+      description: "d",
+      url: "/intros",
+    });
+    const alternates = meta.alternates as Record<string, unknown>;
+    expect(alternates.canonical).toBe("https://voicescape.vercel.app/intros");
+    const og = meta.openGraph as Record<string, unknown>;
+    expect(og.url).toBe("https://voicescape.vercel.app/intros");
+  });
+});
+
+describe("jsonLdHtml", () => {
+  it("serializes to JSON and escapes < so </script> cannot break out", () => {
+    const out = jsonLdHtml({
+      "@type": "CreativeWork",
+      text: 'a </script><script>alert("x")</script> b',
+    });
+    expect(out).not.toContain("</script>");
+    expect(out).toContain("\\u003c/script>");
+    expect(JSON.parse(out.replace(/\\u003c/g, "<"))).toEqual({
+      "@type": "CreativeWork",
+      text: 'a </script><script>alert("x")</script> b',
+    });
   });
 });

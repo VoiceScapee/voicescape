@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { getActiveChain } from "@/lib/chains";
-import { resolvePage, type ResolveResult } from "@/lib/contracts";
+import { getRegistryAddress, resolvePage, type ResolveResult } from "@/lib/contracts";
 import { fetchPageJson } from "@/lib/ipfs";
 import { isValidPage, type Block, type VoicescapePage } from "@/lib/schema";
 import { buildPageMetadata, siteUrl, truncate } from "@/lib/seo";
@@ -37,52 +37,80 @@ import {
  *  - resolve fails → no JSON-LD, fallback metadata. Scrapers never see
  *    a wrong identity claim or a hang.
  *
+ * Real 404s: the loader is tri-state — "resolved" / "not-registered" /
+ * "unavailable" — so the layout can tell a definitive Registry revert
+ * (UsernameInvalid: the name has no blockpage) from a slow or
+ * unreachable mirror node. Only the definitive revert calls notFound(),
+ * which renders app/not-found.tsx with a real HTTP 404 instead of the
+ * client-side "Resolving … on-chain" shell. A timeout or transport
+ * failure fails OPEN to the client resolver, which shows its own 404 UI
+ * if the name truly isn't there — a down mirror node must never 404 a
+ * live page.
+ *
  * PRIVACY RULE: the JSON-LD mirrors ONLY what the page already shows
  * publicly. The registry record's operator is NOT used — only the page's
  * own public operator block, when the owner chose to publish one.
  */
 
+import { notFound } from "next/navigation";
+
 const FETCH_TIMEOUT_MS = 5000;
 
-interface ResolvedBlockpage {
-  resolved: ResolveResult;
-  /** Null when the page JSON was slow, unreachable, or invalid — the
-   *  caller still gets the on-chain identity core from `resolved`. */
-  page: VoicescapePage | null;
-}
+type BlockpageLoad =
+  | {
+      status: "resolved";
+      resolved: ResolveResult;
+      /** Null when the page JSON was slow, unreachable, or invalid — the
+       *  caller still gets the on-chain identity core from `resolved`. */
+      page: VoicescapePage | null;
+    }
+  | { status: "not-registered" }
+  | { status: "unavailable" };
 
 const loadBlockpage = cache(
-  async (username: string): Promise<ResolvedBlockpage | null> => {
+  async (username: string): Promise<BlockpageLoad> => {
     const started = Date.now();
+    // No registry configured: cannot tell registered from unregistered —
+    // fail open instead of 404ing every blockpage.
+    if (!getRegistryAddress()) return { status: "unavailable" };
+    // A timed-out or failed resolve is "couldn't ask", never "not
+    // registered": only a definitive contract revert 404s. The timeout
+    // races against a sentinel so it cannot be confused with a revert
+    // (resolvePage returns null on revert).
+    const TIMEOUT = Symbol("resolve-timeout");
+    let resolved: ResolveResult | null;
     try {
-      const chain = getActiveChain();
-      const resolved = await Promise.race([
-        resolvePage(username, chain),
-        new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), FETCH_TIMEOUT_MS),
+      const raced = await Promise.race([
+        resolvePage(username, getActiveChain()),
+        new Promise<typeof TIMEOUT>((resolve) =>
+          setTimeout(() => resolve(TIMEOUT), FETCH_TIMEOUT_MS),
         ),
       ]);
-      if (!resolved?.ipfsHash) return null;
-      const remaining = FETCH_TIMEOUT_MS - (Date.now() - started);
-      if (remaining <= 0) return { resolved, page: null };
-      const page = await Promise.race([
-        (async (): Promise<VoicescapePage | null> => {
-          try {
-            const raw = await fetchPageJson(resolved.ipfsHash);
-            const parsed: unknown = JSON.parse(raw);
-            return isValidPage(parsed) ? parsed : null;
-          } catch {
-            return null;
-          }
-        })(),
-        new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), remaining),
-        ),
-      ]);
-      return { resolved, page };
+      if (raced === TIMEOUT) return { status: "unavailable" };
+      resolved = raced;
     } catch {
-      return null;
+      return { status: "unavailable" };
     }
+    // resolvePage returns null exactly when the Registry reverts
+    // (UsernameInvalid) — the name is not registered.
+    if (!resolved?.ipfsHash) return { status: "not-registered" };
+    const remaining = FETCH_TIMEOUT_MS - (Date.now() - started);
+    if (remaining <= 0) return { status: "resolved", resolved, page: null };
+    const page = await Promise.race([
+      (async (): Promise<VoicescapePage | null> => {
+        try {
+          const raw = await fetchPageJson(resolved.ipfsHash);
+          const parsed: unknown = JSON.parse(raw);
+          return isValidPage(parsed) ? parsed : null;
+        } catch {
+          return null;
+        }
+      })(),
+      new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), remaining),
+      ),
+    ]);
+    return { status: "resolved", resolved, page };
   },
 );
 
@@ -109,7 +137,9 @@ export async function generateMetadata({
   const data = await loadBlockpage(username);
   // Metadata needs the page JSON (hero/bio) — without it, fallback tags,
   // exactly as before. The JSON-LD below still serves its identity core.
-  if (!data || !data.page) return fallbackMetadata(username);
+  // A not-registered name never renders (the layout 404s below), so this
+  // fallback is only reached while the resolve is unavailable.
+  if (data.status !== "resolved" || !data.page) return fallbackMetadata(username);
   const { page } = data;
   const hero = page.blocks.find(
     (b): b is Extract<Block, { type: "hero" }> => b.type === "hero",
@@ -150,7 +180,13 @@ export default async function UsernameLayout({
   let jsonLd: Record<string, unknown> | null = null;
   if (username) {
     const data = await loadBlockpage(username);
-    if (data) {
+    // Definitive Registry revert: this name has no blockpage. Render the
+    // real 404 (HTTP 404 + not-found.tsx) instead of the client-side
+    // "Resolving … on-chain" shell. "unavailable" (slow/down mirror node)
+    // fails open — the client resolver runs as before and shows its own
+    // 404 UI if the name truly isn't there.
+    if (data.status === "not-registered") notFound();
+    if (data.status === "resolved") {
       const { resolved, page } = data;
       // Page enrichment is optional: when the page JSON arrived in
       // budget, the extractor mirrors its public blocks; when it did

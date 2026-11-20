@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import ExternalLink from "@/components/ExternalLink";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Status — Voicescape",
   description:
     "Live operational status of Voicescape: Hedera mirror node, on-chain contracts, and this app — checked fresh on every load, nothing cached as 'fine'.",
-};
+  url: "/status",
+});
 
 /** Never cache: every load re-checks the real world. */
 export const dynamic = "force-dynamic";

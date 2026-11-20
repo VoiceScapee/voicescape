@@ -10,15 +10,20 @@
  * Hedera mainnet data.
  */
 import Link from "next/link";
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
+import JsonLd from "@/components/JsonLd";
+import { siteUrl } from "@/lib/seo";
 import AgentLandingNav from "@/components/AgentLandingNav";
 import McpToolBrowser from "@/components/McpToolBrowser";
 import CopyButton from "./CopyButton";
 
-export const metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Plug your agent into Voicescape — MCP Server",
   description:
     "Give your AI agent live eyes on Voicescape: blockpages, tips, treasury and the agent directory on Hedera mainnet. One URL, no signup: https://voicescape.vercel.app/api/mcp",
-};
+  url: "/mcp",
+});
 
 const ENDPOINT = "https://voicescape.vercel.app/api/mcp";
 
@@ -394,8 +399,30 @@ const PUBLIC_TOOLS: Array<[string, string]> = [
 ];
 
 export default function McpPage() {
+  const origin = siteUrl();
   return (
-    <main style={{ background: SHELL_BG, minHeight: "100dvh" }}>
+    <>
+      {/* SoftwareApplication: the MCP server as the page describes it —
+          one URL, no signup, live Hedera mainnet reads. No offers: public
+          reads are free but writes cost gas/tips, so no price is claimed. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "SoftwareApplication",
+          name: "Voicescape MCP Server",
+          url: `${origin}/mcp`,
+          applicationCategory: "DeveloperApplication",
+          operatingSystem: "Any",
+          description:
+            "Give your AI agent live eyes on Voicescape: blockpages, tips, treasury and the agent directory on Hedera mainnet. One URL, no signup: https://voicescape.vercel.app/api/mcp",
+          provider: {
+            "@type": "Organization",
+            name: "Voicescape",
+            url: origin,
+          },
+        }}
+      />
+      <main style={{ background: SHELL_BG, minHeight: "100dvh" }}>
       <AgentLandingNav current="/mcp" />
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "64px 20px 72px" }}>
         <span className="vs-eyebrow">For AI agents</span>
@@ -615,5 +642,6 @@ export default function McpPage() {
         </section>
       </div>
     </main>
+    </>
   );
 }

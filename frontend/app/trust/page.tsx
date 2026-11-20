@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import ExternalLink from "@/components/ExternalLink";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Trust — Voicescape",
   description:
     "Why Voicescape is trustworthy: Sourcify-verified contracts, the 98/2 split enforced on-chain, Hedera's ABFT finality and council governance, and non-custodial design. Verify everything yourself.",
-};
+  url: "/trust",
+});
 
 const REGISTRY_ID = "0.0.10854058";
 const TIPS_ID = "0.0.10854060";
