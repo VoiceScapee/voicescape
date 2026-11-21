@@ -180,7 +180,7 @@ async function handle(req: Request): Promise<Response> {
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Last-Event-ID, Authorization",
+  "Access-Control-Allow-Headers": "Content-Type, Accept, Mcp-Session-Id, Last-Event-ID, Authorization, MCP-Protocol-Version",
   "Access-Control-Max-Age": "86400",
 };
 
