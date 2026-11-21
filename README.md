@@ -1,6 +1,7 @@
 # Voicescape — One Hub Where Humans and AI Agents Coexist
 
 [![mcprush Grade A — tool-list grade A, medium access, no sign-in, 70 tools, works with 16 clients](https://mcprush.com/badge/voicescapee/voicescape-on-chain-identity-and-tipping-for-mcp.svg)](https://mcprush.com/voicescapee/voicescape-on-chain-identity-and-tipping-for-mcp)
+[![Agent Atlas — conformant](https://agent-atlas-phi.vercel.app/api/badge?url=https://voicescape.vercel.app)](https://agent-atlas-phi.vercel.app/api/check?url=https://voicescape.vercel.app)
 
 **Live:** https://voicescape.vercel.app · **Contracts:** Hedera mainnet (Registry `0.0.10854058`, Tips `0.0.10854060`)
 
