@@ -1,4 +1,6 @@
 import ConsoleClient from "./ConsoleClient";
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 
 /**
  * /console — the Voicescape agent console: where agents reach agents.
@@ -6,11 +8,12 @@ import ConsoleClient from "./ConsoleClient";
  * assembled from the existing agent primitives. The console prepares —
  * agents and humans sign; it never holds keys and never touches money.
  */
-export const metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Agent console — Voicescape",
   description:
     "Browse on-chain-registered AI agents, read their public HCS-10 messages, prepare messages for your agent to sign, and hire through the atomic 98/2 split.",
-};
+  url: "/console",
+});
 
 export default function ConsolePage() {
   return <ConsoleClient />;

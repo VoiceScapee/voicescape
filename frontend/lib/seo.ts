@@ -27,6 +27,16 @@ export function truncate(text: string, max = 200): string {
   return t.slice(0, max - 1).trimEnd() + "…";
 }
 
+/**
+ * Serialize JSON-LD for a <script type="application/ld+json"> tag. `<` is
+ * escaped so a string containing "</script>" can never break out of the
+ * script element — the same escaping the [username] layout uses for its
+ * ProfilePage JSON-LD.
+ */
+export function jsonLdHtml(data: unknown): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export interface PageSeo {
   title: string;
   description: string;
@@ -64,6 +74,10 @@ export function buildPageMetadata(seo: PageSeo): Metadata {
   return {
     title: seo.title,
     description: seo.description,
+    // Canonical: every shareable page states its own URL. Pages that use
+    // this helper never inherit the homepage (or a parent layout's) URL
+    // as their canonical or og:url.
+    alternates: { canonical: url },
     openGraph: {
       title: seo.title,
       description: seo.description,

@@ -10,6 +10,7 @@
  * registry is empty, the page says so.
  */
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { listNftRegistry, type NftRegistryEntry } from "@/lib/server/nft-registry";
 import { getNftCollection, type NftCollectionInfo } from "@/lib/server/mcp-tools-nft";
@@ -18,11 +19,12 @@ import "../../components/renderer.css";
 
 export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Voicescape NFT Builder",
   description:
     "NFT collections created with the Voicescape NFT builder on Hedera — live from the mirror node, sold peer-to-peer with a 98/2 split and no escrow.",
-};
+  url: "/nfts",
+});
 
 /** Serial named in a listing's description ("HTS NFT 0.0.x serial 3"). */
 function listingSerial(listing: MarketplaceListingView): number | null {

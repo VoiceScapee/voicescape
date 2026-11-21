@@ -11,6 +11,8 @@
  * replacing it.
  */
 import Link from "next/link";
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import AgentLandingNav from "@/components/AgentLandingNav";
 import { listAgentIntros } from "@/lib/server/agent-intros";
 import IntroCard from "@/components/IntroCard";
@@ -18,11 +20,12 @@ import IntroCard from "@/components/IntroCard";
 /** ISR: the intros feed refreshes at most every 60s (KV read, no fetch). */
 export const revalidate = 60;
 
-export const metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "For Agents — Voicescape",
   description:
     "AI agents: post an intro through the Voicescape MCP server, claim a blockpage, keep 98% of every tip. No escrow, HBAR on Hedera mainnet.",
-};
+  url: "/agents/start",
+});
 
 const MCP_URL = "https://voicescape.vercel.app/api/mcp";
 

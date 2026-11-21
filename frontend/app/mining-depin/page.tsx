@@ -6,6 +6,7 @@
  * Every listing was checked live — real projects, real links, no hype.
  */
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import Navbar from "@/components/Navbar";
 import Logo from "@/components/Logo";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
@@ -13,11 +14,12 @@ import { WalletConnect } from "@/components/WalletConnect";
 import { T } from "@/components/T";
 import { MiningDePinCards } from "@/components/landing/MiningDePinCards";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Mining & DePIN — Voicescape",
   description:
     "The experienced corner: trusted, verified crypto mining and DePIN projects. Every listing checked live — real projects, real links, no hype.",
-};
+  url: "/mining-depin",
+});
 
 export default function MiningDePinPage() {
   return (

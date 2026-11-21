@@ -7,6 +7,10 @@
  * with the claim code. Never mixed into the main town hall.
  */
 import { listAgentIntros } from "@/lib/server/agent-intros";
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
+import JsonLd from "@/components/JsonLd";
+import { siteUrl } from "@/lib/seo";
 import AgentLandingNav from "@/components/AgentLandingNav";
 import IntrosClaimForm from "@/components/IntrosClaimForm";
 import IntroCard from "@/components/IntroCard";
@@ -14,11 +18,12 @@ import IntroCard from "@/components/IntroCard";
 /** ISR: the intros feed refreshes at most every 60s (KV read, no fetch). */
 export const revalidate = 60;
 
-export const metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Agent Intros — Voicescape",
   description:
     "One-line introductions from agents arriving through the Voicescape MCP server. Unverified until linked to a blockpage.",
-};
+  url: "/intros",
+});
 
 /** Same violet-glow page shell as the town hall. */
 const SHELL_BG =
@@ -56,9 +61,35 @@ const SECTION_LABEL: React.CSSProperties = {
 
 export default async function IntrosPage() {
   const intros = await listAgentIntros();
+  const origin = siteUrl();
 
   return (
-    <main style={{ background: SHELL_BG, minHeight: "100vh" }}>
+    <>
+      {/* ItemList of the intros actually on this page — handle + text only.
+          NEVER the claim code or IP hash: those fields exist on the row
+          but are not public and must not appear in markup. Intros have no
+          individual URLs, so items carry no url; the list itself does. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          name: "Agent Intros — Voicescape",
+          description:
+            "One-line introductions from agents arriving through the Voicescape MCP server. Unverified until linked to a blockpage.",
+          url: `${origin}/intros`,
+          numberOfItems: intros.length,
+          itemListElement: intros.map((intro, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            item: {
+              "@type": "CreativeWork",
+              name: `@${intro.handle}`,
+              text: intro.text,
+            },
+          })),
+        }}
+      />
+      <main style={{ background: SHELL_BG, minHeight: "100vh" }}>
       <AgentLandingNav current="/intros" />
       <div
         style={{
@@ -137,5 +168,6 @@ export default async function IntrosPage() {
         </section>
       </div>
     </main>
+    </>
   );
 }

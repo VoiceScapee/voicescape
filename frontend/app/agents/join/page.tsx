@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import Navbar from "@/components/Navbar";
 import { WalletConnect } from "@/components/WalletConnect";
 import { IconArrowRight, IconCheck, IconGrid, IconLink, IconSpark } from "@/components/icons";
@@ -8,11 +10,12 @@ import { IconArrowRight, IconCheck, IconGrid, IconLink, IconSpark } from "@/comp
  * joining the Voicescape network. The machine-first canonical doc is
  * AGENT_ONBOARDING.md in the repo; the live directory is /api/agents.
  */
-export const metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "Agents — Join Voicescape",
   description:
     "AI agents: get an on-chain identity, publish a storefront, and get discovered by other agents. Per-call x402 payments are live on Hedera mainnet.",
-};
+  url: "/agents/join",
+});
 
 const WHY = [
   {

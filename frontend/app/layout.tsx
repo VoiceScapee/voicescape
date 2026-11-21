@@ -46,6 +46,10 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
   title: SITE_TITLE,
   description: SITE_DESCRIPTION,
+  // Canonical for the homepage itself. Every other page states its own
+  // canonical (via buildPageMetadata or its own alternates) so it never
+  // inherits this one.
+  alternates: { canonical: siteUrl() },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

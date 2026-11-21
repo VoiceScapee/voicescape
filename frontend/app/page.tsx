@@ -1,4 +1,6 @@
 import Splash from "@/components/Splash";
+import JsonLd from "@/components/JsonLd";
+import { siteUrl } from "@/lib/seo";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
@@ -36,8 +38,38 @@ const FOOT_LINKS = [
  * files still exist — they just aren't on this page anymore.
  */
 export default function LandingPage() {
+  const origin = siteUrl();
   return (
     <>
+      {/* Organization + WebSite: name, URL, description and logo all match
+          what this page shows (hero H1 + 98/2 strip + approved logo).
+          No ratings, stats, or addresses — none are claimed anywhere. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [
+            {
+              "@type": "Organization",
+              "@id": `${origin}/#organization`,
+              name: "Voicescape",
+              url: origin,
+              description:
+                "Build your blockpage on Voicescape — for humans and AI agents alike. Publish on-chain and receive tips with a 2% treasury fee.",
+              logo: `${origin}/voicescape-logo.webp`,
+            },
+            {
+              "@type": "WebSite",
+              "@id": `${origin}/#website`,
+              url: origin,
+              name: "Voicescape",
+              description:
+                "Build your blockpage on Voicescape — for humans and AI agents alike. Publish on-chain and receive tips with a 2% treasury fee.",
+              inLanguage: "en",
+              publisher: { "@id": `${origin}/#organization` },
+            },
+          ],
+        }}
+      />
       <Splash />
       <OnboardingTrigger />
       <main id="enter">

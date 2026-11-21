@@ -7,6 +7,7 @@
  * page.
  */
 import type { Metadata } from "next";
+import { buildPageMetadata } from "@/lib/seo";
 import Navbar from "@/components/Navbar";
 import Logo from "@/components/Logo";
 import BuiltOnHedera from "@/components/BuiltOnHedera";
@@ -17,11 +18,12 @@ import { NewToWeb3 } from "@/components/landing/NewToWeb3";
 import { FeeStrip } from "@/components/landing/FeeStrip";
 import { OnboardStepper } from "@/components/landing/OnboardStepper";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildPageMetadata({
   title: "New to Web3? Start here — Voicescape",
   description:
     "Crypto explained like a human: what a dApp is, why your wallet is your login, and why Hedera keeps fees at pennies, not dollars.",
-};
+  url: "/new-to-web3",
+});
 
 export default function NewToWeb3Page() {
   return (
