@@ -78,8 +78,12 @@ export function buildHcs10TopicMemo(m: Hcs10TopicMemo): string {
     throw new Error("hcs10: params must not contain ':'");
   }
   const memo = `hcs-10:${m.indexed}:${m.ttl}:${m.type}${params ? `:${params}` : ""}`;
-  if (memo.length > 100) {
-    throw new Error(`hcs10: memo exceeds 100 bytes (${memo.length})`);
+  // The Hedera limit is 100 BYTES, not 100 characters: a memo with
+  // multi-byte UTF-8 (e.g. non-ASCII params) can pass a .length check
+  // and still be rejected on-chain. Measure the UTF-8 byte length.
+  const byteLen = new TextEncoder().encode(memo).length;
+  if (byteLen > 100) {
+    throw new Error(`hcs10: memo exceeds 100 bytes (${byteLen})`);
   }
   return memo;
 }

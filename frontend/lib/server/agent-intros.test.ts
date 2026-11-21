@@ -225,6 +225,27 @@ describe("claimAgentIntro", () => {
     expect(again.ok).toBe(false);
     if (!again.ok) expect(again.error).toMatch(/already linked/i);
   });
+
+  it("lets exactly one of two concurrent claims win", async () => {
+    const posted = await postAgentIntro(
+      { handle: "race", text: "hi", clientIp: "9.9.9.6" },
+      store,
+    );
+    expect(posted.ok).toBe(true);
+    if (!posted.ok) return;
+    const [a, b] = await Promise.all([
+      claimAgentIntro(posted.intro.claim_code, "pageone", store),
+      claimAgentIntro(posted.intro.claim_code, "pagetwo", store),
+    ]);
+    const winners = [a, b].filter((r) => r.ok);
+    expect(winners).toHaveLength(1);
+    // The loser reports the real outcome — never a second success.
+    const loser = [a, b].find((r) => !r.ok);
+    expect(loser?.ok).toBe(false);
+    const listed = await listAgentIntros(store);
+    expect(listed).toHaveLength(1);
+    expect(["pageone", "pagetwo"]).toContain(listed[0]?.linked_blockpage);
+  });
 });
 
 describe("normalizeClaimCode", () => {

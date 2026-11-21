@@ -44,6 +44,15 @@ const RATE_LIMIT_TTL_MS = 24 * 3_600_000; // one intro per IP per day
 const INTRO_KEY_PREFIX = "intro:code:";
 const INTRO_INDEX_KEY = "intro:index";
 const INTRO_RL_PREFIX = "intro:rl:";
+/**
+ * Short-lived mutex for the link step of claimAgentIntro (60s, not the
+ * 365-day intro TTL): the intro record itself is the durable link — this
+ * key only serializes concurrent claims so exactly one writer wins. A
+ * crashed claimer leaves the mutex behind for at most 60s, never a
+ * permanently stuck intro.
+ */
+const INTRO_LINK_PREFIX = "intro:link:";
+const INTRO_LINK_TTL_MS = 60_000;
 
 /** Chars without 0/O/1/I/L so claim codes read cleanly off a phone screen. */
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -198,14 +207,23 @@ export async function postAgentIntro(
     return { ok: false, error: "temporarily unavailable — try again in a moment" };
   }
 
-  // Newest-first index (best-effort; intros are low-volume).
-  try {
-    const raw = await store.get(INTRO_INDEX_KEY);
-    const codes: string[] = raw ? (JSON.parse(raw) as string[]) : [];
-    codes.unshift(intro.claim_code);
-    await store.set(INTRO_INDEX_KEY, JSON.stringify(codes.slice(0, 500)), INTRO_TTL_MS);
-  } catch {
-    /* the intro itself is stored; a stale index is a display issue only */
+  // Newest-first index (best-effort; intros are low-volume). The
+  // read-modify-write can lose a concurrent post's code (both callers
+  // read the same list, last write wins), so verify the write landed
+  // and retry — a stored-but-unlisted intro is invisible on the board.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = await store.get(INTRO_INDEX_KEY);
+      const codes: string[] = raw ? (JSON.parse(raw) as string[]) : [];
+      if (!codes.includes(intro.claim_code)) codes.unshift(intro.claim_code);
+      await store.set(INTRO_INDEX_KEY, JSON.stringify(codes.slice(0, 500)), INTRO_TTL_MS);
+      const check = await store.get(INTRO_INDEX_KEY);
+      const listed: string[] = check ? (JSON.parse(check) as string[]) : [];
+      if (listed.includes(intro.claim_code)) break;
+    } catch {
+      /* the intro itself is stored; a stale index is a display issue only */
+      break;
+    }
   }
   return { ok: true, intro };
 }
@@ -277,6 +295,12 @@ export async function getIntroByClaimCode(
  * Link an intro (by claim code) to a wallet owner's registered blockpage
  * username. The caller must already have verified the session and the
  * wallet's ownership of the username — this only records the link.
+ *
+ * Atomicity: the old get → check → set let two concurrent claims both
+ * read "unlinked" and both report success for different blockpages (last
+ * write wins, first caller misled). The link is now claimed first with
+ * an atomic setNx mutex — exactly one caller wins; the loser re-reads
+ * the record and reports the real outcome.
  */
 export async function claimAgentIntro(
   claimCode: string,
@@ -302,11 +326,36 @@ export async function claimAgentIntro(
   if (intro.linked_blockpage) {
     return { ok: false, error: `already linked to blockpage "${intro.linked_blockpage}"` };
   }
+  // Atomic link-claim: exactly one concurrent caller wins the mutex.
+  let won: boolean;
+  try {
+    won = await store.setNx(`${INTRO_LINK_PREFIX}${code}`, name, INTRO_LINK_TTL_MS);
+  } catch {
+    return { ok: false, error: "temporarily unavailable — try again in a moment" };
+  }
+  if (!won) {
+    // Another claim is in flight (or just landed): re-read the record
+    // and report the truth instead of guessing.
+    try {
+      const fresh = await store.get(`${INTRO_KEY_PREFIX}${code}`);
+      const other = fresh ? (JSON.parse(fresh) as AgentIntro) : null;
+      if (other?.linked_blockpage) {
+        return { ok: false, error: `already linked to blockpage "${other.linked_blockpage}"` };
+      }
+    } catch {
+      /* fall through to the in-progress error */
+    }
+    return { ok: false, error: "this intro is being linked right now — try again in a moment" };
+  }
   const updated: AgentIntro = { ...intro, linked_blockpage: name };
   try {
     await store.set(`${INTRO_KEY_PREFIX}${code}`, JSON.stringify(updated), INTRO_TTL_MS);
   } catch {
     return { ok: false, error: "temporarily unavailable — try again in a moment" };
   }
+  // No mutex release: the 60s lock simply expires. Releasing it would
+  // re-open a window where a second claimant that already read
+  // "unlinked" could win the mutex and overwrite the link. A later
+  // claim reads the linked record first and is rejected there.
   return { ok: true, intro: updated };
 }

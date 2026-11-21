@@ -13,8 +13,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { resolveUsernameForOwner } from "@/lib/registry-reverse";
-import { mirrorContractCall } from "@/lib/tx";
+import { resolvePageForOwnerDetailed } from "@/lib/registry-reverse";
+import { mirrorContractCall, MirrorUnreachable } from "@/lib/tx";
 import { CHAINS } from "@/lib/chains";
 
 const REGISTRY_ABI = [
@@ -33,12 +33,20 @@ export async function GET(req: NextRequest) {
   // Reverse lookup: wallet account -> registered username. Used by the
   // onboarding gate so a wallet that already owns a page never replays the
   // "first blockpage" wizard on a fresh browser/profile.
+  // A mirror-node failure is "unknown", never "owns no page": 503 so the
+  // caller retries instead of showing the wizard to a real owner.
   if (owner) {
-    const found = await resolveUsernameForOwner(owner);
-    if (!found) {
+    const found = await resolvePageForOwnerDetailed(owner);
+    if (found.status === "unavailable") {
+      return NextResponse.json(
+        { error: "couldn't reach Hedera — try again in a moment" },
+        { status: 503 },
+      );
+    }
+    if (found.status === "none") {
       return NextResponse.json({ error: "no page registered for this account" }, { status: 404 });
     }
-    return NextResponse.json({ username: found });
+    return NextResponse.json({ username: found.page.username });
   }
 
   if (!username) {
@@ -63,6 +71,17 @@ export async function GET(req: NextRequest) {
       purpose,
     });
   } catch (err) {
+    // A mirror-node failure (MirrorUnreachable) is "unknown", never
+    // "not registered": answering 404 on an outage makes every page
+    // look unregistered and sends the claim flow down the register path
+    // for a taken name (a doomed, gas-burning revert). Only a contract
+    // revert means the name is genuinely unregistered.
+    if (err instanceof MirrorUnreachable) {
+      return NextResponse.json(
+        { error: "couldn't reach Hedera — try again in a moment" },
+        { status: 503 },
+      );
+    }
     // Contract reverts when username is not registered
     return NextResponse.json(
       { error: "not registered", detail: err instanceof Error ? err.message : "unknown" },

@@ -72,7 +72,8 @@ import {
 } from "@/lib/swap";
 import { AccountId } from "@hiero-ledger/sdk";
 import { normalizeUsername } from "@/lib/identity";
-import { canonicalAddress } from "@/lib/session-message";
+import { canonicalAddress, longZeroToAccountId } from "@/lib/session-message";
+import { fetchAccountEvmAddress, isSameOnchainOwner } from "@/lib/account-evm";
 import { TipPushToggle } from "@/components/TipPushToggle";
 import TipCelebration from "@/components/TipCelebration";
 import TaxNotice from "@/components/TaxNotice";
@@ -1413,17 +1414,43 @@ function PublicPageInner({ username }: { username: string }) {
     state.status === "ready" ? canonicalAddress(state.meta.owner) : null;
   const { reached: goalReached, goal: fundingGoal } = useFundingGoal(username, goalOwner);
 
-  // Owner view: the connected wallet matches the page's on-chain owner
-  // (compared in canonical EVM form — the session may be 0.0.x or 0x…).
+  // ECDSA owners: the session address is the long-zero form, but the
+  // Registry owner is the account's alias EVM address — resolve the
+  // alias (mirror node) so owners see their own owner UI. Fail-soft:
+  // without the alias the long-zero comparison still matches ED25519
+  // owners. See lib/account-evm.ts (proven live on 0.0.10857765).
+  const [viewerAlias, setViewerAlias] = useState<string | null>(null);
+  useEffect(() => {
+    if (!viewerAddress) {
+      setViewerAlias(null);
+      return;
+    }
+    const accountId = longZeroToAccountId(viewerAddress);
+    if (!accountId) {
+      setViewerAlias(null);
+      return;
+    }
+    let cancelled = false;
+    fetchAccountEvmAddress(accountId)
+      .then((evm) => {
+        if (!cancelled) setViewerAlias(evm);
+      })
+      .catch(() => {
+        /* fail-soft: long-zero comparison still applies */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewerAddress]);
+
+  // Owner view: the connected wallet matches the page's on-chain owner.
+  // Compared alias-aware: the session address alone (long-zero form)
+  // misses every ECDSA-keyed owner, whose Registry owner is the alias.
   // The tip-notifications toggle renders ONLY for the owner.
   const isOwner =
     state.status === "ready" &&
     !!viewerAddress &&
-    (() => {
-      const a = canonicalAddress(viewerAddress as string);
-      const b = canonicalAddress(state.meta.owner);
-      return !!a && !!b && a === b;
-    })();
+    isSameOnchainOwner(state.meta.owner, viewerAddress as string, viewerAlias);
 
   useEffect(() => {
     // The goal form lives in the owner-only EarningsPanel below the fold;
@@ -1481,8 +1508,21 @@ function PublicPageInner({ username }: { username: string }) {
           cache: "no-store",
           signal: ctrl.signal,
         });
-        if (!res.ok) {
+        // Only a 404 means "no page registered for this name". Any other
+        // failure (mirror outage = 503) is "unknown" — showing the 404
+        // page for a live page is a false negative, so it gets the error
+        // state with a retry instead.
+        if (res.status === 404) {
           if (!cancelled) setState({ status: "not-found" });
+          return;
+        }
+        if (!res.ok) {
+          if (!cancelled) {
+            setState({
+              status: "error",
+              message: "Hedera couldn't be reached — check your connection and try again.",
+            });
+          }
           return;
         }
         const resolved = await res.json();

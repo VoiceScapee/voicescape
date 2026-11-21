@@ -75,6 +75,29 @@ describe("buildHcs10TopicMemo", () => {
       }),
     ).toThrow(/exceeds 100 bytes/);
   });
+
+  it("measures the limit in UTF-8 bytes, not characters", () => {
+    // 45 "é" chars = 45 JS chars but 90 UTF-8 bytes; plus the
+    // "hcs-10:1:0:0:" prefix (13 bytes) = 103 bytes total, over the
+    // limit — a .length check would have passed it (58 chars).
+    expect(() =>
+      buildHcs10TopicMemo({
+        indexed: 1,
+        ttl: 0,
+        type: HCS10_TOPIC_TYPE.INBOUND,
+        params: "é".repeat(45),
+      }),
+    ).toThrow(/exceeds 100 bytes \(103\)/);
+    // 40 "é" chars = 80 bytes + 13 prefix = 93 bytes: fits.
+    expect(
+      buildHcs10TopicMemo({
+        indexed: 1,
+        ttl: 0,
+        type: HCS10_TOPIC_TYPE.INBOUND,
+        params: "é".repeat(40),
+      }),
+    ).toBe(`hcs-10:1:0:0:${"é".repeat(40)}`);
+  });
 });
 
 describe("parseHcs10TopicMemo", () => {

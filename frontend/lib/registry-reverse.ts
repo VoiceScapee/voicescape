@@ -130,6 +130,56 @@ async function evmAddressFor(owner: string): Promise<string | null> {
   return typeof evm === "string" && /^0x[0-9a-fA-F]{40}$/.test(evm) ? evm.toLowerCase() : null;
 }
 
+export type OwnerPageLookup =
+  | { status: "found"; page: RegisteredPage }
+  | { status: "none" }
+  /**
+   * The mirror node could not be reached or answered an error: the
+   * account may own a page, we just cannot see it. Callers must treat
+   * this as "unknown" — never as "owns no page" (the onboarding gate
+   * would replay the first-blockpage wizard on a mirror blip).
+   */
+  | { status: "unavailable" };
+
+/**
+ * Paginated newest-first scan of an account's registry calls for the
+ * latest successful registerPage.
+ *
+ * One page is 50 results, but an account that updates its page often can
+ * push its original registerPage past page 1 — stopping at 50 reads as
+ * "owns no page" for a real owner. Follow the mirror node's own
+ * `links.next` cursor (timestamp-based, per the mirror-node REST API)
+ * for up to 5 pages (250 calls) before giving up. Mirror failures are
+ * "unavailable", never "none".
+ */
+export async function resolvePageForOwnerDetailed(owner: string): Promise<OwnerPageLookup> {
+  try {
+    const evm = await evmAddressFor(owner);
+    if (!evm) return { status: "unavailable" };
+    let url =
+      `${MIRROR_NODE}/contracts/${REGISTRY_ID}/results` +
+      `?from=${evm}&order=desc&limit=50`;
+    for (let page = 0; page < 5; page++) {
+      const res = await mirrorFetch(url);
+      if (!res.ok) return { status: "unavailable" };
+      const json = (await res.json().catch(() => null)) as {
+        results?: unknown;
+        links?: { next?: unknown };
+      } | null;
+      const results = Array.isArray(json?.results) ? (json.results as ContractResultShape[]) : [];
+      const found = findLatestRegisteredPage(results);
+      if (found) return { status: "found", page: found };
+      const next = typeof json?.links?.next === "string" ? json.links.next : null;
+      if (!next) return { status: "none" };
+      // Mirror `next` links are root-relative ("/api/v1/...").
+      url = next.startsWith("http") ? next : `${MIRROR_NODE}${next}`;
+    }
+    return { status: "none" };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 /**
  * Resolve a wallet account ("0.0.x" or "0x…") to its latest registered page
  * (username + on-chain owner type) via the on-chain Registry. Returns null
@@ -137,20 +187,8 @@ async function evmAddressFor(owner: string): Promise<string | null> {
  * null as "unknown").
  */
 export async function resolvePageForOwner(owner: string): Promise<RegisteredPage | null> {
-  try {
-    const evm = await evmAddressFor(owner);
-    if (!evm) return null;
-    const url =
-      `${MIRROR_NODE}/contracts/${REGISTRY_ID}/results` +
-      `?from=${evm}&order=desc&limit=50`;
-    const res = await mirrorFetch(url);
-    if (!res.ok) return null;
-    const json = (await res.json().catch(() => null)) as { results?: unknown } | null;
-    const results = Array.isArray(json?.results) ? (json.results as ContractResultShape[]) : [];
-    return findLatestRegisteredPage(results);
-  } catch {
-    return null;
-  }
+  const r = await resolvePageForOwnerDetailed(owner);
+  return r.status === "found" ? r.page : null;
 }
 
 /**

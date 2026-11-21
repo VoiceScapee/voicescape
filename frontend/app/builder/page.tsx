@@ -73,6 +73,7 @@ import {
 } from "@/lib/byok";
 import { getActiveChain } from "@/lib/chains";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
+import { fetchAccountEvmAddress, isSameOnchainOwner } from "@/lib/account-evm";
 import { recordConversionEvent } from "@/lib/metrics";
 import { recordUsageEvent } from "@/lib/usage";
 import { reportError } from "@/lib/report-error";
@@ -1334,26 +1335,15 @@ function ThemeEditor({
 
 type NameAvailability = "idle" | "checking" | "available" | "taken" | "mine" | "error";
 
-/** True when an on-chain owner address and a wallet account id are the same. */
-function sameOnchainOwner(ownerAddr: string, account: string): boolean {
-  const o = ownerAddr.trim().toLowerCase();
-  const a = account.trim().toLowerCase();
-  if (!o || !a) return false;
-  if (o === a) return true;
-  if (/^0\.0\.\d+$/.test(a)) {
-    try {
-      const asEvm = "0x" + BigInt(a.slice(4)).toString(16).padStart(40, "0");
-      if (o === asEvm) return true;
-    } catch {
-      /* ignore */
-    }
-  }
-  return false;
-}
-
 /**
  * Debounced on-chain availability for a candidate blockpage name.
  * "mine" = taken, but the connected wallet owns it (publish will update).
+ *
+ * Ownership is compared alias-aware (lib/account-evm.ts): the Registry
+ * owner is the account's REAL EVM address — the alias for ECDSA-keyed
+ * wallets (HashPack default) — while the long-zero derivation only
+ * matches ED25519 owners. Without the alias, an ECDSA owner sees their
+ * own page as "taken" and can never update it from the builder.
  */
 function useUsernameAvailability(name: string, account: string | null): NameAvailability {
   const [state, setState] = useState<NameAvailability>("idle");
@@ -1384,7 +1374,10 @@ function useUsernameAvailability(name: string, account: string | null): NameAvai
         if (account) {
           try {
             const data = (await res.json()) as { owner?: string };
-            if (data.owner && sameOnchainOwner(data.owner, account)) {
+            // Alias-aware: resolve the wallet's real EVM address (cached
+            // 5 min in lib/account-evm) so ECDSA owners match their page.
+            const alias = await fetchAccountEvmAddress(account).catch(() => null);
+            if (data.owner && isSameOnchainOwner(data.owner, account, alias)) {
               setState("mine");
               return;
             }
@@ -2805,26 +2798,49 @@ function PublishPanel({
       const sender = await getTxSender();
       const ownerFlag = ownerType === "agent" ? 1 : 0;
       const publishName = async (name: string): Promise<string> => {
-        // Check if the name exists (via server API to avoid CORS).
-        // KISS: no client-side owner check — the contract enforces ownership.
-        // If you don't own it, the transaction reverts.
-        let exists = false;
+        // Resolve the name on-chain before any wallet signature: the
+        // contract reverts a doomed register/update, but the user still
+        // pays gas for the revert — so never sign a transaction that
+        // cannot succeed.
+        //
+        // Status discipline (matches /api/resolve): ONLY a 404 means
+        // "not registered". Any other failure (mirror outage = 503,
+        // timeout) is "unknown" — abort, never default to register on
+        // a name that may be taken. And a 200 means the name exists:
+        // update only when the connected wallet owns it (alias-aware,
+        // so ECDSA owners match); otherwise stop with "taken" before
+        // any gas is spent.
+        let res: Response;
         try {
-          const res = await fetchWithTimeout(`/api/resolve?username=${encodeURIComponent(name)}`, 10_000, {
+          res = await fetchWithTimeout(`/api/resolve?username=${encodeURIComponent(name)}`, 10_000, {
             cache: "no-store",
           });
-          exists = res.ok;
         } catch {
-          exists = false;
+          throw new Error("Couldn't check the name on-chain — check your connection and try again.");
         }
-        if (exists) {
-          setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
+        if (res.status === 404) {
+          setStatus({ kind: "info", text: `Registering /${name} on-chain…` });
           walletStepStarted = true;
-          return updatePage(name, ipfsHash, sender);
+          return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
         }
-        setStatus({ kind: "info", text: `Registering /${name} on-chain…` });
-        walletStepStarted = true;
-        return registerPage(name, ipfsHash, ownerFlag, operator, purposeText, sender);
+        if (!res.ok) {
+          throw new Error("Couldn't check the name on-chain — Hedera didn't answer. Try again in a moment.");
+        }
+        let owner: string | undefined;
+        try {
+          owner = ((await res.json()) as { owner?: string }).owner;
+        } catch {
+          throw new Error("Couldn't check the name on-chain — try again in a moment.");
+        }
+        if (owner) {
+          const alias = await fetchAccountEvmAddress(account ?? "").catch(() => null);
+          if (account && isSameOnchainOwner(owner, account, alias)) {
+            setStatus({ kind: "info", text: `Updating /${name} on-chain…` });
+            walletStepStarted = true;
+            return updatePage(name, ipfsHash, sender);
+          }
+        }
+        throw new Error(`/${name} is already registered to another wallet — pick another name.`);
       };
       // HashPack sometimes goes silent (stale WalletConnect session) — the
       // prompt never appears. The wallet layer times out after 30s with a
