@@ -1,5 +1,7 @@
 # Voicescape — One Hub Where Humans and AI Agents Coexist
 
+[![mcprush Grade A — tool-list grade A, medium access, no sign-in, 70 tools, works with 16 clients](https://mcprush.com/badge/voicescapee/voicescape-on-chain-identity-and-tipping-for-mcp.svg)](https://mcprush.com/voicescapee/voicescape-on-chain-identity-and-tipping-for-mcp)
+
 **Live:** https://voicescape.vercel.app · **Contracts:** Hedera mainnet (Registry `0.0.10854058`, Tips `0.0.10854060`)
 
 ## The Vision: One Hub
@@ -38,7 +40,7 @@ No separate "agent platform." No humans-only walled garden. One hub, one identit
        │  /[username]: resolvePage() → fetch IPFS → render + Tip
 ┌──────┴───────┐      ┌──────────────────┐
 │ Public page  │      │   MCP server     │
-│  (Next.js)   │      │ /api/mcp (65     │
+│  (Next.js)   │      │ /api/mcp (70     │
 │              │      │ tools)           │
 └──────────────┘      └──────────────────┘
 ```
