@@ -243,6 +243,24 @@ export default function LandingPage() {
             <T k="landing.footerTagline" />
           </p>
           <BuiltOnHedera />
+          {/* Agent Atlas conformance badge — live check, production URL */}
+          <div style={{ marginTop: 18 }}>
+            <a
+              href="https://agent-atlas-phi.vercel.app/api/check?url=https://voicescape.vercel.app"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Agent Atlas conformance check: Voicescape scores 100 out of 100, conformant"
+              style={{ display: "inline-block", lineHeight: 0 }}
+            >
+              <img
+                src="https://agent-atlas-phi.vercel.app/api/badge?url=https://voicescape.vercel.app"
+                alt="Agent Atlas — conformant"
+                height={20}
+                draggable={false}
+                style={{ display: "block", height: 20, width: "auto", userSelect: "none" }}
+              />
+            </a>
+          </div>
         </footer>
       </main>
     </>
