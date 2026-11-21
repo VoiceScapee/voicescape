@@ -1,0 +1,18 @@
+{
+  "exports": [
+    {
+      "aliases": [
+        "voicescape_assistant",
+        "hub_coordinator"
+      ],
+      "front_man": "hub_coordinator",
+      "network": "voicescape_assistant",
+      "url": "voicescape_assistant"
+    }
+  ],
+  "imports": [],
+  "link_updates": {
+    "mode": "browser-local"
+  },
+  "protocol": "nsdeploy-link/v1"
+}

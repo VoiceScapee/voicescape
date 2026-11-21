@@ -38,7 +38,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.hashio.io https://*.mirrornode.hedera.com https://api.anthropic.com https://api.coingecko.com https://open.er-api.com https://ipfs.io https://gateway.pinata.cloud https://*.mypinata.cloud wss://*.walletconnect.com https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com https://pulse.walletconnect.org https://api.web3modal.org https://voicescape-x402-vibecode.onrender.com; frame-src 'self' https://www.youtube.com https://w.soundcloud.com https://open.spotify.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.hashio.io https://*.mirrornode.hedera.com https://api.anthropic.com https://api.otari.ai https://openrouter.ai https://api.groq.com https://api.openai.com https://api.coingecko.com https://open.er-api.com https://ipfs.io https://gateway.pinata.cloud https://*.mypinata.cloud wss://*.walletconnect.com https://*.walletconnect.com https://*.walletconnect.org https://*.reown.com https://pulse.walletconnect.org https://api.web3modal.org https://voicescape-x402-vibecode.onrender.com; frame-src 'self' https://www.youtube.com https://w.soundcloud.com https://open.spotify.com; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'"
         },
         {
           "key": "Strict-Transport-Security",
@@ -54,6 +54,69 @@
         }
       ],
       "source": "/:path*"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/agent-manifest.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/voicescape_assistant.network.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/links.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/agent-mcp.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/.well-known/nsdeploy.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ],
+      "source": "/.well-known/nsdeploy-agent.json"
+    },
+    {
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'none'; script-src blob:; connect-src 'none'; worker-src 'none'"
+        }
+      ],
+      "source": "/runtime/sandbox-worker.js"
     }
   ],
   "crons": [

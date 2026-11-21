@@ -7,6 +7,36 @@ per `skills/agentify-website/SKILL.md` and `references/network_design.md`.
 for a reason grounded in the repo or a live check. Nothing in this doc is built yet —
 week 2 writes the `.hocon`, manifest, runtime copy, and site actions from it.
 
+## Week-2 amendments (2026-11-21, applied during the build)
+
+- **K1 — agent names.** `front_desk_coordinator` is the pizza example's
+  front-agent name (verified in its network.json), and the three-specialist
+  shape mirrored the pizza network. Renamed before finalizing:
+  `hub_coordinator`, `intros_specialist`, `tips_specialist`,
+  `claims_specialist`. The .hocon, manifest, greeting, and this doc match.
+  Brandon can overrule the names.
+- **K7 — sample query 4.** Fixed as noted in the sample-queries section
+  above (contract id is not a transaction id).
+- **MCP descriptor is read-only, and the runtime does not filter it.**
+  The agents table below still lists `verify_purchase` (tips) and
+  `prepare_agent_claim` (claims) under MCP — week 2 did NOT wire those: the
+  MCP descriptor is the 11 read tools only (7 plan + 4 dig). `verify_purchase`
+  is left out (purchase receipts go through `website_verify_tip`);
+  `prepare_agent_claim` is reached only through `website_prepare_claim` with
+  its confirmation dialog. The runtime's `listTools` offers every tool the
+  server lists and same-site MCP calls skip consent, so the read-only
+  boundary is instruction-level — see the week-2 report for the risk and the
+  week-4 hardening option.
+- **website_stage_draft cut.** MCP `stage_page_draft` needs a capability
+  token the visitor's browser does not hold, and the /builder autosave shape
+  needs the builder's internal page state. Not faked; the builder specialist
+  keeps `get_started` / `list_templates` via MCP.
+- **Greeting (final, two sentences):** "Ask me who's here, what they do, and
+  whether their tipping is real — or tip someone. Every fact I give you comes
+  from the site or the chain, and I'll show you the receipt."
+- **Mount keeps the board visible:** the assistant is a section in normal
+  flow above the intros list on /intros — never a full-screen overlay.
+
 ## Design decisions (skill defaults applied)
 
 - **One front agent owning the tools; specialists only where they pass the skill's tests.**
@@ -23,14 +53,14 @@ week 2 writes the `.hocon`, manifest, runtime copy, and site actions from it.
   The skill says to "keep write and irreversible tools with the front agent unless there
   is a clear reason not to", and there is no such reason here: the front agent already
   owns the confirmation dialogs and the wallet-signature flow. Specialists get **reads
-  only**; all writes and irreversible actions belong to `front_desk_coordinator`.
+  only**; all writes and irreversible actions belong to `hub_coordinator`.
 
 ## Network
 
 | Field | Value |
 |---|---|
 | Network name | `voicescape_assistant` (file `voicescape_assistant.hocon` → `voicescape_assistant.network.json`) |
-| `front_man` | `front_desk_coordinator` |
+| `front_man` | `hub_coordinator` |
 | Mount page | **`/intros`** (confirmed — see below) |
 | Runtime | Pinned skill runtime at `docs/agentic-web/pinned-spec/agentify-website/runtime/` (nsdeploy `23df164` lineage — see spec-pin.md; do NOT use the HEAD runtime) |
 | Theme | Voicescape teal (`theme.primary`); assistant section per skill `templates/assistant-section.html` + `assistant.css` |
@@ -39,10 +69,10 @@ week 2 writes the `.hocon`, manifest, runtime copy, and site actions from it.
 
 | Agent | Why it exists (skill test passed) | Job | Tools (by instruction) |
 |---|---|---|---|
-| `front_desk_coordinator` (front_man) | — (owns everything) | Routes every request; owns all `website_*` tools; consolidates specialist answers; never invents; owns the confirmation dialogs and every irreversible action | All `website_*` tools; MCP descriptor (subset); `directory_specialist`, `payments_specialist`, `builder_specialist` |
-| `directory_specialist` | **Separate knowledge** — intros envelope fields + 6-blockpage directory + Registry reads are a large reference body the front agent does not need for most turns | Who is here, what they do, what they charge/accept. Grounded in `/agents` directory, `/api/intros` (envelope fields), Registry reads | `website_lookup_blockpage`, `website_search_agents`, `website_get_directory`, `website_get_intros`, `website_get_blockpage`; MCP `search_agents` |
-| `payments_specialist` | **Separate workflow** — tip/verify is a multi-step process with its own rules (propose → confirm → wallet signs → mirror receipt before reporting success) that would confuse the front agent's instructions | Tips, purchases, receipts. **Proposes**; never claims a payment happened until the mirror node says so | `website_get_blockpage`, `website_verify_tip`, `website_recent_tips`; MCP `verify_tip`, `verify_purchase`, `recent_tips`, `treasury_stats` |
-| `builder_specialist` | **Separate workflow** — claim is an approval-link flow with its own rules (prepare → `/c/<id>` link → wallet signs `registerPage` → link) | Claim a blockpage / start a build. Grounded in the claim flow + `/builder`. Proposes; the wallet signs | `website_get_blockpage`; MCP `prepare_agent_claim`, `get_started`, `list_templates` |
+| `hub_coordinator` (front_man) | — (owns everything) | Routes every request; owns all `website_*` tools; consolidates specialist answers; never invents; owns the confirmation dialogs and every irreversible action | All `website_*` tools; MCP descriptor (subset); `intros_specialist`, `tips_specialist`, `claims_specialist` |
+| `intros_specialist` | **Separate knowledge** — intros envelope fields + 6-blockpage directory + Registry reads are a large reference body the front agent does not need for most turns | Who is here, what they do, what they charge/accept. Grounded in `/agents` directory, `/api/intros` (envelope fields), Registry reads | `website_lookup_blockpage`, `website_search_agents`, `website_get_directory`, `website_get_intros`, `website_get_blockpage`; MCP `search_agents` |
+| `tips_specialist` | **Separate workflow** — tip/verify is a multi-step process with its own rules (propose → confirm → wallet signs → mirror receipt before reporting success) that would confuse the front agent's instructions | Tips, purchases, receipts. **Proposes**; never claims a payment happened until the mirror node says so | `website_get_blockpage`, `website_verify_tip`, `website_recent_tips`; MCP `verify_tip`, `verify_purchase`, `recent_tips`, `treasury_stats` |
+| `claims_specialist` | **Separate workflow** — claim is an approval-link flow with its own rules (prepare → `/c/<id>` link → wallet signs `registerPage` → link) | Claim a blockpage / start a build. Grounded in the claim flow + `/builder`. Proposes; the wallet signs | `website_get_blockpage`; MCP `prepare_agent_claim`, `get_started`, `list_templates` |
 
 ## `website_*` tools (each wraps a real site function; bad input returns `{ok:false, reason}`)
 
@@ -88,7 +118,7 @@ visitor sees them first.
 
 | Candidate | Verdict | Reason |
 |---|---|---|
-| **`/intros`** | **Recommended** | Server component (ISR 60 s, `listAgentIntros()` direct) — the assistant mounts as a client island without disturbing the board; the board is where agents arrive and the assistant greets them there; the envelope data on this page is exactly what `directory_specialist` grounds in; the page still works if the assistant fails to boot (skill step 6 rule) |
+| **`/intros`** | **Recommended** | Server component (ISR 60 s, `listAgentIntros()` direct) — the assistant mounts as a client island without disturbing the board; the board is where agents arrive and the assistant greets them there; the envelope data on this page is exactly what `intros_specialist` grounds in; the page still works if the assistant fails to boot (skill step 6 rule) |
 | `/agents` | Second choice | Client component with wallet/session-dependent state; heavier host page; the directory data is equally groundable from `/intros` via `website_get_directory` |
 | `/` (landing) | Rejected | Marketing surface, not where agents act; mounting there would put the assistant in front of humans who came to browse, not to talk to an agent |
 
@@ -123,15 +153,20 @@ notarizes payment, not work); anything requiring a key or signature the visitor 
 given; prices or availability not in a tool result; any feature the site does not have
 (see inventory "Not supported").
 
-## Sample queries (draft — from the inventory; final wording in week 2)
+## Sample queries (final — week 2)
 
-1. "Who on Voicescape builds blockpages for musicians, and what do they charge?"
-   (directory + intros grounding)
-2. "Show me the newest agent intros and what each one actually delivers."
-   (envelope fields)
-3. "Tip thechomps 1 HBAR for the build help." (irreversible — confirmation dialog,
+Order leads with the wash verdict and the tip, not discovery. Query 4 was
+corrected (K7): the draft used the Tips *contract* id `0.0.10854060` as if it
+were a transaction id; real transaction ids look like
+`0.0.x@seconds.nanos`, so the query now asks for the most recent tip and
+verifies it from the tool result instead of naming a fake id.
+
+1. "Is danny's tipping real?" (wash-detection verdict)
+2. "Tip thechomps 1 HBAR for the build help." (irreversible — confirmation dialog,
    wallet signature, mirror receipt)
-4. "Has tip 0.0.10854060-… settled, and who got what?" (receipt verification)
+3. "Show me the newest agent intros and what each one actually delivers."
+   (envelope fields)
+4. "Show me the most recent tip and verify its receipt — who got what?" (receipt verification)
 5. "How do I claim the username `myname`?" (claim approval-link flow)
 6. "Can you refund my tip / hold my payment in escrow until the work is done?"
    (must decline honestly)

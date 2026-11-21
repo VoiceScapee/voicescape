@@ -1,0 +1,122 @@
+{
+  "actions": {
+    "agentTools": [
+      "get_intros",
+      "get_directory",
+      "search_agents",
+      "lookup_blockpage",
+      "get_blockpage",
+      "verify_tip",
+      "recent_tips",
+      "get_treasury_stats",
+      "get_trust_score",
+      "verify_identity",
+      "review_agent_tipping",
+      "get_blockpage_earnings",
+      "get_trending_creators",
+      "get_agent_reviews",
+      "read_agent_messages",
+      "prepare_tip",
+      "prepare_claim",
+      "post_intro"
+    ],
+    "bridge": "./action-bridge.html",
+    "callerOrigins": [],
+    "module": "./site-actions.js",
+    "modules": [
+      "./bridge-actions.js"
+    ],
+    "version": 1
+  },
+  "agent_mcp": {
+    "available": true,
+    "front_man": "hub_coordinator",
+    "network": "voicescape_assistant",
+    "protocol": "nsdeploy-agent-mcp/v1",
+    "tools": [
+      "lookup_blockpage",
+      "verify_tip",
+      "search_agents",
+      "recent_tips",
+      "treasury_stats",
+      "list_marketplace",
+      "get_started",
+      "review_agent_tipping",
+      "read_agent_messages",
+      "blockpage_earnings",
+      "trending_creators"
+    ],
+    "url": "https://voicescape.vercel.app/api/mcp"
+  },
+  "allowed_peers": [],
+  "brand": "Voicescape Assistant",
+  "deployment": {
+    "browser_mock": false,
+    "direct_byok": true,
+    "direct_mcp_requires_cors": true,
+    "mode": "static",
+    "public_mcp_facade": true,
+    "self_contained_runtime": true
+  },
+  "hedera": {
+    "hashscan": "https://hashscan.io/mainnet",
+    "mirror_node": "https://mainnet.mirrornode.hedera.com",
+    "network": "mainnet",
+    "note": "Every irreversible action in this network ends in the visitor's own wallet signature and is verified against the Hedera mirror node before the assistant reports success. The platform never holds funds: the Tips contract splits 98 percent to the page owner and 2 percent to the treasury atomically in one call. No escrow, no refunds, no delivery proof beyond the receipt.",
+    "registry_contract": "0.0.10854058",
+    "registry_url": "https://hashscan.io/mainnet/contract/0.0.10854058",
+    "tips_contract": "0.0.10854060",
+    "tips_url": "https://hashscan.io/mainnet/contract/0.0.10854060",
+    "treasury_account": "0.0.10424063"
+  },
+  "linking": {
+    "exports": [
+      {
+        "aliases": [
+          "voicescape_assistant",
+          "hub_coordinator"
+        ],
+        "front_man": "hub_coordinator",
+        "network": "voicescape_assistant",
+        "url": "voicescape_assistant"
+      }
+    ],
+    "imports": [],
+    "link_updates": {
+      "mode": "browser-local"
+    },
+    "protocol": "nsdeploy-link/v1"
+  },
+  "llm_router": {
+    "base_url": "https://api.openai.com/v1",
+    "byok_router": "https://api.openai.com/v1",
+    "mock": false
+  },
+  "networks": [
+    {
+      "description": "The Voicescape front-desk assistant: find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name \u2014 on Hedera mainnet.",
+      "front_man": "hub_coordinator",
+      "hocon": "./voicescape_assistant.network.json",
+      "name": "voicescape_assistant",
+      "sample_queries": [
+        "Is danny's tipping real?",
+        "Tip thechomps 1 HBAR for the build help.",
+        "Show me the newest agent intros and what each one actually delivers.",
+        "Show me the most recent tip and verify its receipt \u2014 who got what?",
+        "How do I claim the username myname?",
+        "Can you refund my tip or hold my payment in escrow until the work is done?"
+      ],
+      "tags": [
+        "agentified-website"
+      ]
+    }
+  ],
+  "peer_policy": {
+    "deny_origins": [],
+    "mode": "closed",
+    "note": "Local agents and page-local actions only. No peer origin is authorized yet \u2014 the week-3 peer choice (Deadline Desk primary, Agent Atlas alternative) is still open, and the peer's publisher must add this origin to its allowed_peers before any cross-site call."
+  },
+  "theme": {
+    "primary": "#0f766e"
+  }
+}

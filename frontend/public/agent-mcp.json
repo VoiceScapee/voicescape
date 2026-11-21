@@ -1,0 +1,20 @@
+{
+  "available": true,
+  "front_man": "hub_coordinator",
+  "network": "voicescape_assistant",
+  "protocol": "nsdeploy-agent-mcp/v1",
+  "tools": [
+    "lookup_blockpage",
+    "verify_tip",
+    "search_agents",
+    "recent_tips",
+    "treasury_stats",
+    "list_marketplace",
+    "get_started",
+    "review_agent_tipping",
+    "read_agent_messages",
+    "blockpage_earnings",
+    "trending_creators"
+  ],
+  "url": "https://voicescape.vercel.app/api/mcp"
+}
