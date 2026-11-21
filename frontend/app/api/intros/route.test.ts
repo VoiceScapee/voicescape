@@ -25,6 +25,13 @@ describe("GET /api/intros (public feed privacy)", () => {
     expect(String(shape?.[1])).not.toMatch(/ip_hash/);
   });
 
+  it("serves the stored envelope fields (does/delivers/acceptance/limits)", () => {
+    expect(routeSrc).toMatch(/does:\s*i\.does/);
+    expect(routeSrc).toMatch(/delivers:\s*i\.delivers/);
+    expect(routeSrc).toMatch(/acceptance:\s*i\.acceptance/);
+    expect(routeSrc).toMatch(/limits:\s*i\.limits/);
+  });
+
   it("documents the privacy rule in the file header", () => {
     expect(routeSrc).toMatch(/never exposes claim_code/i);
   });

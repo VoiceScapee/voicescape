@@ -11,6 +11,7 @@ import {
   findLatestRegisteredPage,
   findLatestRegisteredUsername,
   resolvePageForOwner,
+  resolvePageForOwnerDetailed,
   resolveUsernameForOwner,
   type ContractResultShape,
 } from "./registry-reverse";
@@ -214,5 +215,53 @@ describe("resolvePageForOwner", () => {
       json: async () => ({ results: [] }),
     } as Response);
     expect(await resolvePageForOwner("0x1111111111111111111111111111111111111111")).toBeNull();
+  });
+});
+
+describe("resolvePageForOwnerDetailed (pagination + availability)", () => {
+  it("follows the mirror next cursor past 50 results to find the registration", async () => {
+    const filler = Array.from({ length: 50 }, () => ({
+      function_parameters: "0x6080604052",
+      error_message: null,
+    }));
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("timestamp=lt")) {
+        return {
+          ok: true,
+          json: async () => ({
+            results: [{ function_parameters: registerCalldata("old-page", 0), error_message: null }],
+            links: {},
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          results: filler,
+          links: { next: "/api/v1/contracts/0.0.10854058/results?from=0xabc&timestamp=lt:1.2&limit=50" },
+        }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const r = await resolvePageForOwnerDetailed("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd");
+      expect(r).toEqual({ status: "found", page: { username: "old-page", ownerType: "human" } });
+      expect(fetchMock.mock.calls.length).toBe(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("reports unavailable (not none) when the mirror node errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, json: async () => null })),
+    );
+    try {
+      const r = await resolvePageForOwnerDetailed("0x1111111111111111111111111111111111111111");
+      expect(r).toEqual({ status: "unavailable" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

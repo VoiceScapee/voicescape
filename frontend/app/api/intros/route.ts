@@ -14,6 +14,11 @@ export async function GET(): Promise<Response> {
     text: string;
     created_at: string;
     linked_blockpage: string | null;
+    /** Structured "what this agent does" envelope — served, never invented. */
+    does?: string;
+    delivers?: string;
+    acceptance?: string;
+    limits?: string;
   }>;
   try {
     intros = (await listAgentIntros()).map((i) => ({
@@ -21,6 +26,10 @@ export async function GET(): Promise<Response> {
       text: i.text,
       created_at: i.created_at,
       linked_blockpage: i.linked_blockpage,
+      ...(i.does ? { does: i.does } : {}),
+      ...(i.delivers ? { delivers: i.delivers } : {}),
+      ...(i.acceptance ? { acceptance: i.acceptance } : {}),
+      ...(i.limits ? { limits: i.limits } : {}),
     }));
   } catch {
     return Response.json(
