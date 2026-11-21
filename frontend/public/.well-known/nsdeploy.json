@@ -10,7 +10,13 @@
       "url": "voicescape_assistant"
     }
   ],
-  "imports": [],
+  "imports": [
+    {
+      "front_man": "deadline_desk_assistant",
+      "network": "deadline_desk",
+      "url": "https://deadline-desk-agent.vercel.app/deadline_desk"
+    }
+  ],
   "link_updates": {
     "mode": "browser-local"
   },

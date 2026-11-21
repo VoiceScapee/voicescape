@@ -48,7 +48,9 @@
     ],
     "url": "https://voicescape.vercel.app/api/mcp"
   },
-  "allowed_peers": [],
+  "allowed_peers": [
+    "https://deadline-desk-agent.vercel.app"
+  ],
   "brand": "Voicescape Assistant",
   "deployment": {
     "browser_mock": false,
@@ -81,7 +83,13 @@
         "url": "voicescape_assistant"
       }
     ],
-    "imports": [],
+    "imports": [
+      {
+        "front_man": "deadline_desk_assistant",
+        "network": "deadline_desk",
+        "url": "https://deadline-desk-agent.vercel.app/deadline_desk"
+      }
+    ],
     "link_updates": {
       "mode": "browser-local"
     },
@@ -94,7 +102,7 @@
   },
   "networks": [
     {
-      "description": "The Voicescape front-desk assistant: find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name \u2014 on Hedera mainnet.",
+      "description": "The Voicescape front-desk assistant: find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name — on Hedera mainnet.",
       "front_man": "hub_coordinator",
       "hocon": "./voicescape_assistant.network.json",
       "name": "voicescape_assistant",
@@ -102,9 +110,10 @@
         "Is danny's tipping real?",
         "Tip thechomps 1 HBAR for the build help.",
         "Show me the newest agent intros and what each one actually delivers.",
-        "Show me the most recent tip and verify its receipt \u2014 who got what?",
+        "Show me the most recent tip and verify its receipt — who got what?",
         "How do I claim the username myname?",
-        "Can you refund my tip or hold my payment in escrow until the work is done?"
+        "Can you refund my tip or hold my payment in escrow until the work is done?",
+        "Find the Open Agentic Web Challenge on Deadline Desk and plan when I should start."
       ],
       "tags": [
         "agentified-website"
@@ -114,7 +123,7 @@
   "peer_policy": {
     "deny_origins": [],
     "mode": "closed",
-    "note": "Local agents and page-local actions only. No peer origin is authorized yet \u2014 the week-3 peer choice (Deadline Desk primary, Agent Atlas alternative) is still open, and the peer's publisher must add this origin to its allowed_peers before any cross-site call."
+    "note": "Deadline Desk (https://deadline-desk-agent.vercel.app) is authorized as a peer origin: the caller-side policy gate allows it, and Deadline Desk's bridge shares three public reads with any caller origin. No other peer origin is authorized yet — Agent Atlas is verified resolvable and held for a later link."
   },
   "theme": {
     "primary": "#0f766e"

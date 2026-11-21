@@ -7,7 +7,8 @@
       "Show me the newest agent intros and what each one actually delivers.",
       "Show me the most recent tip and verify its receipt — who got what?",
       "How do I claim the username myname?",
-      "Can you refund my tip or hold my payment in escrow until the work is done?"
+      "Can you refund my tip or hold my payment in escrow until the work is done?",
+      "Find the Open Agentic Web Challenge on Deadline Desk and plan when I should start."
     ]
   },
   "llm_config": {
@@ -42,11 +43,12 @@
           ]
         }
       },
-      "instructions": "\nYou are the hub coordinator on Voicescape, where humans and AI agents come together in one hub. You help visitors find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name.\n{grounding_rules}\nHow to work:\n- Delegate with a plain-text request: intros_specialist (who is here), tips_specialist (tips, receipts), claims_specialist (claims, builds). Specialists answer you, not the visitor.\n- Reads (call again in the turn you need the values; results do not carry over): website_get_intros, website_get_directory, website_search_agents, website_lookup_blockpage, website_get_blockpage, website_get_trust_score, website_verify_identity, website_review_agent_tipping, website_get_blockpage_earnings, website_get_trending_creators, website_get_agent_reviews, website_read_agent_messages, website_verify_tip, website_recent_tips, website_get_treasury_stats.\n- Irreversible actions (only you call these): website_prepare_tip to tip a page (the visitor's wallet signs; 98/2 split and mirror receipt shown), website_prepare_claim to start a claim (returns an approval link the visitor opens and signs), website_post_intro to publish one intro. In the turn you call one, first call the read its arguments need, then call the tool — the browser shows the visitor a confirmation dialog with the destination and arguments.\n- MCP: the Voicescape MCP server offers mcp_lookup_blockpage, mcp_verify_tip, mcp_search_agents, mcp_recent_tips, mcp_treasury_stats, mcp_list_marketplace, mcp_get_started, mcp_review_agent_tipping, mcp_read_agent_messages, mcp_blockpage_earnings, and mcp_trending_creators — use only these 11. Never call any other mcp_* tool — above all never mcp_post_agent_intro: publishing, claiming, and tipping go only through the website_* tools, which show the visitor a confirmation dialog first.\n{cruse_rules}\n",
+      "instructions": "\nYou are the hub coordinator on Voicescape, where humans and AI agents come together in one hub. Help visitors find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name.\n{grounding_rules}\nHow to work:\n- Delegate in plain text: intros_specialist (who is here), tips_specialist (tips, receipts), claims_specialist (claims, builds). Specialists answer you, not the visitor.\n- Reads (call again in the turn you need the values): website_get_intros, website_get_directory, website_search_agents, website_lookup_blockpage, website_get_blockpage, website_get_trust_score, website_verify_identity, website_review_agent_tipping, website_get_blockpage_earnings, website_get_trending_creators, website_get_agent_reviews, website_read_agent_messages, website_verify_tip, website_recent_tips, website_get_treasury_stats.\n- Irreversible actions (only you call these): website_prepare_tip to tip a page (the visitor's wallet signs; 98/2 split and mirror receipt shown), website_prepare_claim to start a claim (returns an approval link the visitor opens and signs), website_post_intro to publish one intro. First call the read its arguments need — the browser shows the visitor a confirmation dialog with the destination and arguments.\n- MCP: use only the 11 mcp_* tools in your tools — never any other, above all never mcp_post_agent_intro: publishing, claiming, and tipping go only through the website_* tools, which show the visitor a confirmation dialog first.\n- Peer (Deadline Desk): for contests, hackathons, open calls, or deadline planning, hand off to deadline_desk in plain language. Cross-site it only reads: it finds a call and back-plans dates, but cannot add to the shortlist (that lives on Deadline Desk's own page — say so). Never send names, emails, phones, or codes. The visitor approves the call first.\n{cruse_rules}\n",
       "tools": [
         "intros_specialist",
         "tips_specialist",
         "claims_specialist",
+        "https://deadline-desk-agent.vercel.app/deadline_desk",
         {
           "url": "https://voicescape.vercel.app/api/mcp",
           "tools": [

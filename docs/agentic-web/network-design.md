@@ -7,6 +7,49 @@ per `skills/agentify-website/SKILL.md` and `references/network_design.md`.
 for a reason grounded in the repo or a live check. Nothing in this doc is built yet —
 week 2 writes the `.hocon`, manifest, runtime copy, and site actions from it.
 
+## Week-3 amendments (2026-11-21, peer wiring)
+
+- **Peer wired: Deadline Desk.** `hub_coordinator` tools include the peer URL
+  `https://deadline-desk-agent.vercel.app/deadline_desk` (kind `remote`);
+  manifest `allowed_peers` lists its origin and `linking.imports` records it;
+  `vercel.json` adds its origin to `connect-src` (manifest/network/MCP fetch)
+  and `frame-src` (bridge iframe). Sample query 7 added (both hocon metadata
+  and manifest): "Find the Open Agentic Web Challenge on Deadline Desk and
+  plan when I should start."
+- **No publisher contact was needed.** The runtime's per-hop gate
+  (`engine.js` `_assertAllowedPeer` / `manifestAllowsPeer`) checks the
+  CALLER's manifest, not the peer's — our allow-list is what authorizes the
+  call. Deadline Desk's own manifest explicitly invites calls ("Other agent
+  sites may call this network") and its bridge shares three reads
+  (`get_board_state`, `find_calls`, `plan_calls`) with `callerOrigins: ["*"]`.
+  Its `allowed_peers` (self-only) constrains only its own outbound hops.
+  Verified with the runtime's own `validateNetwork` (0 errors, 0 warnings on
+  its network file) and a `manifestAllowsPeer` simulation (false before
+  wiring, true after).
+- **Agent Atlas resolved, held.** Its real network file is
+  `https://agent-atlas-phi.vercel.app/agent_atlas.network.json` (200;
+  validateNetwork 0/0) — the Nov 21 404 was for `/agent_atlas`, the
+  peer-network URL name, not the hocon file; the manifest is the entry point.
+  Atlas is NOT wired (one peer only, per the plan). Its bridge-actions file
+  404s because its bridge manifest declares no actions module — Atlas shares
+  no bridge actions; its peer path is MCP-only (`search_directory`,
+  `check_site`, `list_sites`). Second link candidate after submission.
+- **`check_partner.mjs` does not exist** in the pinned skill or spec — the
+  plan's reference to it was an assumption. Week 3 checked the peers with the
+  runtime's own validator + policy simulation + live fetches instead (see
+  week-3 report). No script was invented to fill the gap.
+- **Instruction budget:** wiring the peer pushed `hub_coordinator` to 4,516
+  chars (budget 4,000, warning). Trimmed back to 3,981: peer bullet tightened,
+  MCP bullet now references the 11 tools in the tool list instead of
+  re-listing them, minor wording cuts elsewhere. No rule was dropped.
+  `build_network.mjs --check` passes with zero errors and zero warnings.
+- **Cross-site shortlist is page-local.** Deadline Desk's `add_to_shortlist`
+  is not a bridge action — from Voicescape the peer has only its reading
+  tools. A visitor asking to "add to my shortlist" gets the find + back-plan
+  and is told the shortlist lives on Deadline Desk's own page (per the peer's
+  own grounding rules). The hocon instructions say this; the live call must
+  record it honestly, not stage the add.
+
 ## Week-2 amendments (2026-11-21, applied during the build)
 
 - **K1 — agent names.** `front_desk_coordinator` is the pizza example's
@@ -153,13 +196,16 @@ notarizes payment, not work); anything requiring a key or signature the visitor 
 given; prices or availability not in a tool result; any feature the site does not have
 (see inventory "Not supported").
 
-## Sample queries (final — week 2)
+## Sample queries (final — week 2, query 7 added week 3)
 
 Order leads with the wash verdict and the tip, not discovery. Query 4 was
 corrected (K7): the draft used the Tips *contract* id `0.0.10854060` as if it
 were a transaction id; real transaction ids look like
 `0.0.x@seconds.nanos`, so the query now asks for the most recent tip and
-verifies it from the tool result instead of naming a fake id.
+verifies it from the tool result instead of naming a fake id. Query 7 was
+added in week 3 with the Deadline Desk wiring: it is the peer call, worded
+for what the peer can actually do cross-site (find + back-plan; the
+shortlist-add is page-local on Deadline Desk, see week-3 amendments).
 
 1. "Is danny's tipping real?" (wash-detection verdict)
 2. "Tip thechomps 1 HBAR for the build help." (irreversible — confirmation dialog,
@@ -170,6 +216,8 @@ verifies it from the tool result instead of naming a fake id.
 5. "How do I claim the username `myname`?" (claim approval-link flow)
 6. "Can you refund my tip / hold my payment in escrow until the work is done?"
    (must decline honestly)
+7. "Find the Open Agentic Web Challenge on Deadline Desk and plan when I should start."
+   (live peer call — Deadline Desk reads only, cross-site)
 
 ## Week-2 handoff (what the build must do first)
 
