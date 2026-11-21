@@ -46,6 +46,105 @@ export class AssistantMount {
   };
 
   /**
+   * The key for the typed-but-unsent chat draft in this tab's session
+   * storage. The runtime's BYOK panel reloads the page when the visitor
+   * applies settings (runtime/ui.js, location.reload), which wipes the
+   * input's in-memory text. A tab-scoped draft survives that reload and
+   * is forgotten when the tab closes; it never leaves this browser.
+   */
+  static DRAFT_KEY = "voicescape-assistant-draft";
+
+  /**
+   * Keep a typed-but-unsent chat draft across the BYOK panel's reload.
+   *
+   * The runtime reloads the whole page when the visitor applies settings,
+   * so the chat input's text would be lost. This saves the input on every
+   * keystroke (plus a beforeunload catch), restores it into the empty
+   * input after boot, and forgets it once the message is sent or the chat
+   * is reset. All in this file — the pinned runtime is untouched.
+   */
+  static preserveDraft() {
+    if (typeof document === "undefined" || typeof sessionStorage === "undefined") {
+      return;
+    }
+    document.addEventListener("input", (event) => {
+      if (event.target && event.target.id === "ns-input") {
+        AssistantMount.saveDraft(event.target.value);
+      }
+    });
+    // The runtime sends on Enter (runtime/ui.js) and on the #ns-send
+    // button; both bubble here after the runtime has read the input, so
+    // clearing storage cannot eat the message. A new chat discards the
+    // draft the same way.
+    document.addEventListener("keydown", (event) => {
+      if (event.target && event.target.id === "ns-input" && event.key === "Enter") {
+        AssistantMount.clearDraft();
+      }
+    });
+    document.addEventListener("click", (event) => {
+      const button = event.target && event.target.closest
+        ? event.target.closest("#ns-send, #ns-newchat")
+        : null;
+      if (button) {
+        AssistantMount.clearDraft();
+      }
+    });
+    window.addEventListener("beforeunload", () => {
+      const input = document.querySelector("#ns-input");
+      if (input) {
+        AssistantMount.saveDraft(input.value);
+      }
+    });
+  }
+
+  static saveDraft(value) {
+    try {
+      if (value) {
+        sessionStorage.setItem(AssistantMount.DRAFT_KEY, value);
+      } else {
+        sessionStorage.removeItem(AssistantMount.DRAFT_KEY);
+      }
+    } catch {
+      // Storage may be unavailable (private mode); the draft is best-effort.
+    }
+  }
+
+  static clearDraft() {
+    try {
+      sessionStorage.removeItem(AssistantMount.DRAFT_KEY);
+    } catch {
+      // Best-effort, as above.
+    }
+  }
+
+  /**
+   * Put the saved draft back into the empty chat input after boot, and
+   * tell the runtime's own input handler the text is there, so the send
+   * button enables exactly as if the visitor had typed it.
+   */
+  static restoreDraft() {
+    if (typeof document === "undefined" || typeof sessionStorage === "undefined") {
+      return false;
+    }
+    let draft = null;
+    try {
+      draft = sessionStorage.getItem(AssistantMount.DRAFT_KEY);
+    } catch {
+      return false;
+    }
+    if (!draft) {
+      return false;
+    }
+    const input = document.querySelector("#ns-input");
+    if (!input || input.value) {
+      return false;
+    }
+    input.value = draft;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  /**
    * Boot the runtime and report the result in the status line.
    *
    * :return: The runtime engine, or null when boot failed.
@@ -53,6 +152,9 @@ export class AssistantMount {
   static async start() {
     const status = document.querySelector("#assistant-status");
     const siteBase = new URL("./", import.meta.url).href;
+    // Attach the draft listeners before the runtime mounts, so keystrokes
+    // during boot are captured too (delegation needs no input element yet).
+    AssistantMount.preserveDraft();
     try {
       // Load the runtime here, so a missing or broken runtime is reported too.
       const { boot } = await import("./runtime/index.js");
@@ -73,6 +175,8 @@ export class AssistantMount {
       if (!needsKey) {
         AssistantMount.greet();
       }
+      // A draft typed before the BYOK reload lands back in the input.
+      AssistantMount.restoreDraft();
       return booted.engine;
     } catch (error) {
       // The page must keep working without the assistant.
