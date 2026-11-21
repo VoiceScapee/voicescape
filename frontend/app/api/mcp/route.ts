@@ -17,6 +17,7 @@
 export const runtime = "nodejs";
 
 import { READONLY_TOOLS } from "@/lib/server/mcp-readonly-tools";
+import { DISCOVERABLE_TOOLS } from "@/lib/server/mcp-discoverable-tools";
 import { createMcpHandler } from "mcp-handler";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
@@ -46,6 +47,60 @@ function toolNameFromBody(body: unknown): string | null {
   const params = b.params as { name?: unknown } | null;
   if (!params || typeof params.name !== "string") return null;
   return params.name;
+}
+
+/**
+ * tools/list discovery filter (2026-11-21): the wire response advertises
+ * only DISCOVERABLE_TOOLS. The MCP SDK builds tools/list from every
+ * registered tool (70), and the runtime hands each listed schema to the
+ * LLM — 24,071 tokens vs Groq's free-tier 8,000 TPM cap. tools/call is
+ * untouched: all 70 tools stay callable by name.
+ *
+ * The transport answers tools/list as a single SSE `data:` message
+ * (stateless server), or plain JSON when the client Accepts only
+ * application/json. Either way the payload is filtered by tool name and
+ * the rest of the envelope passes through unchanged. Unparseable bodies
+ * pass through untouched — a filter failure must never break the protocol.
+ */
+async function filterToolsListResponse(res: Response): Promise<Response> {
+  const text = await res.text().catch(() => null);
+  if (text === null) return res;
+  const rebuild = (body: string): Response =>
+    new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  const filterPayload = (payload: unknown): unknown => {
+    if (!payload || typeof payload !== "object") return payload;
+    const result = (payload as { result?: unknown }).result;
+    if (!result || typeof result !== "object") return payload;
+    const tools = (result as { tools?: unknown }).tools;
+    if (!Array.isArray(tools)) return payload;
+    (result as { tools: unknown[] }).tools = tools.filter(
+      (t) =>
+        t &&
+        typeof t === "object" &&
+        typeof (t as { name?: unknown }).name === "string" &&
+        DISCOVERABLE_TOOLS.has((t as { name: string }).name),
+    );
+    return payload;
+  };
+  try {
+    if ((res.headers.get("content-type") ?? "").includes("text/event-stream")) {
+      const out = text
+        .split("\n")
+        .map((line) => {
+          if (!line.startsWith("data: ")) return line;
+          try {
+            return `data: ${JSON.stringify(filterPayload(JSON.parse(line.slice("data: ".length))))}`;
+          } catch {
+            return line;
+          }
+        })
+        .join("\n");
+      return rebuild(out);
+    }
+    return rebuild(JSON.stringify(filterPayload(JSON.parse(text))));
+  } catch {
+    return rebuild(text);
+  }
 }
 
 async function handle(req: Request): Promise<Response> {
@@ -85,10 +140,12 @@ async function handle(req: Request): Promise<Response> {
   // The tool name comes from the JSON-RPC body for tools/call requests.
   let toolName: string | null = null;
   let requestId: string | number | null = null;
+  let isToolsList = false;
   if (req.method === "POST") {
     try {
       const body = await req.clone().json();
       toolName = toolNameFromBody(body);
+      isToolsList = (body as { method?: unknown }).method === "tools/list";
       // Thread the JSON-RPC request id into the tool context so
       // render_blockpage can expose it as the invocation correlation
       // key in widget diagnostics (autonomaavalix's ask, 2026-10-06).
@@ -171,7 +228,12 @@ async function handle(req: Request): Promise<Response> {
     requestId,
     authToken: bearerMatch ? bearerMatch[1] : null,
   };
-  return requestContextStorage.run(ctx, () => mcpHandler(req));
+  const res = await requestContextStorage.run(ctx, () => mcpHandler(req));
+  // Discovery filter: tools/list advertises only DISCOVERABLE_TOOLS —
+  // the full 70-tool list is 24,071 tokens, 3x Groq's free-tier cap.
+  // tools/call is untouched, so every tool stays callable by name.
+  if (isToolsList) return filterToolsListResponse(res);
+  return res;
 }
 
 // Browser-based MCP clients (e.g. a web playground calling the endpoint

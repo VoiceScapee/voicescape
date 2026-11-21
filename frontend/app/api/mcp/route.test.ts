@@ -112,6 +112,10 @@ describe("MCP tool surface", () => {
   });
 
   it("lists all 70 tools with human-readable titles", async () => {
+    // NOTE: this drives the registry directly over InMemoryTransport, so
+    // it sees all 70 registered tools. The wire-level tools/list filter
+    // (route.ts, DISCOVERABLE_TOOLS) is tested below — all 70 stay
+    // callable by name; only discovery shrinks to 12.
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
@@ -207,6 +211,83 @@ describe("MCP tool surface", () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe("tools/list discovery filter (wire)", () => {
+  // The runtime hands every listed tool's schema to the LLM; the full
+  // 70-tool list is 24,071 tokens, 3x Groq's free-tier 8,000 TPM cap
+  // (2026-11-21). The wire must advertise only DISCOVERABLE_TOOLS while
+  // tools/call keeps working for all 70 by name.
+  async function postJsonRpc(body: Record<string, unknown>) {
+    const { POST } = await import("./route");
+    return POST(
+      new Request("https://voicescape.vercel.app/api/mcp", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify(body),
+      }),
+    );
+  }
+
+  function ssePayloads(text: string): Array<Record<string, any>> {
+    return text
+      .split("\n")
+      .filter((l) => l.startsWith("data: "))
+      .map((l) => JSON.parse(l.slice("data: ".length)) as Record<string, any>);
+  }
+
+  it("advertises exactly the 12 discoverable tools on tools/list", async () => {
+    const { DISCOVERABLE_TOOLS } = await import("@/lib/server/mcp-discoverable-tools");
+    const res = await postJsonRpc({ jsonrpc: "2.0", id: 1, method: "tools/list" });
+    expect(res.status).toBe(200);
+    const payloads = ssePayloads(await res.text());
+    expect(payloads.length).toBeGreaterThan(0);
+    const tools = (payloads[0]?.result?.tools ?? []) as Array<{ name: string }>;
+    expect(tools.map((t) => t.name).sort()).toEqual([...DISCOVERABLE_TOOLS].sort());
+    expect(tools).toHaveLength(12);
+    expect(tools.map((t) => t.name)).toContain("post_agent_intro");
+    expect(tools.map((t) => t.name)).not.toContain("render_blockpage");
+    expect(tools.map((t) => t.name)).not.toContain("prepare_tip");
+  });
+
+  it("still calls a non-listed tool by name (tools/call is not filtered)", async () => {
+    const res = await postJsonRpc({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "render_blockpage", arguments: { username: "no spaces!" } },
+    });
+    expect(res.status).toBe(200);
+    const payloads = ssePayloads(await res.text());
+    const result = payloads[0]?.result as { isError?: boolean; content?: Array<{ text?: string }> };
+    expect(result?.isError).toBe(true);
+    expect(result?.content?.[0]?.text ?? "").toMatch(/3-32 lowercase/);
+  });
+});
+
+describe("DISCOVERABLE_TOOLS drift guard", () => {
+  it("every discoverable tool is registered, and only post_agent_intro is a write", async () => {
+    const { registerTools } = await import("@/lib/server/mcp-tool-registry");
+    const { DISCOVERABLE_TOOLS } = await import("@/lib/server/mcp-discoverable-tools");
+    const seen: Array<{ name: string; readOnlyHint: boolean }> = [];
+    const fakeServer = {
+      registerTool: (name: string, config: Record<string, unknown>) => {
+        const annotations = (config.annotations ?? {}) as Record<string, unknown>;
+        seen.push({ name, readOnlyHint: annotations.readOnlyHint === true });
+      },
+      registerResource: () => {},
+    };
+    registerTools(fakeServer as never);
+    const missing = [...DISCOVERABLE_TOOLS].filter((n) => !seen.some((t) => t.name === n));
+    expect(missing, `discoverable tools not registered: ${missing.join(", ")}`).toEqual([]);
+    const writes = seen
+      .filter((t) => DISCOVERABLE_TOOLS.has(t.name) && !t.readOnlyHint)
+      .map((t) => t.name);
+    expect(writes).toEqual(["post_agent_intro"]);
   });
 });
 
