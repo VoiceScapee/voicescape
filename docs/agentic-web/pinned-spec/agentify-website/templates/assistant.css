@@ -1,0 +1,78 @@
+/* Assistant layout. Append to the site's stylesheet and set the colors to the site's palette. */
+.assistant { margin-top: 48px; }
+
+/* The runtime reads these variables for its chat, settings and agent panels.
+   The chat background below also uses --ns-bg. White text sits on --ns-primary (the
+   visitor's messages, Send, and the chat form and settings buttons) and on --ns-accent
+   (Send while a turn is steered), so give both at least 4.5:1 contrast with white.
+   --ns-accent also underlines the chat header. */
+#agent-app {
+  --ns-font: system-ui, sans-serif;
+  --ns-bg: #ffffff;
+  --ns-fg: #1f2328;
+  --ns-primary: #2563eb;
+  --ns-accent: #2563eb;
+  --ns-border: #d0d7de;
+  --ns-panelbg: #ffffff;
+  --ns-msgbg: #f6f8fa;
+  --ns-muted: #59636e;
+}
+
+.assistant-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 240px;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Set the height once the runtime has mounted the chat, so a failed load leaves no
+   empty box. */
+#agent-app.ns-composed-app [data-ns-slot="chat"] { height: 720px; }
+/* The runtime gives the chat no background of its own. Keep --ns-msgbg different from
+   --ns-bg, or bot replies lose their bubble. */
+#agent-app .ns-chat { background: var(--ns-bg); }
+
+/* Site-wide form rules often stretch the runtime's own controls. Undo them here. */
+#agent-app input[type="checkbox"],
+#agent-app input[type="radio"] { width: auto; }
+#agent-app .ns-header { flex-wrap: wrap; }
+/* Site label rules add margins and bold text, and the inputs inside the labels inherit
+   the weight. */
+#agent-app .ns-settings-body label { margin: 4px 0; font-weight: 400; }
+/* Chat forms label radio groups with a legend, so site legend fonts would reach them. */
+#agent-app .ns-w-label { font-family: inherit; }
+/* Site label rules add margins to chat form fields and make their options bold. */
+#agent-app .ns-widget label { margin: 0; }
+#agent-app .ns-w-radio label,
+#agent-app .ns-w-multi label,
+#agent-app .ns-w-toggle { font-weight: 400; }
+/* The runtime sizes radio and multi-choice options but not the checkbox label. */
+#agent-app .ns-w-toggle { font-size: 13px; }
+/* The runtime spaces its buttons with gap. A site's button margin pushes Send below the input. */
+#agent-app button { margin: 0; }
+/* Chat choices are buttons with a light background. A site's button color can hide their
+   titles. */
+#agent-app .ns-w-choice { color: var(--ns-fg); }
+/* A site's button:hover background also reaches the runtime's plain buttons, behind
+   their dark text. Keep the runtime's own backgrounds. */
+#agent-app .ns-devtoggle:not(.on):hover,
+#agent-app .ns-modal-close:hover { background: transparent; }
+#agent-app .ns-w-choice:disabled:hover { background: #fafbfc; }
+
+/* site.js and the runtime add their confirmation dialogs to <body>, outside #agent-app.
+   Site h2 rules reach the heading, and the two buttons touch. */
+body > dialog h2 { margin: 0 0 12px; font: 700 1.25em system-ui, sans-serif; }
+body > dialog button + button { margin-left: 8px; }
+/* site.js's dialog: the details in two columns, and a plain decline button, so the two
+   choices do not look the same. */
+.assistant-review { max-width: 640px; width: 85%; max-height: 85vh; overflow: auto; border: 1px solid #888; border-radius: 12px; padding: 24px; font: 16px system-ui, sans-serif; }
+.assistant-review dl { display: grid; grid-template-columns: fit-content(40%) 1fr; gap: 4px 16px; margin: 12px 0; }
+.assistant-review dt { font-weight: 600; }
+.assistant-review dd { margin: 0; overflow-wrap: anywhere; }
+.assistant-review details { margin: 12px 0; }
+.assistant-review pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.assistant-review .assistant-decline { background: transparent; color: inherit; border: 1px solid currentColor; }
+
+@media (max-width: 760px) {
+  .assistant-panels { grid-template-columns: 1fr; }
+}

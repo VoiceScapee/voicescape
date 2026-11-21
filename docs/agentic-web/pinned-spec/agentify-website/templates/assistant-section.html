@@ -1,0 +1,22 @@
+<!--
+  Assistant mount. Put this section where visitors expect help, for example below the
+  main content or beside the cart. Keep the ids: site.js uses #assistant-status and
+  #agent-app, and the runtime fills the data-ns-slot elements.
+  Also add <script type="module" src="site.js"></script> to the page head. If the page
+  script exports its page object for site.js and the actions module, load it with
+  type="module" too.
+-->
+<section id="assistant" class="assistant" aria-labelledby="assistant-heading">
+  <h2 id="assistant-heading">Ask <Site name></h2>
+  <p>TODO: one sentence on what the assistant can do here.</p>
+  <p class="assistant-note">Your messages and this page's data go to the LLM provider you choose in the settings below. You confirm anything that cannot be undone before it happens.</p>
+  <p id="assistant-status" role="status">Connecting the assistant… If this message stays, the assistant could not load. You can still use the page directly.</p>
+  <div id="agent-app">
+    <div data-ns-slot="header"></div>
+    <div class="assistant-panels">
+      <div data-ns-slot="chat"></div>
+      <div data-ns-slot="agents"></div>
+    </div>
+    <div data-ns-slot="settings"></div>
+  </div>
+</section>
