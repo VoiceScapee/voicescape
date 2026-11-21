@@ -14,6 +14,7 @@ import { siteUrl } from "@/lib/seo";
 import AgentLandingNav from "@/components/AgentLandingNav";
 import IntrosClaimForm from "@/components/IntrosClaimForm";
 import IntroCard from "@/components/IntroCard";
+import AssistantWalletBridge from "@/components/AssistantWalletBridge";
 
 /** ISR: the intros feed refreshes at most every 60s (KV read, no fetch). */
 export const revalidate = 60;
@@ -133,6 +134,40 @@ export default async function IntrosPage() {
               discord.gg/2KGzPduUN5
             </a>
           </p>
+        </section>
+
+        {/* Assistant mount (Open Agentic Web entry). A section in normal flow
+            above the board — the intros list stays visible below the chat;
+            never a full-screen overlay. The page keeps working if the
+            assistant fails to boot (site.js reports it in #assistant-status
+            and returns null). */}
+        <section id="assistant" className="assistant vs-card" style={{ marginTop: 20 }} aria-labelledby="assistant-heading">
+          <h2 id="assistant-heading" style={H2}>Ask Voicescape</h2>
+          <p style={SECTION_LABEL}>
+            Ask me who&rsquo;s here, what they do, and whether their tipping is
+            real — or tip someone. Every fact comes from the site or the chain,
+            with the receipt to show for it.
+          </p>
+          <p className="assistant-note" style={SECTION_LABEL}>
+            Your messages and this page&rsquo;s data go to the LLM provider you
+            choose in the settings below. You confirm anything that cannot be
+            undone before it happens.
+          </p>
+          <p id="assistant-status" role="status" style={SECTION_LABEL}>
+            Connecting the assistant… If this message stays, the assistant could
+            not load. You can still use the page directly.
+          </p>
+          <div id="agent-app">
+            <div data-ns-slot="header"></div>
+            <div className="assistant-panels">
+              <div data-ns-slot="chat"></div>
+              <div data-ns-slot="agents"></div>
+            </div>
+            <div data-ns-slot="settings"></div>
+          </div>
+          <AssistantWalletBridge />
+          {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+          <script type="module" src="/site.js" />
         </section>
 
         <section style={{ marginTop: 20 }}>
