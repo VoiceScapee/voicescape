@@ -17,10 +17,10 @@
  * Perplexity-User); Apple/Google/Microsoft docs (Applebot, Googlebot,
  * Bingbot). Search and training are INDEPENDENT switches per platform.
  *
- * Training crawlers (GPTBot, ClaudeBot) are DISALLOWED: site content must
- * not be used to train OpenAI/Anthropic foundation models. This blocks
- * training only — search visibility is untouched. One line to flip at
- * review: delete the GPTBot/ClaudeBot rule to allow training crawls.
+ * Training crawlers (GPTBot, ClaudeBot) are ALLOWED as of 2026-11-20 on
+ * Brandon's word ("allow gptbot and claudebot"). Search and training
+ * remain independent switches per platform; this opens the training
+ * switch. GPTBot/ClaudeBot now fall under the wildcard allow below.
  *
  * NO Grok rule on purpose: xAI publishes no verified Grok search-crawler
  * name, UA, IP ranges, or robots.txt policy (checked 2026-11-20). The
@@ -45,9 +45,6 @@ export const AI_SEARCH_CRAWLERS = [
   "Applebot",
 ];
 
-/** AI training crawlers (disallow — search and training are separate). */
-export const AI_TRAINING_CRAWLERS = ["GPTBot", "ClaudeBot"];
-
 export default function robots(): MetadataRoute.Robots {
   const origin = siteUrl();
   return {
@@ -56,10 +53,6 @@ export default function robots(): MetadataRoute.Robots {
         userAgent: AI_SEARCH_CRAWLERS,
         allow: ["/", "/api/mcp"],
         disallow: ["/api/", "/mod", "/analytics"],
-      },
-      {
-        userAgent: AI_TRAINING_CRAWLERS,
-        disallow: ["/"],
       },
       {
         userAgent: "*",

@@ -198,7 +198,7 @@ describe("robots()", () => {
   it("allows public pages, blocks private ones, references the sitemap", () => {
     const r = robots();
     const rules = Array.isArray(r.rules) ? r.rules : [r.rules];
-    // Rule order: AI search crawlers, then training crawlers, then *.
+    // Rule order: AI search crawlers, then *.
     const search = rules.find((rule) =>
       (Array.isArray(rule.userAgent) ? rule.userAgent : [rule.userAgent]).includes(
         "OAI-SearchBot",
@@ -223,7 +223,7 @@ describe("robots()", () => {
     expect(r.sitemap).toMatch(/^https?:\/\/.*\/sitemap\.xml$/);
   });
 
-  it("names the documented AI search crawlers and disallows training crawlers", () => {
+  it("names the documented AI search crawlers and allows training crawlers", () => {
     const r = robots();
     const rules = Array.isArray(r.rules) ? r.rules : [r.rules];
     const agents = (rule: (typeof rules)[number]): string[] => {
@@ -248,12 +248,16 @@ describe("robots()", () => {
     ]) {
       expect(agents(search!)).toContain(name);
     }
-    // Training crawlers get their own Disallow group — search and training
-    // are independent switches. One rule to flip at review.
-    const training = rules.find((rule) => agents(rule).includes("GPTBot"));
-    expect(training).toBeDefined();
-    expect(agents(training!)).toContain("ClaudeBot");
-    expect(training!.disallow).toEqual(["/"]);
+    // Training crawlers (GPTBot, ClaudeBot) are ALLOWED as of 2026-11-20
+    // on Brandon's word: no rule names them, so they fall under the
+    // wildcard allow. Search and training remain independent switches.
+    const training = rules.find(
+      (rule) => agents(rule).includes("GPTBot") || agents(rule).includes("ClaudeBot"),
+    );
+    expect(training).toBeUndefined();
+    const wildcard = rules.find((rule) => rule.userAgent === "*");
+    expect(wildcard).toBeDefined();
+    expect(wildcard!.allow).toEqual(["/", "/api/mcp"]);
     // No Grok rule: xAI publishes no verified search-crawler name.
     for (const rule of rules) {
       for (const a of agents(rule)) {
