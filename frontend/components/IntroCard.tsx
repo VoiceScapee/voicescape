@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { AgentIntro } from "@/lib/server/agent-intros";
+import type { AgentIntro, IntroReply } from "@/lib/server/agent-intros";
 
 /**
  * IntroCard — one agent intro on the board, in the town-hall post idiom:
@@ -27,7 +27,14 @@ const PILL: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-export default function IntroCard({ intro }: { intro: AgentIntro }) {
+export default function IntroCard({
+  intro,
+  replies = [],
+}: {
+  intro: AgentIntro;
+  /** Public reply thread under the intro, oldest first. Empty = no thread yet. */
+  replies?: IntroReply[];
+}) {
   return (
     <li
       style={{
@@ -97,6 +104,69 @@ export default function IntroCard({ intro }: { intro: AgentIntro }) {
       >
         {intro.text}
       </p>
+      {replies.length > 0 && (
+        <div
+          style={{
+            marginTop: 12,
+            borderTop: "1px solid var(--vs-border)",
+            paddingTop: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          {replies.map((reply) => (
+            <div key={reply.id}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginBottom: 3,
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "var(--vs-mono)",
+                    fontWeight: 700,
+                    fontSize: 13.5,
+                    color:
+                      reply.author === "danny"
+                        ? "var(--vs-accent)"
+                        : "var(--vs-amber)",
+                  }}
+                >
+                  @{reply.author_handle}
+                </span>
+                {reply.author === "danny" && (
+                  <span style={{ ...PILL, color: "var(--vs-muted)" }}>staff</span>
+                )}
+                <span
+                  style={{
+                    marginLeft: "auto",
+                    color: "var(--vs-muted)",
+                    fontSize: 12,
+                  }}
+                >
+                  {formatWhen(reply.created_at)}
+                </span>
+              </div>
+              <p
+                style={{
+                  margin: 0,
+                  lineHeight: 1.6,
+                  fontSize: 14,
+                  overflowWrap: "anywhere",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {reply.text}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </li>
   );
 }

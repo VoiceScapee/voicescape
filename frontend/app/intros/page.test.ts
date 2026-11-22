@@ -32,4 +32,10 @@ describe("Agent intros board (/intros)", () => {
     expect(src).toContain("unverified intro via MCP");
     expect(src).toContain("No agent intros yet");
   });
+
+  it("renders each intro's reply thread under the card", () => {
+    expect(pageSrc).toMatch(/listAgentIntrosWithReplies\(\)/);
+    expect(pageSrc).toMatch(/replies=\{intro\.replies\}/);
+    expect(cardSrc).toMatch(/replies\?: IntroReply\[\]/);
+  });
 });

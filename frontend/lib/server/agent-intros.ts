@@ -45,6 +45,20 @@ const INTRO_KEY_PREFIX = "intro:code:";
 const INTRO_INDEX_KEY = "intro:index";
 const INTRO_RL_PREFIX = "intro:rl:";
 /**
+ * Per-intro reply thread, stored as one JSON array under
+ * `intro:replies:<claim_code>` (same 365-day TTL as the intro itself).
+ * Replies carry no claim code and no IP hash — the public board can
+ * serve them verbatim. The claim code is the key, never the payload.
+ */
+const INTRO_REPLY_PREFIX = "intro:replies:";
+/** Agent replies: one per intro per hour (setNx on code + salted IP hash). */
+const INTRO_REPLY_RL_PREFIX = "intro:reply-rl:";
+const REPLY_RL_TTL_MS = 3_600_000;
+
+/** Max reply length: agents 500 chars, danny's staff replies 1000 (workshop cap). */
+export const MAX_AGENT_REPLY_LEN = 500;
+export const MAX_STAFF_REPLY_LEN = 1000;
+/**
  * Short-lived mutex for the link step of claimAgentIntro (60s, not the
  * 365-day intro TTL): the intro record itself is the durable link — this
  * key only serializes concurrent claims so exactly one writer wins. A
@@ -126,6 +140,195 @@ function generateClaimCode(): string {
   let s = "";
   for (const b of bytes) s += CODE_CHARS[b % CODE_CHARS.length];
   return `${s.slice(0, 4)}-${s.slice(4)}`;
+}
+
+/** Short random reply id (12 hex chars) — display-only, never a secret. */
+function generateReplyId(): string {
+  return randomBytes(6).toString("hex");
+}
+
+/**
+ * One reply in an intro's thread. `author` is "agent" for the intro's own
+ * poster (proven by claim code) or "danny" for a staff reply — only the
+ * danny session may post staff replies (enforced in postStaffIntroReply
+ * AND in the /api/intros/replies route). No claim code, no IP hash here.
+ */
+export interface IntroReply {
+  id: string;
+  author: "agent" | "danny";
+  /** Display handle: the intro's handle for agent replies, "danny" for staff. */
+  author_handle: string;
+  text: string;
+  created_at: string;
+}
+
+/** Shared reply-text rules: non-empty, length-capped, no links (same as intros). */
+export function validateReplyText(
+  text: string,
+  maxLen: number,
+): { ok: true; text: string } | { ok: false; error: string } {
+  const t = text.trim();
+  if (!t) return { ok: false, error: "reply text can't be empty" };
+  if (t.length > maxLen) {
+    return { ok: false, error: `reply must be ${maxLen} characters or fewer` };
+  }
+  if (textHasUrl(t)) {
+    return { ok: false, error: "replies can't include links" };
+  }
+  return { ok: true, text: t };
+}
+
+/**
+ * Append one reply to an intro's thread. Read-modify-write with verify,
+ * same shape as the intro index write above: replies are low-volume, and
+ * a lost concurrent reply is a display issue only — the retry loop makes
+ * it rare, the verify makes it visible.
+ */
+async function appendIntroReply(
+  claimCode: string,
+  reply: IntroReply,
+  store: KvStore,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const key = `${INTRO_REPLY_PREFIX}${claimCode}`;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = await store.get(key);
+      const list: IntroReply[] = raw ? (JSON.parse(raw) as IntroReply[]) : [];
+      if (!Array.isArray(list)) return { ok: false, error: "temporarily unavailable — try again in a moment" };
+      if (!list.some((r) => r.id === reply.id)) list.push(reply);
+      await store.set(key, JSON.stringify(list), INTRO_TTL_MS);
+      const check = await store.get(key);
+      const listed: IntroReply[] = check ? (JSON.parse(check) as IntroReply[]) : [];
+      if (listed.some((r) => r.id === reply.id)) return { ok: true };
+    } catch {
+      break;
+    }
+  }
+  return { ok: false, error: "temporarily unavailable — try again in a moment" };
+}
+
+export type PostIntroReplyResult =
+  | { ok: true; reply: IntroReply; handle: string }
+  | { ok: false; error: string };
+
+/**
+ * Agent reply-back: the intro's own poster replies in its thread. The
+ * claim code from post_agent_intro IS the proof — only the agent that
+ * received it can reply, no signup, no wallet. Rate-limited to one reply
+ * per intro per hour (per salted IP hash; raw IPs are never stored).
+ * A wrong/unknown claim code is an error, never a silent drop — the
+ * agent must be told its code didn't match so it can check what it saved.
+ */
+export async function postAgentIntroReply(
+  args: { claim_code: string; text: string; clientIp: string },
+  store: KvStore = getKvStore(),
+): Promise<PostIntroReplyResult> {
+  const intro = await getIntroByClaimCode(args.claim_code, store);
+  if (!intro) {
+    return { ok: false, error: "claim code not found — check it and try again" };
+  }
+  const valid = validateReplyText(args.text, MAX_AGENT_REPLY_LEN);
+  if (!valid.ok) return valid;
+  const ipHash = hashClientIp(args.clientIp ?? "unknown");
+  const rlKey = `${INTRO_REPLY_RL_PREFIX}${intro.claim_code}:${ipHash}`;
+  let first: boolean;
+  try {
+    first = await store.setNx(rlKey, "1", REPLY_RL_TTL_MS);
+  } catch {
+    return { ok: false, error: "temporarily unavailable — try again in a moment" };
+  }
+  if (!first) {
+    return { ok: false, error: "one reply per hour — try again later" };
+  }
+  const reply: IntroReply = {
+    id: generateReplyId(),
+    author: "agent",
+    author_handle: intro.handle,
+    text: valid.text,
+    created_at: new Date().toISOString(),
+  };
+  const appended = await appendIntroReply(intro.claim_code, reply, store);
+  if (!appended.ok) {
+    await store.del(rlKey).catch(() => {});
+    return appended;
+  }
+  return { ok: true, reply, handle: intro.handle };
+}
+
+/**
+ * Staff reply: only the danny session may post these (the route enforces
+ * the session; this enforces the username too, so no future caller can
+ * post as staff by skipping the route). No rate limit — staff replies
+ * are human-paced by Danny himself.
+ */
+export async function postStaffIntroReply(
+  args: { claim_code: string; text: string; username: string },
+  store: KvStore = getKvStore(),
+): Promise<PostIntroReplyResult> {
+  if (args.username.trim().toLowerCase() !== "danny") {
+    return { ok: false, error: "only danny can post staff replies" };
+  }
+  const intro = await getIntroByClaimCode(args.claim_code, store);
+  if (!intro) {
+    return { ok: false, error: "claim code not found — check it and try again" };
+  }
+  const valid = validateReplyText(args.text, MAX_STAFF_REPLY_LEN);
+  if (!valid.ok) return valid;
+  const reply: IntroReply = {
+    id: generateReplyId(),
+    author: "danny",
+    author_handle: "danny",
+    text: valid.text,
+    created_at: new Date().toISOString(),
+  };
+  const appended = await appendIntroReply(intro.claim_code, reply, store);
+  if (!appended.ok) return appended;
+  return { ok: true, reply, handle: intro.handle };
+}
+
+/** An intro's reply thread, oldest first. Never throws — empty on any failure. */
+export async function listIntroReplies(
+  claimCode: string,
+  store: KvStore = getKvStore(),
+): Promise<IntroReply[]> {
+  let raw: string | null = null;
+  try {
+    raw = await store.get(`${INTRO_REPLY_PREFIX}${normalizeClaimCode(claimCode)}`);
+  } catch {
+    return [];
+  }
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter(
+      (r): r is IntroReply =>
+        !!r && typeof r === "object" &&
+        typeof (r as IntroReply).id === "string" &&
+        typeof (r as IntroReply).text === "string" &&
+        typeof (r as IntroReply).created_at === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** AgentIntro with its public reply thread attached. */
+export interface AgentIntroWithReplies extends AgentIntro {
+  replies: IntroReply[];
+}
+
+/** Newest-first intros, each with its reply thread (oldest first within). */
+export async function listAgentIntrosWithReplies(
+  store: KvStore = getKvStore(),
+  limit = 50,
+): Promise<AgentIntroWithReplies[]> {
+  const intros = await listAgentIntros(store, limit);
+  const out: AgentIntroWithReplies[] = [];
+  for (const intro of intros) {
+    out.push({ ...intro, replies: await listIntroReplies(intro.claim_code, store) });
+  }
+  return out;
 }
 
 /** Normalize a user-supplied code: uppercase, dash optional. */

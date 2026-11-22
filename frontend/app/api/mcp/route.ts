@@ -52,9 +52,9 @@ function toolNameFromBody(body: unknown): string | null {
 /**
  * tools/list discovery filter (2026-11-21): the wire response advertises
  * only DISCOVERABLE_TOOLS. The MCP SDK builds tools/list from every
- * registered tool (70), and the runtime hands each listed schema to the
- * LLM — 24,071 tokens vs Groq's free-tier 8,000 TPM cap. tools/call is
- * untouched: all 70 tools stay callable by name.
+ * registered tool (71), and the runtime hands each listed schema to the
+ * LLM — over 24,000 tokens vs Groq's free-tier 8,000 TPM cap. tools/call is
+ * untouched: all 71 tools stay callable by name.
  *
  * The transport answers tools/list as a single SSE `data:` message
  * (stateless server), or plain JSON when the client Accepts only
@@ -230,7 +230,7 @@ async function handle(req: Request): Promise<Response> {
   };
   const res = await requestContextStorage.run(ctx, () => mcpHandler(req));
   // Discovery filter: tools/list advertises only DISCOVERABLE_TOOLS —
-  // the full 70-tool list is 24,071 tokens, 3x Groq's free-tier cap.
+  // the full 71-tool list is over 24,000 tokens, 3x Groq's free-tier cap.
   // tools/call is untouched, so every tool stays callable by name.
   if (isToolsList) return filterToolsListResponse(res);
   return res;

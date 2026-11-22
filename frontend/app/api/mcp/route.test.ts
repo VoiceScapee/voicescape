@@ -111,15 +111,15 @@ describe("MCP tool surface", () => {
     }
   });
 
-  it("lists all 70 tools with human-readable titles", async () => {
+  it("lists all 71 tools with human-readable titles", async () => {
     // NOTE: this drives the registry directly over InMemoryTransport, so
-    // it sees all 70 registered tools. The wire-level tools/list filter
-    // (route.ts, DISCOVERABLE_TOOLS) is tested below — all 70 stay
+    // it sees all 71 registered tools. The wire-level tools/list filter
+    // (route.ts, DISCOVERABLE_TOOLS) is tested below — all 71 stay
     // callable by name; only discovery shrinks to 12.
     const client = await connectedClient();
     try {
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(70);
+      expect(tools).toHaveLength(71);
       for (const t of tools) {
         expect(t.title, t.name).toBeTruthy();
         expect(t.description, t.name).toBeTruthy();
@@ -216,9 +216,9 @@ describe("MCP tool surface", () => {
 
 describe("tools/list discovery filter (wire)", () => {
   // The runtime hands every listed tool's schema to the LLM; the full
-  // 70-tool list is 24,071 tokens, 3x Groq's free-tier 8,000 TPM cap
+  // 71-tool list is over 24,000 tokens, 3x Groq's free-tier 8,000 TPM cap
   // (2026-11-21). The wire must advertise only DISCOVERABLE_TOOLS while
-  // tools/call keeps working for all 70 by name.
+  // tools/call keeps working for all 71 by name.
   async function postJsonRpc(body: Record<string, unknown>) {
     const { POST } = await import("./route");
     return POST(
