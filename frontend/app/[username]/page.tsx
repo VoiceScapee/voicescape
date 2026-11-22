@@ -1657,8 +1657,9 @@ function PublicPageInner({ username }: { username: string }) {
         canonicalUsername={username}
       />
       {/* Per-blockpage voice mic: talk to this page, answers come from its
-          live blocks. Fixed bottom-left so it never collides with AgentChat
-          (bottom-right). */}
+          live blocks. Docked in-flow after the blocks (video-fix): the old
+          floating button covered link text at idle on phones. AgentChat
+          stays bottom-right, untouched. */}
       <PageVoiceMic username={username} page={state.page} />
       {tipTarget !== null && (
         <TipBox
