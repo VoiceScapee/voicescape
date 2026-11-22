@@ -139,8 +139,8 @@ describe("GET /api/explore/pages", () => {
     expect(usernames).toContain("old-user");
     expect(usernames).toContain("mid-user");
     expect(usernames).toContain("new-user");
-    // featured founder + 3 real pages
-    expect(body.count).toBe(4);
+    // 2 featured + 3 real pages
+    expect(body.count).toBe(5);
   });
 
   it("dedupes the featured founder against their on-chain registration", async () => {
@@ -155,7 +155,7 @@ describe("GET /api/explore/pages", () => {
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames.filter((u: string) => u === "user-10424063")).toHaveLength(1);
     expect(body.pages[0]).toMatchObject({ username: "user-10424063", featured: true });
-    expect(body.count).toBe(1);
+    expect(body.count).toBe(2);
   });
 
   it("follows mirror-node pagination to collect every registration", async () => {
@@ -190,7 +190,7 @@ describe("GET /api/explore/pages", () => {
     const body = await res.json();
     const usernames = body.pages.map((p: { username: string }) => p.username);
     expect(usernames).toContain("good-user");
-    expect(body.count).toBe(2); // featured + good-user
+    expect(body.count).toBe(3); // 2 featured + good-user
   });
 
   it("fails soft to the featured fallback when the mirror node is down", async () => {
@@ -199,9 +199,9 @@ describe("GET /api/explore/pages", () => {
     const res = await GET(mockReq());
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.pages).toHaveLength(1);
+    expect(body.pages).toHaveLength(2);
     expect(body.pages[0].username).toBe("user-10424063");
-    expect(body.count).toBe(1);
+    expect(body.count).toBe(2);
   });
 
   it("defaults to trending and keeps newest-first order when all signals are zero", async () => {
@@ -224,7 +224,7 @@ describe("GET /api/explore/pages", () => {
     const body = await res.json();
     expect(body.sort).toBe("trending");
     const usernames = body.pages.map((p: { username: string }) => p.username);
-    expect(usernames).toEqual(["user-10424063", "newer-user", "older-user"]);
+    expect(usernames).toEqual(["user-10424063", "voicescape-webseries", "newer-user", "older-user"]);
   });
 
   it("echoes sort=new and returns newest-first", async () => {
@@ -244,7 +244,7 @@ describe("GET /api/explore/pages", () => {
     const body = await res.json();
     expect(body.sort).toBe("new");
     const usernames = body.pages.map((p: { username: string }) => p.username);
-    expect(usernames).toEqual(["user-10424063", "newer-user", "older-user"]);
+    expect(usernames).toEqual(["user-10424063", "voicescape-webseries", "newer-user", "older-user"]);
   });
 
   it("includes the on-chain owner type so Explore can mark agent pages", async () => {
