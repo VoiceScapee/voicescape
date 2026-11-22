@@ -41,6 +41,8 @@ describe("sitemap static routes", () => {
       "/marketplace",
       "/leaderboard",
       "/builder",
+      "/embed",
+      "/trust",
       "/agents",
       "/intros",
       "/ai-agent",
