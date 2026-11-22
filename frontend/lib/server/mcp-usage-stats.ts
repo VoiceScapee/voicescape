@@ -2,16 +2,28 @@
  * Anonymous MCP visitor stats (Brandon 2026-10-01: "tell me how many agents
  * are actually visiting the mcp").
  *
- * Every tool call increments three aggregate counters in KV — no IPs, no
+ * Every tool call increments four aggregate counters in KV — no IPs, no
  * arguments, no wallet data, nothing that identifies anyone:
  *
- *   - mcp:stats:calls:total            all-time-ish (30d rolling TTL)
- *   - mcp:stats:calls:tool:{name}      per-tool totals
- *   - mcp:stats:calls:day:{YYYY-MM-DD}  per-day totals (last 30 days)
+ *   - mcp:stats:calls:total                all-time-ish (30d rolling TTL)
+ *   - mcp:stats:calls:tool:{name}          LEGACY per-tool totals — still
+ *     written, never read for windowed counts: its TTL is set once at
+ *     creation, so it spans whatever 30 days followed that tool's FIRST
+ *     call, not the last 30 days. Superseded by the tool-day keys below.
+ *   - mcp:stats:calls:tool-day:{name}:{YYYY-MM-DD}
+ *                                            per-tool totals, one key per
+ *     tool per calendar day — the same window shape as the day keys, so
+ *     byTool is a true 30-day window (2026-11-22 fix).
+ *   - mcp:stats:calls:day:{YYYY-MM-DD}      per-day totals (last 30 days)
  *
  * 30-day TTL on every key: the numbers describe recent activity, and stale
  * keys evaporate on their own. Best-effort — recording never throws and
  * never changes what the agent receives.
+ *
+ * Honest limitation (2026-11-22): the tool-day keys only start accumulating
+ * at deploy. byTool reads them, so it undercounts the total until 30 days
+ * of tool-day data exists — history the legacy per-tool keys already lost
+ * cannot be recovered.
  */
 import { getKvStore, type KvStore } from "./store";
 
@@ -101,11 +113,39 @@ function dayKey(d = new Date()): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Last 30 calendar days (UTC), newest first — the one window byDay, byTool and total share. */
+function last30Days(): string[] {
+  const days: string[] = [];
+  for (let i = 0; i < 30; i++) {
+    days.push(dayKey(new Date(Date.now() - i * 86_400_000)));
+  }
+  return days;
+}
+
+/** Batch-read values in key order. Uses store.mget when the backend offers it, else falls back to one get() per key. */
+async function mgetAll(store: KvStore, keys: string[]): Promise<(string | null)[]> {
+  if (keys.length === 0) return [];
+  if (store.mget) {
+    // Bound the request size (Upstash REST takes the keys as one JSON body).
+    const out: (string | null)[] = [];
+    for (let i = 0; i < keys.length; i += 500) {
+      out.push(...(await store.mget(keys.slice(i, i + 500))));
+    }
+    return out;
+  }
+  return Promise.all(keys.map((k) => store.get(k)));
+}
+
+function parseCount(v: string | null | undefined): number {
+  return v ? parseInt(v, 10) || 0 : 0;
+}
+
 export interface McpUsageStats {
   /**
    * Total tool calls in the rolling 30-day window — the SUM of the
-   * per-day counters, so total, byTool, and byDay always describe one
-   * consistent window. Deliberately NOT the standalone
+   * per-day counters. byTool is the sum of the per-tool-per-day counters
+   * over the same 30 calendar days, so total, byTool, and byDay all
+   * describe one consistent window. Deliberately NOT the standalone
    * `mcp:stats:calls:total` counter: its TTL is set once at creation,
    * so it spans whatever 30 days followed its first call, while the day
    * keys span the last 30 calendar days — reading it made the three
@@ -128,7 +168,11 @@ export async function recordMcpToolCall(
     const store = deps.store ?? getKvStore();
     await Promise.all([
       store.incr(`${PREFIX}:total`, TTL_MS),
+      // Legacy aggregate — still written, never read for windowed counts.
       store.incr(`${PREFIX}:tool:${name}`, TTL_MS),
+      // Windowed source: one key per tool per calendar day, same shape
+      // as the day keys, so byTool spans the last 30 days like byDay.
+      store.incr(`${PREFIX}:tool-day:${name}:${dayKey()}`, TTL_MS),
       store.incr(`${PREFIX}:day:${dayKey()}`, TTL_MS),
     ]);
   } catch {
@@ -148,23 +192,27 @@ export async function getMcpUsageStats(
       byTool: {},
       byDay: {},
     };
-    // Per-tool totals — only tools with calls appear.
-    const toolVals = await Promise.all(
-      KNOWN_MCP_TOOLS.map((t) => store.get(`${PREFIX}:tool:${t}`)),
-    );
-    toolVals.forEach((v, i) => {
-      const n = v ? parseInt(v, 10) || 0 : 0;
-      if (n > 0) stats.byTool[KNOWN_MCP_TOOLS[i]] = n;
+    const days = last30Days();
+    // Per-tool totals — summed from the per-tool-per-day keys over the
+    // same 30 calendar days as byDay. NEVER from the legacy
+    // `${PREFIX}:tool:{name}` keys: each of those expires 30 days after
+    // that tool's first call, so it spans a different window per tool
+    // and undercounts the total (2026-11-22: byTool summed to 1231
+    // against a total of 1876).
+    const toolDayKeys: string[] = [];
+    for (const t of KNOWN_MCP_TOOLS) {
+      for (const d of days) toolDayKeys.push(`${PREFIX}:tool-day:${t}:${d}`);
+    }
+    const toolDayVals = await mgetAll(store, toolDayKeys);
+    KNOWN_MCP_TOOLS.forEach((t, i) => {
+      let n = 0;
+      for (let j = 0; j < 30; j++) n += parseCount(toolDayVals[i * 30 + j]);
+      if (n > 0) stats.byTool[t] = n;
     });
     // Last 30 days of day-keys.
-    const days: string[] = [];
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(Date.now() - i * 86_400_000);
-      days.push(dayKey(d));
-    }
-    const dayVals = await Promise.all(days.map((k) => store.get(`${PREFIX}:day:${k}`)));
+    const dayVals = await mgetAll(store, days.map((k) => `${PREFIX}:day:${k}`));
     dayVals.forEach((v, i) => {
-      const n = v ? parseInt(v, 10) || 0 : 0;
+      const n = parseCount(v);
       if (n > 0) stats.byDay[days[i]] = n;
     });
     // Total = sum of the per-day counters: the one window all three
@@ -182,7 +230,11 @@ export async function getMcpUsageStats(
 
 /**
  * Read per-tool counters for a known tool list. The MCP route passes its
- * registered tool names so the response only names real tools.
+ * registered tool names so the response only names real tools. Counts are
+ * the last 30 calendar days, summed from the per-tool-per-day keys — the
+ * same windowed source as getMcpUsageStats, never the legacy per-tool
+ * aggregate keys (their create-once TTL anchors to each tool's first
+ * call, so they undercount the window; see the header note).
  */
 export async function getMcpToolCounts(
   toolNames: string[],
@@ -192,11 +244,16 @@ export async function getMcpToolCounts(
   for (const t of toolNames) out[t] = 0;
   try {
     const store = deps.store ?? getKvStore();
-    const vals = await Promise.all(
-      toolNames.map((t) => store.get(`${PREFIX}:tool:${t}`)),
-    );
+    const days = last30Days();
+    const keys: string[] = [];
+    for (const t of toolNames) {
+      for (const d of days) keys.push(`${PREFIX}:tool-day:${t}:${d}`);
+    }
+    const vals = await mgetAll(store, keys);
     toolNames.forEach((t, i) => {
-      out[t] = vals[i] ? parseInt(vals[i] as string, 10) || 0 : 0;
+      let n = 0;
+      for (let j = 0; j < 30; j++) n += parseCount(vals[i * 30 + j]);
+      out[t] = n;
     });
   } catch {
     /* fall through with zeros */

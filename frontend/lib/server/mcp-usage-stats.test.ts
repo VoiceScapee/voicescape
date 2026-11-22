@@ -16,6 +16,7 @@ function fakeStore() {
   const ttls = new Map<string, number>();
   const store: KvStore = {
     async get(k: string) { return map.get(k) ?? null; },
+    async mget(keys: string[]) { return keys.map((k) => map.get(k) ?? null); },
     async set(k: string, v: string, ttlMs: number) { map.set(k, v); ttls.set(k, ttlMs); },
     async del(k: string) { map.delete(k); },
     async incr(k: string, ttlMs: number) {
@@ -73,6 +74,9 @@ describe("mcp-usage-stats", () => {
       ...store,
       incr: async () => { throw new Error("kv down"); },
       get: async () => { throw new Error("kv down"); },
+      // Reads prefer mget when the store offers it, so a down store
+      // must fail there too — otherwise the stats would read fine.
+      mget: async () => { throw new Error("kv down"); },
     };
     await recordMcpToolCall("verify_tip", { store: broken }); // no throw
     const s = await getMcpUsageStats({ store: broken });
@@ -117,5 +121,65 @@ describe("mcp-usage-stats", () => {
     const s = await getMcpUsageStats({ store });
     expect(s.total).toBe(3);
     expect(s.total).toBe(Object.values(s.byDay).reduce((a, b) => a + b, 0));
+  });
+
+  it("recordMcpToolCall writes a per-tool-per-day key for today", async () => {
+    const { store, map } = fakeStore();
+    await recordMcpToolCall("verify_tip", { store });
+    await recordMcpToolCall("verify_tip", { store });
+    expect(map.get(`mcp:stats:calls:tool-day:verify_tip:${DAY}`)).toBe("2");
+    // Legacy keys are still written alongside.
+    expect(map.get("mcp:stats:calls:tool:verify_tip")).toBe("2");
+    expect(map.get(`mcp:stats:calls:day:${DAY}`)).toBe("2");
+  });
+
+  it("byTool sums the last 30 days of per-tool-per-day keys, ignoring the legacy per-tool key", async () => {
+    // Simulates a tool whose first call was 30+ days ago: its legacy
+    // aggregate key holds 500 calls from a window that no longer matches
+    // the last 30 days, while only 4 of them fall in-window.
+    const { store, map } = fakeStore();
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const old = new Date(Date.now() - 31 * 86_400_000).toISOString().slice(0, 10);
+    map.set("mcp:stats:calls:tool:verify_tip", "500");
+    map.set(`mcp:stats:calls:tool-day:verify_tip:${DAY}`, "3");
+    map.set(`mcp:stats:calls:tool-day:verify_tip:${yesterday}`, "1");
+    map.set(`mcp:stats:calls:tool-day:verify_tip:${old}`, "496");
+    map.set(`mcp:stats:calls:day:${DAY}`, "3");
+    map.set(`mcp:stats:calls:day:${yesterday}`, "1");
+    const s = await getMcpUsageStats({ store });
+    expect(s.byTool).toEqual({ verify_tip: 4 });
+    expect(s.total).toBe(4);
+    expect(s.total).toBe(Object.values(s.byTool).reduce((a, b) => a + b, 0));
+    expect(s.total).toBe(Object.values(s.byDay).reduce((a, b) => a + b, 0));
+  });
+
+  it("byTool reads only tool-day keys, so pre-fix history is not recovered", async () => {
+    // A tool with ONLY a legacy aggregate key (no tool-day keys yet)
+    // reports 0 in byTool. Honest limitation: the tool-day keys start
+    // at deploy, so byTool undercounts until 30 days of them accumulate.
+    const { store, map } = fakeStore();
+    map.set("mcp:stats:calls:tool:verify_tip", "500");
+    map.set(`mcp:stats:calls:day:${DAY}`, "2");
+    const s = await getMcpUsageStats({ store });
+    expect(s.byTool).toEqual({});
+    expect(s.total).toBe(2);
+  });
+
+  it("getMcpToolCounts uses the same 30-day window as byTool", async () => {
+    const { store, map } = fakeStore();
+    map.set("mcp:stats:calls:tool:verify_tip", "500");
+    map.set(`mcp:stats:calls:tool-day:verify_tip:${DAY}`, "3");
+    const counts = await getMcpToolCounts(["verify_tip", "lookup_blockpage"], { store });
+    expect(counts).toEqual({ verify_tip: 3, lookup_blockpage: 0 });
+  });
+
+  it("falls back to one get() per key when the store has no mget", async () => {
+    const { store, map } = fakeStore();
+    await recordMcpToolCall("verify_tip", { store });
+    const noMget: KvStore = { ...store, mget: undefined };
+    const s = await getMcpUsageStats({ store: noMget });
+    expect(s.byTool).toEqual({ verify_tip: 1 });
+    expect(s.total).toBe(1);
+    expect(map.get(`mcp:stats:calls:tool-day:verify_tip:${DAY}`)).toBe("1");
   });
 });
