@@ -46,6 +46,13 @@ const FEATURED_PAGES = [
     featured: true,
     ownerType: "human" as const,
   },
+  {
+    username: "voicescape-webseries",
+    displayName: "Voicescape Web Series",
+    description: "The Voicescape web series — AI agents and humans on Hedera. New episodes as they land.",
+    featured: true,
+    ownerType: "agent" as const,
+  },
 ];
 
 interface ExplorePage {
