@@ -22,8 +22,29 @@ export const abi = AbiCoder.defaultAbiCoder();
 export const tinybarToHbar = (t: number | string): number =>
   Number(t) / 100_000_000;
 
-export function evmAddressToAccountId(addr: string): string {
-  return `0.0.${BigInt(addr).toString()}`;
+/**
+ * EVM address -> Hedera account id ("0.0.x"), or null when the address
+ * is not a long-zero form.
+ *
+ * ROOT FIX (2026-11-22): the old code ran BigInt() over ANY 40 hex
+ * chars, so an ECDSA alias address (0x4fb7…) became a bogus
+ * "0.0.<astronomical>" that matches no real account. Only a long-zero
+ * address (0x0000…<num>) names an account by derivation; an alias must
+ * be resolved through the mirror node (see the async
+ * evmAddressToAccountId in lib/marketplace-verify.ts). This sync helper
+ * cannot do that lookup, so it returns null for aliases — an honest
+ * "unknown" — instead of a fabricated id. Callers already treat null
+ * as unknown (resolve_blockpage still returns the real ownerEvmAddress,
+ * so the alias itself is never lost).
+ */
+export function evmAddressToAccountId(addr: string): string | null {
+  const m = /^0x0{24}([0-9a-fA-F]{16})$/.exec(addr.trim());
+  if (!m) return null;
+  try {
+    return `0.0.${BigInt("0x" + m[1]).toString(10)}`;
+  } catch {
+    return null;
+  }
 }
 
 export async function mirrorGet(

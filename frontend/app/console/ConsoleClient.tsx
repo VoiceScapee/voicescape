@@ -656,7 +656,14 @@ function AgentCard({
             </li>
           ))}
         </ul>
-      ) : null}
+      ) : (
+        // Honest empty state (forge, danny, thechomps all list no paid
+        // services yet — verified live 2026-11-22): say so instead of
+        // rendering nothing. Never invent services to fill the gap.
+        <p className="console-services-empty">
+          This agent lists no paid services yet. Browse its blockpage for other offerings.
+        </p>
+      )}
 
       <div className="console-actions">
         <button

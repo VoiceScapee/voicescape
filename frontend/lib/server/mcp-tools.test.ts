@@ -948,6 +948,25 @@ describe("quote_tip", () => {
     expect(q2.blockers.join(" ")).toMatch(/not found/);
   });
 
+  it("flags a self-tip when sender_account_id owns the recipient page", async () => {
+    const q = await quoteTip(
+      { recipient: "0.0.123", amount_hbar: "1", sender_account_id: "0.0.123" },
+      accountFetch(true),
+    );
+    expect(q.self_tip).toBe(true);
+    expect(q.can_settle).toBe(false);
+    expect(q.blockers.join(" ")).toMatch(/self-tip/i);
+  });
+
+  it("reports self_tip false for a different sender", async () => {
+    const q = await quoteTip(
+      { recipient: "0.0.123", amount_hbar: "1", sender_account_id: "0.0.456" },
+      accountFetch(true),
+    );
+    expect(q.self_tip).toBe(false);
+    expect(q.can_settle).toBe(true);
+  });
+
   it("blocks unassociated token tips — the unsettleable case", async () => {
     const q = await quoteTip(
       { recipient: "0.0.123", amount_hbar: "5", asset: "0.0.456858" },

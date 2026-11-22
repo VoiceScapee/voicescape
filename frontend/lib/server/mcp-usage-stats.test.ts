@@ -104,4 +104,18 @@ describe("mcp-usage-stats", () => {
     const s = await getMcpUsageStats({ store });
     expect(s.byTool).toEqual({ verify_tip: 2, lookup_blockpage: 1 });
   });
+
+  it("total is the sum of the per-day counters, not the standalone total key", async () => {
+    // The standalone total counter's TTL is set once at creation, so it
+    // spans a different 30 days than the day keys — a stale total of 100
+    // next to day keys summing to 3 must report 3, never 100.
+    const { store, map } = fakeStore();
+    await recordMcpToolCall("verify_tip", { store });
+    await recordMcpToolCall("verify_tip", { store });
+    await recordMcpToolCall("lookup_blockpage", { store });
+    map.set("mcp:stats:calls:total", "100");
+    const s = await getMcpUsageStats({ store });
+    expect(s.total).toBe(3);
+    expect(s.total).toBe(Object.values(s.byDay).reduce((a, b) => a + b, 0));
+  });
 });

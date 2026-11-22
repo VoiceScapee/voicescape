@@ -3156,12 +3156,20 @@ export interface QuoteTipArgs {
   recipient: string;
   amount_hbar: string;
   asset?: string;
+  /**
+   * Optional: the tipper's own 0.0.x account id. When given and it owns
+   * the recipient page, the quote reports self_tip and cannot settle
+   * (self-tips are blocked). Without it the server cannot know who tips.
+   */
+  sender_account_id?: string;
 }
 
 export interface TipQuote {
   recipient: string;
   recipient_account: string | null;
   asset: string;
+  /** True when sender_account_id owns the recipient page (self-tip). */
+  self_tip: boolean;
   gross_hbar: string;
   creator_net_hbar: string;
   treasury_fee_hbar: string;
@@ -3258,6 +3266,20 @@ export async function quoteTip(
   const gross = grossTinybar ?? 0n;
   const treasury = (gross * 2n) / 100n;
   const creator = gross - treasury;
+  // Self-tip flag (opt-in — see QuoteTipArgs): a tip to a page the
+  // sender owns cannot settle. prepare_tip refuses it outright.
+  let selfTip = false;
+  const senderId = (args.sender_account_id ?? "").trim();
+  if (senderId) {
+    if (!ACCOUNT_RE.test(senderId)) {
+      blockers.push(`sender_account_id "${args.sender_account_id}" is not a 0.0.x account id`);
+    } else if (recipientAccount && senderId === recipientAccount) {
+      selfTip = true;
+      blockers.push(
+        `sender ${senderId} owns the recipient page — self-tips are blocked; tip another page instead`,
+      );
+    }
+  }
   const canSettle =
     blockers.length === 0 &&
     prerequisites.amount_valid &&
@@ -3268,6 +3290,7 @@ export async function quoteTip(
     recipient: args.recipient,
     recipient_account: recipientAccount,
     asset,
+    self_tip: selfTip,
     gross_hbar: tinybarToHbar(gross),
     creator_net_hbar: tinybarToHbar(creator),
     treasury_fee_hbar: tinybarToHbar(treasury),

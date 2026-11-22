@@ -3,9 +3,10 @@
  * "page JSON too large" before any network call when the document exceeds
  * PIN_MAX_PAGE_JSON_BYTES (default 1,048,576). No network, no Pinata.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_MAX_PAGE_JSON_BYTES,
+  fetchPageJson,
   maxPageJsonBytes,
   publishPageJson,
 } from "./publish.js";
@@ -33,6 +34,57 @@ describe("maxPageJsonBytes", () => {
   it("follows PIN_MAX_PAGE_JSON_BYTES when set", () => {
     process.env.PIN_MAX_PAGE_JSON_BYTES = "2048";
     expect(maxPageJsonBytes()).toBe(2048);
+  });
+});
+
+describe("fetchPageJson response size cap", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.PIN_MAX_PAGE_JSON_BYTES;
+  });
+
+  it("refuses a body whose Content-Length declares over the cap, without reading it", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => "2097152" },
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapLength")).rejects.toThrow(/too large/);
+  });
+
+  it("refuses an oversize body read via text()", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
+      text: async () => "x".repeat(DEFAULT_MAX_PAGE_JSON_BYTES + 1),
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapText")).rejects.toThrow(/too large/);
+  });
+
+  it("follows PIN_MAX_PAGE_JSON_BYTES for the fetch cap too", async () => {
+    process.env.PIN_MAX_PAGE_JSON_BYTES = "100";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
+      text: async () => "x".repeat(200),
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapEnv")).rejects.toThrow(/too large/);
+  });
+
+  it("returns the parsed page for a body under the cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      headers: { get: () => null },
+      text: async () => '{"version":1,"blocks":[]}',
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapOk")).resolves.toEqual({ version: 1, blocks: [] });
   });
 });
 

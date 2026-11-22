@@ -160,6 +160,23 @@ describe("computeSplitFromGross", () => {
     expect(creator + fee).toBe(100n);
     expect(fee).toBe(2n);
   });
+
+  it("handles sub-50-tinybar dust: the fee floors to 0 and the creator keeps the whole gross", () => {
+    // 2% of 49 tinybars is 0.98 tinybars — unrepresentable, so the fee
+    // is 0 and the creator gets all 49. The old dual-floor display math
+    // (creator = floor(gross*98/100)) showed 48 here — 1 tinybar lost.
+    const { creator, fee } = computeSplitFromGross(49n);
+    expect(fee).toBe(0n);
+    expect(creator).toBe(49n);
+    expect(creator + fee).toBe(49n);
+  });
+
+  it("handles 199 tinybars: fee 3, creator 196, nothing lost", () => {
+    const { creator, fee } = computeSplitFromGross(199n);
+    expect(fee).toBe(3n);
+    expect(creator).toBe(196n);
+    expect(creator + fee).toBe(199n);
+  });
 });
 
 /* ------------------------------------------------------------------ */

@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { consensusTimestampToDate } from "@/lib/tx-confirm";
 import { tipPage, resolvePage, getTipsAddress } from "@/lib/contracts";
+import { fetchAccountEvmAddress, isSameOnchainOwner } from "@/lib/account-evm";
 import {
   friendlyWalletError,
   isStaleConnectionError,
@@ -195,10 +196,13 @@ export default function TipModal({
   // wallet prompt. Amounts use the same integer-tinybar 98/2 math as the
   // receipt; the fee is the measured mainnet contract-call fee (lib/fees).
   const previewHbar = isHbar ? hbarAmount : price ? usd / price : null;
+  // Creator share = gross − treasury fee (the contract's exact math: the
+  // fee floors to whole tinybars, the creator takes the remainder, so the
+  // two always sum to the gross. Never floor both sides independently —
+  // that drops up to 1 tinybar of dust on amounts < 100 tinybars).
+  const previewTiny = previewHbar != null ? BigInt(Math.round(previewHbar * 1e8)) : null;
   const previewCreatorHbar =
-    previewHbar != null
-      ? Number((BigInt(Math.round(previewHbar * 1e8)) * 98n) / 100n) / 1e8
-      : null;
+    previewTiny != null ? Number(previewTiny - (previewTiny * 2n) / 100n) / 1e8 : null;
 
   const [priceFailed, setPriceFailed] = useState(false);
   useEffect(() => {
@@ -297,14 +301,33 @@ export default function TipModal({
         return;
       }
       const sender = await getTxSender();
+      // Self-tip block: the page owner tipping their own page just moves
+      // money to themselves (minus the treasury cut) and pollutes the
+      // wash verdict. The contract allows it; the dapp refuses it here,
+      // before any wallet prompt. Alias-aware: an ECDSA owner's Registry
+      // address is the alias, not the long-zero form. If the mirror
+      // lookup fails, the check falls back to the long-zero form
+      // (ED25519 owners still match); an unresolvable sender is allowed
+      // through rather than blocking legitimate tips during a mirror
+      // outage — verify_tip still flags a self-tip in the receipt.
+      const senderAlias = await fetchAccountEvmAddress(sender.account).catch(() => null);
+      if (isSameOnchainOwner(registered.owner, sender.account, senderAlias)) {
+        setError(
+          "That's your own page — tipping yourself just sends money to your own wallet. Tip another creator instead.",
+        );
+        return;
+      }
       // Snapshot the breakdown for the success receipt — these amounts are
       // baked into the transaction, so they hold for every outcome path.
       const hbarAmt = isHbar ? hbarAmount : usd / (p as number);
       // Integer tinybar math mirrors the contract's 98/2 split exactly —
-      // never float multiplication for money display.
+      // never float multiplication for money display. The fee floors to
+      // whole tinybars; the creator takes the remainder, so the two shares
+      // always sum to the gross (flooring both sides independently drops
+      // up to 1 tinybar of dust on amounts < 100 tinybars).
       const receiptTiny = BigInt(Math.round(hbarAmt * 1e8));
-      const receiptCreator = Number((receiptTiny * 98n) / 100n) / 1e8;
       const receiptTreasury = Number((receiptTiny * 2n) / 100n) / 1e8;
+      const receiptCreator = Number(receiptTiny - (receiptTiny * 2n) / 100n) / 1e8;
       setReceiptCreatorHbar(receiptCreator.toFixed(4));
       setReceiptLines(
         isHbar
