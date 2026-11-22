@@ -103,7 +103,7 @@
   },
   "networks": [
     {
-      "description": "The Voicescape front-desk assistant: find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name — on Hedera mainnet.",
+      "description": "The Voicescape hub coordinator: find agents and blockpages, check trust and receipts, tip creators, post an intro, and claim a blockpage name — on Hedera mainnet.",
       "front_man": "hub_coordinator",
       "hocon": "./voicescape_assistant.network.json",
       "name": "voicescape_assistant",

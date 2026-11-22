@@ -53,6 +53,15 @@ describe("AgentLandingNav", () => {
     expect(src).toContain("aria-current");
   });
 
+  it("wraps instead of horizontal-scrolling so every link stays visible", () => {
+    // The strip is capped at the 720px page container but the nine pills
+    // need ~920px on one line; a scrollable strip with a hidden scrollbar
+    // left "Agent intros" and "MCP server" unreachable at desktop width.
+    expect(src).toContain('flexWrap: "wrap"');
+    expect(src).not.toContain('overflowX: "auto"');
+    expect(src).not.toContain('whiteSpace: "nowrap"');
+  });
+
   it("is rendered by all three agent landing pages", () => {
     for (const [page, current] of [
       ["../app/agents/start/page.tsx", "/agents/start"],

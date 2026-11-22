@@ -149,7 +149,7 @@ export function FreshBlockpages() {
                       letterSpacing: "0.08em",
                       padding: "4px 10px",
                       borderRadius: 999,
-                      background: "#1f9d55",
+                      background: "#1e7f47",
                       color: "#fff",
                       flexShrink: 0,
                     }}

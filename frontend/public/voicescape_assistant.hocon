@@ -39,6 +39,13 @@
     # Maximum model/tool round trips per agent invocation (runtime default 12).
     "max_steps": 12,
 
+    # Maximum wall-clock seconds per agent invocation. 90 matches the runtime's
+    # enforced per-query deadline (runtime/engine.js sets deadline now + 90_000;
+    # runtime/runner.js ends a composition at it), and the successful live peer
+    # call (Nov 21, 2m6s total) ran as several compositions, each under 90s.
+    # NandaSeal's conformance audit requires this field: a number, 0 < v <= 1200.
+    "max_execution_seconds": 90,
+
     # Turns on the render_cruse tool and per-invocation CRUSE context.
     "cruse": {
         "version": 1

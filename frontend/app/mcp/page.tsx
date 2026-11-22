@@ -599,7 +599,12 @@ export default function McpPage() {
           <h2 style={H2}>The full toolset</h2>
           <p style={BODY}>
             {PUBLIC_TOOLS.length} public tools, open to everyone — the server
-            never holds keys, never signs, never spends.
+            never holds keys, never signs, never spends. Discovery is
+            narrower by design: tools/list advertises 12 of them, the
+            read-only set the browser assistant works from. All 70
+            registered tools stay callable by name through tools/call;
+            the one tool not listed below is restricted to the platform
+            itself.
           </p>
           {/* Inspector-style browser (sorting-colors UI): searchable list
               + inspector pane, replacing the flat name/description grid.

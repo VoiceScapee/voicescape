@@ -5,7 +5,11 @@ import Link from "next/link";
  * /mcp). Those pages deliberately skip the full Navbar, but an agent (or
  * human) landing on one from a shared link was stranded — no way back to
  * the dapp. This bar gives them Home plus the key surfaces. The `current`
- * page is marked so it reads as navigation, not decoration.
+ * page is marked so it reads as navigation, not decoration. The links wrap
+ * onto a second row instead of horizontal-scrolling: the strip is capped
+ * at the 720px page container, the nine pills need ~920px on one line, and
+ * a scrollable strip with a hidden scrollbar left "Agent intros" and "MCP
+ * server" unreachable at desktop width (and worse on a phone).
  */
 const LINKS: Array<{ href: string; label: string }> = [
   { href: "/", label: "← Home" },
@@ -33,17 +37,13 @@ export default function AgentLandingNav({ current }: { current: string }) {
       }}
     >
       <div
-        className="vs-no-scrollbar"
         style={{
           maxWidth: 720,
           margin: "0 auto",
           padding: "10px 20px",
           display: "flex",
+          flexWrap: "wrap",
           gap: 6,
-          overflowX: "auto",
-          whiteSpace: "nowrap",
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
         }}
       >
         {LINKS.map((l) => {

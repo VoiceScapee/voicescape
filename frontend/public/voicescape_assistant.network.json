@@ -15,6 +15,7 @@
     "model_name": "gpt-4.1-mini"
   },
   "max_steps": 12,
+  "max_execution_seconds": 90,
   "cruse": {
     "version": 1
   },

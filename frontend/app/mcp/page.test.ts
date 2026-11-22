@@ -92,6 +92,15 @@ describe("MCP call-to-action page (/mcp)", () => {
     expect(pageSrc).not.toMatch(/\b\d{2} public tools/i);
   });
 
+  it("states the discovery split: 12 discoverable, 70 callable by name", () => {
+    // tools/list advertises 12 (the read-only discovery set); tools/call
+    // still serves all 70 registered tools by name. The /mcp copy must
+    // say both, so it can't drift back to implying discovery == all.
+    expect(pageSrc).toContain("tools/list advertises 12");
+    expect(pageSrc).toContain("All 70");
+    expect(pageSrc).toContain("callable by name through tools/call");
+  });
+
   it("states the rate limit and the Hedera mainnet source honestly", () => {
     // Two-tier limits: 100/hr read, 20/hr write. The old flat "20 requests
     // per hour" copy was stale (fixed 2026-10-04) — this test pins the

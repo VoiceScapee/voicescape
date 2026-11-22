@@ -3,6 +3,7 @@ import {
   REGISTER_PAGE_SELECTOR,
   REGISTRY_ID,
   TIPS_ID,
+  TIPS_TIP_PAGE_SELECTOR,
   countSuccessfulResults,
 } from "@/lib/server/chain-stats";
 
@@ -40,7 +41,7 @@ async function refreshStats(): Promise<StatsPayload> {
       try {
         const [pages, tips] = await Promise.all([
           countSuccessfulResults(fetch, REGISTRY_ID, REGISTER_PAGE_SELECTOR),
-          countSuccessfulResults(fetch, TIPS_ID, null),
+          countSuccessfulResults(fetch, TIPS_ID, TIPS_TIP_PAGE_SELECTOR),
         ]);
         return { pages, tips };
       } finally {
