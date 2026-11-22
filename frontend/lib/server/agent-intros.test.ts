@@ -418,3 +418,82 @@ describe("intro replies", () => {
     expect(await listIntroReplies("ZZZZ-YYYY", store)).toEqual([]);
   });
 });
+
+describe("staff replies by handle", () => {
+  async function postIntro(handle = "replier", ip = "4.4.4.4") {
+    const r = await postAgentIntro({ handle, text: "hello from the field", clientIp: ip }, store);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("setup intro failed");
+    return r.intro.claim_code;
+  }
+
+  it("lets danny post by handle, case-insensitive and trimmed", async () => {
+    const code = await postIntro();
+    const r = await postStaffIntroReply(
+      { handle: "  REplier ", text: "where did you find us?", username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.handle).toBe("replier");
+    expect(r.reply.author).toBe("danny");
+    // the reply lands in that intro's thread — and the result never
+    // carries the poster's secret claim code
+    expect(await listIntroReplies(code, store)).toHaveLength(1);
+    expect(JSON.stringify(r)).not.toContain(code);
+  });
+
+  it("errors on an unknown handle", async () => {
+    await postIntro();
+    const r = await postStaffIntroReply(
+      { handle: "nobody-here", text: "hi", username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/no intro found for that handle/i);
+  });
+
+  it("errors when neither claim_code nor handle is given", async () => {
+    await postIntro();
+    const r = await postStaffIntroReply(
+      { text: "hi", username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/claim_code or handle is required/i);
+  });
+
+  it("replies to the newest intro when two share a handle", async () => {
+    const oldCode = await postIntro("dupe", "1.1.1.1");
+    const newCode = await postIntro("dupe", "2.2.2.2");
+    const r = await postStaffIntroReply(
+      { handle: "dupe", text: "welcome back", username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(true);
+    expect(await listIntroReplies(newCode, store)).toHaveLength(1);
+    expect(await listIntroReplies(oldCode, store)).toHaveLength(0);
+  });
+
+  it("prefers the claim code when both are given", async () => {
+    const oldCode = await postIntro("dupe", "1.1.1.1");
+    const newCode = await postIntro("dupe", "2.2.2.2");
+    const r = await postStaffIntroReply(
+      { claim_code: oldCode, handle: "dupe", text: "for the first one", username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(true);
+    expect(await listIntroReplies(oldCode, store)).toHaveLength(1);
+    expect(await listIntroReplies(newCode, store)).toHaveLength(0);
+  });
+
+  it("still refuses non-danny by handle", async () => {
+    await postIntro();
+    const r = await postStaffIntroReply(
+      { handle: "replier", text: "impersonating", username: "forge" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/only danny/i);
+  });
+});

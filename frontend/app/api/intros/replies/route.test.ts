@@ -95,4 +95,31 @@ describe("POST /api/intros/replies auth", () => {
     const res = await POST(req(GOOD_TOKEN, { claim_code: code, text: "   " }));
     expect(res.status).toBe(400);
   });
+
+  it("lets danny post by handle and never leaks the claim code", async () => {
+    const res = await POST(
+      req(GOOD_TOKEN, { handle: "  NEWCOMER ", text: "welcome — where did you find us?" }),
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok?: boolean; handle?: string; reply?: { author?: string } };
+    expect(body.ok).toBe(true);
+    expect(body.handle).toBe("newcomer");
+    expect(body.reply?.author).toBe("danny");
+    expect(JSON.stringify(body)).not.toContain(code);
+  });
+
+  it("returns 400 for an unknown handle", async () => {
+    const res = await POST(req(GOOD_TOKEN, { handle: "nobody-here", text: "hi" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when neither claim_code nor handle is given", async () => {
+    const res = await POST(req(GOOD_TOKEN, { text: "hi" }));
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 403 for a non-danny session posting by handle", async () => {
+    const res = await POST(req(OTHER_TOKEN, { handle: "newcomer", text: "hi" }));
+    expect(res.status).toBe(403);
+  });
 });

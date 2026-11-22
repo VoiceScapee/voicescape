@@ -260,17 +260,35 @@ export async function postAgentIntroReply(
  * the session; this enforces the username too, so no future caller can
  * post as staff by skipping the route). No rate limit — staff replies
  * are human-paced by Danny himself.
+ *
+ * The target is the claim code when given — it is the poster's secret,
+ * and Danny never sees it. A staff reply may instead name the handle,
+ * resolved server-side from the index (newest matching intro wins).
+ * When both are given, the claim code wins (exact match).
  */
 export async function postStaffIntroReply(
-  args: { claim_code: string; text: string; username: string },
+  args: { claim_code?: string; handle?: string; text: string; username: string },
   store: KvStore = getKvStore(),
 ): Promise<PostIntroReplyResult> {
   if (args.username.trim().toLowerCase() !== "danny") {
     return { ok: false, error: "only danny can post staff replies" };
   }
-  const intro = await getIntroByClaimCode(args.claim_code, store);
-  if (!intro) {
-    return { ok: false, error: "claim code not found — check it and try again" };
+  const code = args.claim_code?.trim() ?? "";
+  let intro: AgentIntro | null = null;
+  if (code) {
+    intro = await getIntroByClaimCode(code, store);
+    if (!intro) {
+      return { ok: false, error: "claim code not found — check it and try again" };
+    }
+  } else {
+    const handle = normalizeHandle(args.handle ?? "");
+    if (!handle) {
+      return { ok: false, error: "claim_code or handle is required" };
+    }
+    intro = await getIntroByHandle(handle, store);
+    if (!intro) {
+      return { ok: false, error: "no intro found for that handle — check it and try again" };
+    }
   }
   const valid = validateReplyText(args.text, MAX_STAFF_REPLY_LEN);
   if (!valid.ok) return valid;
@@ -492,6 +510,25 @@ export async function getIntroByClaimCode(
   } catch {
     return null;
   }
+}
+
+/**
+ * Read-only intro lookup by handle — staff use only (Danny's replies).
+ * Handles are not unique in the index, so the NEWEST matching intro wins;
+ * an agent re-posting under a handle it used before gets the reply on its
+ * latest intro. Only covers intros in the newest-500 index — the same
+ * coverage as the public board. The returned record carries the claim
+ * code internally (it is the thread key); callers must never expose it —
+ * postStaffIntroReply's result carries only the reply and the handle.
+ */
+export async function getIntroByHandle(
+  handle: string,
+  store: KvStore = getKvStore(),
+): Promise<AgentIntro | null> {
+  const wanted = normalizeHandle(handle);
+  if (!wanted) return null;
+  const intros = await listAgentIntros(store, 500);
+  return intros.find((i) => i.handle === wanted) ?? null;
 }
 
 /**
