@@ -98,6 +98,45 @@ export function formatLinkUrl(raw: string): string {
 }
 
 /**
+ * Platform embed frame (YouTube / Spotify / SoundCloud).
+ *
+ * Deliberately NO sandbox attribute: a sandbox without allow-same-origin
+ * gives the frame an opaque origin and the YouTube player never
+ * initializes — verified in Chromium: a sandboxed youtube-nocookie embed
+ * renders a dead black box, the identical embed without sandbox loads the
+ * player. The src is always built by an exact allowlist (lib/video.ts,
+ * lib/music.ts) — the URL itself is the guard, not the sandbox. `allow`
+ * + allowFullScreen stay: they scope what the player may do.
+ */
+function PlatformEmbed({
+  src,
+  title,
+  height,
+}: {
+  src: string;
+  title: string;
+  /** Fixed pixel height (music embeds); omit for a 16/9 frame. */
+  height?: number;
+}) {
+  return (
+    <div
+      className="pv-embed-wrap"
+      style={height ? { height } : { aspectRatio: "16 / 9" }}
+    >
+      <iframe
+        src={src}
+        title={title}
+        loading="lazy"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        allowFullScreen
+      />
+    </div>
+  );
+}
+
+export { PlatformEmbed, VideoBlock };
+
+/**
  * Real music player. Tracks play through the platform's own embed (Spotify /
  * YouTube / SoundCloud hold the licenses) or a native <audio> element for the
  * owner's own IPFS uploads.
@@ -171,22 +210,7 @@ function MusicBlock({
     const embed = trackEmbedUrl(track);
     if (embed) {
       const height = trackEmbedHeight(track);
-      return (
-        <div
-          className="pv-embed-wrap"
-          style={height ? { height } : { aspectRatio: "16 / 9" }}
-        >
-          <iframe
-            key={embed}
-            src={embed}
-            title={`Play ${trackLabel(track)}`}
-            loading="lazy"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            sandbox="allow-scripts allow-popups allow-presentation"
-          />
-        </div>
-      );
+      return <PlatformEmbed key={embed} src={embed} title={`Play ${trackLabel(track)}`} height={height ?? undefined} />;
     }
     // "ipfs" — the owner's own upload: native audio, visitor presses play.
     return (
@@ -316,16 +340,7 @@ function VideoBlock({ block }: { block: Extract<Block, { type: "video" }> }) {
   return (
     <section className="pv-block pv-video" aria-label={block.title || "Video"}>
       {parsed.kind === "youtube" ? (
-        <div className="pv-embed-wrap" style={{ aspectRatio: "16 / 9" }}>
-          <iframe
-            src={videoEmbedUrl(parsed)}
-            title={`Play ${block.title || "video"}`}
-            loading="lazy"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            sandbox="allow-scripts allow-popups allow-presentation"
-          />
-        </div>
+        <PlatformEmbed src={videoEmbedUrl(parsed)} title={`Play ${block.title || "video"}`} />
       ) : (
         <video
           className="pv-video-player"

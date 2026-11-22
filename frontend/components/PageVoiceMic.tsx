@@ -21,12 +21,6 @@ import { useLanguage } from "@/lib/i18n/LanguageContext";
 import { LANGS, type Lang } from "@/lib/i18n/dictionaries";
 import type { VoicescapePage } from "@/lib/schema";
 import {
-  clampMicPos,
-  loadMicPos,
-  saveMicPos,
-  type MicPos,
-} from "@/lib/voice-mic-position";
-import {
   dappSectionChips,
   dappSectionFooter,
   dappSectionTitle,
@@ -221,85 +215,13 @@ export default function PageVoiceMic({
   const [lastSaid, setLastSaid] = useState("");
   const recogRef = useRef<SpeechRecognitionLike | null>(null);
 
-  // Draggable position. Null = the default bottom-left spot. Loaded from
-  // localStorage after mount (never during SSR — avoids hydration mismatch).
-  const [pos, setPos] = useState<MicPos | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const movedRef = useRef(false);
-
-  // L5: the floating mic covers whatever text scrolls under it — on a
-  // 375px phone it sat on the tip-jar explainer and the 98/2 sentence
-  // read as truncated mid-word. While the visitor is actively scrolling,
-  // fade the button out; it returns 500ms after the scroll settles.
-  // The panel (when open) is never hidden — the visitor is interacting
-  // with it. The button stays draggable and tappable when idle.
-  const [scrolling, setScrolling] = useState(false);
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const onScroll = () => {
-      setScrolling(true);
-      if (timer !== undefined) clearTimeout(timer);
-      timer = setTimeout(() => setScrolling(false), 500);
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      window.removeEventListener("scroll", onScroll);
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, []);
-
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SR) setSupported(false);
-    setPos(loadMicPos());
     return () => {
       recogRef.current?.abort();
       window.speechSynthesis?.cancel();
     };
-  }, []);
-
-  const onDragStart = useCallback(
-    (e: React.PointerEvent<HTMLButtonElement>) => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      const origin = pos ?? { x: 20, y: window.innerHeight - 72 };
-      dragRef.current = { startX: e.clientX, startY: e.clientY, origX: origin.x, origY: origin.y };
-      movedRef.current = false;
-      setDragging(true);
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        // setPointerCapture can throw for mouse in odd states — drag still works.
-      }
-    },
-    [pos],
-  );
-
-  const onDragMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const d = dragRef.current;
-    if (!d) return;
-    const dx = e.clientX - d.startX;
-    const dy = e.clientY - d.startY;
-    if (Math.hypot(dx, dy) > 6) movedRef.current = true;
-    if (movedRef.current) {
-      setPos(clampMicPos(d.origX + dx, d.origY + dy, window.innerWidth, window.innerHeight));
-    }
-  }, []);
-
-  const onDragEnd = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
-    const d = dragRef.current;
-    dragRef.current = null;
-    setDragging(false);
-    if (d && movedRef.current) {
-      const finalPos = clampMicPos(
-        d.origX + (e.clientX - d.startX),
-        d.origY + (e.clientY - d.startY),
-        window.innerWidth,
-        window.innerHeight,
-      );
-      setPos(finalPos);
-      saveMicPos(finalPos);
-    }
   }, []);
 
   const speak = useCallback(
@@ -436,25 +358,51 @@ export default function PageVoiceMic({
     ? dappSectionFooter(section)
     : "Answers come from this page's live blocks. Tips open in your wallet — nothing moves on its own.";
 
-  // When the mic sits in the top half of the screen, the panel opens
-  // BELOW the button so it never clips off the top edge.
-  const panelBelow = pos !== null && typeof window !== "undefined" && pos.y < window.innerHeight * 0.5;
-
+  // Docked in-flow (video-fix, replaces the L5 scroll-fade): the mic used
+  // to float fixed bottom-left and covered whatever text scrolled under it
+  // at idle — on a 375px phone it sat on a link card mid-sentence, and the
+  // scroll-fade only hid it while scrolling. It now lives in the page flow
+  // after the blocks, in the same 860px column as the footer, so it
+  // occupies its own layout space and can never cover tappable text at any
+  // scroll position or viewport. Dragging is gone with the float; the panel
+  // opens below the button and pushes content instead of overlaying it.
   return (
     <div
+      className="pv-mic-dock"
       style={{
-        position: "fixed",
-        ...(pos
-          ? { left: pos.x, top: pos.y }
-          : { left: 20, bottom: "calc(env(safe-area-inset-bottom, 0px) + 20px)" }),
-        zIndex: 60,
-        display: "flex",
-        flexDirection: panelBelow ? "column-reverse" : "column",
-        alignItems: "flex-start",
-        gap: 10,
-        maxWidth: "min(340px, calc(100vw - 40px))",
+        width: "100%",
+        maxWidth: 860,
+        margin: "0 auto",
+        padding: "16px 18px 0",
       }}
     >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <button
+          type="button"
+          className={`pv-mic-btn${listening ? " is-listening" : ""}`}
+          onClick={() => setOpen((v) => !v)}
+          aria-label={open ? "Close page voice" : panelTitle}
+          title={panelTitle}
+          style={{
+            flexShrink: 0,
+            width: 52,
+            height: 52,
+            borderRadius: "50%",
+            border: "1px solid rgba(255,255,255,0.2)",
+            background: listening ? "#ef4444" : "rgba(12, 16, 24, 0.92)",
+            color: "#e8e4da",
+            cursor: "pointer",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {listening ? <StopSvg size={20} /> : <MicSvg size={24} />}
+        </button>
+        <span style={{ fontSize: 14, fontWeight: 600, opacity: 0.65 }}>{panelTitle}</span>
+      </div>
+
       {open && (
         <div
           role="dialog"
@@ -462,6 +410,8 @@ export default function PageVoiceMic({
           className="pv-mic-panel"
           style={{
             width: "100%",
+            maxWidth: 340,
+            marginTop: 10,
             borderRadius: 16,
             padding: 14,
             background: "rgba(12, 16, 24, 0.96)",
@@ -621,50 +571,6 @@ export default function PageVoiceMic({
           <p style={{ fontSize: 11, opacity: 0.55, margin: "8px 0 0" }}>{footerNote}</p>
         </div>
       )}
-
-      <button
-        type="button"
-        className={`pv-mic-btn${listening ? " is-listening" : ""}`}
-        onClick={() => {
-          // A real drag ends with the pointer capture released — plain taps
-          // (and keyboard Enter/Space, which fire click without pointers)
-          // toggle the panel; drags don't.
-          if (movedRef.current) {
-            movedRef.current = false;
-            return;
-          }
-          setOpen((v) => !v);
-        }}
-        onPointerDown={onDragStart}
-        onPointerMove={onDragMove}
-        onPointerUp={onDragEnd}
-        onPointerCancel={onDragEnd}
-        aria-label={open ? "Close page voice" : panelTitle}
-        title={`${panelTitle} — drag to move`}
-        style={{
-          width: 52,
-          height: 52,
-          borderRadius: "50%",
-          border: "1px solid rgba(255,255,255,0.2)",
-          background: listening ? "#ef4444" : "rgba(12, 16, 24, 0.92)",
-          color: "#e8e4da",
-          cursor: dragging ? "grabbing" : "grab",
-          touchAction: "none",
-          boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          userSelect: "none",
-          WebkitUserSelect: "none",
-          // L5: fade out while the page scrolls (see the `scrolling`
-          // state above); never hide while the panel is open.
-          opacity: scrolling && !open ? 0 : 1,
-          pointerEvents: scrolling && !open ? "none" : "auto",
-          transition: "opacity 200ms ease",
-        }}
-      >
-        {listening ? <StopSvg size={20} /> : <MicSvg size={24} />}
-      </button>
     </div>
   );
 }

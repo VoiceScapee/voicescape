@@ -13,7 +13,7 @@
 import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import { LanguageProvider } from "@/lib/i18n/LanguageContext";
-import PageRenderer, { formatLinkUrl } from "@/components/PageRenderer";
+import PageRenderer, { formatLinkUrl, PlatformEmbed, VideoBlock } from "@/components/PageRenderer";
 import type { VoicescapePage } from "@/lib/schema";
 
 const theme = { background: "#0f172a", foreground: "#f8fafc", accent: "#0f766e", fontFamily: "system-ui" };
@@ -190,5 +190,36 @@ describe("L8 music rows", () => {
     expect(html).toContain("pv-track");
     expect(html).toContain("A Former Cable Tech Built A Verified Hedera Mainnet App");
     expect(html).toContain("Information in Motion");
+  });
+});
+
+describe("Video embeds are not sandboxed (video-fix)", () => {
+  it("renders the YouTube iframe with no sandbox attribute — a sandbox without allow-same-origin gives the frame an opaque origin and the player never initializes (dead black box in Chromium)", () => {
+    const html = render(webseriesPage());
+    expect(html).toContain("youtube-nocookie.com/embed/HjAVZ8fXiIE");
+    expect(html).not.toContain("sandbox");
+  });
+
+  it("PlatformEmbed (shared by video + music blocks) renders an unsandboxed iframe with allow + fullscreen", () => {
+    const html = renderToString(
+      <PlatformEmbed src="https://www.youtube-nocookie.com/embed/HjAVZ8fXiIE?rel=0" title="Play video" />,
+    );
+    expect(html).toContain("<iframe");
+    expect(html).toContain("youtube-nocookie.com/embed/HjAVZ8fXiIE");
+    expect(html).toContain("allowFullScreen");
+    expect(html).not.toContain("sandbox");
+  });
+
+  it("keeps the honest unavailable state for an unparseable URL", () => {
+    // The schema sanitizer drops unparseable video blocks before render,
+    // so this branch is defense-in-depth — tested here directly on
+    // VideoBlock (a bad URL must never become a dead player).
+    const html = renderToString(
+      <VideoBlock block={{ type: "video", url: "https://example.com/not-a-video", title: "Broken video" }} />,
+    );
+    expect(html).toContain("This video isn&#x27;t available right now.");
+    expect(html).toContain("Broken video");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("<video");
   });
 });
