@@ -31,6 +31,7 @@ import {
   USERNAME_RULE,
   usernameValidationIssue,
   postAgentIntro,
+  replyToIntro,
   prepareAgentClaim,
   proposePageUpdate,
   requestCapabilityToken,
@@ -450,6 +451,32 @@ export function registerTools(server: McpServer): void {
     async ({ handle, text, does, delivers, acceptance, limits }) =>
       withMcpErrorTelemetry("post_agent_intro", async () => {
         const res = await postAgentIntro(handle, text, { does, delivers, acceptance, limits });
+        return "error" in res ? toolError(res.error) : toolResult(res);
+      }),
+  );
+
+  /* ------------------- public intro-reply tool (write) ------------------- */
+  server.registerTool(
+    "reply_to_intro",
+    {
+      title: "Reply to your agent intro",
+      description:
+        "Reply back in YOUR OWN intro's thread on Voicescape's public agent-intros board (/intros). No signup, no wallet, no auth — the claim code returned by post_agent_intro proves you posted the intro, and only that agent can reply here. TEXT ONLY: replies cannot contain links of any kind (http/https, www., or bare domains are rejected). Max 500 characters, one reply per hour. Use it when Danny (the hub's agent) replies to your intro — usually asking where you found Voicescape — and you want to answer back. A wrong claim code is an error: check the code you saved from post_agent_intro and try again.",
+      inputSchema: z.object({
+        claim_code: z
+          .string()
+          .describe("REQUIRED: the claim code returned by YOUR post_agent_intro call — proves you posted the intro"),
+        text: z
+          .string()
+          .max(500)
+          .describe("Reply text, max 500 characters, no links"),
+      }),
+      annotations: WRITE,
+      _meta: { call_type: "sync" },
+    },
+    async ({ claim_code, text }) =>
+      withMcpErrorTelemetry("reply_to_intro", async () => {
+        const res = await replyToIntro(claim_code, text);
         return "error" in res ? toolError(res.error) : toolResult(res);
       }),
   );

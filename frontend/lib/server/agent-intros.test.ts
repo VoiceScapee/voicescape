@@ -7,11 +7,18 @@ import type { KvStore } from "./store";
 import {
   postAgentIntro,
   listAgentIntros,
+  listAgentIntrosWithReplies,
   claimAgentIntro,
+  postAgentIntroReply,
+  postStaffIntroReply,
+  listIntroReplies,
+  validateReplyText,
   textHasUrl,
   validateIntroInput,
   normalizeClaimCode,
   hashClientIp,
+  MAX_AGENT_REPLY_LEN,
+  MAX_STAFF_REPLY_LEN,
 } from "./agent-intros";
 
 class FakeStore implements KvStore {
@@ -252,5 +259,162 @@ describe("normalizeClaimCode", () => {
   it("uppercases and inserts the dash", () => {
     expect(normalizeClaimCode("ab12cd34")).toBe("AB12-CD34");
     expect(normalizeClaimCode("ab12-cd34")).toBe("AB12-CD34");
+  });
+});
+
+describe("validateReplyText", () => {
+  it("accepts plain text", () => {
+    expect(validateReplyText("found you via the web series", 500)).toEqual({
+      ok: true,
+      text: "found you via the web series",
+    });
+  });
+
+  it("rejects empty text", () => {
+    expect(validateReplyText("   ", 500).ok).toBe(false);
+  });
+
+  it("rejects links", () => {
+    const r = validateReplyText("see https://example.com", 500);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/links/i);
+  });
+
+  it("enforces the length cap", () => {
+    const r = validateReplyText("x".repeat(501), 500);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/500 characters/);
+  });
+});
+
+describe("intro replies", () => {
+  async function postIntro(handle = "replier", ip = "4.4.4.4") {
+    const r = await postAgentIntro({ handle, text: "hello from the field", clientIp: ip }, store);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("setup intro failed");
+    return r.intro.claim_code;
+  }
+
+  it("lets the poster reply back with its claim code", async () => {
+    const code = await postIntro();
+    const r = await postAgentIntroReply(
+      { claim_code: code, text: "found you through the web series", clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.reply.author).toBe("agent");
+    expect(r.reply.author_handle).toBe("replier");
+    expect(r.reply.text).toBe("found you through the web series");
+    expect(r.handle).toBe("replier");
+  });
+
+  it("rejects a wrong claim code — never a silent drop", async () => {
+    await postIntro();
+    const r = await postAgentIntroReply(
+      { claim_code: "ZZZZ-YYYY", text: "hello", clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/claim code not found/i);
+  });
+
+  it("rejects agent replies with links", async () => {
+    const code = await postIntro();
+    const r = await postAgentIntroReply(
+      { claim_code: code, text: "my site is example.com", clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it("caps agent replies at 500 chars", async () => {
+    const code = await postIntro();
+    const r = await postAgentIntroReply(
+      { claim_code: code, text: "x".repeat(MAX_AGENT_REPLY_LEN + 1), clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/500 characters/);
+  });
+
+  it("rate-limits agent replies to one per intro per hour", async () => {
+    const code = await postIntro();
+    const first = await postAgentIntroReply(
+      { claim_code: code, text: "first", clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(first.ok).toBe(true);
+    const second = await postAgentIntroReply(
+      { claim_code: code, text: "second", clientIp: "4.4.4.4" },
+      store,
+    );
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.error).toMatch(/one reply per hour/i);
+  });
+
+  it("lets danny post a staff reply, and only danny", async () => {
+    const code = await postIntro();
+    const ok = await postStaffIntroReply(
+      { claim_code: code, text: "where did you find us?", username: "danny" },
+      store,
+    );
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.reply.author).toBe("danny");
+      expect(ok.reply.author_handle).toBe("danny");
+    }
+    const nope = await postStaffIntroReply(
+      { claim_code: code, text: "impersonating", username: "forge" },
+      store,
+    );
+    expect(nope.ok).toBe(false);
+    if (!nope.ok) expect(nope.error).toMatch(/only danny/i);
+  });
+
+  it("caps staff replies at 1000 chars", async () => {
+    const code = await postIntro();
+    const r = await postStaffIntroReply(
+      { claim_code: code, text: "x".repeat(MAX_STAFF_REPLY_LEN + 1), username: "danny" },
+      store,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/1000 characters/);
+  });
+
+  it("lists a thread oldest-first with no secrets in it", async () => {
+    const code = await postIntro();
+    await postStaffIntroReply(
+      { claim_code: code, text: "where did you find us?", username: "danny" },
+      store,
+    );
+    await postAgentIntroReply(
+      { claim_code: code, text: "via the web series", clientIp: "4.4.4.4" },
+      store,
+    );
+    const thread = await listIntroReplies(code, store);
+    expect(thread.map((r) => r.author)).toEqual(["danny", "agent"]);
+    for (const r of thread) {
+      expect(r).not.toHaveProperty("claim_code");
+      expect(r).not.toHaveProperty("ip_hash");
+    }
+  });
+
+  it("attaches threads in listAgentIntrosWithReplies", async () => {
+    const code = await postIntro();
+    await postStaffIntroReply(
+      { claim_code: code, text: "welcome — where did you find us?", username: "DANNY" },
+      store,
+    );
+    const list = await listAgentIntrosWithReplies(store);
+    expect(list).toHaveLength(1);
+    expect(list[0]?.replies).toHaveLength(1);
+    expect(list[0]?.replies[0]?.text).toBe("welcome — where did you find us?");
+  });
+
+  it("returns an empty thread for an intro with no replies", async () => {
+    const code = await postIntro();
+    expect(await listIntroReplies(code, store)).toEqual([]);
+    expect(await listIntroReplies("ZZZZ-YYYY", store)).toEqual([]);
   });
 });

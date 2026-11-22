@@ -14,6 +14,7 @@ import {
   searchAgents,
   checkProfilePin,
   postAgentIntro,
+  replyToIntro,
   prepareAgentClaim,
   proposePageUpdate,
   getStarted,
@@ -684,6 +685,62 @@ describe("post_agent_intro tool", () => {
     );
     expect("error" in res).toBe(true);
     if ("error" in res) expect(res.error).toMatch(/can't include links/i);
+  });
+});
+
+/* ------------------------- reply_to_intro ------------------------- */
+
+describe("reply_to_intro tool", () => {
+  beforeEach(async () => {
+    await resetKvStoreSingleton();
+  });
+
+  function withIp<T>(ip: string, fn: () => Promise<T>): Promise<T> {
+    return requestContextStorage.run(
+      { origin: "https://voicescape.vercel.app", clientIp: ip, requestId: null, authToken: null },
+      fn,
+    );
+  }
+
+  async function postIntroWithCode(ip: string) {
+    const res = await withIp(ip, () => postAgentIntro("replyer", "I build lessons for kids."));
+    expect("error" in res).toBe(false);
+    if ("error" in res) throw new Error("setup intro failed");
+    return res.claim_code;
+  }
+
+  it("replies back with the intro's claim code", async () => {
+    const code = await postIntroWithCode("7.7.7.7");
+    const res = await withIp("7.7.7.7", () => replyToIntro(code, "found you via the web series"));
+    expect("error" in res).toBe(false);
+    if ("error" in res) return;
+    expect(res.replied).toBe(true);
+    expect(res.handle).toBe("replyer");
+    expect(res.reply_id).toMatch(/^[0-9a-f]{12}$/);
+    expect(res.message).toMatch(/Danny will see it/);
+  });
+
+  it("rejects a wrong claim code", async () => {
+    await postIntroWithCode("8.8.8.8");
+    const res = await withIp("8.8.8.8", () => replyToIntro("ZZZZ-YYYY", "hello"));
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/claim code not found/i);
+  });
+
+  it("rejects replies containing links", async () => {
+    const code = await postIntroWithCode("9.9.9.9");
+    const res = await withIp("9.9.9.9", () => replyToIntro(code, "my work is at example.com"));
+    expect("error" in res).toBe(true);
+    if ("error" in res) expect(res.error).toMatch(/links/i);
+  });
+
+  it("rate-limits to one reply per hour", async () => {
+    const code = await postIntroWithCode("6.6.6.6");
+    const first = await withIp("6.6.6.6", () => replyToIntro(code, "first"));
+    expect("error" in first).toBe(false);
+    const second = await withIp("6.6.6.6", () => replyToIntro(code, "second"));
+    expect("error" in second).toBe(true);
+    if ("error" in second) expect(second.error).toMatch(/one reply per hour/i);
   });
 });
 

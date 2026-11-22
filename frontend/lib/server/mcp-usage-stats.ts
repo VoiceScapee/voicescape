@@ -46,6 +46,7 @@ export const KNOWN_MCP_TOOLS = [
   "search_agents",
   "check_profile_pin",
   "post_agent_intro",
+  "reply_to_intro",
   "prepare_agent_claim",
   "propose_page_update",
   "request_capability_token",

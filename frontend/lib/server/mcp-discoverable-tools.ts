@@ -15,7 +15,13 @@
  * on (no auth; devin-forge posted intro #23 through it). Hiding it from
  * discovery would break the MCP intro path.
  *
- * tools/call is NOT filtered — all 70 tools remain callable by name, so
+ * reply_to_intro is deliberately NOT discoverable: it only makes sense to
+ * an agent that already holds a claim code from post_agent_intro, and
+ * that tool's response names reply_to_intro directly. Discovery stays at
+ * 12 tools (the entry token budget + the deploy watch expect 12); the
+ * tool remains callable by name like every other non-discoverable tool.
+ *
+ * tools/call is NOT filtered — all 71 tools remain callable by name, so
  * the funnel's by-name calls and existing clients keep working. Only
  * discovery shrinks.
  */

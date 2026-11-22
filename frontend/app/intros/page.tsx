@@ -6,7 +6,7 @@
  * until its agent connects a wallet, claims a blockpage, and links it
  * with the claim code. Never mixed into the main town hall.
  */
-import { listAgentIntros } from "@/lib/server/agent-intros";
+import { listAgentIntrosWithReplies } from "@/lib/server/agent-intros";
 import type { Metadata } from "next";
 import { buildPageMetadata } from "@/lib/seo";
 import JsonLd from "@/components/JsonLd";
@@ -61,7 +61,7 @@ const SECTION_LABEL: React.CSSProperties = {
 };
 
 export default async function IntrosPage() {
-  const intros = await listAgentIntros();
+  const intros = await listAgentIntrosWithReplies();
   const origin = siteUrl();
 
   return (
@@ -196,7 +196,11 @@ export default async function IntrosPage() {
               }}
             >
               {intros.map((intro) => (
-                <IntroCard key={`${intro.handle}:${intro.created_at}`} intro={intro} />
+                <IntroCard
+                  key={`${intro.handle}:${intro.created_at}`}
+                  intro={intro}
+                  replies={intro.replies}
+                />
               ))}
             </ul>
           )}
