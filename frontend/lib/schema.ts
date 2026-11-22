@@ -6,6 +6,7 @@
  */
 import { isPlatformId, type PlatformId } from "./socials";
 import type { ThemeVariant } from "./template-variants";
+import { parseVideoUrl } from "./video";
 
 export type Block =
   | {
@@ -30,8 +31,48 @@ export type Block =
    * unrecognized. Renderers must ignore items with empty URLs.
    */
   | { type: "socials"; items: { platform: PlatformId; url: string }[] }
-  | { type: "tipJar"; message?: string }
+  | {
+    type: "tipJar";
+    message?: string;
+    /**
+     * Optional recipient: when set, this jar tips THAT page's owner
+     * (resolved live via /api/resolve) instead of this page's owner.
+     * The webseries page uses it for its guest jars (danny, thechomps,
+     * informinmotion). Absent = the page owner, as before.
+     */
+    username?: string;
+  }
   | { type: "guestbook"; entries: { name: string; message: string; date: string }[] }
+  /**
+   * Guest comments: no-login comments that persist for the next visitor.
+   * Rendered by the GuestComments component, which reads/writes
+   * /api/guest-comments/<page>/<thread>. `thread` groups one discussion
+   * (e.g. "ep1" for per-episode comments, "discuss" for the general wall);
+   * absent = "general". Guests are labelled Guest, cannot use a
+   * registered username, and the page owner can hide comments.
+   */
+  | { type: "guestComments"; thread?: string; title?: string }
+  /**
+   * Video: in-page playback. YouTube links embed via youtube-nocookie;
+   * direct .mp4 files must come from the Reel24 media bucket or the
+   * Reel24 site (see lib/video.ts allowlist). `credit` is the maker's
+   * blockpage link, shown under the player.
+   */
+  | {
+    type: "video";
+    url: string;
+    title?: string;
+    poster?: string;
+    credit?: { label: string; url: string };
+  }
+  /**
+   * Poll: a free, no-pay vote that decides something real (e.g. the next
+   * episode's topic). Votes are one per IP per poll, stored server-side
+   * under /api/polls/<page>/<pollId>. `id` is author-chosen and stable —
+   * change the id when you change the options, or the stored results
+   * keep the old options. Absent = a slug of the question.
+   */
+  | { type: "poll"; id?: string; question: string; options: string[] }
   /** Real music: platform embeds (licensed by the platform) + the owner's own IPFS uploads. */
   | { type: "music"; title?: string; tracks: MusicTrack[]; note?: string }
   | { type: "gallery"; images: string[]; effect?: "dance" | "marquee" | "float" } // ":logo:" renders the first-party Voicescape logo; emoji still work; https: URLs (e.g. Buddy-generated IPFS artwork) render as images via safeImageUrl.
@@ -79,7 +120,7 @@ export type Block =
   /**
    * Tabbed presentation: a small set of labeled tabs, each holding its own
    * blocks (e.g. Proof vs Profile badges). Renderers recurse through
-   * BlockView with the same page props. Max 4 tabs, 8 blocks per tab.
+   * BlockView with the same page props. Max 5 tabs, 8 blocks per tab.
    */
   | { type: "tabs"; tabs: { label: string; blocks: Block[] }[] }
   /**
@@ -204,6 +245,9 @@ export const BLOCK_TYPES = [
   "socials",
   "tipJar",
   "guestbook",
+  "guestComments",
+  "video",
+  "poll",
   "music",
   "gallery",
   "nftGallery",
@@ -250,6 +294,14 @@ const PICKER_HIDDEN: ReadonlySet<BlockType> = new Set([
   // nftGallery: showing an HTS drop isn't a first-timer job — agent
   // templates and the NFT-drop onboarding flow pre-include the block.
   "nftGallery",
+  // Webseries blocks (video, guestComments, poll): real blocks with a
+  // schema + renderer, but the builder has no field editors for them
+  // yet — offering them in the picker would ship a block the owner
+  // can't configure (and the blank default would vanish at render).
+  // They are authored as page JSON until editors land.
+  "video",
+  "guestComments",
+  "poll",
 ]);
 
 export const PICKER_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter(
@@ -259,6 +311,9 @@ export const PICKER_BLOCK_TYPES: readonly BlockType[] = BLOCK_TYPES.filter(
 /** Friendly picker labels overriding the raw type names. */
 export const PICKER_LABELS: Partial<Record<BlockType, string>> = {
   socials: "🔗 Links & socials",
+  video: "🎬 Video",
+  guestComments: "💬 Guest comments",
+  poll: "📊 Poll",
 };
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
@@ -278,6 +333,12 @@ export function createDefaultBlock(type: BlockType, username = ""): Block {
       return { type: "tipJar", message: "Support my work with a tip!" };
     case "guestbook":
       return { type: "guestbook", entries: [] };
+    case "guestComments":
+      return { type: "guestComments", title: "Say hi" };
+    case "video":
+      return { type: "video", url: "" };
+    case "poll":
+      return { type: "poll", question: "What should happen next?", options: ["Option A", "Option B"] };
     case "music":
       return { type: "music", title: "My music", tracks: [] };
     case "gallery":
@@ -370,6 +431,56 @@ export function isValidPage(input: unknown): input is VoicescapePage {
       const cb = b as Record<string, unknown>;
       if (cb.title !== undefined && typeof cb.title !== "string") return false;
     }
+    // Tip jars: optional recipient username (a guest jar), 3–32 chars.
+    if (type === "tipJar") {
+      const tj = b as Record<string, unknown>;
+      if (tj.message !== undefined && typeof tj.message !== "string") return false;
+      if (
+        tj.username !== undefined &&
+        (typeof tj.username !== "string" ||
+          tj.username.length < 3 ||
+          tj.username.length > 32)
+      )
+        return false;
+    }
+    // Video blocks: a URL string (the renderer re-validates it against
+    // the allowlist in lib/video.ts); optional title/poster/credit.
+    if (type === "video") {
+      const vb = b as Record<string, unknown>;
+      if (typeof vb.url !== "string" || vb.url.length === 0 || vb.url.length > 512)
+        return false;
+      if (vb.title !== undefined && typeof vb.title !== "string") return false;
+      if (vb.poster !== undefined && typeof vb.poster !== "string") return false;
+      if (vb.credit !== undefined) {
+        const c = vb.credit as Record<string, unknown>;
+        if (
+          typeof c !== "object" ||
+          c === null ||
+          typeof c.label !== "string" ||
+          typeof c.url !== "string"
+        )
+          return false;
+      }
+    }
+    // Guest-comments blocks: optional thread slug + title.
+    if (type === "guestComments") {
+      const gb = b as Record<string, unknown>;
+      if (gb.thread !== undefined && typeof gb.thread !== "string") return false;
+      if (gb.title !== undefined && typeof gb.title !== "string") return false;
+    }
+    // Poll blocks: a question and 2–6 short options; optional stable id.
+    if (type === "poll") {
+      const pb = b as Record<string, unknown>;
+      if (typeof pb.question !== "string" || pb.question.trim().length === 0) return false;
+      if (
+        !Array.isArray(pb.options) ||
+        pb.options.length < 2 ||
+        pb.options.length > 6 ||
+        !pb.options.every((o) => typeof o === "string" && o.trim().length > 0 && o.length <= 80)
+      )
+        return false;
+      if (pb.id !== undefined && (typeof pb.id !== "string" || pb.id.length > 64)) return false;
+    }
     // Socials blocks: items must be {platform, url} pairs when present.
     if (type === "socials") {
       const sb = b as Record<string, unknown>;
@@ -388,6 +499,20 @@ export function isValidPage(input: unknown): input is VoicescapePage {
     }
     return true;
   });
+}
+
+/**
+ * Stable poll id derived from the question. The renderer uses the same
+ * function when a poll block somehow reaches it without an id, so the
+ * client and the sanitizer never disagree about which poll a block is.
+ */
+export function defaultPollId(question: string): string {
+  const slug = question
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return slug.length > 0 ? slug : "poll";
 }
 
 /**
@@ -443,7 +568,67 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       const tip: Record<string, unknown> = { type: "tipJar" };
       const message = str(b.message);
       if (message !== undefined) tip.message = message;
+      // Optional recipient username for guest jars: lowercase handle,
+      // 3–32 chars; anything else is dropped (the jar stays a page-owner jar).
+      const username = str(b.username)?.trim().toLowerCase();
+      if (username !== undefined && /^[a-z0-9][a-z0-9._-]{2,31}$/.test(username)) {
+        tip.username = username;
+      }
       return tip as unknown as Block;
+    }
+    case "video": {
+      // The URL must parse against the video allowlist (YouTube or a
+      // Reel24 MP4) — anything else is dropped, never a dead player.
+      const url = str(b.url);
+      if (url === undefined || parseVideoUrl(url) === null) return null;
+      const video: Record<string, unknown> = { type: "video", url };
+      const title = str(b.title);
+      if (title !== undefined) video.title = title.slice(0, 140);
+      const poster = str(b.poster);
+      if (poster !== undefined) video.poster = poster;
+      const credit = b.credit;
+      if (typeof credit === "object" && credit !== null) {
+        const c = credit as Record<string, unknown>;
+        const label = str(c.label);
+        const curl = str(c.url);
+        if (label !== undefined && curl !== undefined) {
+          video.credit = { label: label.slice(0, 80), url: curl };
+        }
+      }
+      return video as unknown as Block;
+    }
+    case "guestComments": {
+      const gc: Record<string, unknown> = { type: "guestComments" };
+      const thread = str(b.thread)?.trim().toLowerCase();
+      if (thread !== undefined && /^[a-z0-9][a-z0-9-]{0,31}$/.test(thread)) {
+        gc.thread = thread;
+      }
+      const title = str(b.title);
+      if (title !== undefined) gc.title = title.slice(0, 80);
+      return gc as unknown as Block;
+    }
+    case "poll": {
+      const question = str(b.question)?.trim();
+      const options = (Array.isArray(b.options) ? b.options : [])
+        .filter((x): x is string => typeof x === "string")
+        .map((x) => x.trim().slice(0, 80))
+        .filter((x) => x.length > 0)
+        .slice(0, 6);
+      if (question === undefined || question.length === 0 || options.length < 2) return null;
+      const poll: Record<string, unknown> = {
+        type: "poll",
+        question: question.slice(0, 140),
+        options,
+      };
+      // Stable id: author-chosen when valid, else a slug of the question.
+      // Change the id when you change the options — stored results keep
+      // the options they were voted on.
+      const rawId = str(b.id)?.trim().toLowerCase();
+      poll.id =
+        rawId !== undefined && /^[a-z0-9][a-z0-9-]{0,63}$/.test(rawId)
+          ? rawId
+          : defaultPollId(question);
+      return poll as unknown as Block;
     }
     case "operator": {
       const op: Record<string, unknown> = {
@@ -492,7 +677,7 @@ export function normalizeBlockForRender(input: unknown): Block | null {
       // the same props (owner, tip name, preview). Sanitized recursively;
       // empty tabs are dropped so a tab never renders blank.
       const tabsIn = Array.isArray(b.tabs) ? b.tabs : [];
-      const tabs = tabsIn.slice(0, 4).flatMap((t) => {
+      const tabs = tabsIn.slice(0, 5).flatMap((t) => {
         if (typeof t !== "object" || t === null) return [];
         const tr = t as Record<string, unknown>;
         const label = (typeof tr.label === "string" ? tr.label : "Tab").slice(0, 24);

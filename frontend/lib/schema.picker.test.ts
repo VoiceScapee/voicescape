@@ -16,6 +16,11 @@ const HIDDEN: BlockType[] = [
   "operator",
   "capabilities",
   "nftGallery",
+  // Webseries blocks: schema + renderer exist, but the builder has no
+  // field editors for them yet — hidden until editors land.
+  "video",
+  "guestComments",
+  "poll",
 ];
 
 describe("PICKER_BLOCK_TYPES", () => {
