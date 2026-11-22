@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { fetchPageJson } from "./ipfs";
+import { fetchPageJson, MAX_PAGE_JSON_BYTES } from "./ipfs";
 
 // Regression test for the /forge production hang (2026-09-16): a gateway
 // that accepts the connection and then stalls must be skipped after the
@@ -57,5 +57,69 @@ describe("fetchPageJson gateway timeout", () => {
       status: 429,
     } as Response);
     await expect(fetchPageJson("QmTest429")).rejects.toThrow(/429/);
+  });
+});
+
+describe("fetchPageJson response size cap", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("refuses a body whose Content-Length declares over the cap, without reading it", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      headers: {
+        get: (name: string) => (name === "content-length" ? String(MAX_PAGE_JSON_BYTES + 1) : null),
+      },
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapLength")).rejects.toThrow(/too large/);
+    // All three gateways were tried and each refused on the header alone.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("refuses an oversize body read via text() (no stream available)", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      text: async () => "x".repeat(MAX_PAGE_JSON_BYTES + 1),
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapText")).rejects.toThrow(/too large/);
+  });
+
+  it("abandons a streaming body mid-read once it passes the cap", async () => {
+    // Fresh stream per gateway attempt: a real fetch returns a new
+    // Response each time, so the mock must too (a consumed stream
+    // re-read on the next gateway would yield "" instead of the cap).
+    const makeStream = () =>
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new TextEncoder().encode("x".repeat(MAX_PAGE_JSON_BYTES + 1)));
+          c.close();
+        },
+      });
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => ({
+      ok: true,
+      headers: { get: () => null },
+      body: makeStream(),
+    }) as unknown as Response);
+    await expect(fetchPageJson("QmTestCapStream")).rejects.toThrow(/too large/);
+  });
+
+  it("still returns a body under the cap", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => '{"theme":{}}',
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapOk")).resolves.toBe('{"theme":{}}');
+  });
+
+  it("skips a gateway that returns an empty body instead of serving it as JSON", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      headers: { get: () => null },
+      text: async () => "",
+    } as unknown as Response);
+    await expect(fetchPageJson("QmTestCapEmpty")).rejects.toThrow(/empty body/);
+    expect(globalThis.fetch).toHaveBeenCalledTimes(3);
   });
 });

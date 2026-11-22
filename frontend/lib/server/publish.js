@@ -352,6 +352,64 @@ export async function publishDigitalGood(data, filename, contentType) {
 }
 
 /**
+ * Read a gateway response body with a hard byte cap. Prefers a streaming
+ * read so an oversize body is abandoned mid-stream; falls back to text()
+ * with a post-read length check for fetch implementations without a body
+ * stream (test doubles). Throws when the cap is exceeded.
+ *
+ * @param {Response} res - The gateway response.
+ * @param {string} cid - CID, for the error message.
+ * @param {number} maxBytes - Hard byte cap (fetch cap = the pin cap:
+ *   the server never pins a page larger than maxPageJsonBytes()).
+ */
+async function readCappedText(res, cid, maxBytes) {
+  const declared = res.headers?.get?.("content-length");
+  if (declared != null) {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > maxBytes) {
+      throw new Error(`IPFS response too large (${n} bytes; max ${maxBytes}) for ${cid}`);
+    }
+  }
+  const stream = res.body;
+  if (stream && typeof stream.getReader === "function") {
+    const reader = stream.getReader();
+    const chunks = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > maxBytes) {
+            throw new Error(`IPFS response too large (over ${maxBytes} bytes) for ${cid}`);
+          }
+          chunks.push(value);
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        /* already closed — ignore */
+      }
+    }
+    const all = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      all.set(c, off);
+      off += c.byteLength;
+    }
+    return new TextDecoder().decode(all);
+  }
+  const text = await res.text();
+  if (new TextEncoder().encode(text).length > maxBytes) {
+    throw new Error(`IPFS response too large (over ${maxBytes} bytes) for ${cid}`);
+  }
+  return text;
+}
+
+/**
  * Fetch a published page JSON from an IPFS gateway.
  *
  * @param {string} cid - The IPFS CID of the page document.
@@ -383,7 +441,7 @@ export async function fetchPageJson(cid, gateway) {
     );
   }
 
-  const text = await res.text();
+  const text = await readCappedText(res, cid, maxPageJsonBytes());
   try {
     return /** @type {VoicescapePage} */ (JSON.parse(text));
   } catch {

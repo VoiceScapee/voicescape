@@ -358,17 +358,22 @@ function TipBox({
     : `$${usdValid ? usdNum.toFixed(2) : "?"}`;
   // Integer tinybar math for every 98/2 display — settlement stays
   // exact in the contract; what we show must be computed the way the
-  // contract computes it, never via float rounding.
+  // contract computes it, never via float rounding. The fee floors to
+  // whole tinybars and the creator takes the remainder, so the two shares
+  // always sum to the gross (flooring both sides independently drops up
+  // to 1 tinybar of dust on amounts < 100 tinybars).
   const split98_2 = (hbar: number): { creator: number; treasury: number } => {
     const tiny = BigInt(Math.round(hbar * 1e8));
+    const treasury = (tiny * 2n) / 100n;
     return {
-      creator: Number((tiny * 98n) / 100n) / 1e8,
-      treasury: Number((tiny * 2n) / 100n) / 1e8,
+      creator: Number(tiny - treasury) / 1e8,
+      treasury: Number(treasury) / 1e8,
     };
   };
   const tinybars = hbarAmt != null ? BigInt(Math.round(hbarAmt * 1e8)) : null;
-  const toCreatorAmt = tinybars != null ? Number((tinybars * 98n) / 100n) / 1e8 : null;
   const treasuryAmt = tinybars != null ? Number((tinybars * 2n) / 100n) / 1e8 : null;
+  const toCreatorAmt =
+    tinybars != null ? Number(tinybars - (tinybars * 2n) / 100n) / 1e8 : null;
   // Short display ("5" not "5.00") for the plain-words breakdown note.
   const fmtHbarShort = (n: number) => String(Math.round(n * 100) / 100);
   // Hedera-side network fee display — shared constant (lib/fees), grounded
@@ -454,6 +459,17 @@ function TipBox({
       const sendHbar = isHbar ? hbarNum : usdNum / (price as number);
       const wei = isHbar ? hbarToWei(hbarNum) : usdToWei(usdNum, price as number);
       const sender = await getTxSender();
+      // Self-tip block: the page owner tipping their own page just moves
+      // money to themselves (minus the treasury cut). Refused before any
+      // wallet prompt; alias-aware via the sender's mirror EVM address
+      // (ECDSA owners — TipBox has no viewerAlias in scope, so resolve
+      // it here like TipModal does).
+      const senderAlias = await fetchAccountEvmAddress(sender.account).catch(() => null);
+      if (isSameOnchainOwner(registered.owner, sender.account, senderAlias)) {
+        throw new Error(
+          "That's your own page — tipping yourself just sends money to your own wallet. Tip another creator instead.",
+        );
+      }
       // Snapshot the breakdown for the success receipt — these amounts are
       // baked into the transaction, so they hold for every outcome path.
       setReceiptLines(
@@ -567,6 +583,14 @@ function TipBox({
       setSwapStatus("Getting the latest swap price…");
       const q = await getSwapQuote(chain, token.tokenId, amountIn);
       const sender = await getTxSender();
+      // Self-tip block (same as the HBAR path): refused before the swap
+      // moves anything — the swap would otherwise fund a tip to yourself.
+      const senderAlias = await fetchAccountEvmAddress(sender.account).catch(() => null);
+      if (isSameOnchainOwner(registered.owner, sender.account, senderAlias)) {
+        throw new Error(
+          "That's your own page — tipping yourself just sends money to your own wallet. Tip another creator instead.",
+        );
+      }
       // The swap pushes HBAR to the visitor, so the destination must be
       // their real (alias) EVM address — a contract push never reaches a
       // long-zero address (proven on mainnet 2026-09-12).

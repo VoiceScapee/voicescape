@@ -296,10 +296,13 @@ export default function ListingDetailClient({ id }: { id: string }) {
       // (Same pattern as the tip flow.)
       const hbarAmt = hbarPrice ? usd / hbarPrice : null;
       // Integer tinybar math mirrors the contract's 98/2 split exactly —
-      // never float multiplication for money display.
+      // never float multiplication for money display. The fee floors to
+      // whole tinybars; the seller takes the remainder, so the two shares
+      // always sum to the gross (flooring both sides independently drops
+      // up to 1 tinybar of dust on amounts < 100 tinybars).
       const buyTiny = hbarAmt != null ? BigInt(Math.round(hbarAmt * 1e8)) : null;
-      const buySeller = buyTiny != null ? Number((buyTiny * 98n) / 100n) / 1e8 : null;
       const buyTreasury = buyTiny != null ? Number((buyTiny * 2n) / 100n) / 1e8 : null;
+      const buySeller = buyTiny != null ? Number(buyTiny - (buyTiny * 2n) / 100n) / 1e8 : null;
       setBuyReceiptLines(
         hbarAmt != null
           ? [

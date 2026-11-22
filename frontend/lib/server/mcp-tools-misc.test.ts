@@ -347,6 +347,33 @@ describe("prepare_tip", () => {
       expect((res as { error: string }).error).toMatch(/not a positive HBAR amount/);
     }
   });
+
+  it("refuses a self-tip when sender_account_id owns the recipient page", async () => {
+    // In this mock, creator-bob's owner resolves to account 0.0.99999.
+    const res = await prepareTipTool(
+      { recipient: "creator-bob", amount_hbar: "1", sender_account_id: "0.0.99999" },
+      registryFetch(TIP_PAGES),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/self-tip/i);
+  });
+
+  it("allows the tip when sender_account_id is a different account", async () => {
+    const res = await prepareTipTool(
+      { recipient: "creator-bob", amount_hbar: "1", sender_account_id: "0.0.12345" },
+      registryFetch(TIP_PAGES),
+    );
+    expect("error" in res).toBe(false);
+  });
+
+  it("rejects a malformed sender_account_id", async () => {
+    const res = await prepareTipTool(
+      { recipient: "creator-bob", amount_hbar: "1", sender_account_id: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      registryFetch(TIP_PAGES),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/0\.0\.x/);
+  });
 });
 
 /* ------------------------- follow_creator / unfollow_creator ------------------------- */

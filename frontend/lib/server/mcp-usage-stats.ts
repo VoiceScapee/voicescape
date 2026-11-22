@@ -102,7 +102,15 @@ function dayKey(d = new Date()): string {
 }
 
 export interface McpUsageStats {
-  /** Total tool calls in the rolling 30-day window. */
+  /**
+   * Total tool calls in the rolling 30-day window — the SUM of the
+   * per-day counters, so total, byTool, and byDay always describe one
+   * consistent window. Deliberately NOT the standalone
+   * `mcp:stats:calls:total` counter: its TTL is set once at creation,
+   * so it spans whatever 30 days followed its first call, while the day
+   * keys span the last 30 calendar days — reading it made the three
+   * numbers contradict each other on the same response.
+   */
   total: number;
   /** Calls per tool name. */
   byTool: Record<string, number>;
@@ -135,9 +143,8 @@ export async function getMcpUsageStats(
   const empty: McpUsageStats = { total: 0, byTool: {}, byDay: {} };
   try {
     const store = deps.store ?? getKvStore();
-    const totalRaw = await store.get(`${PREFIX}:total`);
     const stats: McpUsageStats = {
-      total: totalRaw ? parseInt(totalRaw, 10) || 0 : 0,
+      total: 0,
       byTool: {},
       byDay: {},
     };
@@ -160,6 +167,13 @@ export async function getMcpUsageStats(
       const n = v ? parseInt(v, 10) || 0 : 0;
       if (n > 0) stats.byDay[days[i]] = n;
     });
+    // Total = sum of the per-day counters: the one window all three
+    // numbers share. The standalone `${PREFIX}:total` counter is still
+    // written by recordMcpToolCall (raw all-time-ish counter) but is
+    // never read here — its create-once TTL spans a different 30 days
+    // than the day keys, which is what made total disagree with
+    // sum(byTool) and sum(byDay) on the same response.
+    stats.total = Object.values(stats.byDay).reduce((a, b) => a + b, 0);
     return stats;
   } catch {
     return empty;

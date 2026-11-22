@@ -57,6 +57,76 @@ export async function pinPageJson(pageJson: string): Promise<string> {
  */
 const IPFS_GATEWAY_TIMEOUT_MS = 15_000;
 
+/**
+ * Max page-JSON body we will read from a gateway: 1 MB. The server never
+ * pins a page larger than this (lib/server/publish.js
+ * DEFAULT_MAX_PAGE_JSON_BYTES), so a gateway serving more than 1 MB of
+ * "page JSON" is bogus or abused — and reading it unbounded (res.text())
+ * lets one bad gateway pin the tab's memory. The server twin of this cap
+ * lives in lib/server/publish.js (fetchPageJson, via maxPageJsonBytes())
+ * — keep them in sync.
+ */
+export const MAX_PAGE_JSON_BYTES = 1 * 1024 * 1024;
+
+/**
+ * Read a gateway response body with a hard byte cap. Prefers a streaming
+ * read so an oversize body is abandoned mid-stream; falls back to text()
+ * with a post-read length check for fetch implementations without a body
+ * stream (test doubles). Throws when the cap is exceeded.
+ */
+async function readCappedText(res: Response, ipfsHash: string): Promise<string> {
+  const declared = res.headers?.get?.("content-length");
+  if (declared != null) {
+    const n = Number(declared);
+    if (Number.isFinite(n) && n > MAX_PAGE_JSON_BYTES) {
+      throw new Error(
+        `IPFS response too large (${n} bytes; max ${MAX_PAGE_JSON_BYTES}) for ${ipfsHash}`,
+      );
+    }
+  }
+  const stream = (res as Response & { body?: ReadableStream<Uint8Array> | null }).body;
+  if (stream && typeof stream.getReader === "function") {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          total += value.byteLength;
+          if (total > MAX_PAGE_JSON_BYTES) {
+            throw new Error(
+              `IPFS response too large (over ${MAX_PAGE_JSON_BYTES} bytes) for ${ipfsHash}`,
+            );
+          }
+          chunks.push(value);
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        /* already closed — ignore */
+      }
+    }
+    const all = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) {
+      all.set(c, off);
+      off += c.byteLength;
+    }
+    return new TextDecoder().decode(all);
+  }
+  const text = await res.text();
+  if (new TextEncoder().encode(text).length > MAX_PAGE_JSON_BYTES) {
+    throw new Error(
+      `IPFS response too large (over ${MAX_PAGE_JSON_BYTES} bytes) for ${ipfsHash}`,
+    );
+  }
+  return text;
+}
+
 export async function fetchPageJson(ipfsHash: string): Promise<string> {
   // KISS: try multiple gateways — ipfs.io rate-limits aggressively.
   const gateways = [
@@ -75,7 +145,16 @@ export async function fetchPageJson(ipfsHash: string): Promise<string> {
         lastError = new Error(`IPFS fetch failed (${res.status}) for ${ipfsHash}`);
         continue;
       }
-      const text = await res.text();
+      // Bounded read: a gateway must never be able to pin the tab's
+      // memory with an unbounded body. An oversize response is skipped
+      // like any other gateway failure; the next gateway is tried.
+      const text = await readCappedText(res, ipfsHash);
+      // An empty body is not a page — skip the gateway like any other
+      // failure (a consumed/empty stream must never be served as JSON).
+      if (!text.trim()) {
+        lastError = new Error(`IPFS gateway returned an empty body for ${ipfsHash}`);
+        continue;
+      }
       // Gateway returned HTML (error page) instead of JSON — try next.
       if (text.trimStart().startsWith("<")) {
         lastError = new Error(`IPFS gateway returned HTML for ${ipfsHash}`);

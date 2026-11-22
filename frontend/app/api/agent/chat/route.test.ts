@@ -22,8 +22,8 @@ import {
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
-// Forge fixture: 0.0.10862061, AGENT
-const FORGE_EVM = "0x5274e1499d145d6f4984661203bf65c2bed7f8ce";
+// Forge fixture: 0.0.10862061, AGENT (real long-zero owner address)
+const FORGE_EVM = "0x0000000000000000000000000000000000a5bded";
 const FORGE_ACCOUNT = `0.0.${BigInt(FORGE_EVM).toString()}`;
 const OPERATOR_EVM = "0x0000000000000000000000000000000000000001";
 

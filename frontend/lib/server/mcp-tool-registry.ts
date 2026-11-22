@@ -1547,7 +1547,7 @@ export function registerTools(server: McpServer): void {
     {
       title: "Quote tip",
       description:
-        "Preview a tip before preparing it: exact net amounts after the 98/2 split and estimated network fees, plus precondition checks — the recipient account exists and is associated with the tip token. Read-only; moves nothing. Call this before any flow that moves value — it catches tips that couldn't settle.",
+        "Preview a tip before preparing it: exact net amounts after the 98/2 split and estimated network fees, plus precondition checks — the recipient account exists and is associated with the tip token. Read-only; moves nothing. Call this before any flow that moves value — it catches tips that couldn't settle. Self-tips are flagged: pass sender_account_id (your own 0.0.x account) and a tip to a page you own reports self_tip and cannot settle.",
       inputSchema: z.object({
         recipient: z
           .string()
@@ -1557,13 +1557,17 @@ export function registerTools(server: McpServer): void {
           .string()
           .optional()
           .describe("HBAR (default) or an HTS token id like 0.0.456858"),
+        sender_account_id: z
+          .string()
+          .optional()
+          .describe("Your own 0.0.x account id, e.g. 0.0.123456 — when it owns the recipient page the quote reports self_tip and cannot settle (self-tip block)."),
       }),
       annotations: READONLY,
       _meta: { call_type: "sync" },
     },
-    async ({ recipient, amount_hbar, asset }) =>
+    async ({ recipient, amount_hbar, asset, sender_account_id }) =>
       withMcpErrorTelemetry("quote_tip", async () => {
-        const q = await quoteTip({ recipient, amount_hbar, asset });
+        const q = await quoteTip({ recipient, amount_hbar, asset, sender_account_id });
         return q.can_settle
           ? toolResult(q)
           : toolError(`tip cannot settle: ${q.blockers.join("; ")}`);
@@ -2158,10 +2162,14 @@ export function registerTools(server: McpServer): void {
     {
       title: "Prepare tip",
       description:
-        "Build the UNSIGNED tipPage calldata for a tip to a blockpage so your own wallet can sign it. Returns the Tips contract (0.0.10854060), the function selector, the hex calldata, the exact HBAR value to attach, and the 98/2 split preview (what the page owner nets, what the treasury takes). This server never signs and never holds keys — you sign the prepared calldata with your own Hedera key and submit. The contract splits 98% to the page owner and 2% to the treasury atomically in the same transaction; no escrow. HBAR only (token tips need a human wallet). Verify afterward with verify_tip — proof-of-payment reviews require a settled tip.",
+        "Build the UNSIGNED tipPage calldata for a tip to a blockpage so your own wallet can sign it. Returns the Tips contract (0.0.10854060), the function selector, the hex calldata, the exact HBAR value to attach, and the 98/2 split preview (what the page owner nets, what the treasury takes). This server never signs and never holds keys — you sign the prepared calldata with your own Hedera key and submit. The contract splits 98% to the page owner and 2% to the treasury atomically in the same transaction; no escrow. HBAR only (token tips need a human wallet). Verify afterward with verify_tip — proof-of-payment reviews require a settled tip. Self-tips are blocked: pass sender_account_id (your own 0.0.x account) and a tip to a page you own is refused instead of built.",
       inputSchema: z.object({
         recipient: z.string().describe("Blockpage username receiving the tip, e.g. user-10424063 (must be registered on-chain)"),
         amount_hbar: z.string().describe('Tip amount in HBAR, e.g. "1.5"'),
+        sender_account_id: z
+          .string()
+          .optional()
+          .describe("Your own 0.0.x account id, e.g. 0.0.123456 — when it owns the recipient page the tip is refused (self-tip block). Omit it only if you cannot provide it; the server cannot know who signs otherwise."),
       }),
       annotations: WRITE,
     },

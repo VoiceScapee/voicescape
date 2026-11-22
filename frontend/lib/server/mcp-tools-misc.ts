@@ -464,6 +464,15 @@ export async function preparePurchaseTool(
 export interface PrepareTipArgs {
   recipient: string;
   amount_hbar: string;
+  /**
+   * Optional: the tipper's own 0.0.x account id. When given, a tip to a
+   * page the sender owns is refused (self-tip block). The server cannot
+   * know who signs an UNSIGNED prepare_tip call otherwise — the agent
+   * signs with its own key — so without this the block cannot apply.
+   * The UI blocks self-tips outright; verify_tip flags any self-tip
+   * that does land as related_party.
+   */
+  sender_account_id?: string;
 }
 
 export interface PreparedTip {
@@ -527,6 +536,22 @@ export async function prepareTipTool(
   const page = await lookupBlockpage(username, fetchFn);
   if (!page.found) {
     return { error: `blockpage "${username}" is not registered on-chain` };
+  }
+  // Self-tip block (opt-in — see PrepareTipArgs): when the caller passes
+  // its own account id and it owns the recipient page, refuse instead of
+  // building calldata for a tip to yourself.
+  const senderId = (args.sender_account_id ?? "").toString().trim();
+  if (senderId) {
+    if (!/^0\.0\.\d+$/.test(senderId)) {
+      return { error: `sender_account_id "${args.sender_account_id}" is not a 0.0.x account id` };
+    }
+    if (page.owner_account && senderId === page.owner_account) {
+      return {
+        error:
+          `sender ${senderId} owns blockpage "${username}" — self-tips are blocked; ` +
+          `tip another page instead`,
+      };
+    }
   }
   const grossTinybar = parseHbarAmount(args.amount_hbar ?? "");
   if (grossTinybar === null || grossTinybar <= 0n) {

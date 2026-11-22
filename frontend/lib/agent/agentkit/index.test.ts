@@ -16,7 +16,7 @@ import {
 } from "./index";
 import { TIPS_ID } from "./mirror";
 
-const FORGE_EVM = "0x5274e1499d145d6f4984661203bf65c2bed7f8ce";
+const FORGE_EVM = "0x0000000000000000000000000000000000a5bded";
 const FORGE_ACCOUNT = `0.0.${BigInt(FORGE_EVM).toString()}`;
 const OPERATOR_EVM = "0x0000000000000000000000000000000000000001";
 
@@ -99,6 +99,37 @@ describe("voicescape Agent Kit plugin", () => {
     expect(result.purpose).toBe("test purpose");
   });
 
+  it("reports ownerAccountId null (not a fabricated id) for an ECDSA alias owner", async () => {
+    // An alias address (0x4fb7…) names no account by derivation — the
+    // old code returned a bogus "0.0.<astronomical>". The alias itself
+    // is still reported as ownerEvmAddress; only the derived id is null.
+    const ALIAS_EVM = "0x4fb76eaa5eb6152501e99ca385c21d3dedf4ccca";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: any) => {
+        expect(String(url)).toContain("/contracts/call");
+        return jsonResponse({
+          result: AbiCoder.defaultAbiCoder().encode(
+            ["address", "string", "uint8", "address", "string"],
+            [ALIAS_EVM, "QmTestHash", 1, OPERATOR_EVM, "test purpose"],
+          ),
+        });
+      })
+    );
+    const tools = getBuddyTools();
+    const tool = findTool(tools, "resolve_blockpage")!;
+    const out = await tool.execute(
+      undefined as never,
+      {},
+      tool.parameters.parse({ username: "forge" })
+    );
+    const result = JSON.parse(out);
+    expect(result.registered).toBe(true);
+    expect(result.ownerAccountId).toBeNull();
+    // The tool returns the checksummed form; compare case-insensitively.
+    expect(result.ownerEvmAddress.toLowerCase()).toBe(ALIAS_EVM);
+  });
+
   it("reports unregistered usernames via CONTRACT_REVERT_EXECUTED", async () => {
     vi.stubGlobal(
       "fetch",
@@ -129,7 +160,7 @@ describe("voicescape Agent Kit plugin", () => {
         return jsonResponse({
           results: [
             {
-              to: "0x00000000000000000000000000000000000a59eac",
+              to: "0x0000000000000000000000000000000000a59eac",
               amount: 200000000,
               function_parameters: "0x12345678",
               timestamp: "1789480000.000000000",
