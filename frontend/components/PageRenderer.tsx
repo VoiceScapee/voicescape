@@ -29,7 +29,6 @@ import {
   IconBolt,
   IconExternal,
   IconGlobe,
-  IconLink,
   IconMusic,
   IconPause,
   IconPlay,
@@ -43,7 +42,7 @@ import ChatBox from "@/components/ChatBox";
 import GuestComments from "@/components/GuestComments";
 import PollBlock from "@/components/PollBlock";
 import HeartbeatBlock from "@/components/HeartbeatBlock";
-import { parseVideoUrl, videoEmbedUrl } from "@/lib/video";
+import { parseVideoUrl, splitVideoTitle, videoEmbedUrl } from "@/lib/video";
 import NetworkPulse from "@/components/NetworkPulse";
 import "./renderer.css";
 
@@ -80,6 +79,23 @@ interface RendererProps {
 export type ServiceItem = Extract<Block, { type: "services" }>["items"][number];
 
 type MusicBlockT = Extract<Block, { type: "music" }>;
+
+/**
+ * Display form of a link URL for a link card: host + path, no protocol,
+ * no www, no trailing slash (voicescape.vercel.app/danny). Falls back to
+ * the raw string when it doesn't parse. Pure — unit-tested via the
+ * template render tests.
+ */
+export function formatLinkUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./, "");
+    const path = u.pathname.replace(/\/$/, "");
+    return `${host}${path}${u.search}`;
+  } catch {
+    return raw;
+  }
+}
 
 /**
  * Real music player. Tracks play through the platform's own embed (Spotify /
@@ -275,6 +291,20 @@ function VideoBlock({ block }: { block: Extract<Block, { type: "video" }> }) {
   const parsed = parseVideoUrl(block.url);
   const poster = block.poster ? safeImageUrl(block.poster) : null;
   const creditUrl = block.credit ? safeExternalUrl(block.credit.url) : null;
+  // Episode meta (template pass — the preview's treatment): the player
+  // leads, then kicker, display title, host line, description, maker
+  // credit. An explicit `kicker` wins; otherwise derive it from a " — "
+  // in the title (left half = kicker, right half = display title). A
+  // Reel24 film also carries "· On Reel24" on a derived kicker — the
+  // film lives on Reel24, and the preview names it. Host line and
+  // description render only when the block carries them; the v3 sample
+  // doesn't yet, so the film's host line/description need a content edit.
+  const split = block.title ? splitVideoTitle(block.title) : { kicker: null, display: "" };
+  let kicker = block.kicker ?? split.kicker;
+  if (!block.kicker && split.kicker && parsed?.kind === "mp4") {
+    kicker = `${split.kicker} · On Reel24`;
+  }
+  const display = split.display || block.title || "";
   if (!parsed) {
     return (
       <section className="pv-block pv-video" aria-label="Video">
@@ -285,7 +315,6 @@ function VideoBlock({ block }: { block: Extract<Block, { type: "video" }> }) {
   }
   return (
     <section className="pv-block pv-video" aria-label={block.title || "Video"}>
-      {block.title && <h2 className="pv-block-title">{block.title}</h2>}
       {parsed.kind === "youtube" ? (
         <div className="pv-embed-wrap" style={{ aspectRatio: "16 / 9" }}>
           <iframe
@@ -308,10 +337,15 @@ function VideoBlock({ block }: { block: Extract<Block, { type: "video" }> }) {
           Your browser does not support video playback.
         </video>
       )}
+      {kicker && <p className="pv-video-kicker">{kicker}</p>}
+      {display && <h2 className="pv-video-title">{display}</h2>}
+      {block.hostLine && <p className="pv-video-hosts">{block.hostLine}</p>}
+      {block.description && <p className="pv-video-desc">{block.description}</p>}
       {block.credit && creditUrl && (
         <p className="pv-video-credit">
           <a href={creditUrl} target="_blank" rel="noreferrer">
             {block.credit.label}
+            <span aria-hidden="true"> →</span>
           </a>
         </p>
       )}
@@ -648,9 +682,11 @@ function BlockView({
                   openExternalUrl(url);
                 }}
               >
-                <IconLink size={18} />
-                <span className="pv-link-label">{item.label}</span>
-                <IconExternal size={14} className="pv-link-ext" />
+                <span className="pv-link-body">
+                  <span className="pv-link-label">{item.label}</span>
+                  <span className="pv-link-url vs-mono">{formatLinkUrl(url)}</span>
+                </span>
+                <span className="pv-link-arrow" aria-hidden="true">→</span>
               </a>
             );
           })}
@@ -1041,16 +1077,21 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
       <div className="pv-links">
         {block.items
           .filter((item) => safeExternalUrl(item.url) && !isPlaceholderUrl(item.url))
-          .map((item, i) => (
-          <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url)!} target="_blank" rel="noreferrer">
-            <IconLink size={18} />
-            <span className="pv-link-label">
-              {item.label}
-              {item.note && <span className="pv-link-note">{item.note}</span>}
+          .map((item, i) => {
+          const url = safeExternalUrl(item.url)!;
+          return (
+          <a key={i} className="pv-link-btn" href={url} target="_blank" rel="noreferrer">
+            <span className="pv-link-body">
+              <span className="pv-link-label">
+                {item.label}
+                {item.note && <span className="pv-link-note">{item.note}</span>}
+              </span>
+              <span className="pv-link-url vs-mono">{formatLinkUrl(url)}</span>
             </span>
-            <IconExternal size={14} className="pv-link-ext" />
+            <span className="pv-link-arrow" aria-hidden="true">→</span>
           </a>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -1176,6 +1217,14 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
       {agentMeta && <AgentBanner meta={agentMeta} />}
 
       <main className="pv-blocks">
+        {/* Trust badges (template pass): true of every blockpage — the
+            page is owned by its wallet, never rented, and tips split
+            98/2 on-chain. Rendered automatically, never from page
+            content, so no page can fake or remove them. */}
+        <div className="pv-trust" aria-label="About this page">
+          <span className="pv-trust-badge">Page owned by its wallet, not rented</span>
+          <span className="pv-trust-badge">Tips split 98 / 2 on-chain</span>
+        </div>
         {safeBlocks.map((block, i) => (
           // data-pv-block anchors let the page voice mic smooth-scroll to a
           // block ("play their music" -> the music block). A section wrapper

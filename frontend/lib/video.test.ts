@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseVideoUrl, videoEmbedUrl } from "./video";
+import { parseVideoUrl, splitVideoTitle, videoEmbedUrl } from "./video";
 
 describe("parseVideoUrl", () => {
   it("accepts YouTube watch, short, embed and shorts links", () => {
@@ -60,5 +60,38 @@ describe("videoEmbedUrl", () => {
     );
     const mp4 = "https://storage.googleapis.com/reel24-media/films/x.mp4?v=1";
     expect(videoEmbedUrl({ kind: "mp4", url: mp4 })).toBe(mp4);
+  });
+});
+
+describe("splitVideoTitle", () => {
+  it("splits an em-dash episode title into kicker + display title", () => {
+    expect(splitVideoTitle("Voicescape Town Hall Ep 1 — Own Your Corner of the Internet")).toEqual({
+      kicker: "Voicescape Town Hall Ep 1",
+      display: "Own Your Corner of the Internet",
+    });
+  });
+
+  it("leaves a title with no em-dash whole (no kicker)", () => {
+    expect(splitVideoTitle("A Former Cable Tech Built A Verified Hedera Mainnet App")).toEqual({
+      kicker: null,
+      display: "A Former Cable Tech Built A Verified Hedera Mainnet App",
+    });
+    expect(splitVideoTitle("The Chomps Meets Danny! Talking Voicescape on Hedera")).toEqual({
+      kicker: null,
+      display: "The Chomps Meets Danny! Talking Voicescape on Hedera",
+    });
+  });
+
+  it("does not split on a leading or empty half", () => {
+    expect(splitVideoTitle(" — Display only")).toEqual({ kicker: null, display: " — Display only" });
+    expect(splitVideoTitle("Kicker only — ")).toEqual({ kicker: null, display: "Kicker only — " });
+    expect(splitVideoTitle("")).toEqual({ kicker: null, display: "" });
+  });
+
+  it("splits on the first em-dash only", () => {
+    expect(splitVideoTitle("Part One — Part Two — Part Three")).toEqual({
+      kicker: "Part One",
+      display: "Part Two — Part Three",
+    });
   });
 });

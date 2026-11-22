@@ -228,6 +228,27 @@ export default function PageVoiceMic({
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const movedRef = useRef(false);
 
+  // L5: the floating mic covers whatever text scrolls under it — on a
+  // 375px phone it sat on the tip-jar explainer and the 98/2 sentence
+  // read as truncated mid-word. While the visitor is actively scrolling,
+  // fade the button out; it returns 500ms after the scroll settles.
+  // The panel (when open) is never hidden — the visitor is interacting
+  // with it. The button stays draggable and tappable when idle.
+  const [scrolling, setScrolling] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onScroll = () => {
+      setScrolling(true);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(() => setScrolling(false), 500);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, []);
+
   useEffect(() => {
     const SR = window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SR) setSupported(false);
@@ -635,6 +656,11 @@ export default function PageVoiceMic({
           justifyContent: "center",
           userSelect: "none",
           WebkitUserSelect: "none",
+          // L5: fade out while the page scrolls (see the `scrolling`
+          // state above); never hide while the panel is open.
+          opacity: scrolling && !open ? 0 : 1,
+          pointerEvents: scrolling && !open ? "none" : "auto",
+          transition: "opacity 200ms ease",
         }}
       >
         {listening ? <StopSvg size={20} /> : <MicSvg size={24} />}

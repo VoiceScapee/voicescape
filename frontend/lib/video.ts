@@ -78,6 +78,25 @@ export function parseVideoUrl(raw: unknown): ParsedVideo | null {
 }
 
 /**
+ * Split a video title into a kicker + display title (template pass).
+ *
+ * Episode titles are authored as "Kicker — Display title" (e.g. the Town
+ * Hall film: "Voicescape Town Hall Ep 1 — Own Your Corner of the
+ * Internet"). The left half renders as the monospace kicker, the right
+ * half as the big display title — the preview's treatment. A title with
+ * no " — " has no kicker and renders whole as the display title.
+ * Pure — unit-tested.
+ */
+export function splitVideoTitle(title: string): { kicker: string | null; display: string } {
+  const idx = title.indexOf(" — ");
+  if (idx <= 0) return { kicker: null, display: title };
+  const kicker = title.slice(0, idx).trim();
+  const display = title.slice(idx + 3).trim();
+  if (!kicker || !display) return { kicker: null, display: title };
+  return { kicker, display };
+}
+
+/**
  * Player URL for a parsed video: the youtube-nocookie embed for YouTube,
  * the MP4 itself for direct files.
  */

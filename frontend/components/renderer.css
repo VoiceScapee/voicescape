@@ -90,15 +90,65 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 18px;
+  font-size: 17px;
+  font-weight: 800;
+  text-transform: uppercase;
   margin: 0 0 14px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
 }
 
 .pv-empty {
   opacity: 0.55;
   font-size: 14px;
   margin: 4px 0;
+}
+
+/* ---------- template pass: display type + bordered cards ---------- */
+/* The preview's visual language, theme-driven so it works on every
+   blockpage: a heavy display face for titles, monospace for kickers and
+   labels, and strong 1px borders instead of soft glass. No new font is
+   loaded — the display face is the existing Montserrat at 800 with tight
+   tracking and uppercase (a true condensed face would need a new font
+   file; see the report). */
+
+.pv-display {
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+
+.pv-kicker {
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pv-accent);
+  margin: 0 0 8px;
+}
+
+/* Trust badges — true of every blockpage, rendered automatically above
+   the content (never from page JSON, so no page can fake or remove
+   them). Bordered monospace chips, like the preview. */
+.pv-trust {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 -8px;
+}
+
+.pv-trust-badge {
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  line-height: 1.45;
+  color: var(--pv-fg);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 35%, transparent);
+  border-radius: 4px;
+  padding: 10px 14px;
 }
 
 .pv-glass {
@@ -150,13 +200,17 @@
 
 .pv-title {
   font-size: clamp(34px, 7vw, 56px);
-  line-height: 1.05;
+  font-weight: 800;
+  text-transform: uppercase;
+  line-height: 0.95;
   margin: 0 0 10px;
   letter-spacing: -0.01em;
 }
 
 .pv-subtitle {
-  font-size: clamp(15px, 3.5vw, 19px);
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
+  font-size: clamp(13px, 3.5vw, 15px);
+  letter-spacing: 0.03em;
   opacity: 0.72;
   margin: 0;
   max-width: 520px;
@@ -238,14 +292,14 @@
   gap: 12px;
   width: 100%;
   box-sizing: border-box;
-  padding: 15px 18px;
-  border-radius: var(--vs-radius, 14px);
-  background: color-mix(in srgb, var(--pv-fg) 6%, transparent);
-  border: 1px solid color-mix(in srgb, var(--pv-fg) 14%, transparent);
+  padding: 16px 18px;
+  /* Template pass: bordered host card (preview), not a soft pill —
+     strong 1px border, sharp corners, transparent background. */
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 30%, transparent);
   color: inherit;
   text-decoration: none;
-  font-weight: 600;
-  font-size: 16px;
   transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
@@ -257,13 +311,31 @@
   outline: none;
 }
 
-.pv-link-label {
+.pv-link-body {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   text-align: left;
 }
 
-.pv-link-ext {
-  opacity: 0.5;
+.pv-link-label {
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.pv-link-url {
+  font-size: 13px;
+  opacity: 0.6;
+  overflow-wrap: anywhere;
+}
+
+.pv-link-arrow {
+  color: var(--pv-accent);
+  font-size: 18px;
+  font-weight: 700;
   flex-shrink: 0;
 }
 
@@ -362,22 +434,59 @@
 }
 
 /* ---------- video block ---------- */
+/* Template pass: the player leads (bordered 16:9 frame), then the
+   episode meta in the preview's type treatment — monospace kicker,
+   condensed display title, muted host line, body description. */
 
 .pv-video-player {
   width: 100%;
-  border-radius: 10px;
+  border-radius: 6px;
   background: #000;
   display: block;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 30%, transparent);
+}
+
+.pv-video-kicker {
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pv-accent);
+  margin: 16px 2px 8px;
+}
+
+.pv-video-title {
+  font-size: clamp(28px, 7.5vw, 40px);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  margin: 0 2px 10px;
+}
+
+.pv-video-hosts {
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.65;
+  margin: 0 2px 12px;
+}
+
+.pv-video-desc {
+  font-size: 16px;
+  line-height: 1.55;
+  margin: 0 2px 12px;
 }
 
 .pv-video-credit {
-  margin: 8px 2px 0;
+  margin: 12px 2px 0;
   font-size: 13px;
-  opacity: 0.75;
+  opacity: 0.85;
 }
 
 .pv-video-credit a {
   color: var(--pv-accent);
+  font-family: var(--vs-mono, "IBM Plex Mono", monospace);
 }
 
 /* ---------- guest comments ---------- */
@@ -671,8 +780,9 @@
 }
 
 .pv-track {
-  border-radius: 12px;
-  border: 1px solid color-mix(in srgb, var(--pv-fg) 12%, transparent);
+  /* Template pass: bordered card rows (preview), not soft pills. */
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 30%, transparent);
   overflow: hidden;
 }
 
@@ -719,16 +829,16 @@
 }
 
 .pv-track-title {
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: 700;
+  font-size: 15px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .pv-track-sub {
-  font-size: 11px;
-  opacity: 0.6;
+  font-size: 12px;
+  opacity: 0.65;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -768,9 +878,10 @@
 
 .pv-embed-wrap {
   width: 100%;
-  border-radius: 10px;
+  border-radius: 6px;
   overflow: hidden;
   background: #000;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 30%, transparent);
 }
 
 .pv-embed-wrap iframe {
@@ -952,6 +1063,9 @@ a.pv-friend:hover {
   padding: 24px;
   text-align: center;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  /* L5: never land this card under the floating voice mic when the
+     browser scrolls it into view (voice-mic anchor jumps). */
+  scroll-margin-bottom: 96px;
 }
 
 .pv-tipjar-label {
@@ -994,7 +1108,7 @@ a.pv-friend:hover {
   text-align: left;
   background: var(--vs-accent-soft, rgba(130, 89, 239, 0.12));
   border: 1px solid color-mix(in srgb, var(--vs-violet, #8259ef) 25%, transparent);
-  border-radius: 12px;
+  border-radius: 6px;
 }
 
 .pv-tipjar-bar {
@@ -1024,6 +1138,11 @@ a.pv-friend:hover {
   line-height: 1.5;
   color: var(--vs-muted, #9b9b9d);
   margin: 0;
+  /* L5: long tokens (page name, treasury address) break cleanly instead
+     of forcing the line wider than a 375px screen. The text itself
+     always wrapped; the visible "truncation" was the floating voice
+     mic covering it (see PageVoiceMic scroll-hide). */
+  overflow-wrap: anywhere;
 }
 
 .pv-tipjar-btn {
@@ -1563,6 +1682,29 @@ a.pv-friend:hover {
   .pv-top8-grid {
     grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
     gap: 10px;
+  }
+
+  /* Template pass: the preview's rows must hold at phone width. */
+  .pv-trust-badge {
+    font-size: 12px;
+    padding: 9px 12px;
+  }
+
+  .pv-tab {
+    font-size: 10px;
+    padding: 14px 4px;
+  }
+
+  .pv-video-title {
+    font-size: 28px;
+  }
+
+  .pv-link-btn {
+    padding: 14px;
+  }
+
+  .pv-link-url {
+    font-size: 12px;
   }
 }
 
@@ -2551,41 +2693,55 @@ a.pv-friend:hover {
   gap: 0;
 }
 .pv-tabs-bar {
-  display: flex;
-  gap: 4px;
-  justify-content: center;
-  padding: 10px 12px 0;
-  /* Many tabs on a 360px screen scroll instead of pushing the page wide. */
+  /* Template pass (preview): one bordered rectangle; the tabs share it
+     as equal cells with dividers, and the active tab inverts (page
+     foreground on page background — white-on-black on a dark page).
+     Narrow screens still scroll instead of pushing the page wide. */
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 0;
+  justify-content: stretch;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--pv-fg) 35%, transparent);
+  border-radius: 6px;
   overflow-x: auto;
   scrollbar-width: none;
+  background: transparent;
 }
 .pv-tabs-bar::-webkit-scrollbar {
   display: none;
 }
 .pv-tab {
   font-family: var(--vs-mono);
-  font-size: 0.68rem;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--pv-fg);
-  opacity: 0.6;
+  opacity: 0.75;
   background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  border-radius: 8px 8px 0 0;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--pv-fg) 35%, transparent);
+  border-radius: 0;
   /* 44px tap target. */
-  padding: 12px 16px;
+  padding: 15px 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
-  transition: opacity 160ms ease-out, color 160ms ease-out;
+  transition: opacity 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out;
+}
+.pv-tab:first-child {
+  border-left: none;
 }
 .pv-tab:hover {
-  opacity: 0.9;
+  opacity: 1;
 }
 .pv-tab.is-active {
   opacity: 1;
-  color: var(--pv-accent);
-  border-color: color-mix(in srgb, var(--pv-fg) 22%, transparent);
-  background: color-mix(in srgb, var(--pv-fg) 5%, transparent);
+  color: var(--pv-bg);
+  background: var(--pv-fg);
 }
 .pv-tab:focus-visible {
   outline: 2px solid var(--pv-accent);
@@ -2593,7 +2749,6 @@ a.pv-friend:hover {
 }
 .pv-tabpanel {
   padding: 4px 0 10px;
-  border-top: 1px solid color-mix(in srgb, var(--pv-fg) 18%, transparent);
 }
 .pv-tabpanel .pv-block {
   margin: 8px 12px 0;

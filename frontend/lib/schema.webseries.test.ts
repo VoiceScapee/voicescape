@@ -44,6 +44,45 @@ describe("video block", () => {
     }) as { credit?: unknown };
     expect(out.credit).toBeUndefined();
   });
+
+  it("keeps optional episode meta (kicker, hostLine, description), capped", () => {
+    const out = normalizeBlockForRender({
+      type: "video",
+      url: "https://youtu.be/HjAVZ8fXiIE",
+      title: "Voicescape Town Hall Ep 1 — Own Your Corner of the Internet",
+      kicker: "Voicescape Town Hall · Ep 1 · On Reel24",
+      hostLine: "Hosted by Danny · co-host Bacon (The Chomps) · guest Theo, the coffee roaster",
+      description: "The first episode. Danny and Bacon sit down with Theo.",
+    }) as { kicker?: string; hostLine?: string; description?: string };
+    expect(out.kicker).toBe("Voicescape Town Hall · Ep 1 · On Reel24");
+    expect(out.hostLine).toBe(
+      "Hosted by Danny · co-host Bacon (The Chomps) · guest Theo, the coffee roaster",
+    );
+    expect(out.description).toBe("The first episode. Danny and Bacon sit down with Theo.");
+  });
+
+  it("caps episode meta and drops non-string meta", () => {
+    const out = normalizeBlockForRender({
+      type: "video",
+      url: "https://youtu.be/HjAVZ8fXiIE",
+      kicker: "k".repeat(200),
+      hostLine: "h".repeat(200),
+      description: "d".repeat(600),
+    }) as { kicker?: string; hostLine?: string; description?: string };
+    expect(out.kicker).toHaveLength(80);
+    expect(out.hostLine).toHaveLength(140);
+    expect(out.description).toHaveLength(500);
+    const dropped = normalizeBlockForRender({
+      type: "video",
+      url: "https://youtu.be/HjAVZ8fXiIE",
+      kicker: 42,
+      hostLine: null,
+      description: {},
+    }) as { kicker?: unknown; hostLine?: unknown; description?: unknown };
+    expect(dropped.kicker).toBeUndefined();
+    expect(dropped.hostLine).toBeUndefined();
+    expect(dropped.description).toBeUndefined();
+  });
 });
 
 describe("guestComments block", () => {

@@ -56,7 +56,11 @@ export type Block =
    * Video: in-page playback. YouTube links embed via youtube-nocookie;
    * direct .mp4 files must come from the Reel24 media bucket or the
    * Reel24 site (see lib/video.ts allowlist). `credit` is the maker's
-   * blockpage link, shown under the player.
+   * blockpage link, shown under the player. Optional episode meta
+   * (template pass): `kicker` (monospace line above the display title),
+   * `hostLine` (muted host line) and `description` (body paragraph).
+   * When `kicker` is absent, the renderer derives one from a " — " in
+   * the title (left half = kicker, right half = display title).
    */
   | {
     type: "video";
@@ -64,6 +68,9 @@ export type Block =
     title?: string;
     poster?: string;
     credit?: { label: string; url: string };
+    kicker?: string;
+    hostLine?: string;
+    description?: string;
   }
   /**
    * Poll: a free, no-pay vote that decides something real (e.g. the next
@@ -595,6 +602,14 @@ export function normalizeBlockForRender(input: unknown): Block | null {
           video.credit = { label: label.slice(0, 80), url: curl };
         }
       }
+      // Optional episode meta (template pass): short plain strings,
+      // capped like the other video fields; non-strings are dropped.
+      const kicker = str(b.kicker);
+      if (kicker !== undefined) video.kicker = kicker.slice(0, 80);
+      const hostLine = str(b.hostLine);
+      if (hostLine !== undefined) video.hostLine = hostLine.slice(0, 140);
+      const description = str(b.description);
+      if (description !== undefined) video.description = description.slice(0, 500);
       return video as unknown as Block;
     }
     case "guestComments": {
