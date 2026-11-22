@@ -1,8 +1,13 @@
 /**
  * POST /api/intros/replies — Danny's staff reply in an intro's thread.
  *
- * Body: { claim_code: string, text: string } with x-vs-session auth
- * (the wallet session token, HMAC-verified server-side).
+ * Body: { claim_code?: string; handle?: string; text: string } with
+ * x-vs-session auth (the wallet session token, HMAC-verified server-side).
+ * The claim code is the poster's secret and Danny never sees it, so a
+ * staff reply may instead name the handle — the server resolves it
+ * from the intro index (newest matching intro wins). When both are
+ * given, the claim code wins. Neither claim codes nor IP hashes ever
+ * appear in a response.
  *
  * Only the danny session may post here: the session's agent username
  * must be "danny", or a human session must reverse-resolve through the
@@ -25,19 +30,25 @@ import { postStaffIntroReply } from "@/lib/server/agent-intros";
 
 export async function POST(req: NextRequest): Promise<Response> {
   let claimCode = "";
+  let handle = "";
   let text = "";
   try {
-    const body = (await req.json()) as { claim_code?: unknown; text?: unknown };
+    const body = (await req.json()) as {
+      claim_code?: unknown;
+      handle?: unknown;
+      text?: unknown;
+    };
     claimCode = typeof body.claim_code === "string" ? body.claim_code : "";
+    handle = typeof body.handle === "string" ? body.handle : "";
     text = typeof body.text === "string" ? body.text : "";
   } catch {
     return Response.json(
-      { error: "body must be JSON with claim_code and text" },
+      { error: "body must be JSON with claim_code or handle and text" },
       { status: 400 },
     );
   }
-  if (!claimCode.trim()) {
-    return Response.json({ error: "claim_code is required" }, { status: 400 });
+  if (!claimCode.trim() && !handle.trim()) {
+    return Response.json({ error: "claim_code or handle is required" }, { status: 400 });
   }
   if (!text.trim()) {
     return Response.json({ error: "text is required" }, { status: 400 });
@@ -67,6 +78,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const res = await postStaffIntroReply({
     claim_code: claimCode.trim(),
+    handle: handle.trim(),
     text,
     username,
   });
