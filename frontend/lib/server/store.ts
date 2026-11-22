@@ -9,6 +9,7 @@
  *   - setNx(key, val, ttlMs) → atomic claim-or-reject (SET … NX PX)
  *   - set(key, val, ttlMs)  → overwrite with TTL
  *   - get(key)              → value or null
+ *   - mget(keys)            → batch read (optional; callers fall back to get)
  *   - del(key)              → release a claim
  *   - clearPrefix(prefix)   → test/dev helper (SCAN+DEL on Redis)
  *
@@ -40,6 +41,12 @@ export interface KvStore {
   set(key: string, value: string, ttlMs: number): Promise<void>;
   /** Value, or null when missing/expired. */
   get(key: string): Promise<string | null>;
+  /**
+   * Batch read: values in key order, null for missing/expired. Optional —
+   * callers fall back to one get() per key when a backend omits it, so
+   * older hand-rolled fakes keep working. All shipped backends implement it.
+   */
+  mget?(keys: string[]): Promise<(string | null)[]>;
   /** Delete. */
   del(key: string): Promise<void>;
   /** Delete every key starting with `prefix` (tests/dev). */
@@ -106,6 +113,14 @@ class MemoryKvStore implements KvStore {
   async get(key: string): Promise<string | null> {
     const e = this.read(key, Date.now());
     return e ? e.value : null;
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    const nowMs = Date.now();
+    return keys.map((k) => {
+      const e = this.read(k, nowMs);
+      return e ? e.value : null;
+    });
   }
 
   async del(key: string): Promise<void> {
@@ -187,6 +202,11 @@ class UpstashKvStore implements KvStore {
 
   async get(key: string): Promise<string | null> {
     return this.cmd<string | null>("GET", key);
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (keys.length === 0) return [];
+    return this.cmd<(string | null)[]>("MGET", ...keys);
   }
 
   async del(key: string): Promise<void> {
@@ -280,6 +300,11 @@ class ValkeyKvStore implements KvStore {
 
   async get(key: string): Promise<string | null> {
     return this.run((r) => r.get(key), "get");
+  }
+
+  async mget(keys: string[]): Promise<(string | null)[]> {
+    if (keys.length === 0) return [];
+    return this.run((r) => r.mget(...keys), "mget");
   }
 
   async del(key: string): Promise<void> {
