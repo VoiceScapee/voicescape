@@ -21,7 +21,9 @@ function page(
 /**
  * Mirror stub: registry has 2 successful registerPage calls spread over two
  * pages (plus noise that must NOT count — a wrong-selector success and a
- * reverted registerPage); tips has 3 successful results on a single page.
+ * reverted registerPage); tips has 2 successful tipPage calls on a single
+ * page (plus noise that must NOT count — a buyListing purchase, the
+ * contract's own deployment row, and a reverted tipPage).
  * Row shape matches the real mirror node: success = empty/missing
  * error_message, failure = non-empty error_message (revert data).
  */
@@ -56,10 +58,14 @@ function mirrorStub() {
       return Promise.resolve(
         page(
           [
-            { error_message: "", function_parameters: "0x1111" },
-            { error_message: "", function_parameters: "0x2222" },
-            { error_message: null, function_parameters: "0x3333" },
-            { error_message: "0x08c379a0", function_parameters: "0x4444" },
+            { error_message: "", function_parameters: "0x8b0de5cbdead" },
+            { error_message: null, function_parameters: "0x8b0de5cbbeef" },
+            // buyListing purchase — a marketplace sale, not a tip: excluded.
+            { error_message: "", function_parameters: "0x8e893f021234" },
+            // Contract deployment row — not a tip: excluded.
+            { error_message: "", function_parameters: "0x60a060405678" },
+            // Reverted tipPage call: excluded (non-empty error_message).
+            { error_message: "0x08c379a0", function_parameters: "0x8b0de5cb9999" },
           ],
           null,
         ),
@@ -84,7 +90,12 @@ describe("GET /api/chain/stats", () => {
     expect(REGISTER_PAGE_SELECTOR).toBe("0xc02fdb27");
   });
 
-  it("counts paginated successful results, filtering registerPage selector on the Registry only", async () => {
+  it("derives the tipPage selector (sanity: 0x8b0de5cb)", async () => {
+    const { TIPS_TIP_PAGE_SELECTOR } = await import("@/lib/server/chain-stats");
+    expect(TIPS_TIP_PAGE_SELECTOR).toBe("0x8b0de5cb");
+  });
+
+  it("counts paginated successful results, filtering registerPage on the Registry and tipPage on Tips", async () => {
     const fetchMock = mirrorStub();
     vi.stubGlobal("fetch", fetchMock);
     const { GET } = await import("./route");
@@ -93,8 +104,9 @@ describe("GET /api/chain/stats", () => {
     expect(res.status).toBe(200);
     // Registry: 2 successful registerPage calls across 2 pages (noise excluded).
     expect(json.pages).toBe(2);
-    // Tips: 3 successful results (1 reverted excluded), selector filter off.
-    expect(json.tips).toBe(3);
+    // Tips: 2 successful tipPage calls (buyListing, deployment row, and a
+    // reverted tipPage excluded).
+    expect(json.tips).toBe(2);
     // Both lanes paginate via contract results on the official mirror node.
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("0.0.10854058"))).toBe(true);
     expect(fetchMock.mock.calls.some(([u]) => String(u).includes("0.0.10854060"))).toBe(true);

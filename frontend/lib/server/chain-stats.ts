@@ -5,7 +5,9 @@
  *     (0.0.10854058) whose calldata opens with the registerPage selector —
  *     i.e. blockpages registered on chain.
  *   - tips: successful contract results on the Tips contract
- *     (0.0.10854060) — tips (and marketplace purchases) settled on chain.
+ *     (0.0.10854060) whose calldata opens with the tipPage selector —
+ *     i.e. tips settled on chain (marketplace purchases and the contract's
+ *     own deployment row are not tips and are excluded).
  */
 
 export const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
@@ -21,6 +23,14 @@ export const FETCH_TIMEOUT_MS = 10_000;
  * constant equals 0xc02fdb27.
  */
 export const REGISTER_PAGE_SELECTOR = "0xc02fdb27";
+
+/**
+ * keccak selector of tipPage(string).
+ * Hard-coded (verified: keccak256("tipPage(string)")[0:4] = 0x8b0de5cb)
+ * — no hashing library needed at runtime. The test asserts the constant
+ * equals 0x8b0de5cb.
+ */
+export const TIPS_TIP_PAGE_SELECTOR = "0x8b0de5cb";
 
 interface MirrorResultRow {
   // The contract-results endpoint signals failure via a non-empty
