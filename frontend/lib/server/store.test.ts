@@ -72,6 +72,17 @@ describe("MemoryKvStore", () => {
     expect(await s.get("vs:b:1")).toBe("x");
   });
 
+  it("mget reads values in key order, null for missing or expired", async () => {
+    const s = createMemoryKvStore();
+    await s.set("a", "1", 60_000);
+    await s.set("b", "2", 60_000);
+    await s.set("e", "x", 20);
+    expect(await s.mget?.(["a", "missing", "b"])).toEqual(["1", null, "2"]);
+    expect(await s.mget?.([])).toEqual([]);
+    await new Promise((r) => setTimeout(r, 40));
+    expect(await s.mget?.(["e", "a"])).toEqual([null, "1"]);
+  });
+
   it("rejects non-positive TTLs", async () => {
     const s = createMemoryKvStore();
     await expect(s.incr("k", 0)).rejects.toThrow();
