@@ -36,7 +36,7 @@ describe("tabs block", () => {
     });
   });
 
-  it("caps tabs at 4 and nested blocks at 8", () => {
+  it("caps tabs at 5 and nested blocks at 8", () => {
     const blocks = Array.from({ length: 20 }, () => ({ type: "bio", text: "x" }));
     const tabs = Array.from({ length: 6 }, (_, i) => ({
       label: `T${i}`,
@@ -46,7 +46,7 @@ describe("tabs block", () => {
       type: string;
       tabs: { blocks: unknown[] }[];
     };
-    expect(out.tabs).toHaveLength(4);
+    expect(out.tabs).toHaveLength(5);
     expect(out.tabs[0].blocks).toHaveLength(8);
   });
 

@@ -130,6 +130,144 @@ describe("PageRenderer crash-proofing", () => {
   });
 });
 
+describe("PageRenderer webseries blocks", () => {
+  it("renders an MP4 video block as a native <video> with maker credit", () => {
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "videotest",
+            theme,
+            blocks: [
+              {
+                type: "video",
+                url: "https://storage.googleapis.com/reel24-media/films/voicescape-town-hall-e001.mp4?v=1793632719",
+                title: "Voicescape Town Hall Ep 1",
+                credit: { label: "Danny's blockpage — he hosts", url: "https://voicescape.vercel.app/danny" },
+              },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    expect(html).toContain("<video");
+    expect(html).toContain("voicescape-town-hall-e001.mp4");
+    expect(html).toContain("https://voicescape.vercel.app/danny");
+  });
+
+  it("renders a YouTube video block as a youtube-nocookie iframe", () => {
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "videotest",
+            theme,
+            blocks: [
+              { type: "video", url: "https://youtu.be/HjAVZ8fXiIE", title: "Documentary" },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    expect(html).toContain("youtube-nocookie.com/embed/HjAVZ8fXiIE");
+  });
+
+  it("renders an unplayable video URL as an honest unavailable state", () => {
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "videotest",
+            theme,
+            blocks: [
+              // The sanitizer drops this block, so the renderer never sees
+              // it — assert the page still renders instead of crashing.
+              { type: "video", url: "https://evil.example.com/x.mp4" },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    expect(html).not.toContain("evil.example.com");
+  });
+
+  it("renders guest comments and poll blocks (loading state on the server)", () => {
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "commentstest",
+            theme,
+            blocks: [
+              { type: "guestComments", thread: "discuss", title: "Discuss" },
+              { type: "poll", question: "What next?", options: ["A", "B"] },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    expect(html).toContain("Discuss");
+    expect(html).toContain("Loading comments");
+    expect(html).toContain("What next?");
+    expect(html).toContain("Loading the poll");
+  });
+
+  it("renders a guest tip jar in its resolving state (no dead tap)", () => {
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "jartest",
+            theme,
+            blocks: [
+              { type: "tipJar", username: "danny", message: "Tip Danny" },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    expect(html).toContain("Tip Danny");
+    // The recipient resolves client-side; until then the button is
+    // disabled with an honest label, never a live tap to nowhere.
+    expect(html).toContain("Loading");
+  });
+
+  it("renders all five tabs in the tab bar", () => {
+    const tab = (label: string) => ({ label, blocks: [{ type: "bio", text: "x" }] });
+    const html = renderToString(
+      <LanguageProvider>
+        <PageRenderer
+          page={{
+            version: 1,
+            username: "tabstest",
+            theme,
+            blocks: [
+              {
+                type: "tabs",
+                tabs: [tab("Watch"), tab("Community"), tab("Shorts"), tab("Discuss"), tab("Join")],
+              },
+            ] as unknown as VoicescapePage["blocks"],
+          }}
+          preview
+        />
+      </LanguageProvider>
+    );
+    for (const label of ["Watch", "Community", "Shorts", "Discuss", "Join"]) {
+      expect(html).toContain(label);
+    }
+  });
+});
+
 describe("PageRenderer wrong-typed scalars — live crash 2026-09-16", () => {
   // The model emitted schema-valid mocks whose SCALAR fields were objects
   // (e.g. hero title: {text: ...}) — isValidPage doesn't check those, and

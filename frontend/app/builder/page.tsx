@@ -21,6 +21,7 @@ import {
   IconGrid,
   IconLink,
   IconMusic,
+  IconPlay,
   IconPlus,
   IconSpark,
   IconTip,
@@ -198,6 +199,12 @@ function BlockTypeIcon({ type, size = 16 }: { type: BlockType; size?: number }) 
     case "badges":
       return <IconSpark size={size} />;
     case "nftGallery":
+      return <IconGrid size={size} />;
+    case "video":
+      return <IconPlay size={size} />;
+    case "guestComments":
+      return <IconUsers size={size} />;
+    case "poll":
       return <IconGrid size={size} />;
   }
 }

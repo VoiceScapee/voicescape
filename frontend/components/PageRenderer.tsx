@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { fetchWithTimeout } from "@/lib/fetch-timeout";
 import type { CSSProperties } from "react";
 import type { Block, RegistryMeta, VoicescapePage } from "@/lib/schema";
-import { normalizeBlockForRender } from "@/lib/schema";
+import { defaultPollId, normalizeBlockForRender } from "@/lib/schema";
 // Builder stepped flow (2026-10-18): generative template variants.
 import type { ThemeVariant } from "@/lib/template-variants";
 import { variantCssVars } from "@/lib/template-variants";
@@ -29,7 +29,6 @@ import {
   IconBolt,
   IconExternal,
   IconGlobe,
-  IconLink,
   IconMusic,
   IconPause,
   IconPlay,
@@ -40,7 +39,10 @@ import {
 import LivestreamBlock from "@/components/LivestreamBlock";
 import NftGalleryBlock from "@/components/NftGalleryBlock";
 import ChatBox from "@/components/ChatBox";
+import GuestComments from "@/components/GuestComments";
+import PollBlock from "@/components/PollBlock";
 import HeartbeatBlock from "@/components/HeartbeatBlock";
+import { parseVideoUrl, splitVideoTitle, videoEmbedUrl } from "@/lib/video";
 import NetworkPulse from "@/components/NetworkPulse";
 import "./renderer.css";
 
@@ -48,7 +50,7 @@ interface RendererProps {
   page: VoicescapePage;
   /** If true, shows the tip jar as an interactive button; parent supplies onTip. */
   tipInteractive?: boolean;
-  onTip?: () => void;
+  onTip?: (recipientUsername?: string) => void;
   /**
    * When true, the funding goal is reached: the tip CTA renders as a
    * disabled "Goal reached" badge instead of opening the tip flow.
@@ -77,6 +79,23 @@ interface RendererProps {
 export type ServiceItem = Extract<Block, { type: "services" }>["items"][number];
 
 type MusicBlockT = Extract<Block, { type: "music" }>;
+
+/**
+ * Display form of a link URL for a link card: host + path, no protocol,
+ * no www, no trailing slash (voicescape.vercel.app/danny). Falls back to
+ * the raw string when it doesn't parse. Pure — unit-tested via the
+ * template render tests.
+ */
+export function formatLinkUrl(raw: string): string {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./, "");
+    const path = u.pathname.replace(/\/$/, "");
+    return `${host}${path}${u.search}`;
+  } catch {
+    return raw;
+  }
+}
 
 /**
  * Real music player. Tracks play through the platform's own embed (Spotify /
@@ -262,6 +281,79 @@ function MusicBlock({
 }
 
 /**
+ * Video block (webseries): in-page playback. YouTube links embed via
+ * youtube-nocookie (same player as the music block); direct MP4s from
+ * the Reel24 allowlist play natively. A URL that fails the allowlist
+ * renders an honest unavailable state, never a dead player. `credit`
+ * is the maker's blockpage link, shown under the player.
+ */
+function VideoBlock({ block }: { block: Extract<Block, { type: "video" }> }) {
+  const parsed = parseVideoUrl(block.url);
+  const poster = block.poster ? safeImageUrl(block.poster) : null;
+  const creditUrl = block.credit ? safeExternalUrl(block.credit.url) : null;
+  // Episode meta (template pass — the preview's treatment): the player
+  // leads, then kicker, display title, host line, description, maker
+  // credit. An explicit `kicker` wins; otherwise derive it from a " — "
+  // in the title (left half = kicker, right half = display title). A
+  // Reel24 film also carries "· On Reel24" on a derived kicker — the
+  // film lives on Reel24, and the preview names it. Host line and
+  // description render only when the block carries them; the v3 sample
+  // doesn't yet, so the film's host line/description need a content edit.
+  const split = block.title ? splitVideoTitle(block.title) : { kicker: null, display: "" };
+  let kicker = block.kicker ?? split.kicker;
+  if (!block.kicker && split.kicker && parsed?.kind === "mp4") {
+    kicker = `${split.kicker} · On Reel24`;
+  }
+  const display = split.display || block.title || "";
+  if (!parsed) {
+    return (
+      <section className="pv-block pv-video" aria-label="Video">
+        {block.title && <h2 className="pv-block-title">{block.title}</h2>}
+        <p className="pv-empty">This video isn&apos;t available right now.</p>
+      </section>
+    );
+  }
+  return (
+    <section className="pv-block pv-video" aria-label={block.title || "Video"}>
+      {parsed.kind === "youtube" ? (
+        <div className="pv-embed-wrap" style={{ aspectRatio: "16 / 9" }}>
+          <iframe
+            src={videoEmbedUrl(parsed)}
+            title={`Play ${block.title || "video"}`}
+            loading="lazy"
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            sandbox="allow-scripts allow-popups allow-presentation"
+          />
+        </div>
+      ) : (
+        <video
+          className="pv-video-player"
+          controls
+          preload="metadata"
+          poster={poster ?? undefined}
+          src={videoEmbedUrl(parsed)}
+        >
+          Your browser does not support video playback.
+        </video>
+      )}
+      {kicker && <p className="pv-video-kicker">{kicker}</p>}
+      {display && <h2 className="pv-video-title">{display}</h2>}
+      {block.hostLine && <p className="pv-video-hosts">{block.hostLine}</p>}
+      {block.description && <p className="pv-video-desc">{block.description}</p>}
+      {block.credit && creditUrl && (
+        <p className="pv-video-credit">
+          <a href={creditUrl} target="_blank" rel="noreferrer">
+            {block.credit.label}
+            <span aria-hidden="true"> →</span>
+          </a>
+        </p>
+      )}
+    </section>
+  );
+}
+
+/**
  * Tip jar card (brand pass): the blockpage tip card. Quiet label, the
  * all-time on-chain HBAR total (public /api/earnings — the line renders
  * ONLY when a real number loads, never a fabricated 0), the plain-words
@@ -272,6 +364,7 @@ function TipJarCard({
   block,
   name,
   owner,
+  recipientUsername,
   tipInteractive,
   onTip,
   tipPaused,
@@ -279,16 +372,45 @@ function TipJarCard({
   block: Extract<Block, { type: "tipJar" }>;
   name: string;
   owner?: string | null;
+  /**
+   * Guest jar: when set, this jar tips THAT page's owner instead of the
+   * page owner. The recipient is resolved live via /api/resolve; when it
+   * can't be resolved the jar shows an honest unavailable state.
+   */
+  recipientUsername?: string;
   tipInteractive?: boolean;
-  onTip?: () => void;
+  onTip?: (recipientUsername?: string) => void;
   tipPaused?: boolean;
 }) {
   const { t } = useLanguage();
+  // Recipient resolution: undefined = resolving, null = unavailable.
+  const [recipientOwner, setRecipientOwner] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!recipientUsername) return;
+    setRecipientOwner(undefined); // new recipient — don't flash the old one's total
+    let cancelled = false;
+    fetchWithTimeout(`/api/resolve?username=${encodeURIComponent(recipientUsername)}`, 10_000)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!cancelled) setRecipientOwner(typeof d?.owner === "string" ? d.owner : null);
+      })
+      .catch(() => {
+        if (!cancelled) setRecipientOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [recipientUsername]);
+
+  // The earnings line follows the jar's real recipient, not the page owner.
+  const earningsOwner = recipientUsername ? recipientOwner : owner;
   // undefined = loading, null = unavailable (omit the line), string = a real number.
   const [hbarAllTime, setHbarAllTime] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
-    const evm = owner ? canonicalAddress(owner) : null;
+    if (earningsOwner === undefined) return; // recipient still resolving
+    const evm = earningsOwner ? canonicalAddress(earningsOwner) : null;
     if (!evm) {
       setHbarAllTime(null);
       return;
@@ -305,7 +427,7 @@ function TipJarCard({
     return () => {
       cancelled = true;
     };
-  }, [owner]);
+  }, [earningsOwner]);
 
   // Honest display: "312.0000" reads as "312"; non-numeric → omit the line.
   const totalNum = hbarAllTime == null ? null : Number(hbarAllTime);
@@ -314,6 +436,12 @@ function TipJarCard({
 
   // i18n-safe: the {total} placeholder may sit anywhere in the sentence.
   const soFarParts = t("page.tippedSoFar").split("{total}");
+
+  // Guest-jar states: resolving (disabled, honest label) or the recipient's
+  // page can't be reached (disabled + a plain-words note, never a dead tap).
+  const recipientLoading = recipientUsername !== undefined && recipientOwner === undefined;
+  const recipientUnavailable =
+    recipientUsername !== undefined && recipientOwner !== undefined && recipientOwner === null;
 
   return (
     <section className="pv-block pv-tipjar-card" aria-label={t("page.tipJarLabel")}>
@@ -348,11 +476,18 @@ function TipJarCard({
         <button
           type="button"
           className="pv-tipjar-btn"
-          onClick={tipInteractive ? onTip : undefined}
-          disabled={!tipInteractive || !onTip}
+          onClick={tipInteractive ? () => onTip?.(recipientUsername) : undefined}
+          disabled={!tipInteractive || !onTip || recipientLoading || recipientUnavailable}
         >
-          {t("page.tipCta").replace("{name}", name)}
+          {recipientLoading
+            ? "Loading…"
+            : recipientUnavailable
+              ? "Page unavailable"
+              : t("page.tipCta").replace("{name}", name)}
         </button>
+      )}
+      {recipientUnavailable && (
+        <p className="pv-tipjar-msg">That page isn&apos;t available right now — try again later.</p>
       )}
     </section>
   );
@@ -379,7 +514,7 @@ function TabsBlock({
   isFounder?: boolean;
   tipName: string;
   tipInteractive?: boolean;
-  onTip?: () => void;
+  onTip?: (recipientUsername?: string) => void;
   tipPaused?: boolean;
   tipOwner?: string | null;
   preview?: boolean;
@@ -477,7 +612,7 @@ function BlockView({
   tipName: string;
   /** Tip-jar card wiring — the card's CTA opens the tip flow on the live page. */
   tipInteractive?: boolean;
-  onTip?: () => void;
+  onTip?: (recipientUsername?: string) => void;
   tipPaused?: boolean;
   /** On-chain owner account for the all-time earnings lookup. */
   tipOwner?: string | null;
@@ -547,23 +682,44 @@ function BlockView({
                   openExternalUrl(url);
                 }}
               >
-                <IconLink size={18} />
-                <span className="pv-link-label">{item.label}</span>
-                <IconExternal size={14} className="pv-link-ext" />
+                <span className="pv-link-body">
+                  <span className="pv-link-label">{item.label}</span>
+                  <span className="pv-link-url vs-mono">{formatLinkUrl(url)}</span>
+                </span>
+                <span className="pv-link-arrow" aria-hidden="true">→</span>
               </a>
             );
           })}
         </section>
       );
-    case "tipJar":
+    case "tipJar": {
+      // Guest jar: tip THAT page's owner. The recipient's own goal state
+      // is unknown here, so the page's paused state never applies to it.
+      const recipient =
+        block.username && block.username !== tipName ? block.username : undefined;
       return (
         <TipJarCard
           block={block}
-          name={tipName}
+          name={recipient ?? tipName}
           owner={tipOwner}
+          recipientUsername={recipient}
           tipInteractive={tipInteractive}
           onTip={onTip}
-          tipPaused={tipPaused}
+          tipPaused={recipient ? false : tipPaused}
+        />
+      );
+    }
+    case "video":
+      return <VideoBlock block={block} />;
+    case "guestComments":
+      return <GuestComments page={tipName} thread={block.thread} title={block.title} />;
+    case "poll":
+      return (
+        <PollBlock
+          page={tipName}
+          pollId={block.id && block.id.length > 0 ? block.id : defaultPollId(block.question)}
+          question={block.question}
+          options={block.options}
         />
       );
     case "socials": {
@@ -921,16 +1077,21 @@ function BookingBlock({ block }: { block: Extract<Block, { type: "booking" }> })
       <div className="pv-links">
         {block.items
           .filter((item) => safeExternalUrl(item.url) && !isPlaceholderUrl(item.url))
-          .map((item, i) => (
-          <a key={i} className="pv-link-btn" href={safeExternalUrl(item.url)!} target="_blank" rel="noreferrer">
-            <IconLink size={18} />
-            <span className="pv-link-label">
-              {item.label}
-              {item.note && <span className="pv-link-note">{item.note}</span>}
+          .map((item, i) => {
+          const url = safeExternalUrl(item.url)!;
+          return (
+          <a key={i} className="pv-link-btn" href={url} target="_blank" rel="noreferrer">
+            <span className="pv-link-body">
+              <span className="pv-link-label">
+                {item.label}
+                {item.note && <span className="pv-link-note">{item.note}</span>}
+              </span>
+              <span className="pv-link-url vs-mono">{formatLinkUrl(url)}</span>
             </span>
-            <IconExternal size={14} className="pv-link-ext" />
+            <span className="pv-link-arrow" aria-hidden="true">→</span>
           </a>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
@@ -1056,6 +1217,14 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
       {agentMeta && <AgentBanner meta={agentMeta} />}
 
       <main className="pv-blocks">
+        {/* Trust badges (template pass): true of every blockpage — the
+            page is owned by its wallet, never rented, and tips split
+            98/2 on-chain. Rendered automatically, never from page
+            content, so no page can fake or remove them. */}
+        <div className="pv-trust" aria-label="About this page">
+          <span className="pv-trust-badge">Page owned by its wallet, not rented</span>
+          <span className="pv-trust-badge">Tips split 98 / 2 on-chain</span>
+        </div>
         {safeBlocks.map((block, i) => (
           // data-pv-block anchors let the page voice mic smooth-scroll to a
           // block ("play their music" -> the music block). A section wrapper
@@ -1090,7 +1259,7 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
                 <span>Goal reached — donations paused</span>
               </button>
             ) : (
-              <button type="button" className="pv-tip-cta-btn" onClick={onTip}>
+              <button type="button" className="pv-tip-cta-btn" onClick={() => onTip?.()}>
                 <IconTip size={20} />
                 <span>Tip this page</span>
               </button>

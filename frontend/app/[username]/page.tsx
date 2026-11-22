@@ -1369,7 +1369,11 @@ function JustPublishedBanner({ username }: { username: string }) {
 
 function PublicPageInner({ username }: { username: string }) {
   const [state, setState] = useState<LoadState>({ status: "loading" });
-  const [tipOpen, setTipOpen] = useState(false);
+  // Tip dialog target: the page username, or a guest-jar recipient when a
+  // tipJar block carries a `username` (the dialog tips THAT page's owner).
+  // Null = closed. The toggle keeps the old behaviour: tapping the same
+  // jar again closes the dialog.
+  const [tipTarget, setTipTarget] = useState<string | null>(null);
   const [service, setService] = useState<ServiceItem | null>(null);
   // Deep link from the fundraiser board: /<username>?tip=1 opens the tip box
   // so a donation is one tap from the campaign card. ?goal=1 scrolls to the
@@ -1399,7 +1403,7 @@ function PublicPageInner({ username }: { username: string }) {
     autoGoal = false;
   }
   useEffect(() => {
-    if (autoTip) setTipOpen(true);
+    if (autoTip) setTipTarget(username);
   }, [autoTip]);
   const widBeaconFired = useRef(false);
   useEffect(() => {
@@ -1642,7 +1646,9 @@ function PublicPageInner({ username }: { username: string }) {
         page={state.page}
         meta={state.meta}
         tipInteractive
-        onTip={() => setTipOpen((v) => !v)}
+        onTip={(recipient) =>
+          setTipTarget((prev) => (prev === (recipient ?? username) ? null : (recipient ?? username)))
+        }
         tipPaused={goalReached}
         onPayService={setService}
         // Canonical identity: the route username, which only renders after
@@ -1654,12 +1660,14 @@ function PublicPageInner({ username }: { username: string }) {
           live blocks. Fixed bottom-left so it never collides with AgentChat
           (bottom-right). */}
       <PageVoiceMic username={username} page={state.page} />
-      {tipOpen && (
+      {tipTarget !== null && (
         <TipBox
-          username={username}
-          paused={goalReached}
-          goalTargetHbar={fundingGoal?.targetHbar ?? null}
-          onClose={() => setTipOpen(false)}
+          username={tipTarget}
+          // The page's funding goal (paused state + target) applies only
+          // when tipping this page itself, never a guest-jar recipient.
+          paused={tipTarget === username ? goalReached : false}
+          goalTargetHbar={tipTarget === username ? fundingGoal?.targetHbar ?? null : null}
+          onClose={() => setTipTarget(null)}
         />
       )}
       {service && <ServicePayModal service={service} onClose={() => setService(null)} />}
