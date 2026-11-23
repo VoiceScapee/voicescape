@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBreadcrumbJsonLd,
   buildPageMetadata,
   jsonLdHtml,
   siteUrl,
@@ -93,5 +94,40 @@ describe("jsonLdHtml", () => {
       "@type": "CreativeWork",
       text: 'a </script><script>alert("x")</script> b',
     });
+  });
+});
+
+describe("buildBreadcrumbJsonLd", () => {
+  it("emits 1-based ListItems with absolute URLs", () => {
+    const doc = buildBreadcrumbJsonLd([
+      { name: "Home", url: "/" },
+      { name: "Explore Blockpages", url: "/explore" },
+    ]);
+    expect(doc).toEqual({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Home",
+          item: "https://voicescape.vercel.app/",
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Explore Blockpages",
+          item: "https://voicescape.vercel.app/explore",
+        },
+      ],
+    });
+  });
+
+  it("passes absolute URLs through unchanged", () => {
+    const doc = buildBreadcrumbJsonLd([
+      { name: "Elsewhere", url: "https://example.com/page" },
+    ]);
+    const items = doc.itemListElement as { item: string }[];
+    expect(items[0].item).toBe("https://example.com/page");
   });
 });

@@ -37,6 +37,37 @@ export function jsonLdHtml(data: unknown): string {
   return JSON.stringify(data).replace(/</g, "\\u003c");
 }
 
+export interface BreadcrumbItem {
+  /** Display name, e.g. "Explore Blockpages". */
+  name: string;
+  /** Absolute URL or site-relative path. */
+  url: string;
+}
+
+/**
+ * Build a schema.org BreadcrumbList document for a page's trail, e.g.
+ * Home → Explore Blockpages. Positions are 1-based in trail order.
+ * Relative paths resolve against the site origin so every item is an
+ * absolute URL (crawlers ignore relative breadcrumb URLs). A one-item
+ * trail (the homepage alone) carries no signal, so the homepage does
+ * not get a BreadcrumbList — only pages below it do.
+ */
+export function buildBreadcrumbJsonLd(
+  items: BreadcrumbItem[],
+): Record<string, unknown> {
+  const origin = siteUrl();
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((item, i) => ({
+      "@type": "ListItem",
+      position: i + 1,
+      name: item.name,
+      item: item.url.startsWith("http") ? item.url : origin + item.url,
+    })),
+  };
+}
+
 export interface PageSeo {
   title: string;
   description: string;
