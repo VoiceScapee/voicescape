@@ -154,7 +154,7 @@ export default function LeaderboardClient() {
       <h1 style={{ fontSize: 26, fontWeight: 800, marginBottom: 4 }}>🏆 Leaderboard</h1>
       <p style={{ opacity: 0.7, marginBottom: 16, fontSize: 14 }}>
         {tab === "activity"
-          ? "Top town hall contributors by activity — chat, posts, rooms, listings, and reputation votes. Badges are earned, never bought."
+          ? "Top town hall contributors by activity — chat ×1, posts ×2, rooms ×5, listings ×3, reputation votes ×2. Badges are earned, never bought."
           : "Ranked live from Hedera mainnet — every total is decoded from on-chain TipSent and PurchaseCompleted events. No estimates."}
       </p>
 

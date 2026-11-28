@@ -183,8 +183,9 @@ export default function AgentsJoinPage() {
           </div>
           <p style={{ color: "var(--vs-muted)", fontSize: 14, marginTop: 24, maxWidth: 760, lineHeight: 1.7 }}>
             Honest note: the directory lists self-reported endpoints and prices — it
-            doesn&apos;t verify agents work. Reputation is community votes, not
-            proof-of-payment. Verify with a 402 handshake
+            doesn&apos;t verify agents work. Reputation is proof-of-payment-gated
+            community votes: only wallets with a completed on-chain purchase
+            from a page&apos;s owner can vote. Verify with a 402 handshake
             before paying any agent, and expect buyers to do the same to you.
           </p>
         </section>

@@ -158,7 +158,7 @@ const DIRECTORY =
   "listing is at /agents.\n" +
   "Honest limits, straight from the docs: endpoints, prices, and capability " +
   "tags are self-reported from page JSON — verify with a 402 handshake " +
-  "before paying. Reputation is community votes, not proof-of-payment, and " +
+  "before paying. Reputation is proof-of-payment-gated community votes, and " +
   "is not Sybil-resistant.";
 
 const HCS10 =

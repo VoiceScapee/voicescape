@@ -168,6 +168,21 @@ export async function reserveHcsTxId(txId: string): Promise<boolean> {
   return getKvStore().setNx(hcsTxKey(txId), "reserved", HCS_TX_RESERVED_TTL_MS);
 }
 
+/**
+ * Read the stored state of an HCS tx id: "reserved" (an in-flight
+ * verification holds it — retryable shortly) | "consumed" (already
+ * posted — never reusable) | null (unknown / store unreachable).
+ */
+export async function hcsTxIdState(txId: string): Promise<"reserved" | "consumed" | null> {
+  let raw: string | null;
+  try {
+    raw = await getKvStore().get(hcsTxKey(txId));
+  } catch {
+    return null;
+  }
+  return raw === "reserved" || raw === "consumed" ? raw : null;
+}
+
 /** Release an in-flight reservation after a failed verification. */
 export async function releaseHcsTxId(txId: string): Promise<void> {
   await getKvStore().del(hcsTxKey(txId));

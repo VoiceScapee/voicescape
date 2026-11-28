@@ -1256,13 +1256,25 @@ export async function computeBadges(hcs: HcsPort, input: ComputeBadgesInput): Pr
   }
 
   // Rank among all users by first activity (for Early Adopter).
+  const pioneerRank = pioneerRankFor(blob, key);
+
+  return { username, badges: badgesForUser(entry ? toStats(entry) : null, enrichment, pioneerRank), stats: entry };
+}
+
+/**
+ * 1-based rank by first HCS activity (for the Early Adopter badge), or
+ * null when the user has no activity. Shared by the badges endpoint and
+ * the leaderboard — the leaderboard used to pass null here, so it never
+ * awarded Early Adopter and its badgeCount disagreed with the profile
+ * endpoint on every page (Clearance second pass, 2026-11-28, finding D).
+ */
+export function pioneerRankFor(blob: TownhallStatsBlob, username: string): number | null {
+  const key = username.toLowerCase();
   const ranked = Object.values(blob.users)
     .filter((u) => u.firstTs > 0)
     .sort((a, b) => a.firstTs - b.firstTs);
   const idx = ranked.findIndex((u) => u.username.toLowerCase() === key);
-  const pioneerRank = idx === -1 ? null : idx + 1;
-
-  return { username, badges: badgesForUser(entry ? toStats(entry) : null, enrichment, pioneerRank), stats: entry };
+  return idx === -1 ? null : idx + 1;
 }
 
 /** Rehydrate a cache entry into UserStats for the pure badge function. */
@@ -1324,7 +1336,7 @@ export async function computeLeaderboard(hcs: HcsPort = defaultHcsPort()): Promi
 
   return Promise.all(
     ranked.map(async ({ u, score }) => {
-      const badges = badgesForUser(toStats(u), EMPTY_ENRICHMENT, null);
+      const badges = badgesForUser(toStats(u), EMPTY_ENRICHMENT, pioneerRankFor(blob, u.username));
       const wallet = await resolveUsernameWallet(u.username);
       return {
         username: u.username,

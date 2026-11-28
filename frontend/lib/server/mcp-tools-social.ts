@@ -213,6 +213,20 @@ function prepareInstructions(
   );
 }
 
+/**
+ * Content-bound verification excludes `ts` — the same convention as the
+ * web submitEnforcement handler: the prepare step stamps it, the confirm
+ * step rebuilds the message, and the two clocks never agree, so binding
+ * it would reject every legitimate confirm. All semantic fields bind.
+ * (Clearance second pass, 2026-11-28, finding F: the prepared message
+ * must still CARRY `ts` — the read path drops ts-less envelopes — it
+ * just isn't part of the verify comparison.)
+ */
+function verifyMessage(message: Record<string, unknown>): Record<string, unknown> {
+  const { ts: _ts, ...rest } = message;
+  return rest;
+}
+
 function topicFor(domain: "forum" | "chat" | "governance"): string | { error: string } {
   const topic = getTopicId(domain);
   if (!topic) return { error: "town hall topics are not configured — try again later" };
@@ -327,6 +341,9 @@ export async function postForumTool(
   if (typeof topic !== "string") return topic;
 
   // Content-bound: the on-chain message must match these exact fields.
+  // `ts` is stamped here so the read path accepts the message (finding F:
+  // ts-less envelopes were silently dropped) — verify excludes it, see
+  // verifyMessage.
   const message: Record<string, unknown> = {
     v: 1,
     kind: "post",
@@ -335,6 +352,7 @@ export async function postForumTool(
     wall: null,
     body,
     replyTo,
+    ts: new Date().toISOString(),
   };
 
   if (!args.hcs_tx_id) {
@@ -348,7 +366,7 @@ export async function postForumTool(
     };
   }
 
-  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, message));
+  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, verifyMessage(message)));
   if (verr) return verr;
   return { posted: true, topic, tx_id: args.hcs_tx_id.trim(), board, reply_to: replyTo };
 }
@@ -431,6 +449,7 @@ export async function postChatTool(
     author: identity.username,
     room,
     body,
+    ts: new Date().toISOString(),
   };
 
   if (!args.hcs_tx_id) {
@@ -443,7 +462,7 @@ export async function postChatTool(
     };
   }
 
-  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, message));
+  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, verifyMessage(message)));
   if (verr) return verr;
   return { posted: true, topic, tx_id: args.hcs_tx_id.trim(), room };
 }
@@ -532,6 +551,7 @@ export async function createPollTool(
     title,
     body: pollBody,
     closesAt,
+    ts: new Date().toISOString(),
   };
 
   if (!args.hcs_tx_id) {
@@ -544,7 +564,7 @@ export async function createPollTool(
     };
   }
 
-  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, message));
+  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, verifyMessage(message)));
   if (verr) return verr;
   return { posted: true, topic, tx_id: args.hcs_tx_id.trim(), poll_id: id };
 }
@@ -613,6 +633,7 @@ export async function votePollTool(
     proposal: pollId,
     voter: identity.username,
     choice: args.choice,
+    ts: new Date().toISOString(),
   };
 
   if (!args.hcs_tx_id) {
@@ -626,7 +647,7 @@ export async function votePollTool(
     };
   }
 
-  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, message));
+  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, verifyMessage(message)));
   if (verr) return verr;
 
   // Parity with the web handler: return the current tally after voting.
@@ -739,6 +760,7 @@ export async function createEventTool(
     description,
     startsAt,
     room: `event-${id}`,
+    ts: new Date().toISOString(),
   };
 
   if (!args.hcs_tx_id) {
@@ -751,7 +773,7 @@ export async function createEventTool(
     };
   }
 
-  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, message));
+  const verr = verifyError(await verifyUserHcsTx(th, agentSession(identity), args.hcs_tx_id, topic, verifyMessage(message)));
   if (verr) return verr;
   return { posted: true, topic, tx_id: args.hcs_tx_id.trim(), event_id: id };
 }

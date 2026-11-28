@@ -14,7 +14,7 @@ import { canonicalAddress } from "../../session-message";
 import type { HcsPort } from "./hcs";
 import { defaultHcsPort } from "./hcs";
 import type { MirrorPort } from "./mirror";
-import { consumeDustFeeTx, consumeHcsTxId, defaultMirrorPort, releaseDustFeeTx, releaseHcsTxId, reserveDustFeeTx, reserveHcsTxId } from "./mirror";
+import { consumeDustFeeTx, consumeHcsTxId, defaultMirrorPort, hcsTxIdState, releaseDustFeeTx, releaseHcsTxId, reserveDustFeeTx, reserveHcsTxId } from "./mirror";
 import { filterHiddenPosts, isAuthorizedModAction, isGlobalMod, isModWallet, isOwnerAddress } from "./mod";
 import { getCopyrightStatus, getMaxStrikes } from "../dmca/strikes";
 import type { RegistryPort } from "./registry-check";
@@ -192,13 +192,51 @@ export async function verifyUserHcsTx(
     return err(503, "temporarily unavailable — please retry in a moment");
   }
   if (!reserved) {
+    // Tell the two states apart (Clearance second pass, 2026-11-28,
+    // finding F): a reservation held by an in-flight verification is
+    // retryable in a moment; a consumed id is spent for good. The old
+    // single message sent agents to buy a new message for either case.
+    const state = await hcsTxIdState(txId);
+    if (state === "reserved") {
+      return err(400, "this HCS transaction is already being verified — wait a moment and retry with the same id");
+    }
     return err(400, "this HCS transaction was already used — submit a new message from your wallet");
   }
-  // Release the reservation on any failure path below.
+  // Release the reservation on any failure path below. The release is
+  // awaited and logged when it fails — a swallowed release failure used
+  // to strand the reservation for its full 5-minute TTL, so a retry
+  // inside that window answered "already used" for a write that never
+  // landed (Clearance second pass, finding F).
   const fail = (result: HandlerResult): HandlerResult => {
-    releaseHcsTxId(txId).catch(() => {});
+    releaseHcsTxId(txId).catch((e) => {
+      console.error(`[townhall] failed to release HCS tx reservation ${txId}: ${e instanceof Error ? e.message : String(e)}`);
+    });
     return result;
   };
+  try {
+    return await verifyReservedTx(deps, session, txId, topic, expectedContent, fail);
+  } catch (e) {
+    // Any throw after the reserve (a port throwing instead of returning
+    // null, a store blip) must release the reservation — otherwise the
+    // paid tx id is stranded until its TTL expires.
+    console.error(`[townhall] HCS tx verification threw for ${txId}: ${e instanceof Error ? e.message : String(e)}`);
+    return fail(err(503, "temporarily unavailable — please retry in a moment"));
+  }
+}
+
+/**
+ * The verification itself, run only while the tx id is reserved. Separated
+ * from verifyUserHcsTx so the reserve/release lifecycle is one place.
+ * `fail` releases the reservation and returns the given error result.
+ */
+async function verifyReservedTx(
+  deps: TownhallDeps,
+  session: VerifiedSession,
+  txId: string,
+  topic: string,
+  expectedContent: Record<string, unknown> | undefined,
+  fail: (result: HandlerResult) => HandlerResult,
+): Promise<HandlerResult | null> {
   // Resolve the session address to a 0.0.x account ID for payer comparison.
   // Handles long-zero (0x0000...0eff) vs public-key alias (0x30C6...) forms.
   const payerId = await deps.mirror.resolveAccountId(session.address);
@@ -709,6 +747,11 @@ export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBod
   }
   const topic = topicOr503("chat");
   if (typeof topic !== "string") return topic;
+  // First create wins — checked BEFORE the HCS tx id is consumed, so a
+  // 409 for an existing id never burns the paid transaction id
+  // (Clearance second pass, finding F).
+  const existing = await collectChatRooms(deps);
+  if (existing.some((r) => r.id === id)) return err(409, `room "${id}" already exists`);
   // Content-bound: the on-chain message must match the room fields.
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
@@ -719,9 +762,6 @@ export async function createChatRoom(deps: TownhallDeps, body: CreateChatRoomBod
     description,
   });
   if (verified) return verified;
-  // First create wins — an id that already exists is a conflict.
-  const existing = await collectChatRooms(deps);
-  if (existing.some((r) => r.id === id)) return err(409, `room "${id}" already exists`);
   // Message verified on-chain via user's wallet. Return the room ID.
   return ok({ roomId: id }, 201);
 }
@@ -794,6 +834,11 @@ export async function castRepVote(deps: TownhallDeps, body: CastRepVoteBody): Pr
   if (typeof topic !== "string") return topic;
   // The voter pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the vote.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
     kind: "rep-vote",
@@ -802,9 +847,6 @@ export async function castRepVote(deps: TownhallDeps, body: CastRepVoteBody): Pr
     value: body.value,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(own.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   const messages = await deps.hcs.queryAll(topic);
   const tally = aggregateRepVotes(messages, target, voter);
@@ -950,6 +992,11 @@ export async function voteProposal(
   if (typeof topic !== "string") return topic;
   // The voter pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the vote.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
     kind: "proposal-vote",
@@ -959,9 +1006,6 @@ export async function voteProposal(
     choice: body.choice,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(own.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   const messages = await deps.hcs.queryAll(topic);
   const tally = countProposalVotes(messages, proposalId);
@@ -1115,6 +1159,11 @@ export async function submitModAction(
 
   // The moderator pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the mod action.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(actor.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, actor.session, body.hcsTxId, topic, {
     v: 1,
     kind: "mod-action",
@@ -1126,9 +1175,6 @@ export async function submitModAction(
     action: "hide",
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(actor.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
@@ -1247,6 +1293,11 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
 
   // The reporter pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the report.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(s.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, s.session, body.hcsTxId, topic, {
     v: 1,
     kind: "report",
@@ -1258,9 +1309,6 @@ export async function submitReport(deps: TownhallDeps, body: SubmitReportBody): 
     reporter,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(s.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
@@ -1380,11 +1428,13 @@ async function submitEnforcement(
   // Content-bound: the on-chain message must match the enforcement action.
   // (ts is excluded — client and server clocks differ; all semantic fields bind.)
   const { ts: _ts, ...expectedContent } = msg;
-  const verified = await verifyUserHcsTx(deps, session, hcsTxId, topic, expectedContent);
-  if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
   const quota = await requireTownhallWriteQuota(session);
   if (quota) return quota;
+  const verified = await verifyUserHcsTx(deps, session, hcsTxId, topic, expectedContent);
+  if (verified) return verified;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, wallet: msg.wallet }, 201);
 }
@@ -1864,6 +1914,11 @@ export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): 
   }
   // The appellant pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the appeal.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(s.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, s.session, body.hcsTxId, topic, {
     v: 1,
     kind: "appeal",
@@ -1872,9 +1927,6 @@ export async function submitAppeal(deps: TownhallDeps, body: SubmitAppealBody): 
     reason,
   });
   if (verified) return verified;
-  // Bound by the per-wallet daily quota like reports.
-  const quota = await requireTownhallWriteQuota(s.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
@@ -2048,6 +2100,11 @@ export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Pr
   const startsAt = body.startsAt;
   // The moderator pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the event fields.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(actor.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, actor.session, body.hcsTxId, topic, {
     v: 1,
     kind: "event",
@@ -2059,9 +2116,6 @@ export async function createEvent(deps: TownhallDeps, body: CreateEventBody): Pr
     room: `event-${id}`,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(actor.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ id }, 201);
 }
@@ -2399,6 +2453,11 @@ export async function setListingStatus(
   }
   // The seller pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must be the same listing with the new status.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
   const stored = latest.contents;
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
@@ -2415,9 +2474,6 @@ export async function setListingStatus(
     status: body.status,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(own.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({});
 }
@@ -2569,6 +2625,11 @@ export async function setProfileLinks(
   if (typeof topic !== "string") return topic;
   // The signer pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the links.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
     kind: "profile-links",
@@ -2577,9 +2638,6 @@ export async function setProfileLinks(
     links,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(own.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, txId: body.hcsTxId }, 201);
 }
@@ -2742,6 +2800,11 @@ export async function recordReferral(
 
   // The referred user pays the HCS fee from their wallet — no dust fee, no operator key.
   // Content-bound: the on-chain message must match the referral.
+  // Spam prevention FIRST (Clearance second pass, finding F): the quota
+  // check runs before the HCS tx id is consumed, so a 429/503 here never
+  // burns the paid transaction id. It consumes one free quota unit.
+  const quota = await requireTownhallWriteQuota(own.session);
+  if (quota) return quota;
   const verified = await verifyUserHcsTx(deps, own.session, body.hcsTxId, topic, {
     v: 1,
     kind: "referral",
@@ -2750,9 +2813,6 @@ export async function recordReferral(
     referred,
   });
   if (verified) return verified;
-  // Spam prevention: bound user-signed writes per wallet.
-  const quota = await requireTownhallWriteQuota(own.session);
-  if (quota) return quota;
   // Message verified on-chain via user's wallet.
   return ok({ verified: true, txId: body.hcsTxId }, 201);
 }

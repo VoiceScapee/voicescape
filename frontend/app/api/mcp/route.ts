@@ -24,6 +24,7 @@ import {
   type McpRateLimitTier,
 } from "@/lib/server/mcp-rate-limit-tier";
 import { DISCOVERABLE_TOOLS } from "@/lib/server/mcp-discoverable-tools";
+import { withUtf8Charset } from "@/lib/server/http-charset";
 import { createMcpHandler } from "mcp-handler";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
 import { getKvStore } from "@/lib/server/store";
@@ -112,13 +113,13 @@ async function handle(req: Request): Promise<Response> {
   // clients, which only ever POST here.
   if (req.method === "GET") {
     const origin = new URL(req.url).origin;
-    return Response.json({
+    return withUtf8Charset(Response.json({
       mcp: "This is a Streamable HTTP MCP server endpoint — not a web page.",
       how_to_connect: `Add it to your MCP client as a Streamable HTTP server: ${origin}/api/mcp`,
       claude_code: `claude mcp add --transport http voicescape ${origin}/api/mcp`,
       docs: `${origin}/mcp`,
       note: "This endpoint speaks JSON-RPC over POST. Fetching it with a browser or an assistant's web-fetch tool won't run tools — connect it in an MCP client instead.",
-    });
+    }));
   }
 
   // Per-IP gate first — cheap, before any MCP protocol work.
@@ -157,10 +158,10 @@ async function handle(req: Request): Promise<Response> {
       MCP_IP_WINDOW_MS,
     );
   } catch {
-    return Response.json(
+    return withUtf8Charset(Response.json(
       { error: "temporarily unavailable — please retry in a moment" },
       { status: 503 },
-    );
+    ));
   }
   if (!rl.allowed) {
     // Throttled agents would otherwise be invisible — record the 429 in
@@ -197,10 +198,10 @@ async function handle(req: Request): Promise<Response> {
         /* not JSON — keep the plain body */
       }
     }
-    return Response.json(payload, {
+    return withUtf8Charset(Response.json(payload, {
       status: 429,
       headers: { "Retry-After": String(retryAfterSec) },
-    });
+    }));
   }
 
   // The request context (origin, client IP, auth token) travels to the
@@ -222,8 +223,8 @@ async function handle(req: Request): Promise<Response> {
   // Discovery filter: tools/list advertises only DISCOVERABLE_TOOLS —
   // the full 71-tool list is over 24,000 tokens, 3x Groq's free-tier cap.
   // tools/call is untouched, so every tool stays callable by name.
-  if (isToolsList) return filterToolsListResponse(res);
-  return res;
+  if (isToolsList) return withUtf8Charset(await filterToolsListResponse(res));
+  return withUtf8Charset(res);
 }
 
 // Browser-based MCP clients (e.g. a web playground calling the endpoint

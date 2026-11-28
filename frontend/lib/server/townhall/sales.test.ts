@@ -39,7 +39,7 @@ describe("RealSalesPort", () => {
     expect(seen.length).toBeGreaterThan(0); // mirror call happens with mainnet fallback
   });
 
-  it("queries the Tips contract for PurchaseCompleted logs with buyer/seller topics", async () => {
+  it("queries the Tips contract for PurchaseCompleted logs with buyer/seller topics, windowed so the mirror node accepts it", async () => {
     vi.stubEnv("NEXT_PUBLIC_TIPS_ADDRESS", TIPS);
     const seen: string[] = [];
     vi.stubGlobal("fetch", async (url: unknown) => {
@@ -48,16 +48,39 @@ describe("RealSalesPort", () => {
     });
     const port = new RealSalesPort();
     await expect(port.hasCompletedPurchase(BUYER, SELLER)).resolves.toBe(false);
-    expect(seen).toHaveLength(1);
-    const url = new URL(seen[0]);
-    expect(url.pathname).toContain(`/api/v1/contracts/${TIPS}/results/logs`);
-    expect(url.searchParams.get("topic0")).toBe(EXPECTED_TOPIC0);
-    expect(url.searchParams.get("topic1")).toBe(
-      "0x" + BUYER.slice(2).toLowerCase().padStart(64, "0"),
-    );
-    expect(url.searchParams.get("topic2")).toBe(
-      "0x" + SELLER.slice(2).toLowerCase().padStart(64, "0"),
-    );
+    // The mirror node rejects topic filters without a timestamp range,
+    // and ranges wider than 7 days ("within 7d") — every window must be
+    // a valid ≤6-day range. Clearance second pass, 2026-11-28, finding D.
+    expect(seen.length).toBeGreaterThan(1);
+    // Promise.all runs the windows concurrently, so seen order is
+    // arbitrary — sort by window start before checking the tiling.
+    const windows = seen
+      .map((raw) => {
+        const url = new URL(raw);
+        expect(url.pathname).toContain(`/api/v1/contracts/${TIPS}/results/logs`);
+        expect(url.searchParams.get("topic0")).toBe(EXPECTED_TOPIC0);
+        expect(url.searchParams.get("topic1")).toBe(
+          "0x" + BUYER.slice(2).toLowerCase().padStart(64, "0"),
+        );
+        expect(url.searchParams.get("topic2")).toBe(
+          "0x" + SELLER.slice(2).toLowerCase().padStart(64, "0"),
+        );
+        const ts = url.searchParams.getAll("timestamp");
+        return {
+          gte: Number(ts.find((t) => t.startsWith("gte:"))?.slice(4)),
+          lte: Number(ts.find((t) => t.startsWith("lte:"))?.slice(4)),
+        };
+      })
+      .sort((a, b) => a.gte - b.gte);
+    let prevLte = -1;
+    for (const { gte, lte } of windows) {
+      expect(Number.isFinite(gte) && Number.isFinite(lte)).toBe(true);
+      expect(lte - gte).toBeLessThanOrEqual(6 * 24 * 60 * 60);
+      if (prevLte !== -1) expect(gte).toBe(prevLte); // windows tile with no gap
+      prevLte = lte;
+    }
+    // Windows start at the first Tips log (2026-09-01) and run to now.
+    expect(windows[0].gte).toBe(1788220800);
   });
 
   it("returns true when any matching log exists (the event proves the atomic 98/2 transfer)", async () => {

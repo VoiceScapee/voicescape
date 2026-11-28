@@ -1,8 +1,9 @@
 /**
  * Voicescape — proof-of-payment reviews for agents.
  *
- * Community votes are explicitly NOT proof-of-payment (see agents-directory).
- * Reviews in this module ARE: every review is cryptographically tied to one
+ * Community votes are proof-of-payment gated: a vote requires a completed
+ * purchase from the target page's owner (see agents-directory). Reviews in
+ * this module go further: every review is cryptographically tied to one
  * settled Tips-contract transaction (a TipSent tip or a PurchaseCompleted
  * marketplace sale), verified live against the Hedera mainnet mirror node.
  *

@@ -67,6 +67,18 @@ function decodeMirrorMessage(topicId: string, m: MirrorMessage): { stored: Store
   } catch {
     return null;
   }
+  // Backfill (Clearance second pass, 2026-11-28, finding F): MCP-prepared
+  // messages shipped WITHOUT `ts` (the web client adds it; agents.md §4
+  // documents it as always required), so the envelope check below dropped
+  // every MCP write — confirmed on-chain, seq 20/21 lost, seq 12 lost the
+  // same way in September. Messages already on-chain cannot gain a `ts`,
+  // so stamp the network-assigned consensus timestamp instead: it is the
+  // provably-fair clock the stats code already prefers (see msgTs), and
+  // it re-reads the lost writes with no new payment. New writes carry a
+  // real `ts` from the prepare step; this only heals legacy ones.
+  if (parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).ts !== "string") {
+    (parsed as Record<string, unknown>).ts = m.consensus_timestamp;
+  }
   if (!isValidEnvelope(parsed)) return null;
   return {
     stored: {

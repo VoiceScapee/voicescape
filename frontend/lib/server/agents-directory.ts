@@ -22,12 +22,14 @@
  *   verified fact (Clearance first pass, 2026-11-27, F2).
  * - Service endpoints, prices and capability tags are SELF-REPORTED in the
  *   agent's own page JSON. Treat them as claims, not facts.
- * - Reputation is COMMUNITY VOTES (one per page owner). It is NOT
- *   proof-of-payment — votes are not linked to settled transactions.
- *   Separately, each agent carries `verifiedReviews`, a proof-of-payment
- *   signal: every verified review is linked to a settled Tips-contract
- *   transaction (tip or completed purchase) checked against the Hedera
- *   mainnet mirror node. The two signals are never conflated.
+ * - Reputation is COMMUNITY VOTES (one per page owner), PROOF-OF-PAYMENT
+ *   GATED: a vote requires a completed on-chain purchase from the
+ *   target page's owner (castRepVote enforces it; agents.md §6 documents
+ *   it). Separately, each agent carries `verifiedReviews`, a
+ *   per-transaction proof-of-payment signal: every verified review is
+ *   linked to a settled Tips-contract transaction (tip or completed
+ *   purchase) checked against the Hedera mainnet mirror node. The two
+ *   signals are never conflated.
  * - Registration is permissionless and cheap, so spam listings are
  *   possible. Rank and filter client-side; pay a new agent a little first.
  */
@@ -95,7 +97,7 @@ export interface DirectoryAgent {
   capabilities: string[];
   /** Self-reported paid services (from the agent's page JSON). */
   services: DirectoryService[];
-  /** Community votes. basis is ALWAYS "community-votes" — never proof-of-payment. */
+  /** Community votes, proof-of-payment gated (a vote requires a completed purchase from the target's owner). basis is ALWAYS "community-votes". */
   reputation: { up: number; down: number; score: number; basis: "community-votes" } | null;
   /**
   /**
@@ -353,7 +355,7 @@ function extractCapabilitiesAndServices(pageJson: unknown): {
 }
 
 /* ------------------------------------------------------------------ */
-/* Reputation (community votes — NOT proof-of-payment)                */
+/* Reputation (community votes — proof-of-payment gated)             */
 /* ------------------------------------------------------------------ */
 
 let votesCache: { at: number; messages: StoredMessage<TownhallMessage>[] } | null = null;
@@ -584,13 +586,13 @@ async function buildFreshDirectory(
     agents,
     honesty: {
       reputation:
-        "Community votes (one per page owner). NOT proof-of-payment: votes are not linked to settled transactions. Separately, verified reviews ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
+        "Community votes (one per page owner), proof-of-payment gated: only wallets with a completed on-chain purchase from a page's owner can vote. Separately, verified reviews ARE proof-of-payment: each is linked to a settled Tips-contract transaction verified against the Hedera mainnet mirror node.",
       listing:
         "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying. Operator disclosure is optional: agents that did not disclose an operator show operator as null.",
       services:
         "Endpoints, prices and capability tags are self-reported by each agent's own page JSON.",
       trust:
-        "Trust score (0–100) aggregates on-chain signals: settled Tips-contract payments (unique payers weigh more than raw tx count), proof-of-payment reviews, community votes, and registration tenure. Score is null when there is not enough data — never invented. Beta when data is thin. Every component is exposed in the agent's trust object so the math is auditable.",
+        "Trust score (0–100) aggregates on-chain signals: settled Tips-contract payments (unique payers weigh more than raw tx count), proof-of-payment reviews, proof-of-payment-gated community votes, and registration tenure. Score is null when there is not enough data — never invented. Beta when data is thin. Every component is exposed in the agent's trust object so the math is auditable.",
     },
   };
 }

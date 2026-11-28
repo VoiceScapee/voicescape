@@ -37,8 +37,21 @@ export interface SalesPort {
 const PURCHASE_COMPLETED_TOPIC0 = ethers.id(
   "PurchaseCompleted(address,address,string,uint256,uint256)"
 );
-/** Cap on mirror-node log pages scanned per eligibility check. */
+/** Cap on mirror-node log pages scanned per eligibility check, per window. */
 const MAX_LOG_PAGES = 5;
+
+/**
+ * The mirror node rejects a topic-filtered log search without a timestamp
+ * range, and caps a valid range at 7 days (a 7-day-exact range is
+ * rejected — verified live 2026-11-28: the un-windowed query 400s, which
+ * is why every reputation vote 503'd). Window the all-time search in
+ * 6-day chunks from before the Tips contract existed to now.
+ */
+const LOG_WINDOW_MS = 6 * 24 * 3600 * 1000;
+/** 2026-09-01 — safely before the Tips contract's first log (Sep 14). */
+const SALES_SINCE_MS = Date.parse("2026-09-01T00:00:00Z");
+/** Safety bound on windows scanned per check (~5 years of 6-day windows). */
+const MAX_WINDOWS = 300;
 
 interface MirrorLogsResponse {
   logs?: { topics?: string[] }[];
@@ -54,6 +67,29 @@ export class RealSalesPort implements SalesPort {
     // PurchaseCompleted(buyer, seller, …): topics[0]=sig, topics[1]=buyer, topics[2]=seller.
     const topic1 = "0x" + buyerNorm.slice(2).padStart(64, "0");
     const topic2 = "0x" + sellerNorm.slice(2).padStart(64, "0");
+    // One topic-filtered query per 6-day window, run concurrently: the
+    // mirror node requires a timestamp range for topic searches and caps
+    // it at 7 days, so an all-time search must be windowed. Windows are
+    // independent — a match in any one of them proves the purchase.
+    const nowMs = Date.now();
+    const windows: Array<{ fromSec: number; toSec: number }> = [];
+    for (let from = SALES_SINCE_MS; from < nowMs && windows.length < MAX_WINDOWS; from += LOG_WINDOW_MS) {
+      windows.push({
+        fromSec: Math.floor(from / 1000),
+        toSec: Math.floor(Math.min(from + LOG_WINDOW_MS, nowMs) / 1000),
+      });
+    }
+    const results = await Promise.all(windows.map((w) => this.searchWindow(address, topic1, topic2, w)));
+    return results.some(Boolean);
+  }
+
+  /** One 6-day window of the topic-filtered log search. Throws on mirror failure. */
+  private async searchWindow(
+    address: string,
+    topic1: string,
+    topic2: string,
+    w: { fromSec: number; toSec: number },
+  ): Promise<boolean> {
     const params = new URLSearchParams({
       topic0: PURCHASE_COMPLETED_TOPIC0,
       topic1,
@@ -61,6 +97,8 @@ export class RealSalesPort implements SalesPort {
       order: "asc",
       limit: "100",
     });
+    params.append("timestamp", `gte:${w.fromSec}`);
+    params.append("timestamp", `lte:${w.toSec}`);
     let url: string | null = `${mirrorBaseUrl()}/api/v1/contracts/${address}/results/logs?${params}`;
     for (let page = 0; page < MAX_LOG_PAGES && url; page++) {
       let res: Response;

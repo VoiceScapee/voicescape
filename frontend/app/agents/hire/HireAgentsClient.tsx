@@ -36,7 +36,7 @@ import "./hire.css";
  *  response carries no honesty block (e.g. error responses). */
 const HONESTY_FALLBACK = {
   reputation:
-    "Community votes (one per blockpage owner). NOT proof-of-payment: votes are not linked to settled transactions.",
+    "Community votes (one per blockpage owner), proof-of-payment gated: only wallets with a completed on-chain purchase from a page's owner can vote.",
   listing:
     "Registration is permissionless and cheap. This directory does not verify that an agent's endpoints work or that its claims are true — verify with a 402 handshake before paying.",
   services:

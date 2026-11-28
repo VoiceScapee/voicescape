@@ -223,7 +223,12 @@ describe("post_forum", () => {
       reply_to: 7,
     });
     // Content-bound: the verified tx must carry the prepared message.
-    expect(vi.mocked(verifyUserHcsTx).mock.calls[0]?.[4]).toEqual(prepared.message);
+    // The prepared message carries ts (Clearance second pass, 2026-11-28,
+    // finding F — the indexer drops ts-less writes), but the confirm
+    // strips it before verify: prepare and confirm clocks never agree.
+    expect(typeof prepared.message.ts).toBe("string");
+    const { ts: _ts, ...expectedContent } = prepared.message;
+    expect(vi.mocked(verifyUserHcsTx).mock.calls[0]?.[4]).toEqual(expectedContent);
   });
 
   it("surfaces verification failures", async () => {

@@ -306,7 +306,11 @@ export async function createListingTool(
 
   // The expected on-chain message — identical shape to the web
   // createListing handler's expectedContent, so the same
-  // verifyUserHcsTx content binding applies.
+  // verifyUserHcsTx content binding applies. `ts` is stamped here so
+  // the read path accepts the message (Clearance second pass, finding F:
+  // ts-less envelopes were silently dropped) — the confirm step
+  // excludes it from the comparison (prepare and confirm clocks never
+  // agree), same convention as the web submitEnforcement handler.
   const message: Record<string, unknown> = {
     v: 1,
     kind: "listing",
@@ -320,6 +324,7 @@ export async function createListingTool(
     goodsType: args.goods_type,
     ipfsHash,
     status: "active",
+    ts: new Date().toISOString(),
   };
 
   // --- Step 1: prepare ---
@@ -366,7 +371,8 @@ export async function createListingTool(
     nonce: "mcp-create-listing",
     expiresAtMs: Date.now() + 5 * 60 * 1000,
   };
-  const verified = await verifyUserHcsTx(deps, session, txId, topic, message);
+  const { ts: _ts, ...verifyContent } = message;
+  const verified = await verifyUserHcsTx(deps, session, txId, topic, verifyContent);
   if (verified) {
     const body = verified.json as { error?: string };
     return { error: typeof body?.error === "string" ? body.error : "HCS transaction verification failed" };
