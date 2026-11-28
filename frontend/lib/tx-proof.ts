@@ -24,10 +24,73 @@ import { TIPSENT_TOPIC } from "./leaderboard";
 /** Deployed, Sourcify-verified Tips contract (mainnet). */
 export const TIPS_CONTRACT_ID = "0.0.10854060";
 
+/**
+ * tipPage(string) function selector — keccak("tipPage(string)")[:4].
+ * Contract-results rows carry the called function in `function_parameters`;
+ * only rows starting with this selector are tipPage calls. Other calls on
+ * the same contract (buyListing 0x8e893f02, contract creation 0x60a06040)
+ * are not tips and must never enter a tipping review's sample — even when
+ * the proof read for them fails (2026-11-28: a transient mirror outage
+ * made every proof read fail, and the buyListing call was then counted as
+ * an unresolved 0.18586439 HBAR "tip" because the exclusion only fired on
+ * a successful "not-a-tip" proof).
+ */
+export const TIP_PAGE_SELECTOR = "0x8b0de5cb";
+
+/** True when a contract-results row is a tipPage call (selector match). */
+export function isTipPageCall(functionParameters: unknown): boolean {
+  return (
+    typeof functionParameters === "string" &&
+    functionParameters.toLowerCase().startsWith(TIP_PAGE_SELECTOR)
+  );
+}
+
 /** HashScan mainnet transaction deep-link base. */
 export const HASHSCAN_TX_BASE = "https://hashscan.io/mainnet/transaction";
 
 const MIRROR_BASE = "https://mainnet.mirrornode.hedera.com/api/v1";
+
+/**
+ * Mirror-node reads are occasionally transiently unavailable (2026-11-28:
+ * every proof read in one review failed at once, then succeeded minutes
+ * later with no code change). Retry transient failures — a thrown fetch,
+ * 429, or 5xx — up to 3 attempts with backoff. 404s and other 4xx are
+ * definitive answers, never retried. After the retries are exhausted the
+ * caller still gets the failure, so fail-closed behavior is unchanged:
+ * a genuinely unresolvable recipient still refuses a clean verdict.
+ */
+const PROOF_RETRY_DELAYS_MS = [500, 1000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchMirrorWithRetry(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  let attempt = 0;
+  for (;;) {
+    try {
+      const res = await fetchImpl(url, init);
+      const retryable = res.status === 429 || res.status >= 500;
+      if (retryable && attempt < PROOF_RETRY_DELAYS_MS.length) {
+        await sleep(PROOF_RETRY_DELAYS_MS[attempt]);
+        attempt++;
+        continue;
+      }
+      return res;
+    } catch (e) {
+      if (attempt < PROOF_RETRY_DELAYS_MS.length) {
+        await sleep(PROOF_RETRY_DELAYS_MS[attempt]);
+        attempt++;
+        continue;
+      }
+      throw e;
+    }
+  }
+}
 
 /** Contract fee: 200 bps of the gross tip (VoicescapeTips.FEE_BPS). */
 const FEE_BPS = 200n;
@@ -162,7 +225,7 @@ export async function fetchTipProof(
   if (norm.kind === "sdk") {
     let res: Response;
     try {
-      res = await fetchImpl(`${MIRROR_BASE}/transactions/${norm.txId}`, {
+      res = await fetchMirrorWithRetry(fetchImpl, `${MIRROR_BASE}/transactions/${norm.txId}`, {
         cache: "no-store",
       });
     } catch {
@@ -198,7 +261,7 @@ export async function fetchTipProof(
   // SDK ids and EVM hashes) and independently confirms the call target.
   let res: Response;
   try {
-    res = await fetchImpl(`${MIRROR_BASE}/contracts/results/${norm.txId}`, {
+    res = await fetchMirrorWithRetry(fetchImpl, `${MIRROR_BASE}/contracts/results/${norm.txId}`, {
       cache: "no-store",
     });
   } catch {

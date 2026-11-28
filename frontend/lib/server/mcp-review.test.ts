@@ -57,6 +57,20 @@ function tipRow(n: number, amountTinybar = 100_000_000) {
     from: SUBJECT_EVM,
     amount: amountTinybar,
     timestamp: `170000000${n}.000000000`,
+    // tipPage(string) calldata: selector 0x8b0de5cb + encoded args.
+    function_parameters: "0x8b0de5cb" + "0".repeat(128),
+  };
+}
+
+/** A contract-results list row for a buyListing call from the subject. */
+function buyRow(n: number, amountTinybar: number) {
+  return {
+    hash: tipHash(n),
+    from: SUBJECT_EVM,
+    amount: amountTinybar,
+    timestamp: `170000000${n}.000000000`,
+    // buyListing calldata: selector 0x8e893f02 — not a tip.
+    function_parameters: "0x8e893f02" + "0".repeat(128),
   };
 }
 
@@ -198,11 +212,11 @@ describe("reviewAgentTipping", () => {
   });
 
   it("excludes non-tip contract calls from the sample", async () => {
-    // Tip #4 is a marketplace purchase on the same contract: its result
-    // carries no TipSent log, so it is not a tip and must not count.
+    // Tip #4 is a marketplace purchase on the same contract (buyListing,
+    // selector 0x8e893f02): it is not a tip and must not count.
     const fetchFn = mockFetch({
       ...ACCOUNT_MOCK,
-      "/results?": { results: [1, 2, 3, 4].map((i) => tipRow(i)) },
+      "/results?": { results: [1, 2, 3].map((i) => tipRow(i)).concat([buyRow(4, 18_586_439)]) },
       [`/contracts/results/${tipHash(1)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
       [`/contracts/results/${tipHash(2)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
       [`/contracts/results/${tipHash(3)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
@@ -217,7 +231,57 @@ describe("reviewAgentTipping", () => {
     expect("error" in r).toBe(false);
     if (!("error" in r)) {
       expect(r.tips_analyzed).toBe(3);
+      expect(r.total_tipped_hbar).toBe("3");
       expect(r.verdict).toBe("clean");
+    }
+  });
+
+  it("excludes a buyListing call even when its proof read fails", async () => {
+    // 2026-11-28 live incident (Lev Tarasov 0.0.10969859): a transient
+    // mirror outage made every proof read fail at once, and the buy was
+    // then counted as an unresolved 0.18586439 HBAR "tip" — 6 tips /
+    // 0.23586439 HBAR / all recipients unknown — because the exclusion
+    // only fired on a successful "not-a-tip" proof. The selector filter
+    // must keep the buy out of the sample regardless of proof health:
+    // no mock entry for the buy hash, so its proof read fails outright.
+    const fetchFn = mockFetch({
+      ...ACCOUNT_MOCK,
+      "/results?": { results: [1, 2, 3].map((i) => tipRow(i)).concat([buyRow(4, 18_586_439)]) },
+      [`/contracts/results/${tipHash(1)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+      [`/contracts/results/${tipHash(2)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+      [`/contracts/results/${tipHash(3)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+    });
+    const r = await reviewAgentTipping("0.0.111111", fetchFn as any);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.tips_analyzed).toBe(3);
+      expect(r.total_tipped_hbar).toBe("3");
+      expect(r.verdict).toBe("clean");
+      expect(r.evidence.every((e) => e.recipient !== "unknown")).toBe(true);
+    }
+  });
+
+  it("drops rows whose function is unconfirmed (no function_parameters)", async () => {
+    // A row that cannot be confirmed as a tipPage call is not a tip:
+    // fail closed rather than risk counting a purchase as a tip.
+    const unconfirmedRow = {
+      hash: tipHash(4),
+      from: SUBJECT_EVM,
+      amount: 18_586_439,
+      timestamp: "1700000004.000000000",
+    };
+    const fetchFn = mockFetch({
+      ...ACCOUNT_MOCK,
+      "/results?": { results: [...[1, 2, 3].map((i) => tipRow(i)), unconfirmedRow] },
+      [`/contracts/results/${tipHash(1)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+      [`/contracts/results/${tipHash(2)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+      [`/contracts/results/${tipHash(3)}`]: tipResult(SUBJECT_EVM, OTHER_EVM),
+    });
+    const r = await reviewAgentTipping("0.0.111111", fetchFn as any);
+    expect("error" in r).toBe(false);
+    if (!("error" in r)) {
+      expect(r.tips_analyzed).toBe(3);
+      expect(r.total_tipped_hbar).toBe("3");
     }
   });
 

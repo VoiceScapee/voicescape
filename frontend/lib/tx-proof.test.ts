@@ -309,6 +309,80 @@ describe("fetchTipProof", () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* fetchTipProof retries transient mirror failures                     */
+/* ------------------------------------------------------------------ */
+
+describe("fetchTipProof retries", () => {
+  /** Fetch mock returning a scripted sequence of responses per call. */
+  function sequenceFetch(script: Array<{ status: number; body: unknown } | Error>) {
+    const calls: string[] = [];
+    const fn = vi.fn(async (url: string) => {
+      calls.push(url);
+      const next = script.shift();
+      if (next instanceof Error) throw next;
+      if (!next) throw new Error("script exhausted");
+      return {
+        ok: next.status >= 200 && next.status < 300,
+        status: next.status,
+        json: async () => next.body,
+      } as Response;
+    });
+    return { fn, calls };
+  }
+
+  const okResult = { status: 200, body: contractResultBody() };
+
+  it("retries a 500 on the contract-results endpoint, then succeeds", async () => {
+    const { fn, calls } = sequenceFetch([
+      { status: 500, body: {} },
+      { status: 500, body: {} },
+      okResult,
+    ]);
+    const r = await fetchTipProof(EVM_HASH, fn as typeof fetch);
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(3);
+  }, 10000);
+
+  it("retries a 429, then succeeds", async () => {
+    const { fn, calls } = sequenceFetch([{ status: 429, body: {} }, okResult]);
+    const r = await fetchTipProof(EVM_HASH, fn as typeof fetch);
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+  }, 10000);
+
+  it("retries a thrown fetch, then succeeds", async () => {
+    const { fn, calls } = sequenceFetch([
+      new Error("down"),
+      okResult,
+    ]);
+    const r = await fetchTipProof(EVM_HASH, fn as typeof fetch);
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(2);
+  }, 10000);
+
+  it("gives up after 3 attempts and still reports network (fail-closed)", async () => {
+    const { fn, calls } = sequenceFetch([
+      { status: 500, body: {} },
+      { status: 500, body: {} },
+      { status: 500, body: {} },
+    ]);
+    const r = await fetchTipProof(EVM_HASH, fn as typeof fetch);
+    expect(r).toEqual({ ok: false, error: "network" });
+    expect(calls).toHaveLength(3);
+  }, 10000);
+
+  it("does not retry a 404 — it is a definitive answer", async () => {
+    const { fn, calls } = sequenceFetch([{ status: 404, body: {} }]);
+    const r = await fetchTipProof(
+      SDK_ID,
+      fn as typeof fetch,
+    );
+    expect(r).toEqual({ ok: false, error: "not-found" });
+    expect(calls).toHaveLength(1);
+  });
+});
+
+/* ------------------------------------------------------------------ */
 /* share builders                                                      */
 /* ------------------------------------------------------------------ */
 

@@ -25,7 +25,7 @@ import {
   TransactionId,
 } from "@hiero-ledger/sdk";
 import { MIRROR_BASE } from "./mcp-tools";
-import { fetchTipProof, TIPS_CONTRACT_ID, tinybarToHbar } from "../tx-proof";
+import { fetchTipProof, TIPS_CONTRACT_ID, tinybarToHbar, isTipPageCall } from "../tx-proof";
 
 export type TippingVerdict = "clean" | "flagged" | "insufficient_data";
 
@@ -135,6 +135,13 @@ async function fetchTipsFrom(
   const out: MirrorTx[] = [];
   for (const row of body.results as Array<Record<string, any>>) {
     if (row.error_message) continue;
+    // Only tipPage calls are tips. Other calls on the same contract
+    // (buyListing, contract creation) must never enter the sample: the
+    // proof-based exclusion below only fires when the proof read
+    // succeeds, so a transient mirror failure used to count the buy as
+    // an unresolved tip with its full value. A row whose function is
+    // unconfirmed (field missing) is dropped too — fail closed.
+    if (!isTipPageCall(row.function_parameters)) continue;
     const from: string =
       typeof row.from === "string" ? row.from.toLowerCase() : "";
     if (from !== evmAddress && from !== paddedForm) continue;
@@ -282,7 +289,9 @@ export async function reviewAgentTipping(
     }
     // Recipient could not be resolved (mirror outage, decode failure):
     // the wash check did not run for this tip. Record it as unknown and
-    // let the verdict logic below refuse a clean verdict.
+    // let the verdict logic below refuse a clean verdict. Only tipPage
+    // calls reach this branch (fetchTipsFrom filters the rest), so a
+    // non-tip can never be counted here even when its proof read fails.
     unresolved++;
     analyzed++;
     totalTinybar += BigInt(t.amount_tinybar);
