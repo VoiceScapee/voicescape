@@ -111,6 +111,78 @@ describe("write path (verifyUserHcsTx)", () => {
     expect(att).toMatchObject({ payer: PAYER, author: "alice", topic: TOPIC, txId: TXID });
   });
 
+  it("attests a rep-vote from `voter` when the message has no `author`", async () => {
+    const hcs = new MemoryHcsClient();
+    // Production wire format per castRepVote's content binding: no `author`,
+    // no `ts` — just {v, kind, target, voter, value}. Before this fix the
+    // confirm returned 200 but the vote never counted (live 2026-11-28:
+    // Danny→bacon 0.0.10857765@1795870782.529851567).
+    const message = { v: 1, kind: "rep-vote", target: "bob", voter: "alice", value: 1 };
+    hcs.__verifyTx(TXID, TOPIC, PAYER, message);
+    const result = await verifyUserHcsTx(writeDeps(hcs), session, TXID, TOPIC, {
+      v: 1,
+      kind: "rep-vote",
+      target: "bob",
+      voter: "alice",
+      value: 1,
+    });
+    expect(result).toBeNull();
+    const att = await getAttestation(hashMessageContent(JSON.stringify(message)));
+    expect(att).toMatchObject({ payer: PAYER, author: "alice", topic: TOPIC, txId: TXID });
+  });
+
+  it("attests a proposal-vote from `voter` when the message has no `author`", async () => {
+    const hcs = new MemoryHcsClient();
+    const message = { v: 1, kind: "proposal-vote", proposal: "prop-1", voter: "alice", choice: "yes" };
+    hcs.__verifyTx(TXID, TOPIC, PAYER, message);
+    const result = await verifyUserHcsTx(writeDeps(hcs), session, TXID, TOPIC, {
+      v: 1,
+      kind: "proposal-vote",
+      proposal: "prop-1",
+      voter: "alice",
+      choice: "yes",
+    });
+    expect(result).toBeNull();
+    const att = await getAttestation(hashMessageContent(JSON.stringify(message)));
+    expect(att).toMatchObject({ payer: PAYER, author: "alice", topic: TOPIC, txId: TXID });
+  });
+
+  it("still attests a forum post from `author`", async () => {
+    const hcs = new MemoryHcsClient();
+    const message = {
+      v: 1,
+      kind: "post",
+      ts: "2026-09-10T00:00:00Z",
+      author: "alice",
+      board: "general",
+      wall: null,
+      body: "hello",
+      replyTo: null,
+    };
+    hcs.__verifyTx(TXID, TOPIC, PAYER, message);
+    const result = await verifyUserHcsTx(writeDeps(hcs), session, TXID, TOPIC, {
+      v: 1,
+      kind: "post",
+      author: "alice",
+      board: "general",
+      wall: null,
+      body: "hello",
+      replyTo: null,
+    });
+    expect(result).toBeNull();
+    const att = await getAttestation(hashMessageContent(JSON.stringify(message)));
+    expect(att).toMatchObject({ payer: PAYER, author: "alice", topic: TOPIC, txId: TXID });
+  });
+
+  it("records nothing (and does not throw) when the message has neither `author` nor `voter`", async () => {
+    const hcs = new MemoryHcsClient();
+    const message = { v: 1, kind: "chat", ts: "2026-09-10T00:00:00Z", room: "lobby", body: "hi" };
+    hcs.__verifyTx(TXID, TOPIC, PAYER, message);
+    const result = await verifyUserHcsTx(writeDeps(hcs), session, TXID, TOPIC);
+    expect(result).toBeNull();
+    expect(await getAttestation(hashMessageContent(JSON.stringify(message)))).toBeNull();
+  });
+
   it("does not fail the write when the message is unparseable", async () => {
     const hcs = new MemoryHcsClient();
     // The "{}" dummy bypasses content checks; author is undefined → skip attestation.

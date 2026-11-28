@@ -291,13 +291,26 @@ async function verifyReservedTx(
   // bytes to (payer, author) so the read path can reject impersonation.
   // The payer already proved ownership of the claimed username above, so
   // this records knowledge the server verified — not a new trust claim.
+  // Vote messages need not carry `author`: the server's content binding
+  // for rep-votes only requires {v, kind, target, voter, value}, so a
+  // conforming message has just `voter` — and without this fallback its
+  // attestation is never recorded, so the tally silently stays at zero
+  // even though the confirm returned 200 (found live 2026-11-28: the
+  // Danny→bacon vote). Proposal-votes carry both fields today; `author`
+  // wins when present. A message with neither records nothing.
   // Best-effort: never fails the write.
   try {
-    const onChain = JSON.parse(verified.message) as { author?: unknown };
-    if (typeof onChain.author === "string" && onChain.author) {
+    const onChain = JSON.parse(verified.message) as { author?: unknown; voter?: unknown };
+    const claimed =
+      typeof onChain.author === "string" && onChain.author
+        ? onChain.author
+        : typeof onChain.voter === "string" && onChain.voter
+          ? onChain.voter
+          : null;
+    if (claimed) {
       await recordAttestation(hashMessageContent(verified.message), {
         payer: payerId,
-        author: onChain.author,
+        author: claimed,
         topic,
         txId,
       });
