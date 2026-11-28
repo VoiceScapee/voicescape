@@ -747,20 +747,167 @@ export interface VerifiedPurchase {
   timestamp: string;
 }
 
+/** Decode a 32-byte log topic holding an address (last 20 bytes). */
+function topicToEvmAddress(topic: string | undefined): string | null {
+  if (typeof topic !== "string" || !/^0x[0-9a-fA-F]{64}$/.test(topic)) return null;
+  return ("0x" + topic.slice(-40)).toLowerCase();
+}
+
 /**
- * True when the wallet completed an on-chain purchase of the given
- * listingRef. One shared on-chain truth for the delivery endpoint, the
- * purchases API, and the MCP verify_purchase tool. Fail-open → false.
+ * First PurchaseCompleted event with this wallet as buyer and this
+ * listingRef, with the seller the chain actually paid. The event alone
+ * never proves a purchase of the listing — the seller is caller-chosen
+ * (buyListing takes it as a parameter) — so callers must compare the
+ * returned seller against the listing record (see verifyPurchaseDetailed).
  */
-export async function verifyPurchase(wallet: string, listingRef: string): Promise<boolean> {
+export function findPurchaseEvent(
+  logs: TipsLog[],
+  wallet: string,
+  listingRef: string,
+  buyerTopics?: Set<string>,
+): { seller: string | null; tx: string; timestamp: string } | null {
+  const buyerSet =
+    buyerTopics ?? new Set([paddedTopic(canonicalAddress(wallet) ?? wallet).toLowerCase()]);
+  if (buyerSet.size === 0) return null;
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  for (const l of logs) {
+    if (l.topics?.[0]?.toLowerCase() !== PURCHASE_TOPIC0.toLowerCase()) continue;
+    if (!buyerSet.has(l.topics?.[1]?.toLowerCase() ?? "")) continue;
+    try {
+      const [ref] = coder.decode(PURCHASE_DATA_ABI, l.data ?? "0x") as unknown as [string, bigint, bigint];
+      if (ref !== listingRef) continue;
+      return {
+        seller: topicToEvmAddress(l.topics?.[2]),
+        tx: typeof l.transaction_hash === "string" ? l.transaction_hash : "",
+        timestamp: typeof l.timestamp === "string" ? l.timestamp : "",
+      };
+    } catch {
+      /* undecodable log — skip */
+    }
+  }
+  return null;
+}
+
+export interface PurchaseVerificationDetail {
+  verified: boolean;
+  /** Why the purchase is / is not verified — always human-readable. */
+  reason: string;
+  /** Seller address from the on-chain PurchaseCompleted event (if any). */
+  sellerOnChain: string | null;
+  /** The listing's expected seller, when the caller supplied one. */
+  sellerExpected: string | null;
+  /** True when the on-chain seller matches the expected seller. */
+  sellerMatches: boolean | null;
+  /** Transaction hash (0x…) of the purchase (if any). */
+  tx: string | null;
+  /** Consensus timestamp (seconds.nanos) of the purchase (if any). */
+  timestamp: string | null;
+}
+
+function unverifiedPurchase(
+  reason: string,
+  extra: Partial<PurchaseVerificationDetail> = {},
+): PurchaseVerificationDetail {
+  return {
+    verified: false,
+    reason,
+    sellerOnChain: null,
+    sellerExpected: null,
+    sellerMatches: null,
+    tx: null,
+    timestamp: null,
+    ...extra,
+  };
+}
+
+/**
+ * Verify a wallet's purchase of a listing AND that the chain paid the
+ * listing's seller. buyListing takes the seller from the caller, so a
+ * PurchaseCompleted event for the right buyer + listingRef is not enough:
+ * a poisoned read (or a forged call) can settle a payment to a different
+ * wallet, and the old check still called it a normal 98/2 purchase
+ * (Clearance first pass, 2026-11-27, F3). When expectedSeller is given,
+ * the event's seller must match it (both long-zero and alias forms) or
+ * the purchase is NOT verified. One shared on-chain truth for the
+ * delivery endpoint, the purchases API, and the MCP verify_purchase tool.
+ * Fail-closed → verified:false with a reason.
+ */
+export async function verifyPurchaseDetailed(
+  wallet: string,
+  listingRef: string,
+  expectedSeller?: string | null,
+): Promise<PurchaseVerificationDetail> {
   try {
     const topics = await walletTopicForms(wallet);
-    if (topics.size === 0) return false;
+    if (topics.size === 0) {
+      return unverifiedPurchase("could not resolve the buyer wallet", {
+        sellerExpected: expectedSeller ?? null,
+      });
+    }
     const logs = await fetchTipsContractLogs();
-    return purchasedListingRefs(logs, wallet, topics).includes(listingRef);
+    const hit = findPurchaseEvent(logs, wallet, listingRef, topics);
+    if (!hit) {
+      return unverifiedPurchase(
+        "no PurchaseCompleted event found for this wallet and listing on the Tips contract (0.0.10854060)",
+        { sellerExpected: expectedSeller ?? null },
+      );
+    }
+    if (!expectedSeller) {
+      return {
+        verified: true,
+        reason:
+          "PurchaseCompleted event found for this wallet and listing — seller not checked (no expected seller supplied)",
+        sellerOnChain: hit.seller,
+        sellerExpected: null,
+        sellerMatches: null,
+        tx: hit.tx || null,
+        timestamp: hit.timestamp || null,
+      };
+    }
+    const expectedTopics = await walletTopicForms(expectedSeller);
+    const sellerTopic = hit.seller ? paddedTopic(hit.seller).toLowerCase() : null;
+    const matches = sellerTopic !== null && expectedTopics.has(sellerTopic);
+    if (!matches) {
+      return unverifiedPurchase(
+        `seller mismatch — the on-chain purchase paid ${hit.seller ?? "an unknown seller"}, not the listing's seller ${expectedSeller}; do not treat this as a purchase of the listing`,
+        {
+          sellerOnChain: hit.seller,
+          sellerExpected: expectedSeller,
+          sellerMatches: false,
+          tx: hit.tx || null,
+          timestamp: hit.timestamp || null,
+        },
+      );
+    }
+    return {
+      verified: true,
+      reason:
+        "verified on-chain purchase — the payment went to the listing's seller and split 98/2 atomically",
+      sellerOnChain: hit.seller,
+      sellerExpected: expectedSeller,
+      sellerMatches: true,
+      tx: hit.tx || null,
+      timestamp: hit.timestamp || null,
+    };
   } catch {
-    return false;
+    return unverifiedPurchase("purchase verification unavailable — try again in a moment", {
+      sellerExpected: expectedSeller ?? null,
+    });
   }
+}
+
+/**
+ * True when the wallet completed an on-chain purchase of the given
+ * listingRef. When expectedSeller is given, the on-chain seller must
+ * match it — a payment to any other wallet does not verify, even with
+ * the right buyer and listingRef. Fail-closed → false.
+ */
+export async function verifyPurchase(
+  wallet: string,
+  listingRef: string,
+  expectedSeller?: string | null,
+): Promise<boolean> {
+  return (await verifyPurchaseDetailed(wallet, listingRef, expectedSeller)).verified;
 }
 
 /**

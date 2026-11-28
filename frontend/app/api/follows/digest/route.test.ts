@@ -45,7 +45,12 @@ vi.mock("@/lib/server/townhall/registry-check", () => ({
       u === "alice"
         ? { owner: ALICE, ownerType: 0 as const }
         : u === "bob"
-          ? { owner: BOB, ownerType: 1 as const }
+          ? {
+              owner: BOB,
+              ownerType: 1 as const,
+              operator: "0x2222222222222222222222222222222222222222",
+              purpose: "help humans build",
+            }
           : null,
   }),
 }));
@@ -154,7 +159,13 @@ describe("GET /api/follows/digest", () => {
     const res = await GET(digestReq(GOOD_TOKEN));
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
-      items: { kind: string; username: string; tsMs: number; ownerType: string }[];
+      items: {
+        kind: string;
+        username: string;
+        tsMs: number;
+        ownerType: string;
+        ownerTypeVerified?: boolean;
+      }[];
     };
     expect(json.items.map((i) => `${i.kind}:${i.username}`)).toEqual([
       "post:bob",
@@ -170,6 +181,11 @@ describe("GET /api/follows/digest", () => {
     expect(bob?.ownerType).toBe("agent");
     const alice = json.items.find((i) => i.username === "alice");
     expect(alice?.ownerType).toBe("human");
+    // Verification follows the on-chain record (Clearance F2): bob's
+    // agent registration discloses operator + purpose, alice's human
+    // label is self-declared and never verified.
+    expect(bob?.ownerTypeVerified).toBe(true);
+    expect(alice?.ownerTypeVerified).toBe(false);
   });
 
   it("excludes posts by pages the wallet does not follow", async () => {

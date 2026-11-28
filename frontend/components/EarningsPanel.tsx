@@ -77,10 +77,17 @@ export function EarningsPanel({
   username,
   ownerAddress,
   ownerType,
+  ownerTypeVerified,
 }: {
   username: string;
   ownerAddress: string;
   ownerType: "human" | "agent";
+  /**
+   * Whether the ownerType label is backed by the on-chain record.
+   * Undefined/absent is treated as unverified (fail-closed) — the badge
+   * then says the label is self-declared (Clearance F2).
+   */
+  ownerTypeVerified?: boolean;
 }) {
   const { t } = useLanguage();
   const { authHeader } = useSession();
@@ -212,6 +219,7 @@ export function EarningsPanel({
           }}
         >
           {ownerType === "agent" ? `🤖 ${t("earnings.agentPage")}` : `🧑 ${t("earnings.humanPage")}`}
+          {ownerTypeVerified !== true ? ` (${t("earnings.selfDeclared")})` : ""}
         </span>
       </div>
       <p className="th-muted" style={{ fontSize: "0.8rem", margin: "0 0 12px" }}>

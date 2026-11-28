@@ -203,6 +203,38 @@ function priceFetch() {
   ]);
 }
 
+/**
+ * Exchange rate + Registry resolvePage + per-address account lookups.
+ * The accounts route returns a distinct 0.0.x id per address so a
+ * seller/page mismatch is observable in tests.
+ */
+function purchaseFetch(pages: Record<string, { owner: string; ipfsHash?: string }>) {
+  return mockFetch([
+    [/network\/exchangerate$/, () => ok({ current_rate: { cent_equivalent: 20, hbar_equivalent: 100 } })],
+    [
+      /contracts\/call$/,
+      (url, init) => {
+        const body = String((init as { body?: unknown } | undefined)?.body ?? "");
+        for (const [name, p] of Object.entries(pages)) {
+          if (body.includes(Buffer.from(name, "utf-8").toString("hex"))) {
+            return ok({ result: resolvePageResult(p.owner, p.ipfsHash ?? "") });
+          }
+        }
+        return ok({ result: "0x" }); // reverts → unknown name
+      },
+    ],
+    [
+      /accounts\/0x/,
+      (url) => {
+        const u = url.toLowerCase();
+        if (u.includes(OWNER_B.slice(2).toLowerCase())) return ok({ account: "0.0.11111" });
+        if (u.includes(OWNER_C.slice(2).toLowerCase())) return ok({ account: "0.0.22222" });
+        return ok({ account: "0.0.99999" });
+      },
+    ],
+  ]);
+}
+
 describe("prepare_purchase", () => {
   beforeEach(() => {
     vi.stubEnv("TOWNHALL_TOPIC_MARKET", "0.0.555");
@@ -265,6 +297,54 @@ describe("prepare_purchase", () => {
     const res = await preparePurchaseTool({ listing_id: "badge-1" }, purchaseDeps(ACTIVE_LISTING), bad);
     expect("error" in res).toBe(true);
     expect((res as { error: string }).error).toMatch(/HBAR\/USD/);
+  });
+
+  it("binds the seller to the listing and exposes it for pre-sign verification", async () => {
+    const res = (await preparePurchaseTool(
+      { listing_id: "badge-1" },
+      purchaseDeps(ACTIVE_LISTING),
+      purchaseFetch({ "creator-bob": { owner: OWNER_B } }),
+    )) as {
+      seller_evm: string;
+      seller_binding: {
+        seller_evm: string;
+        seller_username: string | null;
+        cross_checked_on_chain: boolean;
+      };
+      unsigned_calldata: string;
+      instructions: string;
+    };
+    expect(res.seller_evm).toBe(OWNER_B);
+    expect(res.seller_binding.seller_evm).toBe(OWNER_B);
+    expect(res.seller_binding.seller_username).toBe("creator-bob");
+    expect(res.seller_binding.cross_checked_on_chain).toBe(true);
+    const decoded = BUY_IFACE.decodeFunctionData("buyListing", res.unsigned_calldata);
+    expect((decoded[0] as string).toLowerCase()).toBe(OWNER_B);
+    expect(res.instructions).toMatch(/BEFORE SIGNING/);
+    expect(res.instructions).toContain(OWNER_B);
+  });
+
+  it("refuses to prepare when the listing payout address disagrees with the seller's page", async () => {
+    const res = await preparePurchaseTool(
+      { listing_id: "badge-1" },
+      purchaseDeps(ACTIVE_LISTING),
+      purchaseFetch({ "creator-bob": { owner: OWNER_C } }),
+    );
+    expect("error" in res).toBe(true);
+    expect((res as { error: string }).error).toMatch(/seller mismatch/);
+  });
+
+  it("prepares without the cross-check when the seller page cannot be resolved", async () => {
+    const res = (await preparePurchaseTool(
+      { listing_id: "badge-1" },
+      purchaseDeps(ACTIVE_LISTING),
+      priceFetch(),
+    )) as {
+      seller_evm: string;
+      seller_binding: { cross_checked_on_chain: boolean };
+    };
+    expect(res.seller_evm).toBe(OWNER_B);
+    expect(res.seller_binding.cross_checked_on_chain).toBe(false);
   });
 });
 

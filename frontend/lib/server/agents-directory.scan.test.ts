@@ -69,6 +69,12 @@ describe("applyFilters (unchanged behavior)", () => {
   const agent = (over: Partial<DirectoryAgent>): DirectoryAgent => ({
     username: "thechomps",
     owner: "0xabc",
+    // Base fixture has an empty purpose, so the agent label is unverified
+    // (Clearance F2) — overrides in individual tests set it explicitly.
+    owner_type_verified: false,
+    owner_type_note:
+      "agent — claimed at registration; operator or purpose disclosure is missing on-chain, so the agent claim is unverified",
+    hcs10_verification_url: "https://example.com/api/agents/verify-registration?username=thechomps",
     operator: "0xdef",
     purpose: "",
     ipfsHash: "",

@@ -15,6 +15,11 @@
  *
  * What the directory does NOT do (read before trusting it):
  * - It does not verify that an agent's endpoints actually work.
+ * - The "agent" label itself is self-declared at registration. Each entry
+ *   carries `owner_type_verified` (true only when the on-chain record
+ *   discloses a non-zero operator and a non-empty purpose) plus
+ *   `owner_type_note` — read them before treating the label as a
+ *   verified fact (Clearance first pass, 2026-11-27, F2).
  * - Service endpoints, prices and capability tags are SELF-REPORTED in the
  *   agent's own page JSON. Treat them as claims, not facts.
  * - Reputation is COMMUNITY VOTES (one per page owner). It is NOT
@@ -29,6 +34,7 @@
 
 import { ethers } from "ethers";
 import { getActiveChain } from "../chains";
+import { assessOwnerType } from "../owner-type";
 import { computeTrustScore, type TrustScore } from "./trust-score";
 import { REGISTRY_ABI, ZERO_ADDRESS, createReadOnlySender } from "../tx";
 import { defaultHcsPort } from "./townhall/hcs";
@@ -58,6 +64,25 @@ export interface DirectoryAgent {
   username: string;
   /** Page owner's EVM address (receives tips). */
   owner: string;
+  /**
+   * Whether the "agent" label is backed by the on-chain record: true
+   * only when the registration discloses a non-zero operator and a
+   * non-empty purpose (Clearance first pass, 2026-11-27, F2). The
+   * directory lists AGENT registrations only, but the label is still a
+   * self-declared claim — an entry registered before disclosure was
+   * enforced can carry a zero operator, and that entry is unverified.
+   */
+  owner_type_verified: boolean;
+  /** Plain-language note on what the agent label means for this entry. */
+  owner_type_note: string;
+  /**
+   * HCS-10 registration check for this agent (standard route — the
+   * read-only verifier at /api/agents/verify-registration, mirror-node
+   * REST only, cached + rate-limited). The deeper proof behind the
+   * label; the on-chain disclosure check above is the cheap per-entry
+   * signal, this URL is where the full HCS-10 verification lives.
+   */
+  hcs10_verification_url: string;
   /** Operator wallet disclosed at registration, or null when the registration did not disclose one. */
   operator: string | null;
   /** Purpose disclosure from the on-chain registration. */
@@ -379,6 +404,10 @@ async function resolveAgent(
   // Operator disclosure is optional (Brandon's call, 2026-10-08: "Show all
   // agents"): a zero operator is surfaced as null, never silently dropped.
   const operator = record.operator === ZERO_ADDRESS ? null : record.operator;
+  // The agent label itself is a self-declared claim — assess it against
+  // the record (Clearance F2). A zero operator or empty purpose means the
+  // entry is listed but unverified.
+  const assessed = assessOwnerType(record.ownerType, record.operator, record.purpose);
 
   let capabilities: string[] = [];
   let services: DirectoryService[] = [];
@@ -426,6 +455,9 @@ async function resolveAgent(
   return {
     username,
     owner: record.owner,
+    owner_type_verified: assessed.owner_type_verified,
+    owner_type_note: assessed.owner_type_note,
+    hcs10_verification_url: `https://${host}/api/agents/verify-registration?username=${encodeURIComponent(username)}`,
     operator,
     purpose: record.purpose,
     ipfsHash: record.ipfsHash,

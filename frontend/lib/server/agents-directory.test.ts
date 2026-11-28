@@ -184,6 +184,12 @@ describe("buildAgentDirectory with an EVM-address registry", () => {
     );
     expect(dir.agents[0].purpose).toBe(AGENT.purpose);
     expect(dir.registry).toBe(EVM_REGISTRY);
+    // Operator + purpose disclosed on-chain → the agent label is verified.
+    expect(dir.agents[0].owner_type_verified).toBe(true);
+    expect(dir.agents[0].owner_type_note).toMatch(/verified/);
+    expect(dir.agents[0].hcs10_verification_url).toBe(
+      "https://example.com/api/agents/verify-registration?username=test-agent-1",
+    );
   });
 
   it("lists an agent that did not disclose an operator, with operator null", async () => {
@@ -194,5 +200,12 @@ describe("buildAgentDirectory with an EVM-address registry", () => {
     expect(undisclosed).toBeDefined();
     expect(undisclosed!.operator).toBeNull();
     expect(undisclosed!.purpose).toBe(AGENT_NO_OPERATOR.purpose);
+    // Listed (Brandon's "show all agents" call) but unverified: the
+    // agent claim has no operator disclosure behind it (Clearance F2).
+    expect(undisclosed!.owner_type_verified).toBe(false);
+    expect(undisclosed!.owner_type_note).toMatch(/unverified/);
+    expect(undisclosed!.hcs10_verification_url).toBe(
+      "https://example.com/api/agents/verify-registration?username=test-agent-2",
+    );
   });
 });

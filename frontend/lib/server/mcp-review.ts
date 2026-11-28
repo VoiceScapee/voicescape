@@ -25,7 +25,7 @@ import {
   TransactionId,
 } from "@hiero-ledger/sdk";
 import { MIRROR_BASE } from "./mcp-tools";
-import { TIPS_CONTRACT_ID, tinybarToHbar } from "../tx-proof";
+import { fetchTipProof, TIPS_CONTRACT_ID, tinybarToHbar } from "../tx-proof";
 
 export type TippingVerdict = "clean" | "flagged" | "insufficient_data";
 
@@ -60,12 +60,6 @@ export interface TippingReview {
 
 /** HCS topic for review attestations ("Voicescape review attestations"). */
 export const REVIEW_ATTESTATION_TOPIC = "0.0.10908351";
-
-/**
- * Brandon's public treasury — receives the 2% tip cut. Excluded when
- * matching the true tip recipient from transfer records.
- */
-const TREASURY_ACCOUNT_ID = "0.0.10424063";
 
 const REVIEWER_ID = "io.github.VoiceScapee/voicescape";
 
@@ -109,12 +103,16 @@ function resolveSubject(subject: string): string | null {
  * scanning the Tips contract results and filtering by sender.
  * The subject's EVM address is resolved first so we can match the
  * `from` field in contract results.
+ *
+ * Returns the raw rows plus the subject's EVM address in both forms the
+ * chain can carry it (alias + long-zero padded account number) so the
+ * TipSent recipient can be compared against the payer.
  */
 async function fetchTipsFrom(
   accountId: string,
   fetchFn: typeof fetch,
   scanLimit = 200,
-): Promise<MirrorTx[]> {
+): Promise<{ tips: MirrorTx[]; subjectEvm: string; subjectPadded: string }> {
   // Resolve the account's EVM address for sender matching. Note: contract
   // results `from` may be the EVM address OR the 0x-padded account number
   // (e.g. 0x0000...09f0eff for 0.0.10424063) — match both forms.
@@ -125,13 +123,15 @@ async function fetchTipsFrom(
       : "";
   const accountNum = accountId.split(".")[2] ?? "";
   const paddedForm = "0x" + BigInt(accountNum).toString(16).padStart(40, "0");
-  if (!evmAddress && !paddedForm) return [];
+  if (!evmAddress && !paddedForm) return { tips: [], subjectEvm: "", subjectPadded: paddedForm };
 
   const { ok, body } = await fetchJson(
     fetchFn,
     `${MIRROR_BASE}/contracts/${TIPS_CONTRACT_ID}/results?limit=${scanLimit}&order=desc`,
   );
-  if (!ok || !Array.isArray(body?.results)) return [];
+  if (!ok || !Array.isArray(body?.results)) {
+    return { tips: [], subjectEvm: evmAddress, subjectPadded: paddedForm };
+  }
   const out: MirrorTx[] = [];
   for (const row of body.results as Array<Record<string, any>>) {
     if (row.error_message) continue;
@@ -147,49 +147,7 @@ async function fetchTipsFrom(
       amount_tinybar: amountTinybar,
     });
   }
-  return out;
-}
-
-interface MirrorTransfer {
-  account?: string;
-  amount?: number;
-}
-
-/**
- * Resolve the true tip recipient for one tip transaction via its
- * mirror-node record. The Tips contract splits atomically — 98% to the
- * page owner, 2% to treasury — so the recipient is the largest credit
- * that is neither the contract itself nor the treasury.
- * Returns null when the record can't be fetched; the caller records
- * the recipient as "unknown" rather than guessing.
- */
-async function resolveTipRecipient(
-  txHash: string,
-  fetchFn: typeof fetch,
-): Promise<string | null> {
-  if (!/^0x[0-9a-fA-F]+$/.test(txHash)) return null;
-  const { ok, body } = await fetchJson(
-    fetchFn,
-    `${MIRROR_BASE}/transactions/${txHash}`,
-  );
-  if (!ok) return null;
-  const tx = body?.transactions?.[0] ?? body;
-  const transfers: MirrorTransfer[] = Array.isArray(tx?.transfers)
-    ? tx.transfers
-    : [];
-  let best: string | null = null;
-  let bestAmount = 0;
-  for (const tr of transfers) {
-    const acct = typeof tr.account === "string" ? tr.account : "";
-    const amt = typeof tr.amount === "number" ? tr.amount : 0;
-    if (!acct || amt <= 0) continue;
-    if (acct === TIPS_CONTRACT_ID || acct === TREASURY_ACCOUNT_ID) continue;
-    if (amt > bestAmount) {
-      bestAmount = amt;
-      best = acct;
-    }
-  }
-  return best;
+  return { tips: out, subjectEvm: evmAddress, subjectPadded: paddedForm };
 }
 
 /** Recursively sort object keys so the hash commits to nested evidence too. */
@@ -270,56 +228,98 @@ export async function reviewAgentTipping(
     };
   }
 
-  const tips = await fetchTipsFrom(accountId, fetchFn);
+  const { tips, subjectEvm, subjectPadded } = await fetchTipsFrom(accountId, fetchFn);
   const checkedAt = new Date().toISOString();
 
   // Bound the per-tip record lookups: 20 is plenty for a verdict and
   // keeps the tool's mirror-node call count sane.
   const sample = tips.slice(0, 20);
-  const recipients = await Promise.all(
-    sample.map((t) => resolveTipRecipient(t.tx_hash, fetchFn)),
+  // Resolve each sampled call's recipient from its on-chain TipSent event
+  // (fetchTipProof decodes the log from /contracts/results/{hash}).
+  // The old transfer-based lookup is gone: the mirror node's
+  // /transactions/{id} endpoint rejects 0x hashes, so every recipient
+  // came back "unknown" and self-tips were never detected (Clearance
+  // first pass, 2026-11-27). A call with no TipSent event is not a tip
+  // at all (e.g. a marketplace purchase on the same contract) and is
+  // excluded from the sample instead of being counted as one.
+  const proofs = await Promise.all(
+    sample.map((t) => fetchTipProof(t.tx_hash || "", fetchFn)),
   );
 
   let selfTips = 0;
   let whaleTips = 0;
+  let unresolved = 0;
+  let analyzed = 0;
   let totalTinybar = BigInt(0);
   const evidence: TipEvidence[] = [];
 
   const WHALE_TINYBAR = 100 * 100_000_000;
   sample.forEach((t, i) => {
-    const amount = t.amount_tinybar;
-    const recipient = recipients[i] ?? "unknown";
+    const proof = proofs[i];
+    if (!proof.ok && proof.error === "not-a-tip") return; // not a tip — excluded
     const txHash = t.tx_hash;
-    const isSelf = recipient === accountId;
-    if (isSelf) selfTips++;
-    if (amount > WHALE_TINYBAR) whaleTips++;
-    totalTinybar += BigInt(amount);
+    if (proof.ok) {
+      const recipient = proof.proof.recipient.toLowerCase();
+      const isSelf =
+        (subjectEvm !== "" && recipient === subjectEvm) ||
+        recipient === subjectPadded;
+      const amount = proof.proof.grossTinybar;
+      if (isSelf) selfTips++;
+      if (amount > BigInt(WHALE_TINYBAR)) whaleTips++;
+      totalTinybar += amount;
+      analyzed++;
+      evidence.push({
+        transaction_id: txHash || `ts:${t.consensus_timestamp}`,
+        amount_hbar: tinybarToHbar(amount),
+        recipient,
+        consensus_timestamp: t.consensus_timestamp,
+        hashscan: txHash
+          ? `https://hashscan.io/mainnet/transaction/${txHash}`
+          : "",
+        self_tip: isSelf,
+      });
+      return;
+    }
+    // Recipient could not be resolved (mirror outage, decode failure):
+    // the wash check did not run for this tip. Record it as unknown and
+    // let the verdict logic below refuse a clean verdict.
+    unresolved++;
+    analyzed++;
+    totalTinybar += BigInt(t.amount_tinybar);
     evidence.push({
       transaction_id: txHash || `ts:${t.consensus_timestamp}`,
-      amount_hbar: tinybarToHbar(BigInt(amount)),
-      recipient,
+      amount_hbar: tinybarToHbar(BigInt(t.amount_tinybar)),
+      recipient: "unknown",
       consensus_timestamp: t.consensus_timestamp,
       hashscan: txHash
         ? `https://hashscan.io/mainnet/transaction/${txHash}`
         : "",
-      self_tip: isSelf,
+      self_tip: false,
     });
   });
 
   // Verdict logic (deterministic, documented):
-  // - insufficient_data: fewer than MIN_TIPS_FOR_VERDICT tips observed.
+  // - insufficient_data: fewer than MIN_TIPS_FOR_VERDICT tips observed,
+  //   OR the wash check did not run (any sampled tip's recipient
+  //   unresolved) — a verdict that cannot see the recipient must never
+  //   report "clean" and must never be attested on HCS.
   // - flagged: self-tip rate >= 50% (wash pattern) OR any single tip
   //   exceeds 100 HBAR (anomaly worth human review).
   // - clean: otherwise.
-  const n = sample.length;
+  const n = analyzed;
+  const washCheckRan = unresolved === 0;
   let verdict: TippingVerdict;
   let confidence: TippingReview["confidence"];
   let summary: string;
 
-  if (tips.length < MIN_TIPS_FOR_VERDICT) {
+  if (n < MIN_TIPS_FOR_VERDICT) {
     verdict = "insufficient_data";
     confidence = "low";
-    summary = `only ${tips.length} tip(s) observed for ${accountId} — not enough history for a verdict`;
+    summary = `only ${n} tip(s) observed for ${accountId} — not enough history for a verdict`;
+  } else if (!washCheckRan) {
+    verdict = "insufficient_data";
+    confidence = "low";
+    summary = `wash check did not run — recipient unresolved for ${unresolved} of ${n} tip(s); no clean verdict can be issued`;
   } else if (selfTips * 2 >= n) {
     verdict = "flagged";
     confidence = "high";
@@ -349,19 +349,25 @@ export async function reviewAgentTipping(
     reviewer: REVIEWER_ID,
   };
   const reportHash = hashReport(canonicalReport(reportBase));
-  const attestationTx = await buildAttestationTx(
-    attestationTopic,
-    reportHash,
-    subject,
-    verdict,
-  );
+  // No attestation is ever issued for a verdict the wash check did not
+  // back: insufficient_data (too little history, or an unresolved
+  // recipient) commits nothing to the public log. A clean bill of health
+  // that missed self-tips must never become an HCS attestation.
+  const attestable = verdict !== "insufficient_data" && washCheckRan;
+  const attestationTx = attestable
+    ? await buildAttestationTx(attestationTopic, reportHash, subject, verdict)
+    : null;
 
   return {
     ...reportBase,
     report_hash: reportHash,
     attestation_tx_base64: attestationTx,
-    attestation_note: attestationTx
-      ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor"
-      : "attestation topic not yet configured — verdict and evidence above are still fully verifiable via the mirror node",
+    attestation_note: !washCheckRan
+      ? "no attestation issued — the wash check did not run, so no verdict is committed publicly"
+      : verdict === "insufficient_data"
+        ? "no attestation issued — not enough verified history for a verdict"
+        : attestationTx
+          ? "unsigned HCS attestation tx — sign with your key and submit to commit this review publicly; you become the attestor"
+          : "attestation topic not yet configured — verdict and evidence above are still fully verifiable via the mirror node",
   };
 }

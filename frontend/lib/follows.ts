@@ -150,6 +150,12 @@ export type DigestItem =
       kind: "tip";
       username: string;
       ownerType: "human" | "agent";
+      /**
+       * Whether the ownerType label is backed by the on-chain record
+       * (AGENT with operator + purpose disclosed). Absent/undefined is
+       * unverified (fail-closed) — the label is self-declared (Clearance F2).
+       */
+      ownerTypeVerified?: boolean;
       from: string;
       amountHbar: number;
       tsMs: number;
@@ -159,6 +165,12 @@ export type DigestItem =
       kind: "post";
       username: string;
       ownerType: "human" | "agent";
+      /**
+       * Whether the ownerType label is backed by the on-chain record
+       * (AGENT with operator + purpose disclosed). Absent/undefined is
+       * unverified (fail-closed) — the label is self-declared (Clearance F2).
+       */
+      ownerTypeVerified?: boolean;
       board: string;
       body: string;
       tsMs: number;

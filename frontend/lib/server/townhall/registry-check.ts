@@ -30,8 +30,19 @@ export interface RegistryPort {
    * The full registered page (owner + on-chain owner type), or null when
    * the username is not registered. Null on read failure too — callers
    * must not mistake an outage for an unregistered name.
+   *
+   * `operator`/`purpose` come from the on-chain record when the port can
+   * supply them (the real port always does). They are what the human/agent
+   * label assessment needs (Clearance F2): without them a page's label
+   * cannot be verified. Fakes may omit them; callers must treat a
+   * missing disclosure as unverified, never as verified.
    */
-  resolvePage(username: string): Promise<{ owner: string; ownerType: 0 | 1 } | null>;
+  resolvePage(username: string): Promise<{
+    owner: string;
+    ownerType: 0 | 1;
+    operator?: string;
+    purpose?: string;
+  } | null>;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -79,10 +90,20 @@ export class RealRegistryPort implements RegistryPort {
     return resolved?.owner ?? null;
   }
 
-  async resolvePage(username: string): Promise<{ owner: string; ownerType: 0 | 1 } | null> {
+  async resolvePage(username: string): Promise<{
+    owner: string;
+    ownerType: 0 | 1;
+    operator?: string;
+    purpose?: string;
+  } | null> {
     const resolved = await resolveCached(username);
     if (!resolved) return null;
-    return { owner: resolved.owner, ownerType: resolved.ownerType };
+    return {
+      owner: resolved.owner,
+      ownerType: resolved.ownerType,
+      operator: resolved.operator,
+      purpose: resolved.purpose,
+    };
   }
 }
 

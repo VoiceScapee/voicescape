@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { resolvePageForOwnerDetailed } from "@/lib/registry-reverse";
+import { assessOwnerType } from "@/lib/owner-type";
 import { mirrorContractCall, MirrorUnreachable } from "@/lib/tx";
 import { CHAINS } from "@/lib/chains";
 
@@ -63,12 +64,27 @@ export async function GET(req: NextRequest) {
       raw,
     ) as unknown as [string, string, bigint, string, string];
 
+    // The human/agent label is a self-declared claim, never a verified
+    // fact (Clearance first pass, 2026-11-27, F2): registerPage takes
+    // ownerType from the caller and HUMAN pages skip disclosure. The raw
+    // ownerType number stays for compatibility; consumers must read
+    // owner_type_verified + owner_type_note before trusting the label.
+    // Agent pages also carry hcs10_verification_url — the deeper HCS-10
+    // registration proof at the standard verify-registration endpoint.
+    const assessed = assessOwnerType(ownerType, operator, purpose);
     return NextResponse.json({
       owner,
       ipfsHash,
       ownerType: Number(ownerType),
       operator,
       purpose,
+      owner_type: assessed.owner_type,
+      owner_type_verified: assessed.owner_type_verified,
+      owner_type_note: assessed.owner_type_note,
+      hcs10_verification_url:
+        assessed.owner_type === "agent"
+          ? `${req.nextUrl.origin}/api/agents/verify-registration?username=${encodeURIComponent(username)}`
+          : null,
     });
   } catch (err) {
     // A mirror-node failure (MirrorUnreachable) is "unknown", never

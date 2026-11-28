@@ -42,6 +42,7 @@ import {
   type AgentIntro,
 } from "./agent-intros";
 import { resolveUsernameForOwner } from "../registry-reverse";
+import { assessOwnerType } from "../owner-type";
 import { TEMPLATES } from "../templates";
 import { publishPageJson } from "./publish.js";
 import { stashClaimPackage, getClaimPackage, saveClaimPackage } from "./claim-packages";
@@ -71,7 +72,7 @@ import {
 } from "./capability-tokens";
 import { writeAvailability } from "./agent-availability";
 import { checkContent } from "./townhall/content-filter";
-import { defaultDeps, queryChatRooms } from "./townhall/handlers";
+import { defaultDeps, getListingById, queryChatRooms, type TownhallDeps } from "./townhall/handlers";
 import { getTopicId, mirrorBaseUrl } from "./townhall/topics";
 import { hasBuilderBadge, BUILDERS_ROOM_ID, BUILDER_UNLOCK_MESSAGE } from "./badges";
 import { requireNotRestricted } from "./townhall/bans";
@@ -356,7 +357,33 @@ export interface BlockpageLookup {
   owner_evm?: string;
   owner_account?: string | null;
   ipfs_hash?: string;
+  /**
+   * Self-declared label from the Registry record — a CLAIM, not a
+   * verified fact (Clearance first pass, 2026-11-27, F2): registerPage
+   * takes ownerType from the caller and HUMAN pages skip disclosure.
+   * Read `owner_type_verified` + `owner_type_note` before trusting it.
+   */
   owner_type?: "human" | "agent";
+  /**
+   * True only when the on-chain record backs the claim: an AGENT page
+   * with a non-zero operator and a non-empty purpose disclosed at
+   * registration. HUMAN pages are never verified.
+   */
+  owner_type_verified?: boolean;
+  /** Plain-language note on what the owner_type claim means. */
+  owner_type_note?: string;
+  /**
+   * HCS-10 registration check for this page (standard route — the
+   * read-only verifier at /api/agents/verify-registration, mirror-node
+   * REST only, cached + rate-limited). Present for AGENT pages only:
+   * the deeper proof that the operator completed HCS-10 registration
+   * (inbound + outbound topics, registry `register` message). The
+   * on-chain disclosure check above is cheap and runs on every lookup;
+   * the HCS-10 fan-out is deliberately NOT run here — it lives behind
+   * its own cached endpoint so one lookup cannot turn into a
+   * mirror-node scan.
+   */
+  hcs10_verification_url?: string;
   operator?: string;
   purpose?: string;
   /**
@@ -426,6 +453,9 @@ export async function lookupBlockpage(
   if (decoded) {
     const [owner, ipfsHash, ownerType, operator, purpose] = decoded;
   const ownerEvm = owner.toLowerCase();
+  // The human/agent label is a self-declared claim — assess it once
+  // against the on-chain record (Clearance F2).
+  const assessed = assessOwnerType(ownerType, operator, purpose);
 
   // Best-effort: EVM address -> 0.0.x account id. Fail-soft.
   let ownerAccount: string | null = null;
@@ -443,7 +473,16 @@ export async function lookupBlockpage(
     owner_evm: ownerEvm,
     owner_account: ownerAccount,
     ipfs_hash: ipfsHash,
-    owner_type: Number(ownerType) === 1 ? "agent" : "human",
+    owner_type: assessed.owner_type,
+    owner_type_verified: assessed.owner_type_verified,
+    owner_type_note: assessed.owner_type_note,
+    // Agent pages only: the deeper HCS-10 proof lives at the standard
+    // verify-registration endpoint (see the field doc above).
+    ...(assessed.owner_type === "agent"
+      ? {
+          hcs10_verification_url: `https://voicescape.vercel.app/api/agents/verify-registration?username=${encodeURIComponent(name)}`,
+        }
+      : {}),
     operator: operator.toLowerCase(),
     purpose,
   };
@@ -877,6 +916,17 @@ export interface AgentMatch {
   purpose: string;
   owner: string | null;
   /**
+   * Whether the "agent" label is backed by the directory entry's on-chain
+   * record (non-zero operator + non-empty purpose disclosed). Null when
+   * the directory row did not carry the field. The label is a
+   * self-declared claim — read this before trusting it (Clearance F2).
+   */
+  owner_type_verified: boolean | null;
+  /** Plain-language note on what the agent label means for this entry. */
+  owner_type_note: string | null;
+  /** HCS-10 registration check URL from the directory row (null when absent). */
+  hcs10_verification_url: string | null;
+  /**
    * "Open for work" flag, owner-set via POST /api/agents/[agent]/availability.
    * Null when unset or expired — never a stale "open". Self-reported like
    * everything else in the listing.
@@ -952,6 +1002,10 @@ function toAgentMatch(a: Record<string, any>): AgentMatch {
     username: typeof a.username === "string" ? a.username : "",
     purpose: typeof a.purpose === "string" ? a.purpose : "",
     owner: typeof a.owner === "string" ? a.owner : null,
+    owner_type_verified: typeof a.owner_type_verified === "boolean" ? a.owner_type_verified : null,
+    owner_type_note: typeof a.owner_type_note === "string" ? a.owner_type_note : null,
+    hcs10_verification_url:
+      typeof a.hcs10_verification_url === "string" ? a.hcs10_verification_url : null,
     availability,
   };
 }
@@ -3541,7 +3595,11 @@ export async function blockpageEarnings(
     const txHash = typeof log.transaction_hash === "string" ? log.transaction_hash : "";
     mine.push({
       timestamp: typeof log.timestamp === "string" ? log.timestamp : "",
-      from_evm: topicToAddress(topics[1]) ?? "",
+      // TipSent topics are [sig, usernameHash, from, toOwner] — the sender
+      // is topics[2], NOT topics[1] (that is the keccak of the username).
+      // Reading topics[1] returned the tail of a hash as a fake address
+      // (Clearance first pass, 2026-11-27).
+      from_evm: topicToAddress(topics[2]) ?? "",
       gross_hbar: tinybarToHbar(decoded.gross),
       creator_hbar: tinybarToHbar(decoded.gross - decoded.fee),
       transaction_id: txHash,
@@ -4022,32 +4080,91 @@ export interface PurchaseProof {
   listing_ref: string;
   listing_title: string | null;
   transaction_id: string | null;
+  /** Seller address from the on-chain PurchaseCompleted event (if any). */
+  seller_evm: string | null;
+  /** The listing's seller from the market-topic listing record (if any). */
+  seller_expected: string | null;
+  /** True when the on-chain seller matches the listing's seller. */
+  seller_matches: boolean | null;
   note: string;
 }
 
 /**
  * Verify a wallet's marketplace purchase on-chain. Scans the Tips
  * contract's PurchaseCompleted logs on the mirror node for the wallet as
- * buyer and the listing ref. Read-only; never touches keys.
+ * buyer and the listing ref — AND checks the event's seller against the
+ * listing record's seller. buyListing takes the seller from the caller,
+ * so buyer + ref alone is not proof: a poisoned read can settle a
+ * payment to a different wallet and the old check still called it a
+ * normal 98/2 purchase (Clearance first pass, 2026-11-27, F3).
+ * Read-only; never touches keys.
  */
 export async function verifyPurchaseTool(
   wallet: string,
   listingRef: string,
+  depsOverride?: TownhallDeps,
 ): Promise<PurchaseProof | { error: string }> {
   const w = wallet.trim();
   const ref = listingRef.trim();
   if (!w || !ref) return { error: "wallet and listingRef are required" };
-  const { verifyPurchase, walletPurchases } = await import("./townhall/badges");
+  const { verifyPurchaseDetailed, walletPurchases, resolveUsernameWallet } =
+    await import("./townhall/badges");
   const { defaultHcsPort } = await import("./townhall/hcs");
-  const ok = await verifyPurchase(w, ref);
-  if (!ok) {
+  // The listing record is the authority on who the seller is — resolve
+  // it server-side and bind the on-chain check to it.
+  let listing = null;
+  try {
+    listing = await getListingById(depsOverride ?? defaultDeps(), ref);
+  } catch {
+    listing = null;
+  }
+  if (!listing) {
     return {
       verified: false,
       wallet: w,
       listing_ref: ref,
       listing_title: null,
       transaction_id: null,
-      note: "no PurchaseCompleted event found for this wallet and listing on the Tips contract (0.0.10854060)",
+      seller_evm: null,
+      seller_expected: null,
+      seller_matches: null,
+      note: "listing not found in the market topic — the seller binding could not be checked, so the purchase is not verified",
+    };
+  }
+  // Expected seller: the listing's payout address (validated at creation
+  // to be the seller's own wallet), else the seller's registered page.
+  let expectedSeller: string | null = null;
+  const rawSeller = (listing.seller ?? "").toString().trim();
+  if (/^0x[0-9a-fA-F]{40}$/.test(rawSeller) || /^0\.0\.\d+$/.test(rawSeller)) {
+    expectedSeller = rawSeller;
+  } else if (listing.sellerUsername) {
+    expectedSeller = await resolveUsernameWallet(listing.sellerUsername);
+  }
+  if (!expectedSeller) {
+    return {
+      verified: false,
+      wallet: w,
+      listing_ref: ref,
+      listing_title: listing.title ?? ref,
+      transaction_id: null,
+      seller_evm: null,
+      seller_expected: null,
+      seller_matches: null,
+      note: "could not resolve the listing's seller — the seller binding could not be checked, so the purchase is not verified",
+    };
+  }
+  const detail = await verifyPurchaseDetailed(w, ref, expectedSeller);
+  if (!detail.verified) {
+    return {
+      verified: false,
+      wallet: w,
+      listing_ref: ref,
+      listing_title: listing.title ?? ref,
+      transaction_id: detail.tx,
+      seller_evm: detail.sellerOnChain,
+      seller_expected: detail.sellerExpected,
+      seller_matches: detail.sellerMatches,
+      note: detail.reason,
     };
   }
   // Pull the tx + title for the receipt.
@@ -4057,9 +4174,12 @@ export async function verifyPurchaseTool(
     verified: true,
     wallet: w,
     listing_ref: ref,
-    listing_title: hit?.title ?? ref,
-    transaction_id: hit?.tx ?? null,
-    note: "verified on-chain purchase — 98% went to the seller and 2% to the treasury in the same atomic transaction",
+    listing_title: hit?.title ?? listing.title ?? ref,
+    transaction_id: detail.tx ?? hit?.tx ?? null,
+    seller_evm: detail.sellerOnChain,
+    seller_expected: detail.sellerExpected,
+    seller_matches: true,
+    note: "verified on-chain purchase — the payment went to the listing's seller, 98% to the seller and 2% to the treasury in the same atomic transaction",
   };
 }
 

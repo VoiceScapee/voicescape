@@ -48,7 +48,11 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const ok = await verifyPurchase(wallet, listingId);
+  // The listing's seller binds the check: a PurchaseCompleted event for
+  // the right buyer + listing is not enough on its own — buyListing takes
+  // the seller from the caller, so the payment must be shown to have gone
+  // to this listing's seller (Clearance first pass, 2026-11-27, F3).
+  const ok = await verifyPurchase(wallet, listingId, listing.seller);
   if (!ok) {
     return NextResponse.json(
       { error: "no verified on-chain purchase of this listing for that wallet" },

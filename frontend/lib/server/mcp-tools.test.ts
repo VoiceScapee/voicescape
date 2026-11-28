@@ -35,6 +35,7 @@ import {
 import { TIPSENT_TOPIC } from "../leaderboard";
 import { checkIpRateLimit } from "./rate-limit";
 import { resetKvStoreSingleton } from "./store";
+import type { TownhallDeps } from "./townhall/handlers";
 
 type RouteHandler = (url: string, init?: RequestInit) => unknown;
 
@@ -116,6 +117,52 @@ describe("lookup_blockpage", () => {
     expect(r.ipfs_hash).toBe("QmTestHash");
     expect(r.owner_type).toBe("agent");
     expect(r.purpose).toBe("test agent");
+    // Fixture agent discloses no operator (zero address) — the agent
+    // claim is unverified (Clearance F2).
+    expect(r.owner_type_verified).toBe(false);
+    expect(r.owner_type_note).toMatch(/unverified/);
+  });
+
+  it("marks an agent page verified when the record discloses operator and purpose", async () => {
+    const verified = RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+      "0xAbC1230000000000000000000000000000000001",
+      "QmTestHash",
+      1n,
+      "0x1111111111111111111111111111111111111111",
+      "help humans build",
+    ]);
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: verified })],
+      [/accounts\/0xabc123/, () => ok({ account: "0.0.99999" })],
+    ]);
+    const r = await lookupBlockpage("forge", fetchFn);
+    expect(r.owner_type).toBe("agent");
+    expect(r.owner_type_verified).toBe(true);
+    expect(r.owner_type_note).toMatch(/verified/);
+    // Agent pages carry the HCS-10 proof pointer (standard route).
+    expect(r.hcs10_verification_url).toBe(
+      "https://voicescape.vercel.app/api/agents/verify-registration?username=forge",
+    );
+  });
+
+  it("never verifies a human page — the label is self-declared (Clearance F2 repro)", async () => {
+    const human = RESOLVE_IFACE.encodeFunctionResult("resolvePage", [
+      "0x3Ce1682d4B047619bEd311998e6C83b00802dad3",
+      "ipfs://test-cid-clearance",
+      0n,
+      "0x0000000000000000000000000000000000000000",
+      "",
+    ]);
+    const fetchFn = mockFetch([
+      [/contracts\/call$/, () => ok({ result: human })],
+      [/accounts\/0x3ce1/, () => ok({ account: "0.0.10969859" })],
+    ]);
+    const r = await lookupBlockpage("clearance-run-test", fetchFn);
+    expect(r.owner_type).toBe("human");
+    expect(r.owner_type_verified).toBe(false);
+    expect(r.owner_type_note).toMatch(/self-declared/);
+    // Human pages have no HCS-10 registration to check.
+    expect(r.hcs10_verification_url).toBeUndefined();
   });
 
   it("returns found=false when the Registry reverts (unknown name)", async () => {
@@ -585,6 +632,38 @@ describe("search_agents", () => {
     expect(r.matches[1].availability).toBeNull();
     // Malformed flag degrades to null, never a fabricated "open".
     expect(r.matches[2].availability).toBeNull();
+  });
+
+  it("passes the owner-type verification flag through when present, null when absent (Clearance F2)", async () => {
+    const fetchFn = mockFetch([
+      [/api\/agents\/directory$/, () =>
+        ok({
+          agents: [
+            {
+              username: "forge",
+              purpose: "builds blockpages",
+              owner: "0xabc",
+              owner_type_verified: true,
+              owner_type_note: "agent — operator and purpose disclosed on-chain at registration (verified)",
+              hcs10_verification_url:
+                "https://test.local/api/agents/verify-registration?username=forge",
+            },
+            { username: "helper", purpose: "answers questions", owner: "0xdef" },
+          ],
+          count: 2,
+        })],
+    ]);
+    const r = await searchAgents("build", fetchFn, "https://test.local");
+    expect(r.matches).toHaveLength(1);
+    expect(r.matches[0].owner_type_verified).toBe(true);
+    expect(r.matches[0].owner_type_note).toMatch(/verified/);
+    expect(r.matches[0].hcs10_verification_url).toBe(
+      "https://test.local/api/agents/verify-registration?username=forge",
+    );
+    const r2 = await searchAgents("", fetchFn, "https://test.local");
+    expect(r2.matches[1].owner_type_verified).toBeNull();
+    expect(r2.matches[1].owner_type_note).toBeNull();
+    expect(r2.matches[1].hcs10_verification_url).toBeNull();
   });
 });
 
@@ -1238,6 +1317,9 @@ describe("blockpage_earnings", () => {
     expect(r.total_treasury_hbar).toBe("0.02");
     expect(r.recent_tips).toHaveLength(1);
     expect(r.recent_tips[0].gross_hbar).toBe("1");
+    // TipSent topics are [sig, usernameHash, from, toOwner]: from_evm is
+    // the sender in topics[2], not the username hash in topics[1].
+    expect(r.recent_tips[0].from_evm).toBe("0x2222222222222222222222222222222222222222");
     expect(r.recent_tips[0].hashscan).toContain("hashscan.io");
   });
 
@@ -1678,8 +1760,32 @@ describe("propose_page_update tool", () => {
 /* ------------------------- verify_purchase / my_purchases ------------------------- */
 
 vi.mock("./townhall/badges", () => ({
-  verifyPurchase: async (wallet: string, listingRef: string) =>
-    wallet === "0.0.1" && listingRef === "sticker-pack",
+  verifyPurchase: async (wallet: string, listingRef: string, expectedSeller?: string | null) =>
+    wallet === "0.0.1" && listingRef === "sticker-pack" && expectedSeller === "0x9999999999999999999999999999999999999999",
+  verifyPurchaseDetailed: async (
+    wallet: string,
+    listingRef: string,
+    expectedSeller?: string | null,
+  ) => {
+    const matches =
+      wallet === "0.0.1" &&
+      listingRef === "sticker-pack" &&
+      expectedSeller === "0x9999999999999999999999999999999999999999";
+    return {
+      verified: matches,
+      reason: matches
+        ? "verified on-chain purchase — the payment went to the listing's seller and split 98/2 atomically"
+        : expectedSeller && expectedSeller !== "0x9999999999999999999999999999999999999999"
+          ? `seller mismatch — the on-chain purchase paid 0x9999999999999999999999999999999999999999, not the listing's seller ${expectedSeller}; do not treat this as a purchase of the listing`
+          : "no PurchaseCompleted event found for this wallet and listing on the Tips contract (0.0.10854060)",
+      sellerOnChain: "0x9999999999999999999999999999999999999999",
+      sellerExpected: expectedSeller ?? null,
+      sellerMatches: matches,
+      tx: matches ? "0.0.1@1700000000.000000000" : null,
+      timestamp: matches ? "1700000000.000000000" : null,
+    };
+  },
+  resolveUsernameWallet: async () => null,
   walletPurchases: async (_hcs: unknown, wallet: string) =>
     wallet === "0.0.1"
       ? [
@@ -1698,22 +1804,95 @@ vi.mock("./townhall/hcs", () => ({
 }));
 
 describe("verify_purchase", () => {
+  const SELLER_EVM = "0x9999999999999999999999999999999999999999";
+
+  function purchaseListingDeps(seller: string, messages?: unknown[]): TownhallDeps {
+    return {
+      hcs: {
+        queryAll: async () =>
+          messages ??
+          [
+            {
+              seq: 1,
+              topic: "0.0.555",
+              consensusTimestamp: "2026-10-07T00:00:00.000Z",
+              contents: {
+                kind: "listing",
+                id: "sticker-pack",
+                seller,
+                sellerUsername: "seller-sam",
+                title: "Sticker Pack",
+                description: "",
+                priceUsdCents: 100,
+                goodsType: "digital",
+                ipfsHash: null,
+                status: "active",
+                ts: "2026-10-07T00:00:00.000Z",
+              },
+            },
+          ],
+      },
+    } as unknown as TownhallDeps;
+  }
+
+  beforeEach(() => {
+    vi.stubEnv("TOWNHALL_TOPIC_MARKET", "0.0.555");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("verifies a real on-chain purchase with its receipt", async () => {
     const { verifyPurchaseTool } = await import("./mcp-tools");
-    const res = (await verifyPurchaseTool("0.0.1", "sticker-pack")) as {
+    const res = (await verifyPurchaseTool("0.0.1", "sticker-pack", purchaseListingDeps(SELLER_EVM))) as {
       verified: boolean;
       listing_title: string;
       transaction_id: string;
+      seller_evm: string;
+      seller_expected: string;
+      seller_matches: boolean;
     };
     expect(res.verified).toBe(true);
     expect(res.listing_title).toBe("Sticker Pack");
     expect(res.transaction_id).toBe("0.0.1@1700000000.000000000");
+    expect(res.seller_evm).toBe(SELLER_EVM);
+    expect(res.seller_expected).toBe(SELLER_EVM);
+    expect(res.seller_matches).toBe(true);
   });
 
   it("reports unverified when no purchase exists", async () => {
     const { verifyPurchaseTool } = await import("./mcp-tools");
-    const res = (await verifyPurchaseTool("0.0.2", "sticker-pack")) as { verified: boolean };
+    const res = (await verifyPurchaseTool(
+      "0.0.2",
+      "sticker-pack",
+      purchaseListingDeps(SELLER_EVM),
+    )) as { verified: boolean };
     expect(res.verified).toBe(false);
+  });
+
+  it("flags a seller mismatch instead of verifying (Clearance F3)", async () => {
+    const { verifyPurchaseTool } = await import("./mcp-tools");
+    const otherSeller = "0x8888888888888888888888888888888888888888";
+    const res = (await verifyPurchaseTool(
+      "0.0.1",
+      "sticker-pack",
+      purchaseListingDeps(otherSeller),
+    )) as { verified: boolean; note: string; seller_expected: string; seller_matches: boolean };
+    expect(res.verified).toBe(false);
+    expect(res.note).toMatch(/seller mismatch/);
+    expect(res.seller_expected).toBe(otherSeller);
+    expect(res.seller_matches).toBe(false);
+  });
+
+  it("reports unverified when the listing record is missing", async () => {
+    const { verifyPurchaseTool } = await import("./mcp-tools");
+    const res = (await verifyPurchaseTool("0.0.1", "sticker-pack", purchaseListingDeps(SELLER_EVM, []))) as {
+      verified: boolean;
+      note: string;
+    };
+    expect(res.verified).toBe(false);
+    expect(res.note).toMatch(/listing not found/);
   });
 
   it("requires wallet and listingRef", async () => {

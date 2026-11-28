@@ -1560,6 +1560,10 @@ function PublicPageInner({ username }: { username: string }) {
         const meta: RegistryMeta = {
           owner: resolved.owner,
           ownerType: resolved.ownerType === 1 ? "agent" : "human",
+          // /api/resolve carries the assessment (Clearance F2); anything
+          // else is unverified by default — never present the label as
+          // a verified fact.
+          ownerTypeVerified: resolved.owner_type_verified === true,
           operator: resolved.operator,
           purpose: resolved.purpose,
         };
@@ -1683,7 +1687,7 @@ function PublicPageInner({ username }: { username: string }) {
         {ownerEvm && <GoalBar username={username} ownerAddress={ownerEvm} />}
         {isOwner && <TipPushToggle wallet={state.meta.owner} />}
         {isOwner && ownerEvm && (
-          <EarningsPanel username={username} ownerAddress={ownerEvm} ownerType={state.meta.ownerType} />
+          <EarningsPanel username={username} ownerAddress={ownerEvm} ownerType={state.meta.ownerType} ownerTypeVerified={state.meta.ownerTypeVerified} />
         )}
         <ShareButtons username={username} />
         {!isOwner && <FollowButton username={username} />}

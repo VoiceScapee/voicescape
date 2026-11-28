@@ -502,6 +502,101 @@ describe("bacon badge (purchasable)", () => {
   });
 });
 
+describe("verifyPurchaseDetailed (seller binding)", () => {
+  const PURCHASE_TOPIC0 = ethers.id("PurchaseCompleted(address,address,string,uint256,uint256)");
+  const coder = ethers.AbiCoder.defaultAbiCoder();
+  const pad = (addr: string) => "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
+  const BUYER = "0x0000000000000000000000000000000000012345";
+  // Lev's Clearance test wallet (F3 repro): the payment settled here, not to Bacon.
+  const LEV_WALLET = "0x3ce1682d4b047619bed311998e6c83b00802dad3";
+
+  function purchaseLog(opts: {
+    buyer?: string;
+    seller?: string;
+    listingRef?: string;
+    tx?: string;
+  }): TipsLog {
+    return {
+      topics: [PURCHASE_TOPIC0, pad(opts.buyer ?? BUYER), pad(opts.seller ?? BACON_ALIAS_ADDRESS)],
+      data: coder.encode(
+        ["string", "uint256", "uint256"],
+        [opts.listingRef ?? BACON_BADGE_LISTING_REF, 100n, 2n],
+      ),
+      transaction_hash: opts.tx ?? "0.0.10969859-1795811731-413925886",
+      timestamp: "1795811731.413925886",
+    } as TipsLog;
+  }
+
+  function stubLogs(logs: TipsLog[]) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (String(url).includes("/results/logs")) {
+          return { ok: true, json: async () => ({ logs }) } as Response;
+        }
+        return { ok: true, json: async () => ({}) } as Response;
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("verifies a purchase when the on-chain seller matches the listing's seller", async () => {
+    const { verifyPurchaseDetailed } = await import("./badges");
+    stubLogs([purchaseLog({})]);
+    const d = await verifyPurchaseDetailed(BUYER, BACON_BADGE_LISTING_REF, BACON_ALIAS_ADDRESS);
+    expect(d.verified).toBe(true);
+    expect(d.sellerMatches).toBe(true);
+    expect(d.sellerOnChain).toBe(BACON_ALIAS_ADDRESS.toLowerCase());
+    expect(d.sellerExpected).toBe(BACON_ALIAS_ADDRESS);
+    expect(d.tx).toBe("0.0.10969859-1795811731-413925886");
+  });
+
+  it("refuses a purchase whose on-chain seller differs from the listing's seller (Clearance F3 repro)", async () => {
+    const { verifyPurchaseDetailed, verifyPurchase } = await import("./badges");
+    stubLogs([purchaseLog({ seller: LEV_WALLET })]);
+    const d = await verifyPurchaseDetailed(BUYER, BACON_BADGE_LISTING_REF, BACON_ALIAS_ADDRESS);
+    expect(d.verified).toBe(false);
+    expect(d.sellerMatches).toBe(false);
+    expect(d.sellerOnChain).toBe(LEV_WALLET.toLowerCase());
+    expect(d.reason).toMatch(/seller mismatch/);
+    expect(await verifyPurchase(BUYER, BACON_BADGE_LISTING_REF, BACON_ALIAS_ADDRESS)).toBe(false);
+  });
+
+  it("verifies without a seller check when no expected seller is supplied", async () => {
+    const { verifyPurchaseDetailed } = await import("./badges");
+    stubLogs([purchaseLog({ seller: LEV_WALLET })]);
+    const d = await verifyPurchaseDetailed(BUYER, BACON_BADGE_LISTING_REF);
+    expect(d.verified).toBe(true);
+    expect(d.sellerMatches).toBe(null);
+    expect(d.sellerOnChain).toBe(LEV_WALLET.toLowerCase());
+  });
+
+  it("returns unverified when no purchase event exists for the buyer and ref", async () => {
+    const { verifyPurchaseDetailed } = await import("./badges");
+    stubLogs([purchaseLog({ listingRef: "other-listing" })]);
+    const d = await verifyPurchaseDetailed(BUYER, BACON_BADGE_LISTING_REF, BACON_ALIAS_ADDRESS);
+    expect(d.verified).toBe(false);
+    expect(d.sellerMatches).toBe(null);
+    expect(d.reason).toMatch(/no PurchaseCompleted event/);
+  });
+
+  it("findPurchaseEvent returns the seller, tx, and timestamp of the matching event", async () => {
+    const { findPurchaseEvent } = await import("./badges");
+    const hit = findPurchaseEvent(
+      [purchaseLog({ seller: LEV_WALLET })],
+      BUYER,
+      BACON_BADGE_LISTING_REF,
+    );
+    expect(hit?.seller).toBe(LEV_WALLET.toLowerCase());
+    expect(hit?.tx).toBe("0.0.10969859-1795811731-413925886");
+    expect(hit?.timestamp).toBe("1795811731.413925886");
+    expect(findPurchaseEvent([purchaseLog({})], BUYER, "other-listing")).toBe(null);
+  });
+});
+
 describe("walletTopicForms", () => {
   const pad = (addr: string) => "0x" + addr.toLowerCase().replace(/^0x/, "").padStart(64, "0");
   const ALIAS = "0xfc1177680ecf347f06cf3c086fa58ca2713fb462";

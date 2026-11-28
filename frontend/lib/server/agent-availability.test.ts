@@ -74,6 +74,9 @@ function fakeDirectoryAgent(username: string): DirectoryAgent {
   return {
     username,
     owner: OWNER,
+    owner_type_verified: true,
+    owner_type_note: "agent — operator and purpose disclosed on-chain at registration (verified)",
+    hcs10_verification_url: "https://example.com/api/agents/verify-registration?username=test",
     operator: OTHER,
     purpose: "test agent",
     ipfsHash: "",

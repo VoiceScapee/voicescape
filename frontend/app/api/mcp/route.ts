@@ -10,13 +10,19 @@
  *
  * Per-IP rate limit: two tiers — 100/hour for read-only tools
  * (lookup, verify, search, etc.), 20/hour for write tools (intros,
- * claims, vaults, feedback). Shared fixed-window limiter from
+ * claims, vaults, feedback). The MCP handshake and discovery
+ * (initialize, tools/list, ping, notifications) ride the read tier —
+ * see lib/server/mcp-rate-limit-tier. Shared fixed-window limiter from
  * lib/server/rate-limit, bucketed separately per tier.
  */
 
 export const runtime = "nodejs";
 
-import { READONLY_TOOLS } from "@/lib/server/mcp-readonly-tools";
+import {
+  MCP_IP_WINDOW_MS,
+  rateLimitTierForBody,
+  type McpRateLimitTier,
+} from "@/lib/server/mcp-rate-limit-tier";
 import { DISCOVERABLE_TOOLS } from "@/lib/server/mcp-discoverable-tools";
 import { createMcpHandler } from "mcp-handler";
 import { checkIpRateLimit, clientIpFromHeaders } from "@/lib/server/rate-limit";
@@ -29,25 +35,6 @@ const mcpHandler = createMcpHandler(registerTools, {
   serverInfo: { name: "voicescape", version: "1.1.0" },
   instructions: SERVER_INSTRUCTIONS,
 });
-
-const MCP_IP_LIMIT_WRITE = 20;
-const MCP_IP_LIMIT_READ = 100;
-const MCP_IP_WINDOW_MS = 3_600_000; // 1 hour
-
-/**
- * Extract the tool name from a JSON-RPC tools/call request body.
- * Returns null for non-tool calls (initialize, tools/list, etc.)
- * or unparseable bodies — those get the stricter write-tier limit
- * as the safe default.
- */
-function toolNameFromBody(body: unknown): string | null {
-  if (!body || typeof body !== "object") return null;
-  const b = body as { method?: unknown; params?: unknown };
-  if (b.method !== "tools/call") return null;
-  const params = b.params as { name?: unknown } | null;
-  if (!params || typeof params.name !== "string") return null;
-  return params.name;
-}
 
 /**
  * tools/list discovery filter (2026-11-21): the wire response advertises
@@ -137,15 +124,18 @@ async function handle(req: Request): Promise<Response> {
   // Per-IP gate first — cheap, before any MCP protocol work.
   // Two tiers: read-only tools get 100/hour (generous for legitimate
   // agent exploration), write tools stay at 20/hour (abuse prevention).
-  // The tool name comes from the JSON-RPC body for tools/call requests.
-  let toolName: string | null = null;
+  // The tier comes from lib/server/mcp-rate-limit-tier: protocol methods
+  // (initialize, tools/list, ping, notifications) ride the read tier —
+  // only a real write tools/call (or an unparseable body, safe default)
+  // burns the write budget.
   let requestId: string | number | null = null;
   let isToolsList = false;
+  let tier: McpRateLimitTier = { bucket: "mcp-write", limit: 20, tier: "write" };
   if (req.method === "POST") {
     try {
       const body = await req.clone().json();
-      toolName = toolNameFromBody(body);
       isToolsList = (body as { method?: unknown }).method === "tools/list";
+      tier = rateLimitTierForBody(body);
       // Thread the JSON-RPC request id into the tool context so
       // render_blockpage can expose it as the invocation correlation
       // key in widget diagnostics (autonomaavalix's ask, 2026-10-06).
@@ -155,9 +145,9 @@ async function handle(req: Request): Promise<Response> {
       /* not JSON — safe default below */
     }
   }
-  const isReadonly = toolName !== null && READONLY_TOOLS.has(toolName);
-  const limit = isReadonly ? MCP_IP_LIMIT_READ : MCP_IP_LIMIT_WRITE;
-  const bucket = isReadonly ? "mcp-read" : "mcp-write";
+  const isReadonly = tier.tier === "read";
+  const limit = tier.limit;
+  const bucket = tier.bucket;
   let rl;
   try {
     rl = await checkIpRateLimit(

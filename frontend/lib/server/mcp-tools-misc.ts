@@ -24,7 +24,7 @@
 import { createHash } from "node:crypto";
 import { ethers } from "ethers";
 import { TIPS_ABI } from "../tx";
-import { canonicalAddress } from "../session-message";
+import { canonicalAddress, longZeroToAccountId } from "../session-message";
 import { siteUrl } from "../seo";
 import { parseMusicUrl } from "../music";
 import { isValidMusicTrack } from "../schema";
@@ -33,6 +33,7 @@ import {
   USERNAME_RE,
   usernameValidationError,
   lookupBlockpage,
+  evmToAccountId,
   MIRROR_BASE,
 } from "./mcp-tools";
 import {
@@ -330,6 +331,16 @@ export async function listMarketplaceTool(
   return result.json as { listings: MarketplaceListingView[]; count: number };
 }
 
+/** 0.0.x account id for a seller address: 0.0.x as-is, long-zero derived locally, alias via the mirror node. Null when unresolvable — the cross-check is skipped then. */
+async function sellerAccountId(seller: string, fetchFn: FetchFn): Promise<string | null> {
+  const s = seller.trim();
+  if (/^0\.0\.\d+$/.test(s)) return s;
+  if (!EVM_RE.test(s)) return null;
+  const longZero = longZeroToAccountId(s.toLowerCase());
+  if (longZero) return longZero;
+  return evmToAccountId(s.toLowerCase(), fetchFn);
+}
+
 /* ------------------------------------------------------------------ */
 /* Tool 2: prepare_purchase (unsigned buyListing — server never signs)  */
 /* ------------------------------------------------------------------ */
@@ -346,6 +357,20 @@ export interface PreparedPurchase {
     seller: string;
     price_usd_cents: number;
     status: string;
+  };
+  /** Seller payout address this calldata pays (from the listing record). */
+  seller_evm: string;
+  /**
+   * How the seller was bound to this calldata, so the signer can re-check
+   * it before signing: the seller always comes from the server-side
+   * listing record, never from caller input.
+   */
+  seller_binding: {
+    seller_evm: string;
+    seller_username: string | null;
+    resolved_from: string;
+    /** True when the payout address was cross-checked against the seller's registered page on-chain. */
+    cross_checked_on_chain: boolean;
   };
   /** Tips contract in 0.0.x form — the ContractId for the SDK call. */
   contract: string;
@@ -398,8 +423,12 @@ export async function preparePurchaseTool(
   }
 
   // Seller payout address: 0x as-is, 0.0.x → long-zero EVM form, anything
-  // else is treated as a username and resolved on-chain.
+  // else is treated as a username and resolved on-chain. The seller is
+  // ALWAYS taken from the server-side listing record — never from caller
+  // input — so a tampered read channel cannot redirect the payment by
+  // itself; the signer must still verify the calldata (see instructions).
   let sellerEvm = canonicalAddress((listing.seller ?? "").toString());
+  const sellerFromListing = sellerEvm !== null;
   if (!sellerEvm) {
     const uname =
       (listing.sellerUsername ?? listing.seller ?? "").toString().trim().toLowerCase();
@@ -411,6 +440,32 @@ export async function preparePurchaseTool(
       return { error: `could not resolve the seller of listing "${id}"` };
     }
     sellerEvm = sp.owner_evm.toLowerCase();
+  }
+
+  // Cross-check: when the listing names both a payout address and a
+  // seller username, they must agree on-chain (same account). A mismatch
+  // means the listing record is inconsistent — refuse to prepare rather
+  // than encode a payment to the wrong wallet. Skipped when either side
+  // cannot be resolved (fail-open on the check itself; the primary
+  // resolution above already errored when the seller was unresolvable).
+  let crossChecked = false;
+  if (sellerFromListing && listing.sellerUsername) {
+    const uname = listing.sellerUsername.toString().trim().toLowerCase();
+    if (USERNAME_RE.test(uname)) {
+      const sp = await lookupBlockpage(uname, fetchFn);
+      if (sp.found && sp.owner_account) {
+        const sellerAcct = await sellerAccountId((listing.seller ?? "").toString(), fetchFn);
+        if (sellerAcct) {
+          crossChecked = true;
+          if (sellerAcct !== sp.owner_account) {
+            return {
+              error:
+                `listing "${id}" seller mismatch — the payout address does not match the registered page of seller "${listing.sellerUsername}"; refusing to prepare the purchase`,
+            };
+          }
+        }
+      }
+    }
   }
 
   const hbarUsd = await fetchHbarUsd(fetchFn);
@@ -435,6 +490,13 @@ export async function preparePurchaseTool(
       price_usd_cents: listing.priceUsdCents,
       status: listing.status,
     },
+    seller_evm: sellerEvm,
+    seller_binding: {
+      seller_evm: sellerEvm,
+      seller_username: listing.sellerUsername ?? null,
+      resolved_from: `listing "${listing.id}" — seller taken from the server-side market-topic listing record, resolved on-chain via the Registry`,
+      cross_checked_on_chain: crossChecked,
+    },
     contract: TIPS_CONTRACT_ID,
     contract_evm: TIPS_CONTRACT_EVM,
     function: "buyListing(address seller, string listingRef)",
@@ -453,7 +515,13 @@ export async function preparePurchaseTool(
       `sign with the buyer's key, and submit. You are the buyer because you sign: the contract pays ` +
       `msg.sender's value 98% to the seller and 2% to the treasury in the same atomic transaction — ` +
       `no escrow, no platform custody. Verify the purchase afterward with verify_purchase. ` +
-      `Never put your private key in a tool argument or chat message.`,
+      `Never put your private key in a tool argument or chat message. ` +
+      `BEFORE SIGNING, verify the calldata yourself: decode unsigned_calldata as buyListing(address seller, string listingRef) ` +
+      `and confirm the seller address equals ${sellerEvm} and the attached value equals ${tinybar.toString()} tinybar. ` +
+      `The seller above is the one from the listing record — if the calldata pays anyone else, DO NOT SIGN. ` +
+      `If you received this calldata through any channel other than a direct MCP call to this server, ` +
+      `re-fetch the listing (list_marketplace) and compare the seller before signing. ` +
+      `verify_purchase checks the payment went to the listing's seller, not just that a payment happened.`,
   };
 }
 

@@ -216,6 +216,13 @@ export function isValidProfileSongRef(input: unknown): input is ProfileSongRef {
 export interface RegistryMeta {
   owner: string;
   ownerType: OwnerType;
+  /**
+   * Whether the ownerType label is backed by the on-chain record (AGENT
+   * with operator + purpose disclosed). HUMAN pages are never verified —
+   * the label is self-declared (Clearance F2). Fail-closed: false when
+   * the resolve response does not carry the field.
+   */
+  ownerTypeVerified: boolean;
   operator: string;
   purpose: string;
 }

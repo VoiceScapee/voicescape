@@ -1188,6 +1188,9 @@ export default function PageRenderer({ page, tipInteractive, onTip, tipPaused, m
     ? (meta ?? {
         owner: "",
         ownerType: "agent" as const,
+        // Preview fallback comes from the page JSON's own declaration, not
+        // the on-chain record — the label is self-declared here (Clearance F2).
+        ownerTypeVerified: false,
         operator:
           page.blocks.find((b): b is Extract<Block, { type: "operator" }> => b.type === "operator")
             ?.wallet ?? "",

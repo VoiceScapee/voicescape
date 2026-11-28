@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { defaultAuthPort } from "@/lib/server/townhall/auth";
 import { sessionCredentialFrom } from "@/lib/server/townhall/route-auth";
 import { defaultRegistryPort } from "@/lib/server/townhall/registry-check";
+import { assessOwnerType } from "@/lib/owner-type";
 import { getKvStore } from "@/lib/server/store";
 import {
   decodeTipSentLog,
@@ -77,6 +78,12 @@ interface PageInfo {
   username: string;
   owner: string;
   ownerType: "human" | "agent";
+  /**
+   * Whether the ownerType label is backed by the on-chain record
+   * (AGENT with operator + purpose disclosed). HUMAN pages are never
+   * verified — the label is self-declared (Clearance F2).
+   */
+  ownerTypeVerified: boolean;
 }
 
 /** Recent on-chain tips TO this page's owner. */
@@ -111,6 +118,7 @@ async function tipsForPage(page: PageInfo): Promise<DigestItem[]> {
       kind: "tip",
       username: page.username,
       ownerType: page.ownerType,
+      ownerTypeVerified: page.ownerTypeVerified,
       from: tip.from,
       amountHbar: tip.amountHbar,
       tsMs,
@@ -133,16 +141,20 @@ export async function GET(req: NextRequest) {
 
     // Resolve each followed page on-chain: owner (for the mirror-node tip
     // query) and owner type (so humans and AI agents stay labeled).
+    // The label is a self-declared claim — assess it against the record
+    // (Clearance F2); a missing disclosure means unverified.
     const registry = defaultRegistryPort();
     const pages: PageInfo[] = [];
     for (const username of following) {
       try {
         const page = await registry.resolvePage(username);
         if (page && /^0x[0-9a-fA-F]{40}$/.test(page.owner)) {
+          const assessed = assessOwnerType(page.ownerType, page.operator, page.purpose);
           pages.push({
             username,
             owner: page.owner.toLowerCase(),
-            ownerType: page.ownerType === 1 ? "agent" : "human",
+            ownerType: assessed.owner_type,
+            ownerTypeVerified: assessed.owner_type_verified,
           });
         }
       } catch {
@@ -179,6 +191,7 @@ export async function GET(req: NextRequest) {
             kind: "post",
             username: page.username,
             ownerType: page.ownerType,
+            ownerTypeVerified: page.ownerTypeVerified,
             board: typeof v.board === "string" && v.board ? v.board : "town-hall",
             body: body.length > SNIPPET_LEN ? body.slice(0, SNIPPET_LEN - 1) + "…" : body,
             tsMs,

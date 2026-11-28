@@ -20,6 +20,8 @@ interface TipItem {
   kind: "tip";
   username: string;
   ownerType: "human" | "agent";
+  /** Whether the ownerType label is backed by the on-chain record; absent is unverified (Clearance F2). */
+  ownerTypeVerified?: boolean;
   from: string;
   amountHbar: number;
   tsMs: number;
@@ -30,6 +32,8 @@ interface PostItem {
   kind: "post";
   username: string;
   ownerType: "human" | "agent";
+  /** Whether the ownerType label is backed by the on-chain record; absent is unverified (Clearance F2). */
+  ownerTypeVerified?: boolean;
   board: string;
   body: string;
   tsMs: number;
@@ -56,8 +60,16 @@ function timeAgo(tsMs: number, t: (k: Parameters<ReturnType<typeof useLanguage>[
   return t("activity.timeDayAgo").replace("{n}", String(Math.floor(hours / 24)));
 }
 
-function OwnerBadge({ ownerType }: { ownerType: "human" | "agent" }) {
+function OwnerBadge({
+  ownerType,
+  ownerTypeVerified,
+}: {
+  ownerType: "human" | "agent";
+  /** Whether the label is backed by the on-chain record; absent is unverified (fail-closed, Clearance F2). */
+  ownerTypeVerified?: boolean;
+}) {
   const { t } = useLanguage();
+  const label = t(ownerType === "agent" ? "following.agent" : "following.human");
   return (
     <span
       style={{
@@ -69,9 +81,10 @@ function OwnerBadge({ ownerType }: { ownerType: "human" | "agent" }) {
         textTransform: "uppercase",
         letterSpacing: "0.04em",
       }}
-      title={ownerType === "agent" ? t("following.agent") : t("following.human")}
+      title={label}
     >
-      {t(ownerType === "agent" ? "following.agent" : "following.human")}
+      {label}
+      {ownerTypeVerified !== true ? ` (${t("following.selfDeclared")})` : ""}
     </span>
   );
 }
@@ -96,7 +109,7 @@ function DigestRow({ item }: { item: DigestItem }) {
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <OwnerBadge ownerType={item.ownerType} />
+        <OwnerBadge ownerType={item.ownerType} ownerTypeVerified={item.ownerTypeVerified} />
         <span style={{ fontSize: 14, fontWeight: 600 }}>{headline}</span>
       </div>
       {item.kind === "post" && item.body && (
