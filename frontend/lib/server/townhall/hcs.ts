@@ -79,6 +79,21 @@ function decodeMirrorMessage(topicId: string, m: MirrorMessage): { stored: Store
   if (parsed && typeof parsed === "object" && typeof (parsed as Record<string, unknown>).ts !== "string") {
     (parsed as Record<string, unknown>).ts = m.consensus_timestamp;
   }
+  // Backfill (2026-11-28, vote read path): rep-vote HCS messages carry
+  // `voter`, not `author` (the contract-conforming shape), so the envelope
+  // check below dropped every agent/MCP vote before the tally ever saw it
+  // — Danny→bacon seq 2/3 on topic 0.0.10854068 were on-chain, confirmed
+  // 200, and never counted. Treat `voter` as the author when `author` is
+  // missing: the attestation recorded at confirm time (author ?? voter)
+  // still matches, and `raw` is untouched (hashed above, before parsing).
+  // An explicit `author` always wins; a message with neither field is
+  // still invalid. Web-UI votes carry both fields and are unaffected.
+  if (parsed && typeof parsed === "object") {
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.author !== "string" && typeof obj.voter === "string") {
+      obj.author = obj.voter;
+    }
+  }
   if (!isValidEnvelope(parsed)) return null;
   return {
     stored: {

@@ -84,6 +84,108 @@ describe("RealHcsClient (ts backfill)", () => {
   });
 });
 
+describe("RealHcsClient (author backfill from voter)", () => {
+  // Danny→bacon seq 3 (2026-11-28, votes topic 0.0.10854068): a
+  // contract-conforming rep-vote carrying `voter` and no `author` (and no
+  // `ts`). Its attestation was recorded at confirm time under the
+  // author ?? voter fix, but the read path dropped it before the tally.
+  const VOTES_TOPIC = "0.0.10854068";
+  const CONSENSUS_TS = "1795872640.809536016";
+
+  function stubTopicMessages(messages: Array<Record<string, unknown>>) {
+    const rows = messages.map((payload, i) => ({
+      consensus_timestamp: CONSENSUS_TS,
+      sequence_number: i + 1,
+      message: Buffer.from(JSON.stringify(payload)).toString("base64"),
+    }));
+    vi.stubGlobal(
+      "fetch",
+      async (url: unknown) =>
+        new Response(
+          JSON.stringify(
+            String(url).includes(`/topics/${VOTES_TOPIC}/messages`)
+              ? { messages: rows }
+              : { messages: [] },
+          ),
+          { headers: { "content-type": "application/json" } },
+        ),
+    );
+  }
+
+  it("re-reads a voter-only rep-vote, backfilling author from voter (and ts from consensus)", async () => {
+    stubTopicMessages([
+      { v: 1, kind: "rep-vote", target: "bacon-the-dino", voter: "danny", value: 1 },
+    ]);
+    const hcs = new RealHcsClient();
+    const page = await hcs.query(VOTES_TOPIC);
+    expect(page).toHaveLength(1);
+    expect(page[0].seq).toBe(1);
+    const contents = page[0].contents as unknown as Record<string, unknown>;
+    expect(contents.author).toBe("danny");
+    expect(contents.voter).toBe("danny");
+    expect(contents.ts).toBe(CONSENSUS_TS);
+  });
+
+  it("keeps an explicit author when both author and voter are present", async () => {
+    stubTopicMessages([
+      { v: 1, kind: "rep-vote", target: "bacon-the-dino", author: "alice", voter: "bob", value: 1 },
+    ]);
+    const hcs = new RealHcsClient();
+    const page = await hcs.query(VOTES_TOPIC);
+    expect(page).toHaveLength(1);
+    const contents = page[0].contents as unknown as Record<string, unknown>;
+    expect(contents.author).toBe("alice");
+    expect(contents.voter).toBe("bob");
+  });
+
+  it("still drops a message with neither author nor voter", async () => {
+    stubTopicMessages([{ v: 1, kind: "rep-vote", target: "bacon-the-dino", value: 1 }]);
+    const hcs = new RealHcsClient();
+    const page = await hcs.query(VOTES_TOPIC);
+    expect(page).toHaveLength(0);
+  });
+
+  it("leaves a proposal-vote carrying both fields unchanged", async () => {
+    stubTopicMessages([
+      {
+        v: 1,
+        kind: "proposal-vote",
+        proposal: "p1",
+        author: "alice",
+        voter: "alice",
+        value: 1,
+        ts: "2026-11-28T00:00:00.000Z",
+      },
+    ]);
+    const hcs = new RealHcsClient();
+    const page = await hcs.query(VOTES_TOPIC);
+    expect(page).toHaveLength(1);
+    const contents = page[0].contents as unknown as Record<string, unknown>;
+    expect(contents.author).toBe("alice");
+    expect(contents.voter).toBe("alice");
+    expect(contents.ts).toBe("2026-11-28T00:00:00.000Z");
+  });
+
+  it("preserves a voter-only message's own ts instead of overwriting it", async () => {
+    stubTopicMessages([
+      {
+        v: 1,
+        kind: "rep-vote",
+        target: "bacon-the-dino",
+        voter: "danny",
+        value: 1,
+        ts: "2026-11-28T12:00:00.000Z",
+      },
+    ]);
+    const hcs = new RealHcsClient();
+    const page = await hcs.query(VOTES_TOPIC);
+    expect(page).toHaveLength(1);
+    const contents = page[0].contents as unknown as Record<string, unknown>;
+    expect(contents.author).toBe("danny");
+    expect(contents.ts).toBe("2026-11-28T12:00:00.000Z");
+  });
+});
+
 describe("MemoryHcsClient", () => {
   it("assigns incrementing sequence numbers and queries in order", async () => {
     const hcs = new MemoryHcsClient();
